@@ -13,10 +13,12 @@ from main.apps.f1ap_du.serializers.f1ap_message_serializers import (
     F1SetupResponseSerializer,
     UeContextReleaseSerializer,
     UeContextSetupSerializer,
+    UlRrcInjectSerializer,
 )
 from main.apps.f1ap_du.services.optional.message_codec.f1ap_codec import (
     encode_ue_context_setup_response,
 )
+from main.apps.f1ap_du.services.optional.ul_rrc.ul_rrc_dispatcher import UlRrcDispatcher
 from main.apps.mac.models.ue_mac_state import UeMacState
 from main.apps.mac.services.business.relational_db_operations import (
     RelationalDbBusinessService as MacRelDb,
@@ -24,6 +26,7 @@ from main.apps.mac.services.business.relational_db_operations import (
 from main.apps.mac.services.common.timestamp_service import TimestampService as MacTs
 from main.apps.mac.services.common.uuid_service import UUIDService as MacUuid
 from main.apps.mac.services.optional.harq.harq_manager import get_harq_manager
+from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_aggregator
 from main.apps.mac.services.optional.random_access.ra_manager import get_ra_manager
 from main.apps.rlc.models.rlc_entity import RlcEntity
 from main.apps.rlc.services.business.relational_db_operations import (
@@ -141,6 +144,7 @@ class F1ApRouterController:
         RlcEntity.objects.filter(ue_id=ue_id).delete()
         rlc_factory.unregister_ue(ue_id)
         get_harq_manager().remove_ue(ue_id)
+        get_pm_aggregator().remove_ue(ue_id)
         logger.info("UE context release ue=%s", ue_id)
         return success_response({"ue_id": ue_id}, "Released")
 
@@ -167,6 +171,51 @@ class F1ApRouterController:
         ent.recv_sdu(msg_size)
         logger.info("DL RRC injected to SRB1 ue=%s size=%dB", ue_id, msg_size)
         return success_response({"ue_id": ue_id, "queued_bytes": msg_size}, "OK")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def ul_rrc_message(request):
+        """UE simulator → DU 注入 UL RRC PDU,DU 編碼後轉送 CU。
+
+        URL: /api/v0.1/DU/F1AP/F1ApRouter/ul_rrc_message
+
+        Body: {ue_id, rrc_msg_b64, is_initial?}
+          - is_initial=True 表示這是 RA Msg3 的 CCCH SRB0 PDU,會把該 UE 的 RA state
+            從 WAIT_MSG3 推進到 MSG4_SENT(等 CU 回 DL RRC 才完成 finalize)
+        """
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("Invalid JSON", str(e), http_status=400)
+        ser = UlRrcInjectSerializer(data=payload)
+        if not ser.is_valid():
+            return error_response("Validation failed", ser.errors, http_status=400)
+        v = ser.validated_data
+        ue_id = v["ue_id"]
+        rrc_b64 = v["rrc_msg_b64"]
+        is_initial = bool(v.get("is_initial", False))
+
+        # RA hook:initial PDU 把 RA state 推進到 MSG4_SENT
+        ra_state_after = None
+        if is_initial:
+            advanced = get_ra_manager().advance(ue_id, "MSG4_SENT")
+            ra_state_after = advanced.state if advanced else None
+
+        try:
+            forwarded = UlRrcDispatcher.dispatch(ue_id, rrc_b64)
+        except (ValueError, TypeError) as e:
+            return error_response(f"Bad rrc_msg_b64: {e}", http_status=400)
+
+        return success_response(
+            {
+                "ue_id": ue_id,
+                "forwarded_to_cu": forwarded,
+                "is_initial": is_initial,
+                "ra_state": ra_state_after,
+            },
+            "Forwarded",
+        )
 
     @staticmethod
     @csrf_exempt

@@ -6,8 +6,12 @@ class F1apDuConfig(AppConfig):
     label = "f1ap_du"
 
     def ready(self) -> None:
-        # 啟動時非阻塞觸發 F1Setup retry loop。
-        # 真正執行延遲到 worker process 起來、env 讀完、protocol 可用之後。
+        # test / migrate / makemigrations / check / shell 等 management 指令
+        # 不要去打 CU(會噴連線 warning)。
+        import sys
+        skip_cmds = {"test", "migrate", "makemigrations", "check", "shell", "collectstatic"}
+        if any(c in sys.argv for c in skip_cmds) or "pytest" in sys.argv[0]:
+            return
         try:
             from main.apps.f1ap_du.services.optional.lifecycle.du_bootstrap import (
                 start_bootstrap_in_background,

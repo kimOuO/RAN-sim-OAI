@@ -53,6 +53,7 @@ RANsim-DU/
 | `POST /api/v0.1/DU/F1AP/F1ApRouter/ue_context_release` | CU → DU |
 | `POST /api/v0.1/DU/F1AP/F1ApRouter/dl_rrc_message` | CU → DU → UE |
 | `POST /api/v0.1/DU/F1AP/F1ApRouter/f1_setup_response` | CU → DU(callback) |
+| `POST /api/v0.1/DU/F1AP/F1SessionController/read` | 查 F1 連線 DB row + in-memory bootstrap state |
 | `POST /api/v0.1/DU/FAPI/FapiRouter/cqi_indication` | RU → DU |
 | `POST /api/v0.1/DU/FAPI/FapiRouter/crc_indication` | RU → DU |
 | `POST /api/v0.1/DU/Tick/TickController/{start,stop,run_once,read,register_ue}` | Tick driver |
@@ -62,8 +63,10 @@ RANsim-DU/
 ```
 POST {RU}/api/v0.1/RU/FAPI/FapiRouter/dl_tti_request
 POST {RU}/api/v0.1/RU/FAPI/FapiRouter/ul_tti_request
-POST {CU}/api/v0.1/CU/F1AP/F1ApRouter/du_setup           (啟動時)
-POST {CU}/api/v0.1/CU/F1AP/F1ApRouter/measurement_report (每 5 tick)
+POST {CU}/api/v0.1/CU/F1AP/F1ApRouter/du_setup                (啟動時)
+POST {CU}/api/v0.1/CU/F1AP/F1ApRouter/measurement_report      (每 5 tick)
+POST {CU}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message          (UE 上行 RRC PDU)
+POST {CU}/api/v0.1/CU/F1AP/F1ApRouter/du_configuration_update (cell add/modify/delete)
 ```
 
 ## 共用 Protocol Package
@@ -143,13 +146,31 @@ curl -X POST http://localhost:8002/api/v0.1/DU/FAPI/FapiRouter/cqi_indication \
   -d '{"ue_id":"ue-1","sinr_db":18.5,"cqi":11,"rank":1,"pmi":0}'
 ```
 
+UE 模擬送 UL RRC(例如 RA Msg3,初始 attach):
+```bash
+curl -X POST http://localhost:8002/api/v0.1/DU/F1AP/F1ApRouter/ul_rrc_message \
+  -H 'Content-Type: application/json' \
+  -d '{"ue_id":"ue-1","rrc_msg_b64":"UlJDU2V0dXBSZXF1ZXN0","is_initial":true}'
+```
+
 ## 測試
 
 ```bash
-pytest                         # 全部
-pytest main/apps/mac/tests     # 單一 app
-pytest -k pf_scheduler -v      # 指定函式
+pytest                          # 全部 (54 cases)
+pytest main/apps                # 各 app 自己的 service / unit_test
+pytest tests/integration        # CU/RU 對接整合測試 (mock HTTP server)
+pytest -k pf_scheduler -v       # 指定函式
 ```
+
+`tests/integration/` 在測試 process 內起 mock CU + mock RU(stdlib `ThreadingHTTPServer`),
+透過 `monkeypatch` 改 `HTTP_CU_HOST/PORT` / `HTTP_RU_HOST/PORT` 把 client 導向 mock。
+覆蓋:
+- F1Setup payload schema 對 CU
+- DL/UL TTI Request schema 對 RU
+- measurement_report schema 對 CU
+- 完整 loop:CU→DU `ue_context_setup` + `register_ue` + `cqi_indication` + `inject_sdu` → 跑 5 tick → mock RU 收到 5 筆 `dl_tti_request`、mock CU 收到 1 筆 `measurement_report`
+- UE release 後不再被排程
+- CU/RU 不可達時 client 不拋例外,優雅回 None / False
 
 ## Tick 流程(每 500 ms)
 

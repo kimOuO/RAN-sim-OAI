@@ -72,3 +72,25 @@ class GnbDuMeasurementReport:
     rb_width_dl: int = 0
     mimo_rank: int = 1
     neighbor_cells: list[NeighborMeas] = field(default_factory=list)
+
+
+@dataclass
+class GnbDuConfigurationUpdate:
+    """DU → CU：cell 配置變更通知（3GPP TS 38.473 §8.2.4 / §9.2.1.7）。
+
+    對應 OAI 的 procedureCode=3（initiating message）：
+      - openair2/F1AP/f1ap_handlers.c[3] = CU_handle_gNB_DU_CONFIGURATION_UPDATE
+    F1Setup 之後若新增 / 修改 / 刪除 cell，DU 用這個訊息通知 CU。
+    """
+    gnb_du_id: int
+    transaction_id: int = 0
+    served_cells_to_add: list[CellConfig] = field(default_factory=list)
+    served_cells_to_modify: list[CellConfig] = field(default_factory=list)
+    served_cells_to_delete: list[str] = field(default_factory=list)  # cell_id list
+
+
+@dataclass
+class GnbDuConfigurationUpdateAcknowledge:
+    """CU → DU：對 GnbDuConfigurationUpdate 的回應。"""
+    transaction_id: int
+    accepted: bool = True

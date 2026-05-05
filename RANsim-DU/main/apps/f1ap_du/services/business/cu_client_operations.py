@@ -28,9 +28,15 @@ class CuClientBusinessService:
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/du_setup"
         try:
             r = requests.post(url, json=payload, timeout=timeout)
-            return r.json() if r.ok else None
         except requests.RequestException as e:
             logger.warning("post_du_setup failed: %s", e)
+            return None
+        if not r.ok:
+            return None
+        try:
+            return r.json()
+        except ValueError:
+            logger.warning("post_du_setup got non-JSON body")
             return None
 
     @staticmethod
@@ -52,3 +58,25 @@ class CuClientBusinessService:
         except requests.RequestException as e:
             logger.warning("post_ul_rrc_message failed: %s", e)
             return False
+
+    @staticmethod
+    def post_du_configuration_update(
+        payload: dict[str, Any], timeout: float = 5.0,
+    ) -> dict[str, Any] | None:
+        """gNB-DU Configuration Update — 回傳 CU 的 acknowledge body 或 None。"""
+        url = (
+            f"{CuClientBusinessService._base_url()}"
+            "/api/v0.1/CU/F1AP/F1ApRouter/du_configuration_update"
+        )
+        try:
+            r = requests.post(url, json=payload, timeout=timeout)
+        except requests.RequestException as e:
+            logger.warning("post_du_configuration_update failed: %s", e)
+            return None
+        if not r.ok:
+            return None
+        try:
+            return r.json()
+        except ValueError:
+            logger.warning("post_du_configuration_update got non-JSON body")
+            return None

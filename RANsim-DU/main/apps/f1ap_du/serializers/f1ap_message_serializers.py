@@ -27,3 +27,10 @@ class DlRrcMessageTransferSerializer(serializers.Serializer):
 class F1SetupResponseSerializer(serializers.Serializer):
     transaction_id = serializers.IntegerField()
     accepted = serializers.BooleanField(default=True)
+
+
+class UlRrcInjectSerializer(serializers.Serializer):
+    """UE simulator → DU 注入 UL RRC PDU(b64 編碼)。"""
+    ue_id = serializers.CharField(max_length=64)
+    rrc_msg_b64 = serializers.CharField(min_length=1)
+    is_initial = serializers.BooleanField(required=False, default=False)

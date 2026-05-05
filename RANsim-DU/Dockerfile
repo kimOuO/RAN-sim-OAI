@@ -21,4 +21,6 @@ RUN sed -i 's|-e /home/mitlab/XAPP_DT/Physics_sim/ran-sim-protocol|-e /opt/ran-s
 
 EXPOSE 8000
 
-CMD ["gunicorn", "main.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "60"]
+# 1 worker:tick driver / RLC registry / HARQ / MCS 等 singleton 是 in-memory,
+# 跨 worker 不共享。模擬器場景單 worker 足夠;吞吐用 thread 而非 fork。
+CMD ["gunicorn", "main.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "8", "--timeout", "60"]

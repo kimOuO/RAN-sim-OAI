@@ -50,15 +50,23 @@ class MacCellController:
         }
 
         try:
-            obj = RelationalDbBusinessService.upsert_entity(
-                CellState, "cell_uuid", cell_uuid, entity_data,
-            )
+            obj, created = _upsert_with_created_flag(CellState, "cell_uuid", cell_uuid, entity_data)
         except Exception as e:
             logger.exception("Cell create failed")
             return error_response(f"Cell create failed: {e}", http_status=500)
 
+        # F1 active 後新增 / 修改 cell → 通知 CU(F1 還在 INIT 時 skip,F1Setup 會帶過去)
+        from main.apps.f1ap_du.services.optional.lifecycle import du_config_update
+        cfg = du_config_update.cell_state_to_config(obj)
+        if created:
+            du_config_update.send(cells_to_add=[cfg])
+        else:
+            du_config_update.send(cells_to_modify=[cfg])
+
         out = CellStateReadSerializer(obj.__dict__).data
-        logger.info("MacCellController.create cell_id=%s pci=%s", obj.cell_id, obj.pci)
+        logger.info(
+            "MacCellController.create cell_id=%s pci=%s (created=%s)", obj.cell_id, obj.pci, created,
+        )
         return success_response(out, "Cell created", http_status=201)
 
     @staticmethod
@@ -99,7 +107,22 @@ class MacCellController:
         rows = RelationalDbBusinessService.update_entity(
             CellState, "cell_id", cell_id, payload,
         )
+        if rows:
+            from main.apps.f1ap_du.services.optional.lifecycle import du_config_update
+            obj_for_notify = RelationalDbBusinessService.get_entity(CellState, "cell_id", cell_id)
+            if obj_for_notify:
+                du_config_update.send(
+                    cells_to_modify=[du_config_update.cell_state_to_config(obj_for_notify)],
+                )
         if rows == 0:
             return error_response("Cell not found", http_status=404)
         obj = RelationalDbBusinessService.get_entity(CellState, "cell_id", cell_id)
         return success_response(CellStateReadSerializer(obj.__dict__).data, "Updated")
+
+
+def _upsert_with_created_flag(model_class, lookup_field, lookup_value, data):
+    """upsert + 回傳 (obj, was_created)。Business Service 通用 API 不暴露 created flag。"""
+    obj, created = model_class.objects.update_or_create(
+        **{lookup_field: lookup_value}, defaults=data,
+    )
+    return obj, created

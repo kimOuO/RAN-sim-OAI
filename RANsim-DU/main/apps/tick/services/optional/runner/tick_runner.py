@@ -183,12 +183,13 @@ class TickRunner:
         )
         dispatched = RuClientBusinessService.post_dl_tti_request(encode_dl_tti(dl_msg))
 
-        # 4) Accumulate PM
+        # 4) Accumulate PM (per-gNB cumulative + per-UE rolling window)
         pm = get_pm_aggregator()
         for ue in ues_with_bo:
             uid = ue["id"]
             pm.accumulate_ue(
                 gnb_name=ue["serving_cell"],
+                ue_id=uid,
                 mcs_dl=mcs_map.get(uid, 9),
                 mcs_ul=max(0, mcs_map.get(uid, 9) - 2),
                 sinr_db=ue["sinr_db"],
@@ -198,23 +199,27 @@ class TickRunner:
                 dl_bytes=tbs_map.get(uid, 0),
                 ul_bytes=tbs_map.get(uid, 0) // 5,
                 qos_5qi=ue["qos_5qi"],
+                rank=ue.get("rank", 1),
             )
 
-        # 5) Periodic measurement report to CU
+        # 5) Periodic measurement report — 從 PM aggregator window 取平均/總和而非當下瞬時
         report_sent = False
         if self.status.tick_count % self.REPORT_EVERY_N_TICKS == 0:
-            for ue in ues_with_bo:
-                uid = ue["id"]
-                mbps_dl = (tbs_map.get(uid, 0) * 8) / max(get_int("SIM_TICK_MS", 500) / 1000.0, 1e-3) / 1e6
+            tick_s = get_int("SIM_TICK_MS", 500) / 1000.0
+            window_s = self.REPORT_EVERY_N_TICKS * tick_s
+            for uid in pm.active_ue_ids():
+                w = pm.flush_ue_report(uid, window_seconds=window_s)
+                if w is None:
+                    continue
                 report = GnbDuMeasurementReport(
                     ue_id=uid,
-                    rsrp_dbm=ue["rsrp_dbm"],
-                    sinr_db=ue["sinr_db"],
-                    throughput_dl_mbps=mbps_dl,
-                    throughput_ul_mbps=mbps_dl / 5,
-                    mcs_dl=mcs_map.get(uid, 9),
-                    rb_width_dl=rb_alloc_global.get(uid, 0),
-                    mimo_rank=1,
+                    rsrp_dbm=w["avg_rsrp_dbm"],
+                    sinr_db=w["avg_sinr_db"],
+                    throughput_dl_mbps=w["throughput_dl_mbps"],
+                    throughput_ul_mbps=w["throughput_ul_mbps"],
+                    mcs_dl=w["avg_mcs_dl"],
+                    rb_width_dl=w["avg_prb_dl"],
+                    mimo_rank=w["avg_rank"],
                 )
                 CuClientBusinessService.post_measurement_report(encode_measurement_report(report))
             report_sent = True
