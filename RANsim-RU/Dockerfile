@@ -27,4 +27,8 @@ COPY . /app
 
 EXPOSE 8000
 
+# entrypoint 會先跑 migrate 再 exec CMD
+RUN chmod +x /app/shell/entrypoint.sh
+ENTRYPOINT ["/app/shell/entrypoint.sh"]
+
 CMD ["gunicorn", "main.wsgi:application", "-b", "0.0.0.0:8000", "--workers", "2"]
