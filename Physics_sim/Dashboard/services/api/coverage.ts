@@ -1,4 +1,5 @@
-import { apiClient } from '@/services/clients/httpClient';
+// Coverage map（Sionna RadioMapSolver）在 Physics_sim
+import { physicsClient } from '@/services/clients/httpClient';
 
 export interface GridSpec {
   x_range: [number, number];
@@ -43,7 +44,7 @@ export interface CoverageResponse {
 }
 
 export const computeCoverage = async (payload: CoverageRequest): Promise<CoverageResponse> => {
-  const response = await apiClient.post<{ data: CoverageResponse }>(
+  const response = await physicsClient.post<{ data: CoverageResponse }>(
     '/api/v0.1/RanpSim/RanSignal/CoverageRunner/compute',
     payload
   );

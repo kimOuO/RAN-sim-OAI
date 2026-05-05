@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { startSim, stopSim, setupUE, fetchUEPositions } from '@/services/api/simLoop';
-import { WS_URL, SIM_LOOP_TICK_MS, API_BASE_URL } from '@/config';
+import { WS_URL, SIM_LOOP_TICK_MS, DU_BASE_URL } from '@/config';
 import * as omniverseApi from '@/services/api/omniverse';
 import type { UESignalData } from '@/types';
 
@@ -30,7 +30,7 @@ export function useSimPage(options?: UseSimPageOptions) {
   useEffect(() => {
     const checkSimStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v0.1/RanpSim/RanSignal/SimLoop/status`, {
+        const response = await fetch(`${DU_BASE_URL}/api/v0.1/DU/Tick/TickController/read`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: '{}',

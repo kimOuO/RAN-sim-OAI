@@ -1,4 +1,5 @@
-import { apiClient } from '@/services/clients/httpClient';
+// SceneGateway 仍在 Physics_sim 上（場景初始化是物理層的事）
+import { physicsClient } from '@/services/clients/httpClient';
 import type { SceneConfig, InitSceneResponse } from '@/types';
 
 export const initScene = async (sceneConfig: SceneConfig): Promise<InitSceneResponse> => {
@@ -40,7 +41,7 @@ export const initScene = async (sceneConfig: SceneConfig): Promise<InitSceneResp
     payload.scene_antenna_config = sceneConfig.scene_antenna_config;
   }
 
-  const response = await apiClient.post<{ data: InitSceneResponse }>(
+  const response = await physicsClient.post<{ data: InitSceneResponse }>(
     '/api/v0.1/RanpSim/Scene/SceneGateway/init',
     payload
   );
