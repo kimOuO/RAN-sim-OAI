@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  cu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ransim-cu:local
+    container_name: ransim-cu
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ../Physics_sim/ran-sim-protocol:/tmp/ran-sim-protocol:ro
+    ports:
+      - "8101:8000"
+    depends_on:
+      - postgres
+    networks:
+      - ransim-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ransim-cu-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - cu-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - ransim-net
+
+volumes:
+  cu-pgdata:
+
+networks:
+  ransim-net:
+    external: true

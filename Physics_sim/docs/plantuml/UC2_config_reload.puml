@@ -1,0 +1,91 @@
+@startuml UC2_config_reload
+!pragma teoz true
+
+title "Use Case 2: 場景 / RAN 配置重載 (Operator → scene_config.json → Sionna engine)"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 14
+skinparam DefaultFontName Arial
+
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor Operator as "Operator / CI\n(維運人員)"
+
+box "RAN-sim [Platform]" #LightYellow
+    box "ran_signal_mgt [System]\n\n" #LightBlue
+        box "ran_signal [Module]\n\n" #LightGreen
+            participant ConfigManager as "ConfigManager [Actor]"
+            participant SionnaBusinessService as "SionnaBusiness\nService"
+            participant SceneLoader as "SceneLoader\n(Optional Svc)"
+            participant SionnaEngine as "SionnaEngine\n(Optional Svc) 🟣"
+        end box
+    end box
+end box
+
+database SceneConfigFile as "scene_config.json\n(專案根目錄)"
+entity MitsubaXML as "umi_3sector.xml\n(Mitsuba scene)"
+
+activate Operator
+
+group ConfigManager.reload [Function]
+    autonumber 2.1
+    Operator -> ConfigManager : POST /ConfigManager/reload {}
+    activate ConfigManager
+
+    autonumber 2.2
+    ConfigManager -> SionnaBusinessService : reload_scene_config()
+    activate SionnaBusinessService
+
+    autonumber 2.3
+    SionnaBusinessService -> SceneLoader : load(scene_config_path)
+    activate SceneLoader
+
+    autonumber 2.4
+    SceneLoader -> SceneConfigFile : read JSON
+    activate SceneConfigFile
+    SceneConfigFile --> SceneLoader : {gnbs, ues, buildings}
+    deactivate SceneConfigFile
+
+    autonumber 2.5
+    SceneLoader -> SceneLoader : 驗必填欄位\n自動補 pci / cell_id (若缺)
+    SceneLoader --> SionnaBusinessService : parsed_config
+    deactivate SceneLoader
+
+    note over SionnaBusinessService: 🟣 Sionna engine 從頭建
+    autonumber 2.6
+    SionnaBusinessService -> SionnaEngine : __init__(mitsuba_scene_path, gnbs)
+    activate SionnaEngine
+
+    autonumber 2.7
+    SionnaEngine -> MitsubaXML : load_scene()\n🟣 讀場景幾何 + 材質
+    activate MitsubaXML
+    MitsubaXML --> SionnaEngine : scene object
+    deactivate MitsubaXML
+
+    autonumber 2.8
+    SionnaEngine -> SionnaEngine : 🟣 scene.frequency = f_GHz\n(自動套 ITU-R P.2040-3 材質 ε,σ)\n🟣 PlanarArray tx/rx\n🟣 Transmitter × N_gNB
+
+    autonumber 2.9
+    SionnaEngine -> SionnaEngine : 🟣 _warmup()\n跑 dummy compute 觸發 OptiX JIT
+
+    autonumber 2.10
+    SionnaEngine --> SionnaBusinessService : engine ready
+    deactivate SionnaEngine
+
+    autonumber 2.11
+    SionnaBusinessService -> SionnaBusinessService : reset pm_aggregator + rrc_tracker\n(計數器歸零)
+
+    autonumber 2.12
+    SionnaBusinessService --> ConfigManager : loaded_config {scene_id, gnb_count, ...}
+    deactivate SionnaBusinessService
+
+    autonumber 2.13
+    ConfigManager --> Operator : 200 OK {success, message: "Reloaded"}
+    deactivate ConfigManager
+
+    deactivate Operator
+end group
+
+@enduml

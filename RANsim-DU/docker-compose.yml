@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  du:
+    build:
+      context: ../        # 把 XAPP_DT 整個當 build context,可同時看到 Physics_sim & RANsim-DU
+      dockerfile: RANsim-DU/Dockerfile
+    image: ransim-du:latest
+    container_name: ransim-du
+    env_file: .env
+    ports:
+      - "8002:8000"
+    depends_on:
+      - postgres
+    networks:
+      - ransim-net
+    volumes:
+      - ./logs:/app/logs
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ransim-du-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-ransim}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ransim}
+      POSTGRES_DB: ${DB_NAME:-du_db}
+    networks:
+      - ransim-net
+    volumes:
+      - du-pgdata:/var/lib/postgresql/data
+
+networks:
+  ransim-net:
+    driver: bridge
+
+volumes:
+  du-pgdata:

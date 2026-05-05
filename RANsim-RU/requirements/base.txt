@@ -1,0 +1,22 @@
+# Django 核心
+Django>=4.2,<5.1
+djangorestframework>=3.15,<3.16
+django-cors-headers>=4.4,<4.5
+
+# DB
+psycopg2-binary>=2.9
+
+# HTTP client（呼 Physics / DU）
+requests>=2.31,<3.0
+
+# Env 管理
+python-dotenv>=1.0
+
+# Numerics（codebook / precoding / SINR）
+numpy>=1.24,<2.0
+
+# 共用 protocol package（Docker build 時 COPY 進 /opt/ran-sim-protocol）
+ran-sim-protocol @ file:///opt/ran-sim-protocol
+
+# WSGI/ASGI server
+gunicorn>=22.0

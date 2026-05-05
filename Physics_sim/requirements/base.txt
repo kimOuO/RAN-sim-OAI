@@ -1,0 +1,32 @@
+# Django 核心
+Django>=5.0,<5.1
+djangorestframework>=3.15,<3.16
+django-cors-headers>=4.4,<4.5
+channels>=4.0,<5.0
+asgiref>=3.8
+
+# HTTP 請求 + WebSocket
+requests>=2.31,<3.0
+websockets>=11.0,<13.0
+
+# Env 管理
+python-dotenv>=1.0
+
+# Time zone data (required for zoneinfo)
+tzdata>=2024.1
+
+# Sionna RT (GPU ray tracing)
+# 註：nvcr.io/nvidia/pytorch 基底已含 torch；只需補 sionna-rt
+sionna-rt>=1.0
+
+# JSON / numerics
+numpy>=1.24,<2.0
+
+# 系統遙測 (BbuTelemetryService)
+psutil>=5.9
+pynvml>=11.5
+
+# WSGI/ASGI server (production)
+gunicorn>=22.0
+daphne>=4.0
+torch>=2.1.0,<2.2

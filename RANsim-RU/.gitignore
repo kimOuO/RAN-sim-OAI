@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.env
+.venv
+venv/
+ENV/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+logs/*.log
+logs/*.log.*
+
+# 暫存的 ran-sim-protocol（由 init_project.sh 從 sibling 同步進來，不入版控）
+_vendored/

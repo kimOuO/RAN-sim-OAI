@@ -1,0 +1,116 @@
+@startuml UC1_compute_tick
+!pragma teoz true
+
+title "Use Case 1: Per-tick UE 訊號計算 (Omniverse → ranp-sim → E2 JSON)"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 14
+skinparam DefaultFontName Arial
+
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor OmniverseServer as "Omniverse Server\n(UE 位置來源)"
+
+box "RAN-sim [Platform]" #LightYellow
+    box "ran_signal_mgt [System]\n\n" #LightBlue
+        box "ran_signal [Module]\n\n" #LightGreen
+            participant ComputeRunner as "ComputeRunner [Actor]"
+            participant SionnaBusinessService as "SionnaBusiness\nService"
+            participant SionnaEngine as "SionnaEngine\n(Optional Svc) 🟣"
+            participant E2Formatter as "E2Formatter\n(Optional Svc)"
+            participant PmAggregator as "PmAggregator\n(Optional Svc)"
+            participant RrcEventTracker as "RrcEventTracker\n(Optional Svc)"
+            participant BbuTelemetry as "BbuTelemetry\n(Optional Svc)"
+        end box
+    end box
+end box
+
+activate OmniverseServer
+
+group ComputeRunner.compute [Function]
+    autonumber 1.1
+    OmniverseServer -> ComputeRunner : POST /ComputeRunner/compute\n{timestamp_ms, scene_id, ue_positions[]}
+    activate ComputeRunner
+
+    autonumber 1.2
+    ComputeRunner -> ComputeRunner : Serializer 驗證\n(座標有效, UE≤50)
+
+    autonumber 1.3
+    ComputeRunner -> SionnaBusinessService : compute_tick(ts, scene_id, ue_positions)
+    activate SionnaBusinessService
+
+    note over SionnaBusinessService: 🟣 Sionna 核心段開始
+    autonumber 1.4
+    SionnaBusinessService -> SionnaEngine : compute_paths(ue_positions)
+    activate SionnaEngine
+
+    autonumber 1.5
+    SionnaEngine -> SionnaEngine : 更新 scene.receivers\n(清舊 UE, 加新 UE)
+
+    autonumber 1.6
+    SionnaEngine -> SionnaEngine : 🟣 PathSolver()\n(max_depth=5, LoS+反射+繞射\n+散射+穿透 一次算 N_UE×N_gNB)
+
+    autonumber 1.7
+    SionnaEngine -> SionnaEngine : 🟣 paths.cir()\n取複數通道增益
+
+    autonumber 1.8
+    SionnaEngine --> SionnaBusinessService : path_gain_linear\n{ue_id: {gnb_name: pg_linear}}
+    deactivate SionnaEngine
+    note over SionnaBusinessService: 🟣 Sionna 核心段結束
+
+    autonumber 1.9
+    SionnaBusinessService -> E2Formatter : build(gnbs, ue_positions, cir_result)
+    activate E2Formatter
+
+    autonumber 1.10
+    E2Formatter -> E2Formatter : RSRP = tx_power + 10·log10(path_gain)\nSINR = S / (Σ interf + noise)\nRSRQ = -10·log10(12) - 10·log10(1+1/SINR)\nMCS = sinr_to_mcs_table(SINR)\nThroughput = MCS·N_RB·12·slots·overhead
+
+    autonumber 1.11
+    E2Formatter --> SionnaBusinessService : e2_entries[], ue_status[], warnings[]
+    deactivate E2Formatter
+
+    autonumber 1.12
+    SionnaBusinessService -> PmAggregator : accumulate_tick(ue_status, tick_ms)
+    activate PmAggregator
+    PmAggregator -> PmAggregator : 累積 MCS/CQI/PRB histogram\n累積 PDCP byte volume\n更新 HARQ rounds[8]
+    PmAggregator --> SionnaBusinessService
+    deactivate PmAggregator
+
+    autonumber 1.13
+    SionnaBusinessService -> RrcEventTracker : on_tick(ue_status)
+    activate RrcEventTracker
+    RrcEventTracker -> RrcEventTracker : 偵測 UE 首次出現 → ConnEstab+1\n偵測 serving 變化 → HoExe+1\n偵測鄰居 RSRP 超過 → A3+1\n偵測 UE 消失 → Release+1\n更新 ConnMax/ConnMean
+    RrcEventTracker --> SionnaBusinessService : rrc_counters_by_gnb
+    deactivate RrcEventTracker
+
+    autonumber 1.14
+    SionnaBusinessService -> BbuTelemetry : per_gnb_snapshot(gnb_names)
+    activate BbuTelemetry
+    BbuTelemetry -> BbuTelemetry : psutil (cpu/mem/load/temp)\npynvml (GPU power)\n按 gNB 數平均分攤
+    BbuTelemetry --> SionnaBusinessService : bbu_status_by_gnb
+    deactivate BbuTelemetry
+
+    autonumber 1.15
+    SionnaBusinessService -> PmAggregator : build_pm(gnbs, rrc_counters, bbu)
+    activate PmAggregator
+    PmAggregator -> PmAggregator : 組 3GPP TS 28.552 格式\n~182 欄位 per gNB
+    PmAggregator --> SionnaBusinessService : pm {gnb-<pci>: [...]}
+    deactivate PmAggregator
+
+    autonumber 1.16
+    SionnaBusinessService --> ComputeRunner : {e2, ue_status, pm, bbu_status, warnings, tick_ms}
+    deactivate SionnaBusinessService
+
+    autonumber 1.17
+    ComputeRunner -> ComputeRunner : ComputeResponseSerializer\n包 utils/response.success_response
+
+    autonumber 1.18
+    ComputeRunner --> OmniverseServer : 200 OK\n{success, data:{e2[], ue_status[], pm{}, bbu_status{}, ...}}
+    deactivate ComputeRunner
+
+    deactivate OmniverseServer
+end group
+
+@enduml

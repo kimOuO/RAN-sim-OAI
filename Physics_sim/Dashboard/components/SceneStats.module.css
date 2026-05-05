@@ -1,0 +1,29 @@
+.stats {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 24px 0;
+}
+
+.stats h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px 24px;
+}
+
+.details dt {
+  font-weight: 600;
+  color: #666;
+}
+
+.details dd {
+  margin: 0;
+  color: #333;
+}

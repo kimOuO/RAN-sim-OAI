@@ -1,0 +1,9 @@
+from main.settings.base import *  # noqa: F401,F403
+
+DEBUG = True
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": ":memory:",
+    },
+}

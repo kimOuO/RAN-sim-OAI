@@ -1,0 +1,48 @@
+@startuml UC3_config_read
+!pragma teoz true
+
+title "Use Case 3: 配置查詢 (Operator → 查目前記憶體中的配置)"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 14
+skinparam DefaultFontName Arial
+
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor Operator as "Operator / UI Admin"
+
+box "RAN-sim [Platform]" #LightYellow
+    box "ran_signal_mgt [System]\n\n" #LightBlue
+        box "ran_signal [Module]\n\n" #LightGreen
+            participant ConfigManager as "ConfigManager [Actor]"
+            participant SionnaBusinessService as "SionnaBusiness\nService"
+        end box
+    end box
+end box
+
+activate Operator
+
+group ConfigManager.read [Function]
+    autonumber 3.1
+    Operator -> ConfigManager : POST /ConfigManager/read {}
+    activate ConfigManager
+
+    autonumber 3.2
+    ConfigManager -> SionnaBusinessService : get_loaded_config()
+    activate SionnaBusinessService
+
+    autonumber 3.3
+    SionnaBusinessService -> SionnaBusinessService : 讀 class var\n_loaded_config (RAM)
+    SionnaBusinessService --> ConfigManager : {scene_id, gnbs, ues, ...}
+    deactivate SionnaBusinessService
+
+    autonumber 3.4
+    ConfigManager --> Operator : 200 OK {success, data:{scene_id, loaded_at_ms,\ngnb_count, ue_count, building_count, gnbs[], ues[]}}
+    deactivate ConfigManager
+
+    deactivate Operator
+end group
+
+@enduml

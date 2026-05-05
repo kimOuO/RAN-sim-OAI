@@ -1,0 +1,8 @@
+Django==5.0.7
+djangorestframework==3.15.2
+django-cors-headers==4.4.0
+psycopg2-binary==2.9.9
+requests==2.32.3
+python-dotenv==1.0.1
+# ran-sim-protocol is installed at runtime by shell/entrypoint.sh
+# from the volume mount /tmp/ran-sim-protocol

@@ -1,0 +1,202 @@
+# Platform-level orchestration: CU + DU + RU + Physics + (Dashboard) + Postgres
+# Build context for some services 需要看 sibling 目錄（e.g. DU 需要看 Physics_sim/ran-sim-protocol），
+# 所以 build context 設成 XAPP_DT 根目錄。
+#
+# 用法：
+#   cd /home/mitlab/XAPP_DT
+#   docker compose -f docker-compose.yml up -d --build
+#
+# 個別 repo 自己的 docker-compose.yml 仍可獨立用（solo dev / test）。
+
+name: ransim-platform
+
+services:
+
+  # ── shared 共用 Postgres（多資料庫由 init.sql 建）────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ransim-postgres
+    environment:
+      POSTGRES_USER: ransim
+      POSTGRES_PASSWORD: ransim
+      POSTGRES_DB: ransim_root
+    volumes:
+      - ransim-pgdata:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ransim"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ransim-net
+
+  # ── CU（控制面 + 用戶面）───────────────────────────────────
+  cu:
+    build:
+      context: ./RANsim-CU
+      dockerfile: Dockerfile
+    image: ransim-cu:platform
+    container_name: ransim-cu
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cu_db
+      DB_USER: ransim
+      DB_PASSWORD: ransim
+      HTTP_DU_HOST: du
+      HTTP_DU_PORT: 8000
+      HTTP_CUUP_HOST: ""    # 空 = integrated mode（cu_up 在同 process）
+      LOG_DIR: /app/logs
+    volumes:
+      - ./RANsim-CU:/app
+      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol:ro
+    ports:
+      - "8101:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ransim-net
+
+  # ── DU（MAC + RLC + PHY-High + F1AP + FAPI + Tick）──────────
+  du:
+    build:
+      context: .             # XAPP_DT 根，因為 Dockerfile COPY 用 Physics_sim/ran-sim-protocol
+      dockerfile: RANsim-DU/Dockerfile
+    image: ransim-du:platform
+    container_name: ransim-du
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: du_db
+      DB_USER: ransim
+      DB_PASSWORD: ransim
+      HTTP_CU_HOST: cu
+      HTTP_CU_PORT: 8000
+      HTTP_RU_HOST: ru
+      HTTP_RU_PORT: 8000
+      LOG_DIR: /app/logs
+      SIM_TICK_MS: 500
+    volumes:
+      - ./RANsim-DU/logs:/app/logs
+    ports:
+      - "8102:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cu:
+        condition: service_started
+    networks:
+      - ransim-net
+
+  # ── RU（PlanarArray + Beamforming + FAPI + PhysicsClient）───
+  ru:
+    build:
+      context: ./RANsim-RU
+      dockerfile: Dockerfile
+    image: ransim-ru:platform
+    container_name: ransim-ru
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ru_db
+      DB_USER: ransim
+      DB_PASSWORD: ransim
+      HTTP_DU_HOST: du
+      HTTP_DU_PORT: 8000
+      HTTP_PHYSICS_HOST: physics
+      HTTP_PHYSICS_PORT: 8000
+      LOG_DIR: /app/logs
+      RU_DEFAULT_ANTENNA_ROWS: 4
+      RU_DEFAULT_ANTENNA_COLS: 2
+      RU_DEFAULT_POLARIZATION: cross
+      RU_DEFAULT_PATTERN: tr38901
+      RU_NUMEROLOGY: 1
+      RU_NOISE_FLOOR_DBM: -95
+      RU_CHANNEL_CACHE_TTL_SEC: 0.5
+    volumes:
+      - ./RANsim-RU:/app
+      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol:ro
+    ports:
+      - "8103:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ransim-net
+
+  # ── Physics（Sionna RT，需要 GPU）─────────────────────────
+  physics:
+    build:
+      context: ./Physics_sim
+      dockerfile: Dockerfile
+    image: ransim-physics:platform
+    container_name: ransim-physics
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: physics_db
+      DB_USER: ransim
+      DB_PASSWORD: ransim
+      LOG_DIR: /app/logs
+      MITSUBA_SCENE_PATH: /app/scenes/umi_3sector.xml
+    volumes:
+      - ./Physics_sim:/app
+      - ./Physics_sim/scenes:/app/scenes:ro
+    ports:
+      - "8104:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - ransim-net
+
+  # ── Dashboard（Next.js 前端，現階段保留舊 frontend）──────
+  # 注意：Dashboard 在 Physics_sim/Dashboard/ 內，build context 指過去
+  dashboard:
+    build:
+      context: ./Physics_sim/Dashboard
+      dockerfile: Dockerfile
+    image: ransim-dashboard:platform
+    container_name: ransim-dashboard
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8101"   # 指向 CU
+      NEXT_PUBLIC_PHYSICS_URL: "http://localhost:8104"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - cu
+    networks:
+      - ransim-net
+
+
+volumes:
+  ransim-pgdata:
+
+
+networks:
+  ransim-net:
+    driver: bridge
+    name: ransim-net

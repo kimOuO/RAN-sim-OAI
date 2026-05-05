@@ -1,0 +1,55 @@
+@startuml UC4_health_check
+!pragma teoz true
+
+title "Use Case 4: 健康檢查 (Docker / 監控系統 → GPU / Sionna 狀態)"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 14
+skinparam DefaultFontName Arial
+
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor Monitor as "Docker Healthcheck\nor Monitoring System"
+
+box "RAN-sim [Platform]" #LightYellow
+    box "ran_signal_mgt [System]\n\n" #LightBlue
+        box "ran_signal [Module]\n\n" #LightGreen
+            participant HealthChecker as "HealthChecker [Actor]"
+            participant SionnaBusinessService as "SionnaBusiness\nService"
+            participant SionnaEngine as "SionnaEngine\n(Optional Svc) 🟣"
+        end box
+    end box
+end box
+
+activate Monitor
+
+group HealthChecker.read [Function]
+    autonumber 4.1
+    Monitor -> HealthChecker : POST /HealthChecker/read {}
+    activate HealthChecker
+
+    autonumber 4.2
+    HealthChecker -> SionnaBusinessService : health_status()
+    activate SionnaBusinessService
+
+    autonumber 4.3
+    SionnaBusinessService -> SionnaEngine : probe_gpu() 🟣
+    activate SionnaEngine
+    SionnaEngine -> SionnaEngine : 🟣 torch.cuda 查\n device name / VRAM / capability
+    SionnaEngine --> SionnaBusinessService : {available, name, total_memory_mb, capability}
+    deactivate SionnaEngine
+
+    autonumber 4.4
+    SionnaBusinessService --> HealthChecker : {ready, scene_id, loaded_at_ms, gpu}
+    deactivate SionnaBusinessService
+
+    autonumber 4.5
+    HealthChecker --> Monitor : 200 OK {success, data:{ready, scene_id,\nloaded_at_ms, gpu:{available, name,\ntotal_memory_mb, capability}}}
+    deactivate HealthChecker
+
+    deactivate Monitor
+end group
+
+@enduml

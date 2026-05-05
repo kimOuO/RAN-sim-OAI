@@ -1,0 +1,15 @@
+[project]
+name = "ran-sim-protocol"
+version = "0.1.0"
+description = "Shared dataclass message types for RAN-sim platform (CU/DU/RU/Physics inter-system communication)"
+authors = [{name = "MITLAB"}]
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ran_sim_protocol*"]

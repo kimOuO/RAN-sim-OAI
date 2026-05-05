@@ -1,0 +1,34 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+venv/
+ENV/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Sionna / Mitsuba cache
+.cache/
+*.ep
+
+# Logs
+logs/*.log
+logs/*.log.*
+
+# Scene outputs
+scenes/*.xml
+!scenes/.gitkeep
+ran-sim-protocol/build/
+ran-sim-protocol/*.egg-info/

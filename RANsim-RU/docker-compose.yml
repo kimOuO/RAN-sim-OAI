@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ransim-ru-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-ru}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ru}
+      POSTGRES_DB: ${DB_NAME:-ru_db}
+    ports:
+      - "${DB_EXTERNAL_PORT:-5433}:5432"
+    volumes:
+      - ru-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ru}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ru:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ransim-ru:dev
+    container_name: ransim-ru
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${RU_HTTP_PORT:-8002}:8000"
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}", "http://localhost:8000/api/v0.1/RU/State/RuStateReader/read"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  ru-pgdata:

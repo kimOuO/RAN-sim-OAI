@@ -1,0 +1,47 @@
+# === 平台 monorepo .gitignore ===
+
+# 別的獨立 repo
+Omnivers_platform/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+.pytest_cache/
+.tox/
+
+# venv
+.venv/
+venv/
+env/
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+*.log
+logs/*.log
+
+# Node
+node_modules/
+.next/
+dist/
+
+# 編輯器 / 系統
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Local env / secrets
+.env
+*.local
+
+# Docker / build artefacts
+*.pid
+ran-sim-protocol/_vendored/
+
+# Backup folders
+_legacy/__pycache__/
