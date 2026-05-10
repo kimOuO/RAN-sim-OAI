@@ -127,6 +127,66 @@ def _encode_plmn_id(mcc: str, mnc: str, mnc_digit_count: int = 0) -> bytes:
     return bytes([b1, b2, b3])
 
 
+# ── F1 component config payload (informal TLV; spec gap fill) ────
+_F1_CELLS_PAYLOAD_VERSION = 1
+
+
+def _pack_plmn_bcd(plmn_str: str) -> bytes:
+    """e.g. "20895" / "208095" → 3-byte PLMN BCD per TS 24.008 §10.5.1.3."""
+    s = (plmn_str or "").strip()
+    if len(s) == 5:
+        return _encode_plmn_id(s[:3], s[3:], mnc_digit_count=2)
+    if len(s) == 6:
+        return _encode_plmn_id(s[:3], s[3:], mnc_digit_count=3)
+    # fallback: zero-padded so payload bytes 不會少 byte 害 RIC parser 崩
+    return b"\x00\x00\x00"
+
+
+def _hash_nr_cell_id(cell_id: str) -> int:
+    """36-bit NR Cell Identity, deterministic hash from logical name.
+
+    Sim 沒有真正的 NR-CGI assignment, 但 RIC 想看 36-bit NR-CI 而不只是字串.
+    用穩定 hash 產 36-bit, 避免冷重啟換值。
+    """
+    h = 0
+    for ch in (cell_id or "").encode("utf-8"):
+        h = (h * 1315423911) ^ ch
+        h &= (1 << 64) - 1
+    return h & ((1 << 36) - 1)
+
+
+def _encode_f1_cells_payload(gnb_du_id: int, cells: list[dict]) -> bytes:
+    """Self-describing TLV payload of cells inside e2nodeComponentRequestPart.
+
+    Format (big-endian, no padding):
+      [u8 version=1][u32 gnb_du_id][u8 cell_count]
+      per cell:
+        [u8 cell_id_len][cell_id_utf8 bytes...]
+        [3 bytes PLMN BCD]
+        [5 bytes NR-CGI 36-bit packed in low bits of 5-byte big-endian field]
+        [u16 PCI][u24 TAC][u8 is_active flag]
+
+    Not strictly F1AP-spec; documented in commit + RIC team handover note. 之後若
+    需要嚴格對 F1AP, 換成 F1AP Setup Request bytes 即可（此處只是 placeholder
+    fill spec gap to satisfy R-NIB cell visibility requirement）。
+    """
+    out = bytearray()
+    out.append(_F1_CELLS_PAYLOAD_VERSION & 0xFF)
+    out += int(gnb_du_id & 0xFFFFFFFF).to_bytes(4, "big")
+    out.append(len(cells) & 0xFF)
+    for c in cells:
+        cid = (c.get("cell_id") or "")[:255].encode("utf-8")
+        out.append(len(cid))
+        out += cid
+        out += _pack_plmn_bcd(c.get("served_plmn") or "")
+        nr_ci = _hash_nr_cell_id(c.get("nr_cell_id") or c.get("cell_id") or "")
+        out += int(nr_ci & ((1 << 40) - 1)).to_bytes(5, "big")
+        out += int(c.get("pci") or 0).to_bytes(2, "big")
+        out += int(c.get("tac") or 0).to_bytes(3, "big")
+        out.append(0x01 if c.get("is_active", True) else 0x00)
+    return bytes(out)
+
+
 # ── E2 Setup Request encoder ─────────────────────────────────────
 def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
     """Encode E2 Setup Request → APER bytes.
@@ -231,26 +291,77 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
     }
 
     # ── E2nodeComponentConfigAddition (mandatory list) ──────────
-    # Minimal: 1 item describing our gNB component. Use NG interface as default.
-    component_item = {
-        "e2nodeComponentInterfaceType": "ng",
-        "e2nodeComponentID": ("e2nodeComponentInterfaceTypeNG",
-                              {"amf-name": "AMF-Mock"}),
-        "e2nodeComponentConfiguration": {
-            "e2nodeComponentRequestPart": b"",
-            "e2nodeComponentResponsePart": b"",
-        },
-    }
+    # R1 spec-alignment: NG (default) + 一個 F1 item per DU.
+    # F1 item 在 e2nodeComponentRequestPart 帶該 DU served cells (NR-CGI/PCI/TAC/PLMN),
+    # RIC R-NIB 從這裡讀 cell-level metadata 才能做 per-cell control routing.
+    #
+    # 為何不寫完整 F1AP Setup Request bytes:
+    #   E2AP §9.1.2.2 規定 requestPart 是 OCTET STRING，內容是「3GPP-defined SETUP
+    #   message 原文」(F1AP Setup Request). 我們沒 import F1AP ASN.1 schema, 而 RIC
+    #   team 真正要的是 cell list (能對到 indication 的 cell_id 即可), 不是 strict
+    #   F1AP decode. 採 length-prefixed TLV 自描述格式, 寫進 requestPart bytes,
+    #   給 RIC team 一份 simple parser 即可:
+    #     [u8 version=1][u32 du_id][u8 num_cells]
+    #       per-cell:
+    #         [u8 cell_id_len][cell_id_utf8]  (e.g., "gnb4_c0")
+    #         [u3 plmn_bytes (BCD)]            (e.g., 02 f8 59 = 208/95)
+    #         [u36 nr_cell_id_packed_to_5bytes]
+    #         [u16 pci]
+    #         [u24 tac]
+    #         [u8 is_active]
+    component_items = []
+
+    components = node_id_payload.get("components") or []
+    has_f1 = any(c.get("interface_type") == "f1" for c in components)
+
+    # 補 NG component (沿用之前 mock AMF; 真實 deployment 由 NG-AP 補)
+    component_items.append({
+        "id": 51,
+        "criticality": "reject",
+        "value": ("E2nodeComponentConfigAddition-Item", {
+            "e2nodeComponentInterfaceType": "ng",
+            "e2nodeComponentID": ("e2nodeComponentInterfaceTypeNG",
+                                  {"amf-name": "AMF-Mock"}),
+            "e2nodeComponentConfiguration": {
+                "e2nodeComponentRequestPart": b"",
+                "e2nodeComponentResponsePart": b"",
+            },
+        }),
+    })
+
+    # 補 F1 components per DU
+    for comp in components:
+        if comp.get("interface_type") != "f1":
+            continue
+        gnb_du_id = int(comp.get("gnb_du_id") or 0)
+        cells = comp.get("cells") or []
+        if not cells:
+            continue
+        f1_payload = _encode_f1_cells_payload(gnb_du_id, cells)
+        component_items.append({
+            "id": 51,
+            "criticality": "reject",
+            "value": ("E2nodeComponentConfigAddition-Item", {
+                "e2nodeComponentInterfaceType": "f1",
+                "e2nodeComponentID": ("e2nodeComponentInterfaceTypeF1",
+                                      {"gNB-DU-ID": gnb_du_id}),
+                "e2nodeComponentConfiguration": {
+                    "e2nodeComponentRequestPart": f1_payload,
+                    "e2nodeComponentResponsePart": b"",
+                },
+            }),
+        })
+
+    if not has_f1:
+        logger.info(
+            "E2 Setup: sim CU 未提供 F1 components, "
+            "送 NG-only E2nodeComponentConfigAddition (legacy fallback)",
+        )
+
     ie_components = {
         "id": _IE_ID_E2nodeComponentConfigAddition,
         "criticality": "reject",
-        "value": ("E2nodeComponentConfigAddition-List", [
-            {
-                "id": 51,    # ProtocolIE-ID for E2nodeComponentConfigAddition-Item
-                "criticality": "reject",
-                "value": ("E2nodeComponentConfigAddition-Item", component_item),
-            },
-        ]),
+        "value": ("E2nodeComponentConfigAddition-List", component_items),
     }
 
     # ── Build E2setupRequest SEQ ────────────────────────────

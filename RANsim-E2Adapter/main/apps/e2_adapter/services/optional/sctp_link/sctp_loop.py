@@ -633,42 +633,63 @@ def _indication_producer_loop(sock, meta: dict) -> None:
             # sim CU 結構：ind = {indication_header, indication_message}
             ind_msg = ind.get("indication_message") or {}
             ind_hdr = ind.get("indication_header") or {}
+            ue_lst_all = ind_msg.get("ue_meas_report_lst") or []
             # Format 3 ueMeasReportList SIZE(1..N) — empty list 違反 spec，skip
-            if not (ind_msg.get("ue_meas_report_lst") or []):
+            if not ue_lst_all:
                 continue
             # snapshot — 給 Dashboard KPM panel 看 metric 數值（在編 PDU 之前記）
             kpm_snapshot.get_ring().append_indication(sub_id, ind)
-            try:
-                msg_bytes = e2sm_kpm_codec.encode_kpm_indication_message(ind_msg)
-                hdr_bytes = e2sm_kpm_codec.encode_kpm_indication_header(
-                    int(ind_hdr.get("timestamp_ms", 0))
-                )
-                meta["sn"] = (meta["sn"] + 1) & 0xFFFF
-                pdu = e2_subscription_codec.encode_ric_indication(
-                    ric_req_id=meta["ric_req_id"],
-                    ran_function_id=meta["ran_func_id"],
-                    action_id=meta["action_id"],
-                    indication_sn=meta["sn"],
-                    indication_header=hdr_bytes,
-                    indication_message=msg_bytes,
-                    indication_type="report",
-                )
-            except Exception:
-                logger.exception("encode RIC_INDICATION failed for sub %s", sub_id)
-                continue
 
-            if _send_sctp(sock, pdu):
-                MemoryStateBusinessService.update_state(
-                    registry,
-                    pdu_sent_count=registry.get_connection().pdu_sent_count + 1,
-                )
-                sent_count += 1
-                if sent_count <= 3 or sent_count % 10 == 0:
-                    logger.info("RIC_INDICATION sent sub=%s sn=%d %d bytes (total=%d)",
-                                sub_id, meta["sn"], len(pdu), sent_count)
-                ue_count = len((ind_msg or {}).get("ue_meas_report_lst") or [])
-                event_ring.record_indication_sent(sub_id=sub_id, sn=meta["sn"],
-                                                   pdu_size=len(pdu), ue_count=ue_count)
+            # R3: per-cell split — 把 ueMeasReportList 按 serving_cell 分組,
+            # 每個 cell 各送一個 indication, header senderName 帶 cell_id.
+            # mobiflow 解碼時可從 senderName 拿 cell_id 寫進 InfluxDB tag,
+            # GROUP BY cell_id 算 hot/cold cell PdcpSduVolumeDL (CCO 必要).
+            ues_by_cell: dict[str, list[dict]] = {}
+            for ue_entry in ue_lst_all:
+                cell = ue_entry.get("serving_cell", "") or "unknown"
+                ues_by_cell.setdefault(cell, []).append(ue_entry)
+
+            for cell_id, cell_ues in ues_by_cell.items():
+                cell_msg = dict(ind_msg)
+                cell_msg["ue_meas_report_lst"] = cell_ues
+                try:
+                    msg_bytes = e2sm_kpm_codec.encode_kpm_indication_message(cell_msg)
+                    hdr_bytes = e2sm_kpm_codec.encode_kpm_indication_header(
+                        int(ind_hdr.get("timestamp_ms", 0)),
+                        cell_id=cell_id,
+                    )
+                    meta["sn"] = (meta["sn"] + 1) & 0xFFFF
+                    pdu = e2_subscription_codec.encode_ric_indication(
+                        ric_req_id=meta["ric_req_id"],
+                        ran_function_id=meta["ran_func_id"],
+                        action_id=meta["action_id"],
+                        indication_sn=meta["sn"],
+                        indication_header=hdr_bytes,
+                        indication_message=msg_bytes,
+                        indication_type="report",
+                    )
+                except Exception:
+                    logger.exception("encode RIC_INDICATION failed for sub %s cell %s",
+                                     sub_id, cell_id)
+                    continue
+
+                if _send_sctp(sock, pdu):
+                    MemoryStateBusinessService.update_state(
+                        registry,
+                        pdu_sent_count=registry.get_connection().pdu_sent_count + 1,
+                    )
+                    sent_count += 1
+                    if sent_count <= 3 or sent_count % 10 == 0:
+                        logger.info(
+                            "RIC_INDICATION sent sub=%s sn=%d cell=%s %d bytes "
+                            "(ue_count=%d total=%d)",
+                            sub_id, meta["sn"], cell_id, len(pdu),
+                            len(cell_ues), sent_count,
+                        )
+                    event_ring.record_indication_sent(
+                        sub_id=sub_id, sn=meta["sn"],
+                        pdu_size=len(pdu), ue_count=len(cell_ues),
+                    )
 
         meta["stop"].wait(period_sec)
 

@@ -136,10 +136,12 @@ def setup_one(ue_id: str, serving_cell: str, rate_mbps: float, dry_run: bool) ->
     if dry_run:
         return True
 
+    # AG2 — 移除 du_register_ue + du_create_rlc 直接 call (sim hack).
+    # CU.update_traffic_profile 內部會 trigger F1AP UE Context Setup, DU 收到後
+    # 同步建 MAC + RLC entity per DRB + RA + HARQ + tick UE registry.
+    # 對齊真實 OAI flow (3GPP TS 38.473 §8.3.1).
     steps = [
         ("DB insert UeContext",         lambda: insert_ue_via_db(ue_id, serving_cell, ngap_id)),
-        ("DU register_ue",              lambda: du_register_ue(ue_id, serving_cell)),
-        ("DU create RLC entity",        lambda: du_create_rlc(ue_id)),
         ("CU update_traffic_profile",   lambda: set_traffic_profile(ue_id, rate_mbps)),
         ("UE container attach (sync)",  lambda: ue_container_attach(ue_id)),
     ]
