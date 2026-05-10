@@ -31,6 +31,7 @@ from main.apps.cu_cp.services.optional.mobility.a3_handover_calculation import (
     A3HandoverCalculation, get_ue_state,
 )
 from main.apps.cu_cp.services.optional.ngap.ngap_handler import NgapHandler
+from main.utils.env_loader import default_served_plmn
 from main.apps.cu_cp.services.optional.rrc.message_handler import (
     RrcMessageHandler, RrcMessageType,
 )
@@ -78,6 +79,7 @@ class F1ApRouterActor:
             },
         )
 
+        incoming_cell_ids = [c["cell_id"] for c in cells]
         for cell in cells:
             cell_uuid = UUIDService.generate_uuid("cell", cell["cell_id"])
             SqlDbBusinessService.upsert_entity(
@@ -89,16 +91,89 @@ class F1ApRouterActor:
                     "pci": cell["pci"],
                     "frequency_ghz": cell["frequency_ghz"],
                     "bandwidth_mhz": cell["bandwidth_mhz"],
-                    "served_plmn": cell.get("served_plmn", "00101"),
+                    "served_plmn": cell.get("served_plmn") or default_served_plmn(),
+                    "gnb_id": cell.get("gnb_id", ""),
                     "served_by_du_id": gnb_du_id,
                     "created_at": now,
                     "updated_at": now,
                 },
             )
 
+        # 把屬於這個 DU 但不在這次 F1Setup 的 cell 刪掉（DU 重啟 → 重發 F1Setup 表示
+        # 「我現在 serve 的就是這些」，不在的就應該移除）。只限 same gnb_du_id，避免動到其他 DU 的 cells。
+        stale = CellConfig.objects.filter(served_by_du_id=gnb_du_id).exclude(cell_id__in=incoming_cell_ids)
+        deleted = stale.count()
+        if deleted > 0:
+            stale.delete()
+            logger.info("F1 Setup cleared %d stale cells from DU#%s", deleted, gnb_du_id)
+
         logger.info("F1 Setup accepted: DU#%s with %d cell(s)", gnb_du_id, len(cells))
         resp = F1apHandler.build_f1_setup_response(transaction_id=gnb_du_id, accepted=True)
         return success_response(resp, "F1 Setup accepted", status=200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def du_configuration_update(request: HttpRequest):
+        """處理 gNB-DU Configuration Update（3GPP TS 38.473 §8.2.4）。
+
+        DU 在 F1 ACTIVE 後新增 / 修改 / 刪除 cell 會送這個訊息。
+        body: {gnb_du_id, transaction_id, served_cells_to_add[], served_cells_to_modify[], served_cells_to_delete[]}
+        每個 cell 帶完整 CellConfig 欄位（含 gnb_id、is_active）。
+        """
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError as exc:
+            return error_response("invalid JSON", str(exc), status=400)
+
+        gnb_du_id = body.get("gnb_du_id")
+        if gnb_du_id is None:
+            return error_response("gnb_du_id required", status=400)
+
+        to_add = body.get("served_cells_to_add") or []
+        to_modify = body.get("served_cells_to_modify") or []
+        to_delete = body.get("served_cells_to_delete") or []
+
+        now = TimestampService.now()
+
+        for cell in list(to_add) + list(to_modify):
+            if not isinstance(cell, dict):
+                continue
+            cell_uuid = UUIDService.generate_uuid("cell", cell["cell_id"])
+            SqlDbBusinessService.upsert_entity(
+                CellConfig,
+                "cell_id",
+                cell["cell_id"],
+                defaults={
+                    "cell_uuid": cell_uuid,
+                    "pci": cell["pci"],
+                    "frequency_ghz": cell["frequency_ghz"],
+                    "bandwidth_mhz": cell["bandwidth_mhz"],
+                    "served_plmn": cell.get("served_plmn") or default_served_plmn(),
+                    "gnb_id": cell.get("gnb_id", ""),
+                    "is_active": cell.get("is_active", True),
+                    "served_by_du_id": gnb_du_id,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+
+        deleted = 0
+        if to_delete:
+            ids = [c["cell_id"] if isinstance(c, dict) else str(c) for c in to_delete]
+            deleted, _ = CellConfig.objects.filter(
+                served_by_du_id=gnb_du_id, cell_id__in=ids,
+            ).delete()
+
+        logger.info(
+            "DU Config Update DU#%s: add=%d modify=%d delete=%d",
+            gnb_du_id, len(to_add), len(to_modify), deleted,
+        )
+        return success_response(
+            {"accepted": True, "transaction_id": body.get("transaction_id", 0)},
+            "config update accepted",
+        )
 
     @staticmethod
     @csrf_exempt
@@ -128,12 +203,17 @@ class F1ApRouterActor:
 
         ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
         if ue is None:
+            # 沒真 AMF — 但 xApp / E2 介面要求 amf_ue_ngap_id 唯一可識別。
+            # 用 hash(ue_id) 衍生三個 ID（rrc / ran / amf）— deterministic，相同 UE ID
+            # 重 attach 也拿到同一組 ID。
+            base = abs(hash(ue_id)) % (2 ** 31)
             ue = SqlDbBusinessService.create_entity(UeContext, {
                 "ue_uuid": ue_uuid,
                 "ue_id": ue_id,
                 "rrc_state": "IDLE",
-                "rrc_ue_id": abs(hash(ue_id)) % (2 ** 31),
-                "ran_ue_ngap_id": abs(hash(ue_id)) % (2 ** 31),
+                "rrc_ue_id": base,
+                "ran_ue_ngap_id": base,
+                "amf_ue_ngap_id": base + 1,    # 跟 ran_ue_ngap_id 差 1 避免混淆
                 "created_at": now,
                 "updated_at": now,
             })
@@ -208,9 +288,34 @@ class F1ApRouterActor:
             "mcs_dl": d["mcs_dl"],
             "rb_width_dl": d["rb_width_dl"],
             "mimo_rank": d["mimo_rank"],
+            "pdcp_sdu_volume_dl": d.get("pdcp_sdu_volume_dl", 0),
+            "pdcp_sdu_volume_ul": d.get("pdcp_sdu_volume_ul", 0),
+            "rlc_sdu_delay_dl_ms": d.get("rlc_sdu_delay_dl_ms", 0.0),
             "neighbor_cells_json": d["neighbor_cells"],
             "recorded_at": now,
         })
+
+        # ── A3 自動觸發 handover 評估（對齊 OAI rrc_gNB_mobility::trigger_HO） ──
+        # 公式：RSRP(neighbor) - hys > RSRP(serving) + offset 持續 TTT_MS
+        neighbors = [(n.get("cell_id"), n.get("rsrp_dbm")) for n in (d.get("neighbor_cells") or [])
+                     if n.get("cell_id") and n.get("rsrp_dbm") is not None]
+        if neighbors and ue.serving_cell:
+            verdict = A3HandoverCalculation().evaluate(
+                ue_state=get_ue_state(ue_id),
+                serving_cell=ue.serving_cell,
+                serving_rsrp=d["rsrp_dbm"],
+                neighbors=neighbors,
+            )
+            if verdict.triggered and verdict.target_cell:
+                from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+                ho = execute_f1_handover(
+                    ue_id=ue_id, target_cell=verdict.target_cell, trigger="A3_TTT",
+                )
+                if ho:
+                    logger.info(
+                        "A3 auto-trigger handover: ue=%s elapsed_TTT=%dms %s → %s",
+                        ue_id, verdict.elapsed_ms, ho["source_cell"], ho["target_cell"],
+                    )
 
         SqlDbBusinessService.update_entity(
             UeContext, "ue_id", ue_id,

@@ -53,9 +53,16 @@ services:
       HTTP_DU_PORT: 8000
       HTTP_CUUP_HOST: ""    # 空 = integrated mode（cu_up 在同 process）
       LOG_DIR: /app/logs
+      # globalE2node-ID — e2-adapter 透過 /CU/E2/E2NodeId/read 拿
+      PLMN_MCC: "208"
+      PLMN_MNC: "95"
+      GNB_ID_HEX: "0x000038"
+      GNB_ID_LENGTH: "22"
+      RAN_FUNC_ID_KPM: "2"
+      RAN_FUNC_ID_RC: "3"
     volumes:
       - ./RANsim-CU:/app
-      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol:ro
+      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
     ports:
       - "8101:8000"
     depends_on:
@@ -86,8 +93,13 @@ services:
       HTTP_RU_PORT: 8000
       LOG_DIR: /app/logs
       SIM_TICK_MS: 500
+      # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
+      # 不再寫死 dummy "00101"。caller 不指定時 default 走 env 衍生.
+      PLMN_MCC: "208"
+      PLMN_MNC: "95"
     volumes:
-      - ./RANsim-DU/logs:/app/logs
+      - ./RANsim-DU:/app
+      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
     ports:
       - "8102:8000"
     depends_on:
@@ -119,16 +131,18 @@ services:
       HTTP_PHYSICS_HOST: physics
       HTTP_PHYSICS_PORT: 8000
       LOG_DIR: /app/logs
-      RU_DEFAULT_ANTENNA_ROWS: 4
-      RU_DEFAULT_ANTENNA_COLS: 2
-      RU_DEFAULT_POLARIZATION: cross
+      # 跟 Sionna scene default + Dashboard MimoSettings default 對齊（1×1 V）
+      # 真實使用時由 Dashboard Build Scene 推 update_antenna 覆蓋成 user 在 UI 選的值
+      RU_DEFAULT_ANTENNA_ROWS: 1
+      RU_DEFAULT_ANTENNA_COLS: 1
+      RU_DEFAULT_POLARIZATION: V
       RU_DEFAULT_PATTERN: tr38901
       RU_NUMEROLOGY: 1
       RU_NOISE_FLOOR_DBM: -95
       RU_CHANNEL_CACHE_TTL_SEC: 0.5
     volumes:
       - ./RANsim-RU:/app
-      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol:ro
+      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
     ports:
       - "8103:8000"
     depends_on:
@@ -155,9 +169,13 @@ services:
       DB_PASSWORD: ransim
       LOG_DIR: /app/logs
       MITSUBA_SCENE_PATH: /app/scenes/umi_3sector.xml
+      # Sionna RT 用 Mitsuba/OptiX 做 ray tracing；driver 預設只 expose
+      # compute+utility，需加 graphics 才會掛 liboptix
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility,graphics"
     volumes:
       - ./Physics_sim:/app
       - ./Physics_sim/scenes:/app/scenes:ro
+      - ./scene_config.json:/mnt/srcin/scene_config.json:ro   # 平台共享 scene
     ports:
       - "8104:8000"
     depends_on:
@@ -178,16 +196,107 @@ services:
   dashboard:
     build:
       context: ./Physics_sim/Dashboard
-      dockerfile: Dockerfile
-    image: ransim-dashboard:platform
+      dockerfile: Dockerfile.dev   # dev mode → 支援 hot-reload + bind mount
+    image: ransim-dashboard:dev
     container_name: ransim-dashboard
     environment:
-      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8101"   # 指向 CU
-      NEXT_PUBLIC_PHYSICS_URL: "http://localhost:8104"
+      # 跨機器存取：browser 在 windows 開 :3010，但 backend port 用 server IP 才連得到
+      # 改機器部署時改 .env 的 SERVER_IP 即可
+      NEXT_PUBLIC_CU_URL: "http://${SERVER_IP:-localhost}:8101"
+      NEXT_PUBLIC_DU_URL: "http://${SERVER_IP:-localhost}:8102"
+      NEXT_PUBLIC_RU_URL: "http://${SERVER_IP:-localhost}:8103"
+      NEXT_PUBLIC_E2_ADAPTER_URL: "http://${SERVER_IP:-localhost}:8201"
+      NEXT_PUBLIC_UE_URL: "http://${SERVER_IP:-localhost}:8105"
+      NEXT_PUBLIC_PHYSICS_URL: "http://${SERVER_IP:-localhost}:8104"
+      NEXT_PUBLIC_API_BASE_URL: "http://${SERVER_IP:-localhost}:8104"   # 舊變數兼容（→ Physics）
+      NEXT_PUBLIC_OMNIVERSE_URL: "http://${SERVER_IP:-localhost}:8001"
+      NEXT_PUBLIC_VNC_URL: "http://${SERVER_IP:-localhost}:6080/vnc.html"
+      NEXT_PUBLIC_WS_URL: "ws://${SERVER_IP:-localhost}:8104/ws/sim/live/"
+      # ↓ app/layout.tsx 用無前綴版本注入 window.__APP_CONFIG__（getRuntimeConfig 優先級最高）
+      # 跨機器 fix 必須這邊也設，否則 fallback localhost 會蓋掉 client side resolveHost
+      API_BASE_URL: "http://${SERVER_IP:-localhost}:8104"
+      OMNIVERSE_URL: "http://${SERVER_IP:-localhost}:8001"
+      VNC_URL: "http://${SERVER_IP:-localhost}:6080/vnc.html"
+      WS_URL: "ws://${SERVER_IP:-localhost}:8104/ws/sim/live/"
+      CU_URL: "http://${SERVER_IP:-localhost}:8101"
+      DU_URL: "http://${SERVER_IP:-localhost}:8102"
+      RU_URL: "http://${SERVER_IP:-localhost}:8103"
+      PHYSICS_URL: "http://${SERVER_IP:-localhost}:8104"
+      E2_ADAPTER_URL: "http://${SERVER_IP:-localhost}:8201"
+      UE_URL: "http://${SERVER_IP:-localhost}:8105"
+    volumes:
+      - ./Physics_sim/Dashboard:/app
+      - /app/node_modules                              # 保留 image 內 node_modules
+      - /app/.next                                     # build artifact 存在 container
     ports:
-      - "3000:3000"
+      - "3010:3000"   # host 3000 被 Omniverse debugpy 佔用
     depends_on:
       - cu
+    networks:
+      - ransim-net
+
+  # ── E2 Adapter（HTTP REST ↔ ASN.1/SCTP RIC 翻譯器）─────────────
+  # P2.7 階段：骨架 only；E2_ADAPTER_LINK_ENABLED=0 → 不嘗試連 RIC
+  # P2.8 起會把 SCTP loop 接通到 RIC e2term
+  # 注意：network_mode: host — pysctp 跨主機 SCTP 在 bridge 模式會踩 self-ABORT
+  e2adapter:
+    build:
+      context: ./RANsim-E2Adapter
+      dockerfile: Dockerfile
+    image: ransim-e2adapter:platform
+    container_name: ransim-e2adapter
+    network_mode: host        # SCTP outbound 跨主機必要
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      LOG_DIR: /app/logs
+      # network_mode: host → "cu" 主機名解析不到，用 server IP + CU port (8101)
+      SIM_CU_URL: "http://127.0.0.1:8101"
+      RIC_E2TERM_HOST: "10.3.0.71"
+      # Port 36422 (NOT 32222) — Cilium kpr eBPF 不重寫 SCTP NodePort（cilium #32412），
+      # e2term 用 hostNetwork=true 直接綁 host 的 36422
+      RIC_E2TERM_PORT: "36422"
+      # SCTP multi-homing self-ABORT 修復 — bind enp1s0 IP，避免廣告 docker0 IP
+      # 給 RIC（會跟 RIC 自己的 docker0=172.17.0.1 碰撞，HEARTBEAT 自迴觸發 ABORT）
+      SCTP_BIND_IP: "10.3.0.217"
+      E2_ADAPTER_LINK_ENABLED: "1"   # P2.8 階段：嘗試開 SCTP loop（目前 stub）
+      ASN1_SCHEMA_DIR: /app/asn1
+      ADAPTER_HTTP_PORT: "8201"     # 0.0.0.0:8201 — 8000 被 Omniverse debugpy 佔用
+    volumes:
+      - ./RANsim-E2Adapter:/app
+
+  # ── UE Container（Active UE Object — Phase A skeleton）────────
+  # 跑 N UE thread，per-UE 從 CU 同步狀態。Phase A 只做 lifecycle skeleton，
+  # 之後 phase 加 trajectory / traffic / measurement / UCI report
+  ue:
+    build:
+      context: ./RANsim-UE
+      dockerfile: Dockerfile
+    image: ransim-ue:platform
+    container_name: ransim-ue
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      LOG_DIR: /app/logs
+      # 各 RANsim component URL (透過 docker network)
+      SIM_CU_URL: "http://cu:8000"
+      SIM_DU_URL: "http://du:8000"
+      SIM_RU_URL: "http://ru:8000"
+      SIM_PHYSICS_URL: "http://physics:8000"
+      OMNIVERSE_KIT_URL: "http://${SERVER_IP:-localhost}:8080"
+      # Tick 週期
+      UE_TRAJECTORY_PERIOD_MS: "100"
+      UE_MEASUREMENT_PERIOD_MS: "80"
+      UE_LIST_POLL_PERIOD_SEC: "5"
+    volumes:
+      - ./RANsim-UE:/app
+    ports:
+      - "8105:8000"   # ransim-ue HTTP (CU=8101 / DU=8102 / RU=8103 / Physics=8104)
+    depends_on:
+      cu:
+        condition: service_started
     networks:
       - ransim-net
 

@@ -65,3 +65,20 @@ def base_dir() -> Path:
 def get_any(key: str, default: Any = None) -> Any:
     _ensure_loaded()
     return os.environ.get(key, default)
+
+
+def default_served_plmn() -> str:
+    """Compose served-PLMN string from PLMN_MCC + PLMN_MNC env vars.
+
+    對齊 globalE2node-ID 的 PLMN — sim 內 cell.served_plmn 應該跟 R-NIB
+    inventoryName 衍生的 PLMN 一致, 不該寫死 dummy '00101'。
+    格式: "<MCC><MNC zero-padded to 2 or 3>". 例: 208/95 → "208095".
+    Env 缺值 fallback "00101" 跟舊行為相容 (測試環境用).
+    """
+    _ensure_loaded()
+    mcc = (os.environ.get("PLMN_MCC") or "").strip()
+    mnc = (os.environ.get("PLMN_MNC") or "").strip()
+    if not mcc or not mnc:
+        return "00101"
+    mnc_padded = mnc if len(mnc) >= 3 else mnc.zfill(2)
+    return f"{mcc}{mnc_padded}"

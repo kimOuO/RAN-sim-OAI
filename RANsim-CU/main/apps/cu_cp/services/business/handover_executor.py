@@ -1,0 +1,86 @@
+"""F1-based handover executor — 共用給 SessionController / E2 control / A3 auto trigger。
+
+對齊 OAI: openair2/RRC/NR/rrc_gNB_mobility.c::nr_rrc_trigger_f1_ho()
+F1-based handover: source CU → F1AP UE Context Modification → DU 換 cell；不經 AMF（intra-CU）。
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from main.apps.cu_cp.models.handover_event import HandoverEvent
+from main.apps.cu_cp.models.ue_context import UeContext
+from main.apps.cu_cp.services.business.du_client_operations import DuClientBusinessService
+from main.apps.cu_cp.services.business.sqldb_operations import SqlDbBusinessService
+from main.apps.cu_cp.services.common.timestamp_service import TimestampService
+from main.apps.cu_cp.services.common.uuid_service import UUIDService
+from main.apps.cu_cp.services.optional.f1ap.f1ap_handler import F1apHandler
+from main.utils.logger import get_logger
+
+
+logger = get_logger(__name__)
+
+
+def execute_f1_handover(
+    *, ue_id: str, target_cell: str, trigger: str = "MANUAL",
+) -> dict[str, Any] | None:
+    """Run F1-based handover for ue_id → target_cell.
+
+    Reusable by:
+      • SessionControllerActor.handover (trigger="MANUAL")
+      • E2ControlActor._handle_handover (trigger="E2_RIC_CONTROL")
+      • F1ApRouterActor.measurement_report A3 auto trigger (trigger="A3_TTT")
+
+    Returns dict with ho_uuid/source/target on success, None if UE not found
+    or target_cell does not exist in CellConfig (defensive guard against phantom
+    cell names — e.g., Sionna scene gNB labels leaking through neighbor list).
+    """
+    ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
+    if ue is None:
+        return None
+    # 防呆: target_cell 必須是 sim 註冊過的 CellConfig.cell_id, 否則 reject 不下 F1AP.
+    # 之前曾經看 RU 把 Sionna scene gNB 名 (e.g., gNB_Macro_NW) leak 進 neighbors,
+    # A3 評到後 trigger HO 把 UE.serving_cell 寫成 phantom, 整條 traffic pipeline 卡死.
+    from main.apps.cu_cp.models.cell_config import CellConfig
+    if not CellConfig.objects.filter(cell_id=target_cell).exists():
+        logger.warning(
+            "execute_f1_handover refused: target_cell=%r not in CellConfig (phantom?). "
+            "ue=%s trigger=%s — keeping current serving_cell=%s",
+            target_cell, ue_id, trigger, ue.serving_cell,
+        )
+        return None
+    source_cell = ue.serving_cell or ""
+    if source_cell == target_cell:
+        # 已在 target，不重複 trigger
+        return {"ho_uuid": "", "ue_id": ue_id, "source_cell": source_cell, "target_cell": target_cell, "skipped": True}
+
+    now = TimestampService.now()
+    ho_uuid = UUIDService.random_uuid()
+    SqlDbBusinessService.create_entity(HandoverEvent, {
+        "ho_uuid": ho_uuid,
+        "ue_id": ue_id,
+        "source_cell": source_cell,
+        "target_cell": target_cell,
+        "trigger": trigger,
+        "status": "SUCC",
+        "started_at": now,
+        "completed_at": now,
+    })
+    try:
+        DuClientBusinessService.post_ue_context_modification(
+            F1apHandler.build_ue_context_modification(ue_id, target_cell),
+        )
+    except Exception as e:
+        logger.warning("F1AP UE Context Modification push failed: %s", e)
+    SqlDbBusinessService.update_entity(
+        UeContext, "ue_id", ue_id,
+        {"serving_cell": target_cell, "updated_at": now},
+    )
+    logger.info("F1 Handover [%s]: UE %s  %s → %s  (ho_uuid=%s)",
+                trigger, ue_id, source_cell, target_cell, ho_uuid[:8])
+    return {
+        "ho_uuid": ho_uuid,
+        "ue_id": ue_id,
+        "source_cell": source_cell,
+        "target_cell": target_cell,
+        "trigger": trigger,
+    }

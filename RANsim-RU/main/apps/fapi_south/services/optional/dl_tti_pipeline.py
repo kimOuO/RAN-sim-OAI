@@ -24,6 +24,51 @@ logger = get_logger(__name__)
 
 
 _NOISE_FLOOR_DBM = get_float("RU_NOISE_FLOOR_DBM", default=-95.0)
+_TX_POWER_DBM = get_float("RU_TX_POWER_DBM", default=43.0)  # 典型 macrocell 20W = 43 dBm
+_ANTENNA_GAIN_DBI = get_float("RU_ANTENNA_GAIN_DBI", default=14.0)  # TR 38.901 antenna 預設
+_NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.0)
+"""比 -120 dBm 弱的 neighbor 不報，避免 A3 evaluator 看一堆 noise。"""
+
+
+def _build_gnb_to_cell_map() -> dict[str, str]:
+    """Sionna response 的 path_gain key 是 gnb_name（聚合同 gNB 的 cells），
+    但 CU/DU 的 cell_id 是「cell-level」名字（如 gnb_A_c0）。
+    A3 evaluator 跟 HandoverEvent 都要 cell_id 不要 gnb_name。
+    這裡查 Cell DB 把 gnb_id → 第一個對應的 cell.name 對應好。
+    """
+    try:
+        from main.apps.antenna.models.cell import Cell
+        mapping: dict[str, str] = {}
+        for cell in Cell.objects.all():
+            if cell.gnb_id and cell.gnb_id not in mapping:
+                mapping[cell.gnb_id] = cell.name
+        return mapping
+    except Exception:
+        return {}
+
+
+def _build_cell_to_gnb_map() -> dict[str, str]:
+    """cell_name → gnb_name 反向對照。CU 給的 PDU.cell_id 是 cell-level (gnb4_c0),
+    Sionna path_gain 是 gnb-level (gnb4)，要這個 map 才能查到對應 channel。"""
+    try:
+        from main.apps.antenna.models.cell import Cell
+        return {c.name: c.gnb_id for c in Cell.objects.all() if c.gnb_id}
+    except Exception:
+        return {}
+
+
+def _path_gain_to_rsrp_dbm(path_gain_linear: float) -> float:
+    """從 Sionna 回的 linear path_gain 算 RSRP (dBm)。
+
+    RSRP = TX_power_dBm + antenna_gain_dBi + 10*log10(path_gain_linear)
+
+    path_gain_linear 是 Sionna 算出的 "received power / transmit power"（無量綱），
+    所以 10*log10(it) = path_gain_dB（負值，因為衰減）。
+    """
+    if path_gain_linear is None or path_gain_linear <= 0:
+        return -200.0  # 沒訊號 sentinel
+    path_gain_db = 10.0 * np.log10(float(path_gain_linear))
+    return _TX_POWER_DBM + _ANTENNA_GAIN_DBI + path_gain_db
 
 
 def _to_complex_matrix(raw: Any) -> np.ndarray:
@@ -65,7 +110,11 @@ def _to_complex_matrix(raw: Any) -> np.ndarray:
 
 
 def _resolve_serving(resp: PathSolverResponse, ue_id: str) -> str | None:
-    """選 serving cell：優先用 resp.serving_cells；fallback 取 path_gain 最大那個。"""
+    """Sionna 內部 fallback: 用 resp.serving_cells 或 path_gain argmax。
+
+    注意：呼叫端會優先用 PDU.cell_id (CU-CP 給的)，這個 fallback 只在 PDU 沒帶
+    cell_id（例如舊呼叫端 / backward compat）時才會用到。回的是 gnb_name (gnb-level)。
+    """
     serving = (resp.serving_cells or {}).get(ue_id)
     if serving:
         return serving
@@ -123,11 +172,57 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     logger.debug("dl_tti sfn=%d slot=%d pdus=%d cache_hit=%d/%d",
                  req.sfn, req.slot, len(req.pdus), cache_hits, len(set(ue_ids)))
 
+    # 兩個方向的對照表 — 因為 Sionna 是 gnb-level，CU/DU 用 cell-level
+    gnb_to_cell = _build_gnb_to_cell_map()       # gnb_id → 第一個 cell.name
+    cell_to_gnb = _build_cell_to_gnb_map()       # cell.name → gnb_id
+
     out: list[CqiIndication] = []
     for pdu in req.pdus:
         bundle = cached.get(pdu.ue_id) or {}
-        serving = bundle.get("serving_cell")
-        H_raw = (bundle.get("channel_matrix") or {}).get(serving) if serving else None
+        path_gain_dict = bundle.get("path_gain") or {}
+        channel_dict = bundle.get("channel_matrix") or {}
+
+        # Serving cell 決策 (對齊真實 O-RAN: CU-CP 是 source of truth):
+        #   1. 優先用 pdu.cell_id（DU 從 _ue_registry 帶下來，根源是 CU-CP UeContext.serving_cell）
+        #   2. fallback: Sionna argmax (舊行為，給 backward compat / pdu 沒帶時用)
+        # 注意 cell_id 是 cell-level (e.g., gnb4_c0)，但 Sionna path_gain 是 gnb-level (gnb4)。
+        # 用 cell_to_gnb map 翻譯後查 path_gain。
+        serving_cell_id = (pdu.cell_id or "").strip()
+        if serving_cell_id:
+            serving_gnb = cell_to_gnb.get(serving_cell_id, serving_cell_id)
+            serving_label = serving_cell_id   # CqiIndication 給 cell-level
+        else:
+            serving_gnb = bundle.get("serving_cell")  # Sionna fallback (gnb-level)
+            # 同 neighbors 邏輯: Sionna gnb_name 沒對應到 sim cell 時 — 不要 leak 進 serving_label,
+            # 留空字串 (DU 端拿空 serving_cell 已有 fallback 行為), 避免污染 UE Context.
+            serving_label = gnb_to_cell.get(serving_gnb) or ""
+
+        H_raw = channel_dict.get(serving_gnb) if serving_gnb else None
+        path_gain_linear = path_gain_dict.get(serving_gnb) if serving_gnb else None
+        rsrp_dbm = _path_gain_to_rsrp_dbm(path_gain_linear)
+
+        # Neighbor cell measurements — 排除 serving_gnb (跟 serving 同 gNB 的不算 neighbor)
+        neighbors_list: list[dict] = []
+        for gnb_name, pg in path_gain_dict.items():
+            if gnb_name == serving_gnb:
+                continue
+            if not isinstance(pg, (int, float)) or pg <= 0:
+                continue
+            neigh_rsrp = _path_gain_to_rsrp_dbm(pg)
+            if neigh_rsrp <= _NEIGHBOR_RSRP_FLOOR_DBM:
+                continue
+            # Sionna scene gNB 名 (e.g., gNB_Macro_NW) 跟 sim CellConfig 不相通時,
+            # gnb_to_cell.get() 會 None — 之前 fallback 把 gnb_name 當 cell_id leak
+            # 進 A3 evaluator, 觸發 phantom HO 把 UE.serving_cell 寫成不存在的 cell.
+            # 修: 沒對應到 sim 內部 cell 直接 drop, 不污染 A3.
+            cell_id_for_a3 = gnb_to_cell.get(gnb_name)
+            if not cell_id_for_a3:
+                continue
+            neighbors_list.append({
+                "cell_id": cell_id_for_a3,
+                "rsrp_dbm": neigh_rsrp,
+                "rsrq_db": 0.0,    # 沒實作 RSRQ 計算，A3 不依賴
+            })
 
         if H_raw is None:
             # 沒 channel — 給最差量測（SINR ≈ noise floor）
@@ -146,11 +241,22 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
                 sinr_db, rank, cqi = -float("inf"), 1, 0
 
+        logger.debug(
+            "DL TTI ue=%s serving_cell=%s (gnb=%s, src=%s) path_gain=%s → rsrp=%.1f dBm, sinr=%.1f dB",
+            pdu.ue_id, serving_label, serving_gnb,
+            "CU-PDU" if serving_cell_id else "Sionna-argmax",
+            path_gain_linear, rsrp_dbm,
+            float(sinr_db) if sinr_db != -float("inf") else -100.0,
+        )
+
         out.append(CqiIndication(
             ue_id=pdu.ue_id,
             sinr_db=float(sinr_db) if sinr_db != -float("inf") else -100.0,
             cqi=int(cqi),
             rank=int(rank),
             pmi=int(pdu.pmi),
+            rsrp_dbm=rsrp_dbm,
+            serving_cell=serving_label,
+            neighbors=neighbors_list,
         ))
     return out

@@ -78,8 +78,26 @@ def get_url(host_key: str, port_key: str, scheme_key: str = "") -> str:
     return f"{scheme}://{host}"
 
 
+def default_served_plmn() -> str:
+    """Compose served-PLMN string from PLMN_MCC + PLMN_MNC env vars.
+
+    對齊 globalE2node-ID 的 PLMN — sim 內 cell.served_plmn 應該跟 R-NIB
+    inventoryName 衍生的 PLMN 一致, 不該寫死 dummy '00101'。
+    格式: "<MCC><MNC zero-padded to 2 or 3>". 例: 208/95 → "208095".
+    Env 缺值或讀失敗 fallback "00101" 跟舊行為相容 (測試環境用).
+    """
+    mcc = (get_str("PLMN_MCC", "") or "").strip()
+    mnc = (get_str("PLMN_MNC", "") or "").strip()
+    if not mcc or not mnc:
+        return "00101"
+    # MNC 0/1/2 位都常見, 對齊 OAI 慣例 zero-pad 到 2 位 (3 位 MNC 不 pad).
+    mnc_padded = mnc if len(mnc) >= 3 else mnc.zfill(2)
+    return f"{mcc}{mnc_padded}"
+
+
 __all__ = [
     "EnvVarMissing",
+    "default_served_plmn",
     "get_bool",
     "get_float",
     "get_int",
