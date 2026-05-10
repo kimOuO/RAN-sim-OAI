@@ -175,9 +175,24 @@ def encode_kpm_indication_header(
 ) -> bytes:
     """Encode E2SM-KPM-IndicationHeader Format 1 → APER bytes.
 
-    R3: senderName 帶 cell_id (e.g., "gnb4_c0") — mobiflow decoder 可從 header
-    取 cell tag, 對 InfluxDB row GROUP BY cell_id (CCO hot/cold cell 比較必要).
-    spec: PrintableString SIZE(0..400) OPTIONAL.
+    R3 + AI2: senderName 帶 "<cell_name>/<NCI hex>" 兩個 token 給 RIC mobiflow:
+      e.g.  "gnb4-c0/0x04dcb91e85"
+
+    Wire format note (RIC parser 對齊):
+      - PrintableString X.680 不允許 underscore '_' (只 A-Z a-z 0-9 SPACE '()+,-./:=?)
+      - sim 端 cell_id 是 "gnb4_c0", encode 時自動 sanitize '_' → '-'
+      - **wire 上實際是 "gnb4-c0/0x04dcb91e85" (連字符不是底線)**
+      - RIC parser 建議 regex split: r'[-_/]' 兩邊都接, 之後 normalise 寫 InfluxDB
+
+    Parse 邏輯 (RIC mobiflow 端):
+      parts = senderName.split('/', 1)
+      cell_name = parts[0].replace('-', '_')   # "gnb4-c0" → "gnb4_c0"
+      try: nci_int = int(parts[1], 16) if len(parts) > 1 else None
+      except ValueError: nci_int = None        # graceful 退到只 cell_name (RAN-swap-transparent)
+
+    spec: PrintableString SIZE(0..400) OPTIONAL — 不定 sub-format, 我們 inline
+    cell+NCI 兩個 token 純 sim convention; 真機 OAI 改送只 NCI 一個 token 時
+    parser 上面 split 自然退 graceful.
     """
     rt = _load_runtime()
     hdr_cls = rt.E2SM_KPM_IEs.E2SM_KPM_IndicationHeader

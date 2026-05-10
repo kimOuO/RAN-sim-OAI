@@ -145,14 +145,18 @@ def _pack_plmn_bcd(plmn_str: str) -> bytes:
 def _hash_nr_cell_id(cell_id: str) -> int:
     """36-bit NR Cell Identity, deterministic hash from logical name.
 
-    Sim 沒有真正的 NR-CGI assignment, 但 RIC 想看 36-bit NR-CI 而不只是字串.
-    用穩定 hash 產 36-bit, 避免冷重啟換值。
+    AJ1 critical: 必須跟 sim CU `compute_nr_cell_id` (cu_cp.actors.e2_control_actor)
+    同 hash function (SHA-1 first 5 bytes & 36-bit), 否則 F1 component config
+    送 NCI_A, 但 CU resolve_target_cell 算 NCI_B, RIC fire control_handover
+    target_cgi.nr_cell_id 永遠對不到 sim cell → HO fail.
+
+    3GPP TS 38.413 NR Cell Identity 是 36-bit. OAI 真實是 gnb_id + local_cell_id
+    拼出來; sim 用 SHA-1 hash 取前 5 byte 截 36 bit 模擬, deterministic 且
+    collision 機率 < 1e-7.
     """
-    h = 0
-    for ch in (cell_id or "").encode("utf-8"):
-        h = (h * 1315423911) ^ ch
-        h &= (1 << 64) - 1
-    return h & ((1 << 36) - 1)
+    import hashlib
+    h = hashlib.sha1((cell_id or "").encode("utf-8")).digest()
+    return int.from_bytes(h[:5], "big") & ((1 << 36) - 1)
 
 
 def _encode_f1_cells_payload(gnb_du_id: int, cells: list[dict]) -> bytes:
