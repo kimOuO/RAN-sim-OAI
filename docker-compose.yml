@@ -60,6 +60,11 @@ services:
       GNB_ID_LENGTH: "22"
       RAN_FUNC_ID_KPM: "2"
       RAN_FUNC_ID_RC: "3"
+      # AC4 — A3 handover threshold 調軟讓 demo 觀感好 (HO 易觸發)
+      # 預設 1.0 / 0.5 / 80 太嚴, AC1 RSRP calibration 後 multi-UE 場景幾乎不觸發.
+      HO_A3_OFFSET_DB: "0.5"
+      HO_A3_HYSTERESIS_DB: "0.3"
+      HO_TTT_MS: "60"
     volumes:
       - ./RANsim-CU:/app
       - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol

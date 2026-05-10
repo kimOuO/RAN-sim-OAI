@@ -64,7 +64,17 @@ class PathSolverActor:
 
         ue_positions = body.get("ue_positions") or []
         if not isinstance(ue_positions, list) or not ue_positions:
-            return error_response("ue_positions required", http_status=400)
+            # AG2 fix: 空 ue_positions 不再 400.
+            # RU UePosition DB 可能還沒被 UE container 同步 (cold start race),
+            # 直接 graceful degrade — 回空 channel, RU 端 noise-only fall-back 已實作.
+            # 真治本 (UE → RU position sync trace) 在 backlog AG3.
+            logger.info(
+                "Empty ue_positions — returning empty channel (RU will use noise-only SINR)",
+            )
+            return success_response(
+                {"channel_matrix": {}, "path_gain": {}, "serving_cells": {}},
+                "no UE — empty channel",
+            )
 
         # 轉成 sionna_engine 期望的格式
         sionna_input = []
