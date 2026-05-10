@@ -653,10 +653,19 @@ def _indication_producer_loop(sock, meta: dict) -> None:
                 cell_msg = dict(ind_msg)
                 cell_msg["ue_meas_report_lst"] = cell_ues
                 try:
+                    # AI2 — RIC obs B: senderName 帶 cell_name + NCI hex 兩個 token,
+                    # 跟 E2 Setup F1 component config 的 NCI 對齊 (從 _hash_nr_cell_id
+                    # 產生 36-bit). RIC 可直接從 senderName parse NCI 不用查 F1 map.
+                    # Format: "<cell_name>/0x<nci_hex>"  (PrintableString 允許 - / 0x)
+                    from main.apps.e2_adapter.services.optional.codec.e2ap_codec import (
+                        _hash_nr_cell_id,
+                    )
+                    nci = _hash_nr_cell_id(cell_id)
+                    sender_label = f"{cell_id}/0x{nci:010x}"
                     msg_bytes = e2sm_kpm_codec.encode_kpm_indication_message(cell_msg)
                     hdr_bytes = e2sm_kpm_codec.encode_kpm_indication_header(
                         int(ind_hdr.get("timestamp_ms", 0)),
-                        cell_id=cell_id,
+                        cell_id=sender_label,
                     )
                     meta["sn"] = (meta["sn"] + 1) & 0xFFFF
                     pdu = e2_subscription_codec.encode_ric_indication(

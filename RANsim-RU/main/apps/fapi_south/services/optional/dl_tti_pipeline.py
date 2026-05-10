@@ -29,6 +29,22 @@ _ANTENNA_GAIN_DBI = get_float("RU_ANTENNA_GAIN_DBI", default=14.0)  # TR 38.901 
 _NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.0)
 """比 -120 dBm 弱的 neighbor 不報，避免 A3 evaluator 看一堆 noise。"""
 
+# AC1: scene calibration loss — sim Brownstone 場景比真實 urban 環境小, Sionna ray-tracing
+# 只算了 free-space + scene geometry (建物反射/繞射), 沒模擬以下真機常見額外損耗:
+#   • building penetration (UE 在室內, 18-25 dB)
+#   • body loss / clutter (UE 拿手裡或包裡, 5-10 dB)
+#   • shadowing fade (lognormal, ~8 dB σ)
+#   • foliage / weather attenuation
+# 對映 3GPP TR 38.901 §7.4.3.1 Outdoor-to-Indoor (O2I) loss + shadowing.
+# 加總約 50 dB, 把 sim RSRP 從 ~-15 dBm 校正到真機典型 -65~-95 dBm 範圍.
+_SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=50.0)
+"""場景外建物穿透 + body loss + shadowing 額外損耗 (Brownstone 場景沒模擬到的)."""
+
+# SINR 同樣需要校正: sim 場景算出來太乾淨 (47-60 dB), 真機常見 5-25 dB.
+# 干擾沒模擬足 (其他 cell 的 inter-cell interference 沒進 SINR 算式).
+_SINR_INTERFERENCE_PENALTY_DB = get_float("RU_SINR_INTERFERENCE_PENALTY_DB", default=20.0)
+"""inter-cell interference + multipath fading penalty (sim 沒完整模擬)."""
+
 
 def _build_gnb_to_cell_map() -> dict[str, str]:
     """Sionna response 的 path_gain key 是 gnb_name（聚合同 gNB 的 cells），
@@ -61,14 +77,19 @@ def _path_gain_to_rsrp_dbm(path_gain_linear: float) -> float:
     """從 Sionna 回的 linear path_gain 算 RSRP (dBm)。
 
     RSRP = TX_power_dBm + antenna_gain_dBi + 10*log10(path_gain_linear)
+                       - SCENE_CALIBRATION_LOSS_DB  (sim 場景額外損耗校正)
 
     path_gain_linear 是 Sionna 算出的 "received power / transmit power"（無量綱），
     所以 10*log10(it) = path_gain_dB（負值，因為衰減）。
+
+    SCENE_CALIBRATION_LOSS_DB 補償 sim Brownstone 場景沒模擬到的 building
+    penetration + body loss + shadowing (真機這些加總 30-50 dB 額外損耗).
+    沒這個校正 sim 算出來 RSRP -15 dBm 會撞 3GPP encoding 上限 -31 dBm → 127.
     """
     if path_gain_linear is None or path_gain_linear <= 0:
         return -200.0  # 沒訊號 sentinel
     path_gain_db = 10.0 * np.log10(float(path_gain_linear))
-    return _TX_POWER_DBM + _ANTENNA_GAIN_DBI + path_gain_db
+    return _TX_POWER_DBM + _ANTENNA_GAIN_DBI + path_gain_db - _SCENE_CALIBRATION_LOSS_DB
 
 
 def _to_complex_matrix(raw: Any) -> np.ndarray:
@@ -199,6 +220,15 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
 
         H_raw = channel_dict.get(serving_gnb) if serving_gnb else None
         path_gain_linear = path_gain_dict.get(serving_gnb) if serving_gnb else None
+        # AI3 fallback: sim CellConfig.gnb_id (e.g., "gnb4") 跟 Sionna scene gNB
+        # 名稱 (e.g., "gNB_Macro_NW") 不直接對應, path_gain_dict.get(serving_gnb)
+        # 常 None → RSRP -200 sentinel. 回 argmax (最強) path_gain 當 fallback,
+        # 對應 Sionna 自己 serving_cells 判定 (= UE 連到的最強 cell).
+        if path_gain_linear is None and path_gain_dict:
+            best_gnb = max(path_gain_dict, key=lambda k: path_gain_dict.get(k, 0.0))
+            path_gain_linear = path_gain_dict.get(best_gnb)
+            if H_raw is None:
+                H_raw = channel_dict.get(best_gnb)
         rsrp_dbm = _path_gain_to_rsrp_dbm(path_gain_linear)
 
         # Neighbor cell measurements — 排除 serving_gnb (跟 serving 同 gNB 的不算 neighbor)
@@ -235,6 +265,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             try:
                 H_eff = precoder.apply_pmi(H, pmi=pdu.pmi, layers=pdu.layers)
                 sinr_db = sinr_estimator.estimate_sinr(H_eff, _NOISE_FLOOR_DBM)
+                # AC1: 補償 sim 沒模擬的 inter-cell interference + multipath fading
+                sinr_db -= _SINR_INTERFERENCE_PENALTY_DB
                 rank = sinr_estimator.estimate_rank(H_eff)
                 cqi = sinr_estimator.sinr_to_cqi(sinr_db)
             except codebook.CodebookError as exc:
