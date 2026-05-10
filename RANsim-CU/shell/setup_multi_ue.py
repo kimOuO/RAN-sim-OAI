@@ -130,7 +130,32 @@ def ue_container_attach(ue_id: str) -> bool:
     return resp.get("success", False)
 
 
+# AG3 — per-cell 起始位置, 讓 sionna ray-tracing 有差異 (各 UE path_gain 不同)
+# 沒這個全部 UE 都 (0,0,0) → 同 path_gain → 同 RSRP, 等於 noise-only.
+# 座標系 sim 內部, 大概對齊 Brownstone 場景 (x: -100~+100, y: -100~+100).
+_CELL_CENTER = {
+    "gnb4_c0": (-50.0, -30.0, 1.5),
+    "gnb4_c1": (50.0, -30.0, 1.5),
+    "gnb4_c2": (0.0, 50.0, 1.5),
+    "gnb4_c3": (0.0, 0.0, 1.5),
+}
+
+def ue_set_static_position(ue_id: str, serving_cell: str, idx: int) -> bool:
+    """以 cell center 為 anchor, idx 偏移避免 UE 重疊."""
+    cx, cy, cz = _CELL_CENTER.get(serving_cell, (0.0, 0.0, 1.5))
+    # idx 0..N spread 在 cell 周圍 5m 範圍
+    offset_x = (idx % 4) * 3.0 - 4.5
+    offset_y = ((idx // 4) % 3) * 3.0 - 3.0
+    x, y, z = cx + offset_x, cy + offset_y, cz
+    resp = _post(f"{UE_BASE}/api/v0.1/UE/Trajectory/set",
+                 {"ue_id": ue_id, "waypoints": [{"x": x, "y": y, "z": z, "t_ms": 0}],
+                  "mode": "hold"})
+    return resp.get("success", False)
+
+
 def setup_one(ue_id: str, serving_cell: str, rate_mbps: float, dry_run: bool) -> bool:
+    if not hasattr(setup_one, "_counter"):
+        setup_one._counter = 0
     ngap_id = _stable_ngap_id(ue_id)
     print(f"  • {ue_id:15s} cell={serving_cell:8s} rate={rate_mbps:>5.1f} Mbps  ngap_id={ngap_id}")
     if dry_run:
@@ -140,10 +165,17 @@ def setup_one(ue_id: str, serving_cell: str, rate_mbps: float, dry_run: bool) ->
     # CU.update_traffic_profile 內部會 trigger F1AP UE Context Setup, DU 收到後
     # 同步建 MAC + RLC entity per DRB + RA + HARQ + tick UE registry.
     # 對齊真實 OAI flow (3GPP TS 38.473 §8.3.1).
+    #
+    # AG3 — set_static_position 確保 RU UePosition table 有真實座標,
+    # sionna ray-tracing 才能對每 UE 算出不同 path_gain.
+    # 全 (0,0,0) 等同沒 sync, 會走 graceful empty channel → noise-only.
+    idx = setup_one._counter
+    setup_one._counter += 1
     steps = [
         ("DB insert UeContext",         lambda: insert_ue_via_db(ue_id, serving_cell, ngap_id)),
         ("CU update_traffic_profile",   lambda: set_traffic_profile(ue_id, rate_mbps)),
         ("UE container attach (sync)",  lambda: ue_container_attach(ue_id)),
+        ("UE set static position",      lambda: ue_set_static_position(ue_id, serving_cell, idx)),
     ]
     all_ok = True
     for name, fn in steps:
