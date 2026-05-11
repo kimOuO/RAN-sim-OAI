@@ -38,3 +38,20 @@ def list_sessions() -> list[dict[str, Any]]:
     if isinstance(data, dict) and "sessions" in data:
         return data["sessions"]
     return []
+
+
+def update_traffic_profile(ue_id: str, profile: dict[str, Any]) -> bool:
+    """POST CU /Session/SessionController/update_traffic_profile to re-establish
+    F1AP UE Context Setup (which auto-creates RLC entity on DU).
+
+    AL3 — 給 traffic_gen.tick() 在 inject_sdu "RLC entity not found" 時
+    呼叫做自我修復, 對齊 DU restart / RLC entity 被清除的場景.
+    """
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Session/SessionController/update_traffic_profile"
+    body = {"ue_id": ue_id, "traffic_profile": profile}
+    try:
+        r = requests.post(url, json=body, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException as exc:
+        logger.warning("update_traffic_profile HTTP failed for %s: %s", ue_id, exc)
+        return False

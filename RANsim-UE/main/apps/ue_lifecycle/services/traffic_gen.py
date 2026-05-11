@@ -19,9 +19,12 @@ import logging
 import time
 from typing import Any
 
-from main.apps.ue_lifecycle.services import du_client
+from main.apps.ue_lifecycle.services import cu_client, du_client
 
 logger = logging.getLogger(__name__)
+
+# AL3 — re-sync 節流參數 (避免 DU 全死時 CU 被 update_traffic_profile spam)
+_RESYNC_COOLDOWN_MS = 10_000   # 10 秒只能 re-sync 一次
 
 
 def _now_ms() -> int:
@@ -37,6 +40,7 @@ class UeTrafficGen:
         self.profile: dict[str, Any] = {}
         self.injected_call_count = 0   # 對 DU /RLC/inject_sdu 呼叫總次數
         self.injected_bytes = 0        # 累計注入 byte 數
+        self.last_resync_at_ms = 0     # AL3 — 上次因 no_entity 觸發 re-sync 的時間
 
     # 向後相容: monitor 用 injected_sdu_count 名稱
     @property
@@ -80,10 +84,24 @@ class UeTrafficGen:
         if bytes_to_inject > max_per_tick:
             bytes_to_inject = max_per_tick
 
-        if du_client.inject_sdu(self.ue_id, bytes_to_inject, bearer_id=bearer_id):
+        result = du_client.inject_sdu(self.ue_id, bytes_to_inject, bearer_id=bearer_id)
+        if result == "ok":
             self.injected_call_count += 1
             self.injected_bytes += bytes_to_inject
             self.last_inject_at_ms = now
             return bytes_to_inject
+
+        # AL3 — DU 回 "RLC entity not found" (常見於 DU restart 後): 觸發 CU
+        # update_traffic_profile 走 F1AP UE Context Setup 重建 RLC entity.
+        # Cooldown 防止 spam.
+        if result == "no_entity" and (now - self.last_resync_at_ms) > _RESYNC_COOLDOWN_MS:
+            self.last_resync_at_ms = now
+            logger.warning(
+                "UE[%s] inject_sdu got 'RLC entity not found' — auto re-sync via CU",
+                self.ue_id,
+            )
+            cu_client.update_traffic_profile(self.ue_id, self.profile)
+            # 不更新 last_inject_at_ms — 下個 tick 再注 (此 tick 的 SDU drop)
+
         # inject 失敗 — 不更新 last_inject_at_ms, 下次 tick 再試 (累積 elapsed)
         return 0
