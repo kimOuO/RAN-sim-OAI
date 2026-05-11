@@ -199,18 +199,22 @@ class TickRunner:
         except Exception:
             inactive_cells = set()
 
-        per_cell_alloc: dict[str, dict[str, int]] = {}
+        # AL1: enrich ue dict with buffer_occupancy so scheduler can cap PRB
+        # by per-UE demand (對齊 OAI dlsch_scheduler: rb_alloc = min(fair, prb_needed)).
+        per_cell_alloc: dict[str, list[dict[str, Any]]] = {}
         for ue in ues_with_bo:
             cell = ue["serving_cell"]
             if cell in inactive_cells:
                 continue  # 該 cell 已關，本 tick 不排程這個 UE
-            per_cell_alloc.setdefault(cell, []).append(ue)
+            ue_for_sched = {**ue, "buffer_occupancy": bo_by_ue.get(ue["id"], 0)}
+            per_cell_alloc.setdefault(cell, []).append(ue_for_sched)
 
         # PRB quota cap：xApp 透過 E2 Control Style 2/Action 6 設的 max_prb%
         # 套到 scheduler 的 n_prb_total — DU MAC 的 max_rbSize 對齊。
         from main.apps.mac.services.optional.scheduler.prb_quota import get_store as _get_quota_store
         _quota_store = _get_quota_store()
 
+        tick_ms_for_sched = get_int("SIM_TICK_MS", 500)
         rb_alloc_global: dict[str, int] = {}
         scheduler = get_scheduler()
         for cell_name, group in per_cell_alloc.items():
@@ -218,6 +222,7 @@ class TickRunner:
             capped_prb = max(1, int(prb_per_cell * cap))   # 至少 1 個 PRB，防 0 除錯
             alloc = scheduler.allocate(
                 gnb_name=cell_name, ues_on_gnb=group, n_prb_total=capped_prb,
+                tick_ms=tick_ms_for_sched,
             )
             rb_alloc_global.update(alloc)
 

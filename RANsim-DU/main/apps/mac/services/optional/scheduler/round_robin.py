@@ -17,6 +17,7 @@ class RoundRobinScheduler:
         gnb_name: str,
         ues_on_gnb: list[dict[str, Any]],
         n_prb_total: int,
+        tick_ms: int = 500,  # noqa: ARG002 — kept for interface parity
     ) -> dict[str, int]:
         if not ues_on_gnb:
             return {}
