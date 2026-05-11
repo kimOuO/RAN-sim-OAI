@@ -132,18 +132,74 @@ class _GnbAccumulator:
         self.num_rsrp_meas = 0
 
 
+@dataclass
+class _CellWindowAccumulator:
+    """AL2 — per-cell window accumulator for RRU.PrbTotDl (對齊 3GPP TS 28.552 cell-level metric).
+
+    每 tick 加總所有 UE 在該 cell 的 prb_used, 配 tick_count 算 cell-level PRB usage.
+    這是 cell-level 累計, **不從 per-UE sum 來**, 避開 UE 樣本數不齊造成的 > 100% 假象.
+    """
+    tick_count: int = 0           # window 內該 cell 真實 tick 次數 (含沒 UE 的 tick)
+    prb_used_sum: int = 0         # window 內該 cell 累計 PRB usage (每 tick 0..n_prb_total)
+    n_prb_total_sum: int = 0      # window 內每 tick n_prb_total 累計 (應對 PRB quota 變動)
+
+    def add_tick(self, prb_used: int, n_prb_total: int) -> None:
+        self.tick_count += 1
+        self.prb_used_sum += int(prb_used)
+        self.n_prb_total_sum += int(n_prb_total)
+
+    def flush(self) -> dict[str, Any]:
+        """回傳 cell window report 並 reset. tick_count=0 仍 emit (idle cell 0%)."""
+        capacity = max(self.n_prb_total_sum, 1)
+        prb_pct = self.prb_used_sum / capacity * 100.0
+        report = {
+            "tick_count": self.tick_count,
+            "prb_used_sum": self.prb_used_sum,
+            "prb_pct_dl": min(100.0, max(0.0, prb_pct)),  # clamp 防意外 round-off
+        }
+        self.tick_count = 0
+        self.prb_used_sum = 0
+        self.n_prb_total_sum = 0
+        return report
+
+
 class PmAggregatorService:
     """所有 gNB 共用一個 Aggregator,stateful。"""
 
     def __init__(self) -> None:
         self._acc: dict[str, _GnbAccumulator] = {}
         self._ue_window: dict[str, _UeWindowAccumulator] = {}
+        self._cell_window: dict[str, _CellWindowAccumulator] = {}  # AL2
         self._start_time_ms: int | None = None
 
     def reset(self) -> None:
         self._acc.clear()
         self._ue_window.clear()
+        self._cell_window.clear()
         self._start_time_ms = None
+
+    # AL2 — cell-level PRB accumulation (對齊 OAI prb_used_dl 語意)
+    def accumulate_cell_tick(
+        self, cell_id: str, prb_used: int, n_prb_total: int,
+    ) -> None:
+        """每 tick 每 cell 呼一次, 不管該 tick 有沒有 UE."""
+        if not cell_id:
+            return
+        acc = self._cell_window.get(cell_id)
+        if acc is None:
+            acc = _CellWindowAccumulator()
+            self._cell_window[cell_id] = acc
+        acc.add_tick(prb_used, n_prb_total)
+
+    def flush_cell_report(self, cell_id: str) -> dict[str, Any] | None:
+        """flush 該 cell window — 沒資料回 None."""
+        acc = self._cell_window.get(cell_id)
+        if acc is None or acc.tick_count == 0:
+            return None
+        return acc.flush()
+
+    def active_cell_ids(self) -> list[str]:
+        return [cid for cid, acc in self._cell_window.items() if acc.tick_count > 0]
 
     def _acc_for(self, gnb_name: str) -> _GnbAccumulator:
         if gnb_name not in self._acc:

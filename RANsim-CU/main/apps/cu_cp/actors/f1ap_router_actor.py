@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from main.apps.cu_cp.models.cell_config import CellConfig
+from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
 from main.apps.cu_cp.models.du_registry import DuRegistry
 from main.apps.cu_cp.models.handover_event import HandoverEvent
 from main.apps.cu_cp.models.measurement_log import MeasurementLog
@@ -361,3 +362,38 @@ class F1ApRouterActor:
             logger.info("A3 HO fired: UE %s %s → %s", ue_id, source_cell, target_cell)
 
         return success_response(ho_payload, "measurement processed")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def cell_measurement_report(request: HttpRequest):
+        """AL2 — cell-level KPI from DU (3GPP TS 28.552 RRU.PrbTotDl).
+
+        Body: GnbDuCellMeasurementReport dict.
+        """
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError as exc:
+            return error_response("invalid JSON", str(exc), status=400)
+
+        cell_id = (body.get("cell_id") or "").strip()
+        if not cell_id:
+            return error_response("cell_id required", status=400)
+        try:
+            prb_pct_dl = float(body.get("prb_pct_dl", 0.0))
+            prb_pct_ul = float(body.get("prb_pct_ul", 0.0))
+            tick_count = int(body.get("tick_count", 0))
+            window_seconds = float(body.get("window_seconds", 0.0))
+        except (TypeError, ValueError) as exc:
+            return error_response("invalid numeric field", str(exc), status=400)
+
+        SqlDbBusinessService.create_entity(CellMeasurementLog, {
+            "cell_id": cell_id,
+            "prb_pct_dl": max(0.0, min(100.0, prb_pct_dl)),
+            "prb_pct_ul": max(0.0, min(100.0, prb_pct_ul)),
+            "tick_count": tick_count,
+            "window_seconds": window_seconds,
+            "recorded_at": TimestampService.now(),
+        })
+        return success_response({"cell_id": cell_id}, "cell measurement stored")

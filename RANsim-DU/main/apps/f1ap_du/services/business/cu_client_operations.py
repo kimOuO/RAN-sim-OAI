@@ -50,6 +50,19 @@ class CuClientBusinessService:
             return False
 
     @staticmethod
+    def post_cell_measurement_report(
+        payload: dict[str, Any], timeout: float = 5.0,
+    ) -> bool:
+        """AL2 — cell-level RRU.PrbTotDl (對齊 3GPP TS 28.552)."""
+        url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/cell_measurement_report"
+        try:
+            r = requests.post(url, json=payload, timeout=timeout)
+            return r.ok
+        except requests.RequestException as e:
+            logger.warning("post_cell_measurement_report failed: %s", e)
+            return False
+
+    @staticmethod
     def post_ul_rrc_message(payload: dict[str, Any], timeout: float = 5.0) -> bool:
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message"
         try:

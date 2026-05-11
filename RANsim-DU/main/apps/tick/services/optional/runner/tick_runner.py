@@ -17,11 +17,12 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ran_sim_protocol.f1ap import GnbDuMeasurementReport
+from ran_sim_protocol.f1ap import GnbDuCellMeasurementReport, GnbDuMeasurementReport
 from ran_sim_protocol.common import NeighborMeas
 
 from main.apps.f1ap_du.services.business.cu_client_operations import CuClientBusinessService
 from main.apps.f1ap_du.services.optional.message_codec.f1ap_codec import (
+    encode_cell_measurement_report,
     encode_measurement_report,
 )
 from main.apps.fapi_north.services.business.ru_client_operations import RuClientBusinessService
@@ -217,14 +218,38 @@ class TickRunner:
         tick_ms_for_sched = get_int("SIM_TICK_MS", 500)
         rb_alloc_global: dict[str, int] = {}
         scheduler = get_scheduler()
-        for cell_name, group in per_cell_alloc.items():
+        # AL2 — cell-level PRB accumulator (一個 tick 一筆, idle cell 也記 0).
+        # 用 active cell + idle cell 全列出, 避免 idle cell 沒被 sample 漏進 window.
+        try:
+            from main.apps.mac.models.cell_state import CellState
+            all_active_cells = set(
+                CellState.objects.filter(is_active=True).values_list("cell_id", flat=True)
+            ) - inactive_cells
+        except Exception:
+            all_active_cells = set(per_cell_alloc.keys())
+        cell_prb_used: dict[str, int] = {c: 0 for c in all_active_cells}
+        cell_prb_total: dict[str, int] = {}
+        for cell_name in all_active_cells:
             cap = _quota_store.cap_factor(cell_name)
-            capped_prb = max(1, int(prb_per_cell * cap))   # 至少 1 個 PRB，防 0 除錯
+            cell_prb_total[cell_name] = max(1, int(prb_per_cell * cap))
+
+        for cell_name, group in per_cell_alloc.items():
+            capped_prb = cell_prb_total.get(cell_name, prb_per_cell)
             alloc = scheduler.allocate(
                 gnb_name=cell_name, ues_on_gnb=group, n_prb_total=capped_prb,
                 tick_ms=tick_ms_for_sched,
             )
             rb_alloc_global.update(alloc)
+            cell_prb_used[cell_name] = sum(alloc.values())
+
+        # 每 tick 把 cell-level usage 餵給 pm aggregator (cell-level, 不從 per-UE sum)
+        _pm_cell = get_pm_aggregator()
+        for cell_name, used in cell_prb_used.items():
+            _pm_cell.accumulate_cell_tick(
+                cell_id=cell_name,
+                prb_used=used,
+                n_prb_total=cell_prb_total.get(cell_name, prb_per_cell),
+            )
 
         # 沒 traffic 的 CONNECTED UE 也要送 dl_tti (PRB=0, measurement-only).
         # build_dl_tti 會幫他們建 0-PRB PDU, RU 收到照樣跑 PathSolver 算 channel,
@@ -391,6 +416,22 @@ class TickRunner:
                     neighbor_cells=neighbor_meas_list,    # ★ A3 evaluator 終於有料
                 )
                 CuClientBusinessService.post_measurement_report(encode_measurement_report(report))
+
+            # AL2 — flush cell-level PRB% (RRU.PrbTotDl) per active cell
+            for cell_id in pm.active_cell_ids():
+                cw = pm.flush_cell_report(cell_id)
+                if cw is None:
+                    continue
+                cell_report = GnbDuCellMeasurementReport(
+                    cell_id=cell_id,
+                    prb_pct_dl=cw["prb_pct_dl"],
+                    prb_pct_ul=0.0,
+                    tick_count=cw["tick_count"],
+                    window_seconds=window_s,
+                )
+                CuClientBusinessService.post_cell_measurement_report(
+                    encode_cell_measurement_report(cell_report),
+                )
             report_sent = True
 
         # 6) Advance sfn/slot

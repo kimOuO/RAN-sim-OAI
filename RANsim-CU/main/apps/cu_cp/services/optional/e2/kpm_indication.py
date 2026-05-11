@@ -18,8 +18,25 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
 from main.apps.cu_cp.models.measurement_log import MeasurementLog
 from main.apps.cu_cp.models.ue_context import UeContext
+
+
+def _cell_prb_pct(serving_cell: str, field: str = "prb_pct_dl") -> float:
+    """AL2 — 取該 cell 最近一筆 CellMeasurementLog.prb_pct_{dl,ul}.
+
+    對齊 3GPP TS 28.552 RRU.PrbTotDl/UL — cell-level metric, 不從 per-UE sum.
+    沒紀錄回 0.0 (cell idle / 還沒收到 measurement).
+    """
+    if not serving_cell:
+        return 0.0
+    last = (
+        CellMeasurementLog.objects.filter(cell_id=serving_cell)
+        .order_by("-recorded_at")
+        .first()
+    )
+    return float(getattr(last, field, 0.0)) if last else 0.0
 
 
 # OAI 標準 metric → 取值 lambda。
@@ -42,13 +59,14 @@ METRIC_EXTRACTORS = {
         getattr(last_meas, "pdcp_sdu_volume_ul", 0) if last_meas else 0,
         "bytes",
     ),
+    # AL2 — RRU.PrbTotDl 是 cell-level metric (3GPP TS 28.552), 不從 per-UE sum.
+    # 查該 UE serving_cell 最新 CellMeasurementLog (DU pm_aggregator cell-level 累計).
     "RRU.PrbTotDl": lambda last_meas, ue: (
-        getattr(last_meas, "rb_width_dl", None) / 273.0 * 100.0 if last_meas and getattr(last_meas, "rb_width_dl", None) else 0.0,
+        _cell_prb_pct(getattr(ue, "serving_cell", "") or "", "prb_pct_dl"),
         "%",
     ),
     "RRU.PrbTotUl": lambda last_meas, ue: (
-        # OAI rfsim 環境常 0；估算 = DL 的 1/5
-        ((getattr(last_meas, "rb_width_dl", 0) or 0) / 273.0 * 100.0 / 5.0) if last_meas else 0.0,
+        _cell_prb_pct(getattr(ue, "serving_cell", "") or "", "prb_pct_ul"),
         "%",
     ),
     "RSRP": lambda last_meas, ue: (last_meas.rsrp_dbm if last_meas else None, "dBm"),

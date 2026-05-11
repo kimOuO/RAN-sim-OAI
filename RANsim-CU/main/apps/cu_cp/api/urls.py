@@ -17,6 +17,7 @@ urlpatterns = [
     path("F1AP/F1ApRouter/du_configuration_update", F1ApRouterActor.du_configuration_update, name="f1_du_config_update"),
     path("F1AP/F1ApRouter/ul_rrc_message", F1ApRouterActor.ul_rrc_message, name="f1_ul_rrc"),
     path("F1AP/F1ApRouter/measurement_report", F1ApRouterActor.measurement_report, name="f1_meas"),
+    path("F1AP/F1ApRouter/cell_measurement_report", F1ApRouterActor.cell_measurement_report, name="f1_cell_meas"),
     # NGAP
     path("NGAP/NgapRouter/initial_ue_message", NgapRouterActor.initial_ue_message, name="ngap_init_ue"),
     path("NGAP/NgapRouter/initial_context_setup", NgapRouterActor.initial_context_setup, name="ngap_init_ctx"),

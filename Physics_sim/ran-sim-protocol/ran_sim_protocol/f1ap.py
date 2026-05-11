@@ -80,6 +80,20 @@ class GnbDuMeasurementReport:
 
 
 @dataclass
+class GnbDuCellMeasurementReport:
+    """AL2 — cell-level KPI per measurement window (對齊 3GPP TS 28.552 RRU.PrbTotDl).
+
+    DU 每 N tick 算一次 cell-level PRB usage, 不從 per-UE sum 來 (避免 UE 樣本不齊造成 >100%).
+    Cell-level PRB% = Σ(每 tick cell 全 UE 真實 PRB) / (tick_count × n_prb_total_per_tick)
+    """
+    cell_id: str
+    prb_pct_dl: float          # 0~100, RRU.PrbTotDl
+    prb_pct_ul: float = 0.0    # sim DL-only, 預留
+    tick_count: int = 0        # window 內該 cell 的 tick 數
+    window_seconds: float = 0.0
+
+
+@dataclass
 class GnbDuConfigurationUpdate:
     """DU → CU：cell 配置變更通知（3GPP TS 38.473 §8.2.4 / §9.2.1.7）。
 

@@ -8,6 +8,7 @@ from ran_sim_protocol.f1ap import (
     DlRrcMessageTransfer,
     F1Setup,
     F1SetupResponse,
+    GnbDuCellMeasurementReport,
     GnbDuMeasurementReport,
     UeContextRelease,
     UeContextSetup,
@@ -42,6 +43,14 @@ def encode_ul_rrc(msg: UlRrcMessageTransfer) -> dict[str, Any]:
 
 def encode_measurement_report(msg: GnbDuMeasurementReport) -> dict[str, Any]:
     return to_dict(msg)
+
+
+def encode_cell_measurement_report(msg: GnbDuCellMeasurementReport) -> dict[str, Any]:
+    return to_dict(msg)
+
+
+def decode_cell_measurement_report(data: dict[str, Any]) -> GnbDuCellMeasurementReport:
+    return from_dict(GnbDuCellMeasurementReport, data)
 
 
 def encode_ue_context_setup_response(msg: UeContextSetupResponse) -> dict[str, Any]:

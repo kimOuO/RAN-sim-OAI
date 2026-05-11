@@ -11,6 +11,7 @@ from collections import defaultdict
 from typing import Any
 
 from main.apps.cu_cp.models.cell_config import CellConfig
+from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
 from main.apps.cu_cp.models.handover_event import HandoverEvent
 from main.apps.cu_cp.models.measurement_log import MeasurementLog
 from main.apps.cu_cp.models.ue_context import UeContext
@@ -91,6 +92,20 @@ class KpmReporter:
         cells = list(CellConfig.objects.values_list("cell_id", flat=True))
         bbu_status = BbuTelemetryService.per_gnb_snapshot(cells)
         bbu_status["timestamp"] = timestamp  # type: ignore[assignment]
+
+        # AL2 — cell-level PRB% 從 CellMeasurementLog 拿 (對齊 3GPP TS 28.552 RRU.PrbTotDl).
+        for cell_id in cells:
+            last = (
+                CellMeasurementLog.objects.filter(cell_id=cell_id)
+                .order_by("-recorded_at")
+                .first()
+            )
+            if last:
+                pm_per_cell[cell_id]["RRU.PrbTotDl"] = round(float(last.prb_pct_dl), 2)
+                pm_per_cell[cell_id]["RRU.PrbTotUl"] = round(float(last.prb_pct_ul), 2)
+            else:
+                pm_per_cell[cell_id]["RRU.PrbTotDl"] = 0.0
+                pm_per_cell[cell_id]["RRU.PrbTotUl"] = 0.0
 
         return {
             "timestamp": timestamp,
