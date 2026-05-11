@@ -116,15 +116,12 @@ class SionnaEngine:
                 for cell in cells:
                     tx_name = f"{g['name']}#{cell['pci']}"
                     azimuth_rad = math.radians(float(cell.get("azimuth_deg", 0)))
-                    # AL5: Sionna Transmitter.orientation = [α, β, γ] ZXZ Euler.
-                    # α 是 yaw (水平旋轉, 繞 Z 軸); β 是 pitch; γ 是 roll.
-                    # 之前放第二個 (β) 把 azimuth 變 pitch → 主瓣指向天/地 → c1/c3 RSRP 暴跌 40 dB.
-                    # 修正: azimuth 放第一個 (α=yaw). 負號讓 az_deg 與 math 慣例
-                    # (0=east, 90=north CCW) 一致.
+                    # AL5.2: 試 α 正號. γ 經實驗繞 beam 軸自身 → c1/c3 沒方向性.
+                    # 改成 α 正號 (預設 Sionna world Z = our scene Y = 高度).
                     tx = rt.Transmitter(
                         name=tx_name,
                         position=g["position"],
-                        orientation=[-azimuth_rad, 0.0, 0.0],
+                        orientation=[azimuth_rad, 0.0, 0.0],
                     )
                     self._scene.add(tx)
                     self._cell_entries.append({
@@ -138,7 +135,7 @@ class SionnaEngine:
                 tx = rt.Transmitter(
                     name=g["name"],
                     position=g["position"],
-                    orientation=[-azimuth_rad, 0.0, 0.0],
+                    orientation=[azimuth_rad, 0.0, 0.0],
                 )
                 self._scene.add(tx)
                 self._cell_entries.append({
