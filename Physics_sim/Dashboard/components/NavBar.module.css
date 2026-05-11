@@ -1,40 +1,46 @@
 .navbar {
-  background-color: #0070f3;
-  color: white;
-  padding: 16px 32px;
+  background-color: #111827;
+  color: #cbd5e1;
+  padding: 12px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid #374151;
 }
 
 .title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: 0.3px;
 }
 
 .navList {
   display: flex;
   list-style: none;
-  gap: 24px;
+  gap: 8px;
   margin: 0;
   padding: 0;
 }
 
 .navList a {
-  color: white;
+  color: #cbd5e1;
   text-decoration: none;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-radius: 4px;
-  transition: background-color 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .navList a:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #1f2937;
+  color: #f3f4f6;
 }
 
 .navList a.active {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: #1e3a8a;
+  color: #fff;
   font-weight: 600;
 }

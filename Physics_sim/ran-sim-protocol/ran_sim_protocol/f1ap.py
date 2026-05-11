@@ -71,6 +71,11 @@ class GnbDuMeasurementReport:
     mcs_dl: int = 0
     rb_width_dl: int = 0
     mimo_rank: int = 1
+    # 累計 PDCP SDU bytes per window — 對齊 3GPP TS 28.552 DRB.PdcpSduVolumeDL/UL
+    pdcp_sdu_volume_dl: int = 0
+    pdcp_sdu_volume_ul: int = 0
+    # 平均 RLC SDU 延遲 (ms) — 對齊 DRB.RlcSduDelayDl（暫不採集，預留）
+    rlc_sdu_delay_dl_ms: float = 0.0
     neighbor_cells: list[NeighborMeas] = field(default_factory=list)
 
 

@@ -1,8 +1,9 @@
 .controls {
-  background: white;
+  background: #111827;
   padding: 16px;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #374151;
+  color: #cbd5e1;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -20,4 +21,6 @@
   min-width: 160px;
   text-align: right;
   font-weight: 500;
+  color: #cbd5e1;
+  font-family: monospace;
 }

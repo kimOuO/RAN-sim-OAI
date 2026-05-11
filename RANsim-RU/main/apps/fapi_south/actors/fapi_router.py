@@ -93,6 +93,11 @@ class FapiRouter:
 
         ser = DlTtiRequestSerializer(data=payload)
         if not ser.is_valid():
+            logger.warning(
+                "dl_tti_request validation failed: errors=%s payload_keys=%s payload_sample=%s",
+                ser.errors, list(payload.keys()) if isinstance(payload, dict) else "non-dict",
+                str(payload)[:500],
+            )
             return error_response("Validation failed", ser.errors, 400)
 
         req = from_dict(DlTtiRequest, payload)

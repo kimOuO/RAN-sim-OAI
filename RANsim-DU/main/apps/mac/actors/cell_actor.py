@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 
 from main.apps.mac.models.cell_state import CellState
 from main.apps.mac.serializers.cell_state_serializers import (
+    CellStateListWriteSerializer,
     CellStateReadSerializer,
     CellStateWriteSerializer,
 )
@@ -93,6 +94,92 @@ class MacCellController:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def replace_cells(request):
+        """全量替換 — 接收 {cells: [...]}，把 incoming 不在的舊 cell 刪掉，再 upsert。
+
+        Dashboard Start Sim 用這個推完整 cell list 給 DU；
+        對應 RU `update_cells` 的 pattern。Cell 增減同步觸發 du_config_update。
+        """
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("Invalid JSON", str(e), http_status=400)
+
+        ser = CellStateListWriteSerializer(data=payload)
+        if not ser.is_valid():
+            return error_response("Validation failed", ser.errors, http_status=400)
+
+        cells_in = ser.validated_data["cells"]
+        if not cells_in:
+            return error_response("cells must not be empty", http_status=400)
+
+        ts = TimestampService.now_ms()
+        incoming_ids = [c["cell_id"] for c in cells_in]
+
+        # 1. 刪除不在 incoming list 的 cell
+        stale_qs = CellState.objects.exclude(cell_id__in=incoming_ids)
+        stale_cells = list(stale_qs)
+        deleted_count = stale_qs.count()
+        if deleted_count > 0:
+            stale_qs.delete()
+            logger.info("replace_cells: removed %d stale cells", deleted_count)
+
+        # 2. upsert 每個 incoming
+        from main.apps.f1ap_du.services.optional.lifecycle import du_config_update
+        added, modified = [], []
+        for c in cells_in:
+            cell_uuid = UUIDService.generate_uuid("cell", c["cell_id"])
+            entity_data = {
+                "cell_uuid": cell_uuid,
+                "cell_created_at": ts,
+                "cell_updated_at": ts,
+                **c,
+            }
+            obj, created = _upsert_with_created_flag(CellState, "cell_uuid", cell_uuid, entity_data)
+            (added if created else modified).append(du_config_update.cell_state_to_config(obj))
+
+        # 3. 通知 CU（F1 active 時才送，bootstrap 階段 skip）
+        cells_to_delete = [du_config_update.cell_state_to_config(c) for c in stale_cells]
+        if added or modified or cells_to_delete:
+            du_config_update.send(
+                cells_to_add=added or None,
+                cells_to_modify=modified or None,
+                cells_to_delete=cells_to_delete or None,
+            )
+
+        rows = list(CellState.objects.all())
+        out = [CellStateReadSerializer(r.__dict__).data for r in rows]
+        logger.info(
+            "replace_cells ok: total=%d added=%d modified=%d deleted=%d",
+            len(rows), len(added), len(modified), deleted_count,
+        )
+        return success_response(out, f"replaced cells: {len(rows)}", http_status=200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def disable(request):
+        """關掉 cell（energy saving xApp 用）。
+
+        body: {"cell_id": "..."}
+        效果：CellState.is_active = False；通知 CU via gNB-DU Config Update；
+              tick driver 跳過 inactive cell 不發 FAPI。
+        """
+        return _set_cell_active(request, active=False)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def enable(request):
+        """重新啟用 cell。"""
+        return _set_cell_active(request, active=True)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def update(request):
         try:
             payload = json.loads(request.body or b"{}")
@@ -126,3 +213,48 @@ def _upsert_with_created_flag(model_class, lookup_field, lookup_value, data):
         **{lookup_field: lookup_value}, defaults=data,
     )
     return obj, created
+
+
+def _set_cell_active(request, *, active: bool):
+    """Toggle CellState.is_active 並通知 CU（cells_to_modify 路徑）。
+
+    對齊 OAI / 3GPP 並沒有真正的 cell on/off 訊號 — 我們用 gNB-DU Configuration Update
+    cells_to_modify 把新狀態（含 is_active flag）推給 CU，最接近的對齊 procedure。
+    """
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError as e:
+        return error_response("Invalid JSON", str(e), http_status=400)
+
+    cell_id = payload.get("cell_id")
+    if not cell_id:
+        return error_response("cell_id required", http_status=400)
+
+    obj = CellState.objects.filter(cell_id=cell_id).first()
+    if obj is None:
+        return error_response(f"cell_id {cell_id} not found", http_status=404)
+
+    if obj.is_active == active:
+        return success_response(
+            CellStateReadSerializer(obj.__dict__).data,
+            f"cell_id {cell_id} already {'active' if active else 'inactive'}",
+        )
+
+    obj.is_active = active
+    obj.cell_updated_at = TimestampService.now_ms()
+    obj.save(update_fields=["is_active", "cell_updated_at"])
+
+    # 通知 CU（F1 active 時才送）
+    from main.apps.f1ap_du.services.optional.lifecycle import du_config_update
+    cfg = du_config_update.cell_state_to_config(obj)
+    du_config_update.send(cells_to_modify=[cfg])
+
+    logger.info(
+        "MacCellController.%s cell_id=%s pci=%s",
+        "enable" if active else "disable",
+        obj.cell_id, obj.pci,
+    )
+    return success_response(
+        CellStateReadSerializer(obj.__dict__).data,
+        f"cell_id {cell_id} {'enabled' if active else 'disabled'}",
+    )

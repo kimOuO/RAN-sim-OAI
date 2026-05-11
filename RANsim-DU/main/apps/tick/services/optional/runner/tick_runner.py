@@ -252,15 +252,32 @@ class TickRunner:
         #   actual_drained_map. 之後 PM aggregator 用 actual_drained_map 而非 tbs_map
         #   (理論 capacity), 對齊 OAI dlsch_total_bytes 統計實際 PDU bytes 的語意.
         actual_drained_map: dict[str, int] = {}
+        _trace = (self.status.tick_count % 20 == 0)  # log every 20 ticks (~10s)
+        if _trace:
+            logger.info(
+                "DRAIN TRACE tick=%d ues_with_bo=%d ue_registry=%d rlc_entities=%d",
+                self.status.tick_count, len(ues_with_bo),
+                len(self._ue_registry), len(rlc_factory.all_entities()),
+            )
         for ue in ues_with_bo:
             uid = ue["id"]
             budget = tbs_map.get(uid, 0)
+            if _trace and uid in ("demo_0508",):
+                logger.info(
+                    "DRAIN TRACE ue=%s sinr=%.1f rb_alloc=%d mcs=%d tbs=%d bo=%d",
+                    uid, ue.get("sinr_db", 0), rb_alloc_global.get(uid, 0),
+                    mcs_map.get(uid, 0), budget, bo_by_ue.get(uid, 0),
+                )
             if budget <= 0:
+                if _trace and uid == "demo_0508":
+                    logger.info("DRAIN TRACE ue=%s SKIP budget<=0", uid)
                 continue
             entities_for_ue = [
                 e for k, e in rlc_factory.all_entities() if k[0] == uid
             ]
             if not entities_for_ue:
+                if _trace and uid == "demo_0508":
+                    logger.info("DRAIN TRACE ue=%s SKIP no entities", uid)
                 continue
             # 簡化：平均分配 budget 給此 UE 的所有 RLC entity
             per_entity = max(1, budget // len(entities_for_ue))
@@ -268,6 +285,11 @@ class TickRunner:
             for ent in entities_for_ue:
                 try:
                     actual = ent.generate_pdu(per_entity)
+                    if _trace and uid == "demo_0508":
+                        logger.info(
+                            "DRAIN TRACE ue=%s ent_type=%s per_entity=%d actual=%s",
+                            uid, type(ent).__name__, per_entity, actual,
+                        )
                     if isinstance(actual, int) and actual > 0:
                         total_actual += actual
                 except Exception as e:

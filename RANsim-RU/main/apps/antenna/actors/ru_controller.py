@@ -90,6 +90,9 @@ class RuController:
             return error_response("Validation failed", ser.errors, 400)
 
         cells_in = ser.validated_data["cells"]
+        if not cells_in:
+            return error_response("cells must not be empty", "use POST with at least 1 cell", 400)
+
         now = TimestampService.get_current_timestamp()
 
         # 全量替換策略：先清掉沒在這次列表的 cell，再 upsert 提交的
@@ -108,6 +111,7 @@ class RuController:
                 "position_z": c["position"]["z"],
                 "frequency_ghz": c["frequency_ghz"],
                 "bandwidth_mhz": c["bandwidth_mhz"],
+                "gnb_id": c.get("gnb_id", ""),
                 "cell_updated_at": now,
                 "cell_created_at": now,
             }
@@ -136,7 +140,16 @@ class RuController:
             return error_response("Validation failed", ser.errors, 400)
 
         ues_in = ser.validated_data["ues"]
+        if not ues_in:
+            return error_response("ues must not be empty", "use POST with at least 1 ue", 400)
+
         now = TimestampService.get_current_timestamp()
+
+        # 全量替換：清掉這次 list 中沒有的舊 UePosition（避免上次 sim 殘留汙染新場景）
+        incoming_ids = [u["id"] for u in ues_in]
+        deleted, _ = SqlDbBusinessService.filter_entities(UePosition).exclude(ue_id__in=incoming_ids).delete()
+        if deleted:
+            logger.info("update_ues cleared %d stale UEs", deleted)
 
         result = []
         for u in ues_in:

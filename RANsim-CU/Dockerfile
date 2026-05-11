@@ -26,4 +26,5 @@ EXPOSE 8000
 # ran-sim-protocol is mounted at /tmp/ran-sim-protocol by docker-compose;
 # install it on container start so its venv has the latest source.
 ENTRYPOINT ["/app/shell/entrypoint.sh"]
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# daphne 跑 ASGI（HTTP + WebSocket 都支援，runserver 不支援 WebSocket）
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "main.asgi:application"]

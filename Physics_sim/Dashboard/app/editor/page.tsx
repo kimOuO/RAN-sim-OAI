@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSceneEditor } from '@/hooks/feature/useSceneEditor';
 import { useDrawPage } from '@/hooks/feature/useDrawPage';
-import { useSimPage } from '@/hooks/feature/useSimPage';
+import { useSimContext } from '@/components/SimProvider';
 import { TopDownMap } from '@/components/TopDownMap';
 import { ObjectForm } from '@/components/ObjectForm';
 import { SignalTable } from '@/components/SignalTable';
@@ -12,15 +12,28 @@ import { SignalChart } from '@/components/SignalChart';
 import { MimoSettingsPanel } from '@/components/MimoSettingsPanel';
 import * as omniverseApi from '@/services/api/omniverse';
 import { computeCoverage, type CoverageResponse } from '@/services/api/coverage';
+import { updateTrafficProfile, type TrafficProfile } from '@/services/api/ueProfile';
 import type { SceneAntennaConfig } from '@/types';
 
 export default function SceneEditor() {
   const router = useRouter();
   const editor = useSceneEditor();
   const draw = useDrawPage();
-  const { simRunning, signalData, chartData, handleStartSim, handleStopSim } = useSimPage({
-    onUpdateUEPositions: draw.updateUEPositions,
-  });
+  // ← sim state 在 SimProvider context 內，切 page 不會中斷
+  const {
+    simRunning, signalData, chartData,
+    handleStartSim, handleStopSim,
+    coverageLoading, setCoverageLoading,
+    uePositions,
+  } = useSimContext();
+  // 把 sim 算的位置同步給 draw map。
+  // 注意 dep 只能放 updateUEPositions（useCallback 包過 stable），
+  // 不能放 draw 整個物件 — 那是新物件，會觸發無窮迴圈。
+  useEffect(() => {
+    if (Object.keys(uePositions).length > 0) {
+      draw.updateUEPositions(uePositions);
+    }
+  }, [uePositions, draw.updateUEPositions]);
 
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<'building' | 'gnb' | 'ue' | 'obstacle'>('building');
@@ -33,7 +46,7 @@ export default function SceneEditor() {
   const [editValues, setEditValues] = useState<Record<string, any>>({});
   const [coverageMode, setCoverageMode] = useState(false);
   const [coverageData, setCoverageData] = useState<CoverageResponse | null>(null);
-  const [coverageLoading, setCoverageLoading] = useState(false);
+  // coverageLoading 已移到 useSimPage 上面以便傳給 paused
   const [selectedCoverageGnb, setSelectedCoverageGnb] = useState<string | null>(null);
   const [coverageMetric, setCoverageMetric] = useState<'rsrp' | 'sinr'>('rsrp');
   const [mimoConfig, setMimoConfig] = useState<SceneAntennaConfig>(() => {
@@ -172,9 +185,24 @@ export default function SceneEditor() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: selectedObject ? '280px 1fr 300px' : '280px 1fr', gap: 0 }}>
+      {/* Coverage 計算中：全螢幕 overlay 阻擋互動 */}
+      {coverageLoading && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.55)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', fontSize: '18px', fontWeight: 500,
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🗺️</div>
+          <div>Computing Coverage Map...</div>
+          <div style={{ fontSize: 13, marginTop: 8, opacity: 0.7 }}>
+            DU tick / UE motion paused • 計算完成後自動恢復
+          </div>
+        </div>
+      )}
       {/* 左側侧边栏 */}
       <div style={{
-        background: '#f5f5f5',
+        background: '#0b1220',
         borderRight: '1px solid #ddd',
         padding: '24px',
         overflowY: 'auto',
@@ -186,13 +214,13 @@ export default function SceneEditor() {
 
         {/* Create 按鈕組 */}
         <div style={{ marginBottom: '32px' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#666', marginBottom: '12px' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#9ca3af', marginBottom: '12px' }}>
             ADD OBJECTS
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <button
               onClick={() => handleOpenForm('building')}
-              disabled={editor.isCreating}
+              disabled={editor.isCreating || simRunning || coverageLoading}
               style={{
                 padding: '10px 12px',
                 background: '#0066cc',
@@ -202,14 +230,15 @@ export default function SceneEditor() {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
-                opacity: editor.isCreating ? 0.6 : 1,
+                opacity: (editor.isCreating || simRunning || coverageLoading) ? 0.4 : 1,
+                cursor: (editor.isCreating || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
               }}
             >
               + Building
             </button>
             <button
               onClick={() => handleOpenForm('gnb')}
-              disabled={editor.isCreating}
+              disabled={editor.isCreating || simRunning || coverageLoading}
               style={{
                 padding: '10px 12px',
                 background: '#ff6b35',
@@ -219,14 +248,15 @@ export default function SceneEditor() {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
-                opacity: editor.isCreating ? 0.6 : 1,
+                opacity: (editor.isCreating || simRunning || coverageLoading) ? 0.4 : 1,
+                cursor: (editor.isCreating || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
               }}
             >
               + gNB
             </button>
             <button
               onClick={() => handleOpenForm('ue')}
-              disabled={editor.isCreating}
+              disabled={editor.isCreating || simRunning || coverageLoading}
               style={{
                 padding: '10px 12px',
                 background: '#00a86b',
@@ -236,14 +266,15 @@ export default function SceneEditor() {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
-                opacity: editor.isCreating ? 0.6 : 1,
+                opacity: (editor.isCreating || simRunning || coverageLoading) ? 0.4 : 1,
+                cursor: (editor.isCreating || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
               }}
             >
               + User Equipment
             </button>
             <button
               onClick={() => handleOpenForm('obstacle')}
-              disabled={editor.isCreating}
+              disabled={editor.isCreating || simRunning || coverageLoading}
               style={{
                 padding: '10px 12px',
                 background: '#888',
@@ -253,7 +284,8 @@ export default function SceneEditor() {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
-                opacity: editor.isCreating ? 0.6 : 1,
+                opacity: (editor.isCreating || simRunning || coverageLoading) ? 0.4 : 1,
+                cursor: (editor.isCreating || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
               }}
             >
               + Obstacle
@@ -263,7 +295,7 @@ export default function SceneEditor() {
 
         {/* MIMO 全域設定 */}
         <div style={{ marginBottom: '32px' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#666', marginBottom: '12px' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#9ca3af', marginBottom: '12px' }}>
             MIMO ANTENNA
           </h3>
           <MimoSettingsPanel config={mimoConfig} onChange={updateMimoConfig} />
@@ -271,14 +303,14 @@ export default function SceneEditor() {
 
         {/* 物件列表 */}
         <div style={{ marginBottom: '32px' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#666', marginBottom: '12px' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#9ca3af', marginBottom: '12px' }}>
             OBJECTS ({(draw.sceneConfig?.buildings?.length || 0) + (draw.sceneConfig?.gnbs?.length || 0) + (draw.sceneConfig?.ues?.length || 0)})
           </h3>
 
           {/* Buildings */}
           {draw.sceneConfig?.buildings && draw.sceneConfig.buildings.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', color: '#999', fontWeight: '600', marginBottom: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: '600', marginBottom: '8px' }}>
                 🏢 BUILDINGS ({draw.sceneConfig.buildings.length})
               </div>
               {draw.sceneConfig.buildings.map((b) => (
@@ -286,7 +318,7 @@ export default function SceneEditor() {
                   key={b.name}
                   style={{
                     padding: '10px',
-                    background: 'white',
+                    background: '#111827',
                     border: '1px solid #e0e0e0',
                     borderRadius: '6px',
                     marginBottom: '6px',
@@ -294,7 +326,7 @@ export default function SceneEditor() {
                   }}
                 >
                   <div style={{ fontWeight: '600', marginBottom: '4px' }}>{b.name}</div>
-                  <div style={{ color: '#666', fontSize: '11px', marginBottom: '6px' }}>
+                  <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '6px' }}>
                     Pos: [{b.position[0]?.toFixed(1)}, {b.position[2]?.toFixed(1)}]
                   </div>
                   <button
@@ -310,8 +342,8 @@ export default function SceneEditor() {
                     style={{
                       fontSize: '11px',
                       padding: '4px 8px',
-                      background: '#ffebee',
-                      color: '#c62828',
+                      background: '#3f1d1d',
+                      color: '#fca5a5',
                       border: 'none',
                       borderRadius: '3px',
                       cursor: 'pointer',
@@ -327,7 +359,7 @@ export default function SceneEditor() {
           {/* gNBs */}
           {draw.sceneConfig?.gnbs && draw.sceneConfig.gnbs.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', color: '#999', fontWeight: '600', marginBottom: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: '600', marginBottom: '8px' }}>
                 📡 gNBs ({draw.sceneConfig.gnbs.length})
               </div>
               {draw.sceneConfig.gnbs.map((g) => (
@@ -335,7 +367,7 @@ export default function SceneEditor() {
                   key={g.name}
                   style={{
                     padding: '10px',
-                    background: 'white',
+                    background: '#111827',
                     border: '1px solid #e0e0e0',
                     borderRadius: '6px',
                     marginBottom: '6px',
@@ -343,7 +375,7 @@ export default function SceneEditor() {
                   }}
                 >
                   <div style={{ fontWeight: '600', marginBottom: '4px' }}>{g.name}</div>
-                  <div style={{ color: '#666', fontSize: '11px', marginBottom: '6px' }}>
+                  <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '6px' }}>
                     Pos: [{g.position[0]?.toFixed(1)}, {g.position[2]?.toFixed(1)}]
                   </div>
                   <button
@@ -359,8 +391,8 @@ export default function SceneEditor() {
                     style={{
                       fontSize: '11px',
                       padding: '4px 8px',
-                      background: '#ffebee',
-                      color: '#c62828',
+                      background: '#3f1d1d',
+                      color: '#fca5a5',
                       border: 'none',
                       borderRadius: '3px',
                       cursor: 'pointer',
@@ -376,7 +408,7 @@ export default function SceneEditor() {
           {/* UEs */}
           {draw.trajectories && draw.trajectories.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', color: '#999', fontWeight: '600', marginBottom: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: '600', marginBottom: '8px' }}>
                 📱 USER EQUIPMENT ({draw.trajectories.length})
               </div>
               {draw.trajectories.map((u, idx) => (
@@ -397,10 +429,10 @@ export default function SceneEditor() {
                     {u.name}
                     {draw.selectedUEIndex === idx && ' ✓'}
                   </div>
-                  <div style={{ color: '#666', fontSize: '11px', marginBottom: '4px' }}>
+                  <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '4px' }}>
                     Speed: {u.speed_mps} m/s
                   </div>
-                  <div style={{ color: '#666', fontSize: '11px', marginBottom: '6px' }}>
+                  <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '6px' }}>
                     Waypoints: {u.waypoints?.length || 0}
                   </div>
                   <button
@@ -417,8 +449,8 @@ export default function SceneEditor() {
                     style={{
                       fontSize: '11px',
                       padding: '4px 8px',
-                      background: '#ffebee',
-                      color: '#c62828',
+                      background: '#3f1d1d',
+                      color: '#fca5a5',
                       border: 'none',
                       borderRadius: '3px',
                       cursor: 'pointer',
@@ -432,7 +464,7 @@ export default function SceneEditor() {
           )}
 
           {!editor.buildings.data?.length && !editor.gnbs.data?.length && !draw.trajectories?.length && (
-            <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>
+            <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
               No objects created yet.
             </p>
           )}
@@ -442,15 +474,15 @@ export default function SceneEditor() {
       {/* 右側：Canvas + 控制按鈕 */}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {/* Canvas 區域 */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', background: 'white' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', background: '#111827' }}>
           <h1 style={{ margin: '0 0 16px 0', fontSize: '24px', fontWeight: '600' }}>
             Scene Layout
           </h1>
 
           {draw.error && (
             <div style={{
-              background: '#ffebee',
-              color: '#c62828',
+              background: '#3f1d1d',
+              color: '#fca5a5',
               padding: '12px',
               borderRadius: '6px',
               marginBottom: '16px',
@@ -482,7 +514,7 @@ export default function SceneEditor() {
                   <select
                     value={selectedCoverageGnb ?? ''}
                     onChange={e => setSelectedCoverageGnb(e.target.value)}
-                    style={{ padding: '4px 8px', background: '#fff', border: '1px solid #ccc', borderRadius: '4px', fontSize: '11px' }}
+                    style={{ padding: '4px 8px', background: '#111827', border: '1px solid #ccc', borderRadius: '4px', fontSize: '11px' }}
                   >
                     {coverageData.gnbs.map(g => (
                       <option key={g.gnb_name} value={g.gnb_name}>{g.gnb_name}</option>
@@ -503,7 +535,7 @@ export default function SceneEditor() {
                   ))}
                   <button
                     onClick={() => { setCoverageData(null); setCoverageMode(false); setSelectedCoverageGnb(null) }}
-                    style={{ marginLeft: 'auto', padding: '4px 8px', background: '#fff', border: '1px solid #ccc', color: '#333', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}
+                    style={{ marginLeft: 'auto', padding: '4px 8px', background: '#111827', border: '1px solid #ccc', color: '#333', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}
                   >
                     ✕ Clear
                   </button>
@@ -572,7 +604,7 @@ export default function SceneEditor() {
 
         {/* 底部控制按鈕 */}
         <div style={{
-          background: '#f5f5f5',
+          background: '#0b1220',
           borderTop: '1px solid #ddd',
           padding: '16px 24px',
           display: 'flex',
@@ -609,52 +641,55 @@ export default function SceneEditor() {
           <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
             <button
               onClick={draw.handleClear}
-              disabled={draw.loading}
+              disabled={draw.loading || simRunning || coverageLoading}
               style={{
                 padding: '10px 20px',
-                background: '#fff',
+                background: '#111827',
                 border: '1px solid #ddd',
                 borderRadius: '6px',
-                cursor: 'pointer',
+                cursor: (draw.loading || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
-                opacity: draw.loading ? 0.6 : 1,
+                opacity: (draw.loading || simRunning || coverageLoading) ? 0.4 : 1,
               }}
+              title={simRunning ? '模擬中無法清除場景' : coverageLoading ? 'Coverage 計算中' : ''}
             >
               🗑️ Clear Scene
             </button>
             <button
               onClick={() => draw.handleBuild(mimoConfig)}
-              disabled={draw.loading}
+              disabled={draw.loading || simRunning || coverageLoading}
               style={{
                 padding: '10px 20px',
                 background: '#ff9500',
                 color: 'white',
                 border: 'none',
                 borderRadius: '6px',
-                cursor: 'pointer',
+                cursor: (draw.loading || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
-                opacity: draw.loading ? 0.6 : 1,
+                opacity: (draw.loading || simRunning || coverageLoading) ? 0.4 : 1,
               }}
+              title={simRunning ? '模擬中無法重建場景' : coverageLoading ? 'Coverage 計算中' : ''}
             >
               🏗️ Build Scene
             </button>
             {!simRunning ? (
               <button
                 onClick={handleStartSim}
-                disabled={draw.loading}
+                disabled={draw.loading || coverageLoading}
                 style={{
                   padding: '10px 20px',
                   background: '#22c55e',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
-                  cursor: 'pointer',
+                  cursor: (draw.loading || coverageLoading) ? 'not-allowed' : 'pointer',
                   fontSize: '13px',
                   fontWeight: '500',
-                  opacity: draw.loading ? 0.6 : 1,
+                  opacity: (draw.loading || coverageLoading) ? 0.4 : 1,
                 }}
+                title={coverageLoading ? 'Coverage 計算中' : ''}
               >
                 ▶️ Start Sim
               </button>
@@ -740,7 +775,7 @@ export default function SceneEditor() {
             return (
               <div>
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POSITION</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POSITION</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <span style={{ width: '20px' }}>X:</span>
@@ -760,7 +795,7 @@ export default function SceneEditor() {
                   </div>
                 </div>
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>SIZE</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>SIZE</div>
                   <div style={{ fontSize: '12px' }}>
                     Width: {building.size[0]?.toFixed(1)} m<br />
                     Height: {building.size[1]?.toFixed(1)} m<br />
@@ -769,7 +804,7 @@ export default function SceneEditor() {
                 </div>
                 {building.color && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>COLOR</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>COLOR</div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <div style={{
                         width: '20px',
@@ -785,7 +820,7 @@ export default function SceneEditor() {
                   </div>
                 )}
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>SIZE</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>SIZE</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <span style={{ width: '20px' }}>W:</span>
@@ -806,7 +841,7 @@ export default function SceneEditor() {
                 </div>
                 {building.color && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>COLOR (RGB)</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>COLOR (RGB)</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                         <span style={{ width: '20px' }}>R:</span>
@@ -825,7 +860,7 @@ export default function SceneEditor() {
                 )}
                 {building.usd_path && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>USD ASSET</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>USD ASSET</div>
                     <div style={{ fontSize: '12px', color: '#bbb', wordBreak: 'break-all' }}>
                       {building.usd_path}
                     </div>
@@ -833,7 +868,7 @@ export default function SceneEditor() {
                 )}
                 {building.preset_type && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>PRESET</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>PRESET</div>
                     <div style={{ fontSize: '12px' }}>
                       {building.preset_type}
                     </div>
@@ -858,7 +893,7 @@ export default function SceneEditor() {
             return (
               <div>
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POSITION</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POSITION</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <span style={{ width: '20px' }}>X:</span>
@@ -874,7 +909,7 @@ export default function SceneEditor() {
                 </div>
                 {gnb.freq_mhz !== undefined && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>FREQUENCY</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>FREQUENCY</div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: '12px' }}>
                       <input type="number" value={freq?.toFixed(0)} onChange={(e) => setEditValues({ ...editValues, [freqKey]: parseFloat(e.target.value) })} style={{ flex: 1, padding: '4px', background: '#2a2a3e', color: '#eee', border: '1px solid #444', borderRadius: '3px' }} />
                       <span>MHz</span>
@@ -883,7 +918,7 @@ export default function SceneEditor() {
                 )}
                 {gnb.bw_hz !== undefined && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>BANDWIDTH</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>BANDWIDTH</div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: '12px' }}>
                       <input type="number" value={bw?.toFixed(1)} onChange={(e) => setEditValues({ ...editValues, [bwKey]: parseFloat(e.target.value) })} style={{ flex: 1, padding: '4px', background: '#2a2a3e', color: '#eee', border: '1px solid #444', borderRadius: '3px' }} />
                       <span>MHz</span>
@@ -892,7 +927,7 @@ export default function SceneEditor() {
                 )}
                 {gnb.power_dbm !== undefined && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POWER</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POWER</div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: '12px' }}>
                       <input type="number" value={power?.toFixed(1)} onChange={(e) => setEditValues({ ...editValues, [powerKey]: parseFloat(e.target.value) })} style={{ flex: 1, padding: '4px', background: '#2a2a3e', color: '#eee', border: '1px solid #444', borderRadius: '3px' }} />
                       <span>dBm</span>
@@ -901,7 +936,7 @@ export default function SceneEditor() {
                 )}
                 {gnb.active !== undefined && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>STATUS</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>STATUS</div>
                     <div style={{ fontSize: '12px' }}>
                       {gnb.active ? '✅ Active' : '❌ Inactive'}
                     </div>
@@ -909,7 +944,7 @@ export default function SceneEditor() {
                 )}
                 {gnb.color && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>COLOR</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>COLOR</div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <div style={{
                         width: '20px',
@@ -926,7 +961,7 @@ export default function SceneEditor() {
                 )}
                 {gnb.cells && gnb.cells.length > 0 && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>CELLS</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>CELLS</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <select
                         value={(editValues[`${selectedObject.name}-cells`] || gnb.cells).length}
@@ -946,7 +981,7 @@ export default function SceneEditor() {
                       </select>
                       {(editValues[`${selectedObject.name}-cells`] || gnb.cells || []).map((cell: any, i: number) => (
                         <div key={i} style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: '12px' }}>
-                          <span style={{ width: '50px', color: '#999' }}>Cell {i}</span>
+                          <span style={{ width: '50px', color: '#6b7280' }}>Cell {i}</span>
                           <input
                             type="number"
                             placeholder="PCI"
@@ -987,10 +1022,43 @@ export default function SceneEditor() {
           {selectedObject.type === 'ue' && (() => {
             const ue = draw.trajectories.find(u => u.name === selectedObject.name);
             if (!ue) return null;
+
+            // Traffic profile: 從 trafficProfiles state 拿. 沒設過就 default CBR 5Mbps.
+            const profile: TrafficProfile = draw.trafficProfiles[ue.name] || {
+              pattern: 'cbr', rate_mbps: 5, sdu_size: 1500, bearer_id: 1,
+            };
+
+            // 即時寫 CU + 更新 React state. UE container 5s polling 拉到後立即套用.
+            const writeProfile = (next: TrafficProfile) => {
+              draw.setTrafficProfile(ue.name, next);
+              updateTrafficProfile(ue.name, next).catch(err => {
+                console.error('Failed to update traffic profile:', err);
+              });
+            };
+            const onPatternChange = (pattern: 'idle' | 'cbr') => {
+              if (pattern === 'idle') {
+                writeProfile({ pattern: 'idle' });
+              } else {
+                writeProfile({
+                  pattern: 'cbr',
+                  rate_mbps: profile.rate_mbps ?? 5,
+                  sdu_size: profile.sdu_size ?? 1500,
+                  bearer_id: profile.bearer_id ?? 1,
+                });
+              }
+            };
+            const onRateChange = (rate: number) => {
+              writeProfile({
+                ...profile, pattern: 'cbr', rate_mbps: rate,
+                sdu_size: profile.sdu_size ?? 1500,
+                bearer_id: profile.bearer_id ?? 1,
+              });
+            };
+
             return (
               <div>
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POSITION</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>POSITION</div>
                   <div style={{ fontSize: '12px' }}>
                     X: {ue.position[0]?.toFixed(1)} m<br />
                     Y: {ue.position[1]?.toFixed(1)} m<br />
@@ -998,7 +1066,7 @@ export default function SceneEditor() {
                   </div>
                 </div>
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>SPEED</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>SPEED</div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input
                       type="number"
@@ -1024,15 +1092,76 @@ export default function SceneEditor() {
                     <span style={{ fontSize: '12px', color: '#bbb' }}>m/s</span>
                   </div>
                 </div>
+
+                {/* ── 📡 Traffic Profile (DL) — 即時改, 不用等 Build ── */}
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '10px',
+                  background: 'rgba(37, 99, 235, 0.08)',
+                  border: '1px solid #2563eb',
+                  borderRadius: '6px',
+                }}>
+                  <div style={{ color: '#60a5fa', fontSize: '11px', fontWeight: '700', marginBottom: '6px' }}>
+                    📡 TRAFFIC PROFILE (DL)
+                  </div>
+                  <select
+                    value={profile.pattern}
+                    onChange={(e) => onPatternChange(e.target.value as 'idle' | 'cbr')}
+                    style={{
+                      width: '100%',
+                      padding: '6px',
+                      fontSize: '12px',
+                      background: '#2a2a3e',
+                      color: '#eee',
+                      border: '1px solid #444',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    <option value="idle">Idle (no traffic)</option>
+                    <option value="cbr">CBR (constant rate)</option>
+                  </select>
+                  {profile.pattern === 'cbr' && (
+                    <div style={{ marginTop: '6px' }}>
+                      <div style={{ color: '#9ca3af', fontSize: '10px', marginBottom: '2px' }}>
+                        Rate (Mbps DL) — Tab/Enter 或點外面才送
+                      </div>
+                      <input
+                        type="number"
+                        step={0.5}
+                        min={0.1}
+                        max={1000}
+                        defaultValue={profile.rate_mbps ?? 5}
+                        key={`${ue.name}-rate-${profile.rate_mbps ?? 5}`}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v > 0) onRateChange(v);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        style={{
+                          width: '100%', padding: '6px', fontSize: '12px',
+                          background: '#2a2a3e', color: '#eee', border: '1px solid #444', borderRadius: '4px',
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '6px', lineHeight: '1.4' }}>
+                    即時生效, 5 秒內 UE container 拉到新 profile 開始注 SDU.
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>WAYPOINTS</div>
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>WAYPOINTS</div>
                   <div style={{ fontSize: '12px' }}>
                     {ue.waypoints?.length || 0} points
                   </div>
                 </div>
                 {ue.waypoints && ue.waypoints.length > 0 && (
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ color: '#999', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>WAYPOINT LIST</div>
+                    <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: '600', marginBottom: '4px' }}>WAYPOINT LIST</div>
                     <div style={{ fontSize: '11px', maxHeight: '150px', overflowY: 'auto' }}>
                       {ue.waypoints.map((w, idx) => (
                         <div key={idx} style={{ marginBottom: '4px', color: '#bbb' }}>

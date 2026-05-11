@@ -23,6 +23,11 @@ db.sqlite3
 db.sqlite3-journal
 *.log
 logs/*.log
+logs/*.log.*
+**/logs/*.log.*
+
+# Runtime soak data (生成檔, 不入 repo)
+plan/soak-ran.csv
 
 # Node
 node_modules/

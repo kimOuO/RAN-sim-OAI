@@ -95,8 +95,8 @@ export default function PlaybackPage() {
                 disabled={sceneRestoring}
                 style={{
                   padding: '6px 12px',
-                  backgroundColor: sceneRestoring ? '#ccc' : '#0066cc',
-                  color: 'white',
+                  backgroundColor: sceneRestoring ? '#475569' : '#3b82f6',
+                  color: '#fff',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: sceneRestoring ? 'not-allowed' : 'pointer',

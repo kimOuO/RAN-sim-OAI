@@ -71,6 +71,13 @@ export function useSceneEditor(): SceneEditorState {
         };
         await omniverseApi.createGnb(fullData);
         await gnbs.refetch();
+        // AK6: auto-trigger Physics scene rebuild so Sionna sees new gNB name +
+        // path_gain dict key matches what user typed (no env-var hardcoded map needed).
+        try {
+          await initScene({ scene_id: 'default' });
+        } catch (e) {
+          console.warn('[scene-rebuild] auto-init failed after createGNB:', e);
+        }
       } finally {
         setIsCreating(false);
       }
@@ -130,6 +137,12 @@ export function useSceneEditor(): SceneEditorState {
         setIsDeleting(true);
         await omniverseApi.deleteGnb(name);
         await gnbs.refetch();
+        // AK6: rebuild Sionna scene so removed gNB no longer in path_gain dict
+        try {
+          await initScene({ scene_id: 'default' });
+        } catch (e) {
+          console.warn('[scene-rebuild] auto-init failed after deleteGNB:', e);
+        }
       } finally {
         setIsDeleting(false);
       }

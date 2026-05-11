@@ -35,6 +35,25 @@ def _bootstrap_state_dict() -> dict:
     }
 
 
+def _served_cells_from_state() -> list[dict]:
+    """從 DU 的 CellState 表組目前 serving 的 cells（給前端 RanArchitecture 用）。"""
+    try:
+        from main.apps.mac.models.cell_state import CellState
+        return [
+            {
+                "cell_id": c.cell_id,
+                "pci": c.pci,
+                "frequency_ghz": c.freq_ghz,
+                "bandwidth_mhz": c.bw_mhz,
+                "served_plmn": c.served_plmn,
+                "gnb_id": c.gnb_id or "",
+            }
+            for c in CellState.objects.all()
+        ]
+    except Exception:
+        return []
+
+
 class F1SessionController:
     """Component: /api/v0.1/DU/F1AP/F1SessionController/<element>"""
 
@@ -59,9 +78,17 @@ class F1SessionController:
             )
 
         rows = RelationalDbBusinessService.list_entities(F1Session)
+        served_cells = _served_cells_from_state()
         return success_response(
             {
-                "sessions": [F1SessionReadSerializer(r.__dict__).data for r in rows],
+                "sessions": [
+                    {
+                        **F1SessionReadSerializer(r.__dict__).data,
+                        # 把目前 DU CellState 串進來方便前端按 gnb_id 拆 column
+                        "served_cells_json": served_cells,
+                    }
+                    for r in rows
+                ],
                 "bootstrap_state": _bootstrap_state_dict(),
             },
             "OK",

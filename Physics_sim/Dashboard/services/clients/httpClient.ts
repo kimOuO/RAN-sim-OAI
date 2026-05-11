@@ -5,6 +5,7 @@ import {
   DU_BASE_URL,
   RU_BASE_URL,
   PHYSICS_BASE_URL,
+  UE_BASE_URL,
   DEFAULT_FETCH_TIMEOUT_MS,
 } from '@/config';
 
@@ -31,6 +32,13 @@ export const ruClient: AxiosInstance = axios.create({
 
 export const physicsClient: AxiosInstance = axios.create({
   baseURL: PHYSICS_BASE_URL,
+  timeout: DEFAULT_FETCH_TIMEOUT_MS,
+  headers,
+});
+
+// UE container (RANsim-UE, port 8105) — active UE object 跑 traffic + measurement
+export const ueClient: AxiosInstance = axios.create({
+  baseURL: UE_BASE_URL,
   timeout: DEFAULT_FETCH_TIMEOUT_MS,
   headers,
 });

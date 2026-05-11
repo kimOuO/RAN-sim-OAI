@@ -23,17 +23,27 @@ def build_dl_tti(
     rank_map: dict[str, int] | None = None,
     tbs_map: dict[str, int] | None = None,
     harq_map: dict[str, int] | None = None,
+    cell_id_map: dict[str, str] | None = None,
 ) -> DlTtiRequest:
     pmi_map = pmi_map or {}
     rank_map = rank_map or {}
     tbs_map = tbs_map or {}
     harq_map = harq_map or {}
+    cell_id_map = cell_id_map or {}
 
     pdus: list[DlPduConfig] = []
-    prb_cursor = 0
+    # AD1 fix: prb_start 必須 per-cell 獨立累積, 不能跨 cell. 每個 cell PRB 0..273
+    # 是獨立 frequency resource. 之前 single global prb_cursor 在 multi-cell + multi-UE
+    # 場景 (e.g., 14 UE 分 3 cells) 第 N+ 個 UE 會撞 RU serializer max=274 → 整個 dl_tti
+    # 400 Bad Request, 物理層完全沒跑.
+    prb_cursor_by_cell: dict[str, int] = {}
     for ue_id, prb_count in rb_alloc.items():
-        if prb_count <= 0:
+        # 允許 prb_count=0 (measurement-only PDU): 對齊真實 OAI CSI-RS 跟 PDSCH 解耦,
+        # 沒 traffic 的 UE 也要送 dl_tti 觸發 RU 算 channel measurement.
+        if prb_count < 0:
             continue
+        cell = cell_id_map.get(ue_id, "")
+        prb_cursor = prb_cursor_by_cell.get(cell, 0)
         pdus.append(
             DlPduConfig(
                 ue_id=ue_id,
@@ -44,9 +54,10 @@ def build_dl_tti(
                 pmi=pmi_map.get(ue_id, 0),
                 payload_size_bytes=tbs_map.get(ue_id, 0),
                 harq_pid=harq_map.get(ue_id, 0),
+                cell_id=cell,
             ),
         )
-        prb_cursor += prb_count
+        prb_cursor_by_cell[cell] = prb_cursor + prb_count
     return DlTtiRequest(sfn=sfn, slot=slot, pdus=pdus)
 
 

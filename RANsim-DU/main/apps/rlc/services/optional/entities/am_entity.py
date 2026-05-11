@@ -4,9 +4,14 @@
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from main.apps.rlc.services.optional.segmentation.segmenter import SduItem, segment, total_buffer_bytes
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 AM_HEADER_BYTES = 3  # 簡化:固定 3-byte (D/C + P + SI + SN12)
 STATUS_PDU_BASE_BYTES = 4
@@ -34,12 +39,22 @@ class AmEntity:
         self.retx_count = 0
         self._status_pending = False
         self._rx: list[SduItem] = []
+        self._delay_samples_ms: list[float] = []     # 累計 SDU delivery delay，take_delay_samples() 取出後清空
 
     def recv_sdu(self, n_bytes: int) -> int:
         sid = self._next_sdu_id
         self._next_sdu_id += 1
-        self._tx_queue.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes))
+        self._tx_queue.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=_now_ms()))
         return sid
+
+    def take_delay_samples(self) -> list[float]:
+        """返回近期 segment 的 HoL delay (ms) 列表，並清空 buffer。
+
+        對齊 3GPP TS 28.552 DRB.RlcSduDelayDl — Tick driver 每 N tick 收一次。
+        """
+        samples = self._delay_samples_ms
+        self._delay_samples_ms = []
+        return samples
 
     def generate_pdu(self, budget_bytes: int) -> int:
         # retx 優先
@@ -62,6 +77,9 @@ class AmEntity:
         sn = self._next_sn
         self._next_sn = (self._next_sn + 1) & self._sn_max
         self._tx_window.append(TxBlock(sn=sn, bytes=seg.pdu_bytes))
+        # HoL delay sample for this segment call (對齊 3GPP TS 28.552)
+        if seg.delivered_delay_ms:
+            self._delay_samples_ms.extend(seg.delivered_delay_ms)
         return seg.pdu_bytes + AM_HEADER_BYTES
 
     def recv_pdu(self, n_bytes: int) -> None:

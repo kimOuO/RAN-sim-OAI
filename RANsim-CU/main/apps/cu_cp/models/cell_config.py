@@ -14,6 +14,9 @@ class CellConfig(models.Model):
     bandwidth_mhz = models.FloatField()
     served_plmn = models.CharField(max_length=16, default="00101")
 
+    gnb_id = models.CharField(max_length=64, db_index=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+
     # Cross-table reference to DuRegistry.gnb_du_id (kept as plain int — not FK
     # because we may onboard DUs lazily before their cells are registered).
     served_by_du_id = models.BigIntegerField(db_index=True)

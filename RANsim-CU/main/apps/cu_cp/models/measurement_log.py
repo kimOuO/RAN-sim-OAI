@@ -19,6 +19,10 @@ class MeasurementLog(models.Model):
     mcs_dl = models.IntegerField(default=0)
     rb_width_dl = models.IntegerField(default=0)
     mimo_rank = models.IntegerField(default=1)
+    # 累計 bytes per measurement window — 對齊 3GPP TS 28.552 DRB.PdcpSduVolumeDL/UL
+    pdcp_sdu_volume_dl = models.BigIntegerField(default=0)
+    pdcp_sdu_volume_ul = models.BigIntegerField(default=0)
+    rlc_sdu_delay_dl_ms = models.FloatField(default=0.0)
     neighbor_cells_json = models.JSONField(default=list)
 
     recorded_at = models.DateTimeField(db_index=True)

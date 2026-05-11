@@ -68,3 +68,55 @@ class DuClientBusinessService:
         return DuClientBusinessService._post(
             "/api/v0.1/DU/F1AP/F1ApRouter/ue_context_release", payload,
         )
+
+    # ── Cell on/off — energy saving xApp 用 ───────────────────────
+    @staticmethod
+    def post_cell_disable(cell_id: str) -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/MAC/MacCellController/disable", {"cell_id": cell_id},
+        )
+
+    @staticmethod
+    def post_cell_enable(cell_id: str) -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/MAC/MacCellController/enable", {"cell_id": cell_id},
+        )
+
+    # ── PRB quota — xApp E2 Control Style 2 / Action 6 ───────────
+    @staticmethod
+    def post_set_prb_quota(cell_id: str, *, min_prb: int, max_prb: int,
+                            dedicated_prb: int, set_by: str = "xApp") -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/MAC/MacScheduler/set_prb_quota",
+            {"cell_id": cell_id, "min_prb": min_prb, "max_prb": max_prb,
+             "dedicated_prb": dedicated_prb, "set_by": set_by},
+        )
+
+    @staticmethod
+    def post_clear_prb_quota(cell_id: str) -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/MAC/MacScheduler/clear_prb_quota", {"cell_id": cell_id},
+        )
+
+    # ── Auto-bootstrap helpers — ensure DU ready when traffic profile activates
+    @staticmethod
+    def post_register_ue(ue_id: str, serving_cell: str,
+                         sinr_db: float = 15.0, rsrp_dbm: float = -80.0) -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/Tick/TickController/register_ue",
+            {"ue_id": ue_id, "serving_cell": serving_cell,
+             "sinr_db": sinr_db, "rsrp_dbm": rsrp_dbm},
+        )
+
+    @staticmethod
+    def post_create_rlc_entity(ue_id: str, bearer_id: int = 1) -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/RLC/RlcEntityController/create",
+            {"ue_id": ue_id, "bearer_type": "DRB", "bearer_id": bearer_id, "mode": "AM"},
+        )
+
+    @staticmethod
+    def post_tick_start() -> dict[str, Any]:
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/Tick/TickController/start", {},
+        )

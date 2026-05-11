@@ -1,15 +1,16 @@
 .stats {
-  background: white;
+  background: #111827;
   padding: 24px;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #374151;
+  color: #cbd5e1;
   margin: 24px 0;
 }
 
 .stats h2 {
   margin-top: 0;
   margin-bottom: 16px;
-  color: #333;
+  color: #f3f4f6;
 }
 
 .details {
@@ -20,10 +21,10 @@
 
 .details dt {
   font-weight: 600;
-  color: #666;
+  color: #9ca3af;
 }
 
 .details dd {
   margin: 0;
-  color: #333;
+  color: #cbd5e1;
 }

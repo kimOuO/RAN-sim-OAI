@@ -12,6 +12,15 @@ class UeContextSetupSerializer(serializers.Serializer):
     ue_id = serializers.CharField(max_length=64)
     drbs = _DrbConfigSerializer(many=True, required=False, default=[])
     rrc_message_b64 = serializers.CharField(required=False, allow_blank=True, default="")
+    # SpCell_ID — CU 帶下來的 serving cell（對齊 OAI F1AP UeContextSetupRequest）
+    serving_cell_id = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class UeContextModificationSerializer(serializers.Serializer):
+    """F1AP UE Context Modification — CU 通知 DU 換 serving cell（HO 用）。"""
+    ue_id = serializers.CharField(max_length=64)
+    target_cell = serializers.CharField(max_length=64)
+    rrc_message_b64 = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class UeContextReleaseSerializer(serializers.Serializer):

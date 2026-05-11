@@ -89,6 +89,6 @@ def run(req: UlTtiRequest) -> list[CrcIndication]:
         out.append(CrcIndication(
             ue_id=pdu.ue_id,
             harq_pid=pdu.harq_pid,
-            success=sinr_db >= _UL_SINR_DB_THRESHOLD,
+            success=bool(sinr_db >= _UL_SINR_DB_THRESHOLD),  # cast numpy.bool_ → Python bool
         ))
     return out

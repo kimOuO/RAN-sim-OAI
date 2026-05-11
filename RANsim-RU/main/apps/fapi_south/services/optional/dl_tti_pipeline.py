@@ -64,11 +64,32 @@ def _build_gnb_to_cell_map() -> dict[str, str]:
 
 
 def _build_cell_to_gnb_map() -> dict[str, str]:
-    """cell_name → gnb_name 反向對照。CU 給的 PDU.cell_id 是 cell-level (gnb4_c0),
-    Sionna path_gain 是 gnb-level (gnb4)，要這個 map 才能查到對應 channel。"""
+    """cell_name → gnb_name (sim 用內部 gnb_id, 通常等於 Sionna gnb name 因 AK6 動態 chain).
+
+    保留供 backward-compat / debug (AI3 fallback 還會走 gnb-level)。
+    """
     try:
         from main.apps.antenna.models.cell import Cell
         return {c.name: c.gnb_id for c in Cell.objects.all() if c.gnb_id}
+    except Exception:
+        return {}
+
+
+def _build_cell_to_tx_map() -> dict[str, str]:
+    """sim cell_name (gnb4_c0) → Sionna tx_name (gnb4#PCI).
+
+    AK7: Sionna engine 改成 per-tx 不聚合後, path_gain dict key 是 tx_name
+    (= '${gnb_name}#${pci}'), 不再是 gnb_name. RU 端用 sim cell 的 pci field
+    構造對應 tx_name 來 lookup, 拿到 cell-level path_gain (不被 max 聚合).
+    """
+    try:
+        from main.apps.antenna.models.cell import Cell
+        out: dict[str, str] = {}
+        for c in Cell.objects.all():
+            if c.gnb_id is None or c.pci is None:
+                continue
+            out[c.name] = f"{c.gnb_id}#{int(c.pci)}"
+        return out
     except Exception:
         return {}
 
@@ -193,9 +214,11 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     logger.debug("dl_tti sfn=%d slot=%d pdus=%d cache_hit=%d/%d",
                  req.sfn, req.slot, len(req.pdus), cache_hits, len(set(ue_ids)))
 
-    # 兩個方向的對照表 — 因為 Sionna 是 gnb-level，CU/DU 用 cell-level
-    gnb_to_cell = _build_gnb_to_cell_map()       # gnb_id → 第一個 cell.name
-    cell_to_gnb = _build_cell_to_gnb_map()       # cell.name → gnb_id
+    # AK7: Sionna path_gain 改 per-tx (cell-level), CU/DU 也是 cell-level → 直接對應
+    # cell_to_tx 把 sim cell_name (e.g. gnb4_c0) 對到 Sionna tx_name (gnb4#0)
+    gnb_to_cell = _build_gnb_to_cell_map()       # gnb_id → 第一個 cell.name (legacy fallback)
+    cell_to_gnb = _build_cell_to_gnb_map()       # cell.name → gnb_id (legacy fallback)
+    cell_to_tx  = _build_cell_to_tx_map()        # cell.name → tx_name (主 path)
 
     out: list[CqiIndication] = []
     for pdu in req.pdus:
@@ -210,48 +233,55 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         # 用 cell_to_gnb map 翻譯後查 path_gain。
         serving_cell_id = (pdu.cell_id or "").strip()
         if serving_cell_id:
+            # AK7: 主 path 用 cell→tx 對映, 拿 per-cell path_gain (不再 per-gnb max)
+            serving_tx  = cell_to_tx.get(serving_cell_id)
             serving_gnb = cell_to_gnb.get(serving_cell_id, serving_cell_id)
             serving_label = serving_cell_id   # CqiIndication 給 cell-level
         else:
-            serving_gnb = bundle.get("serving_cell")  # Sionna fallback (gnb-level)
-            # 同 neighbors 邏輯: Sionna gnb_name 沒對應到 sim cell 時 — 不要 leak 進 serving_label,
-            # 留空字串 (DU 端拿空 serving_cell 已有 fallback 行為), 避免污染 UE Context.
+            serving_tx  = None
+            serving_gnb = bundle.get("serving_cell")  # Sionna fallback (tx_name)
             serving_label = gnb_to_cell.get(serving_gnb) or ""
 
-        H_raw = channel_dict.get(serving_gnb) if serving_gnb else None
-        path_gain_linear = path_gain_dict.get(serving_gnb) if serving_gnb else None
-        # AI3 fallback: sim CellConfig.gnb_id (e.g., "gnb4") 跟 Sionna scene gNB
-        # 名稱 (e.g., "gNB_Macro_NW") 不直接對應, path_gain_dict.get(serving_gnb)
-        # 常 None → RSRP -200 sentinel. 回 argmax (最強) path_gain 當 fallback,
-        # 對應 Sionna 自己 serving_cells 判定 (= UE 連到的最強 cell).
-        if path_gain_linear is None and path_gain_dict:
-            best_gnb = max(path_gain_dict, key=lambda k: path_gain_dict.get(k, 0.0))
-            path_gain_linear = path_gain_dict.get(best_gnb)
+        # AK7: 優先 tx_name lookup (per-cell); 沒 hit 退 gnb_name (backward compat)
+        H_raw = None
+        path_gain_linear = None
+        if serving_tx:
+            path_gain_linear = path_gain_dict.get(serving_tx)
+            H_raw = channel_dict.get(serving_tx)
+        if path_gain_linear is None and serving_gnb:
+            path_gain_linear = path_gain_dict.get(serving_gnb)
             if H_raw is None:
-                H_raw = channel_dict.get(best_gnb)
+                H_raw = channel_dict.get(serving_gnb)
+        # AI3 final fallback: argmax (= Sionna 自己 serving_cells 判定)
+        if path_gain_linear is None and path_gain_dict:
+            best_key = max(path_gain_dict, key=lambda k: path_gain_dict.get(k, 0.0))
+            path_gain_linear = path_gain_dict.get(best_key)
+            if H_raw is None:
+                H_raw = channel_dict.get(best_key)
         rsrp_dbm = _path_gain_to_rsrp_dbm(path_gain_linear)
 
-        # Neighbor cell measurements — 排除 serving_gnb (跟 serving 同 gNB 的不算 neighbor)
+        # Neighbor cell measurements — Sionna path_gain dict 現在 key 是 tx_name
+        # (e.g. "gnb4#0", "gnb4#1"). 排除 serving_tx (跟 serving 同 cell 不算 neighbor).
+        # 建反向表 tx_name → sim cell_name 供 A3 用 cell-level 名字.
+        # AK7: 同 gNB 不同 sectored cell 現在都是 neighbor candidate, 不再過早 collapse.
         neighbors_list: list[dict] = []
-        for gnb_name, pg in path_gain_dict.items():
-            if gnb_name == serving_gnb:
+        tx_to_cell = {v: k for k, v in cell_to_tx.items()}   # gnb4#0 → gnb4_c0
+        for key, pg in path_gain_dict.items():
+            if key == serving_tx or key == serving_gnb:
                 continue
             if not isinstance(pg, (int, float)) or pg <= 0:
                 continue
             neigh_rsrp = _path_gain_to_rsrp_dbm(pg)
             if neigh_rsrp <= _NEIGHBOR_RSRP_FLOOR_DBM:
                 continue
-            # Sionna scene gNB 名 (e.g., gNB_Macro_NW) 跟 sim CellConfig 不相通時,
-            # gnb_to_cell.get() 會 None — 之前 fallback 把 gnb_name 當 cell_id leak
-            # 進 A3 evaluator, 觸發 phantom HO 把 UE.serving_cell 寫成不存在的 cell.
-            # 修: 沒對應到 sim 內部 cell 直接 drop, 不污染 A3.
-            cell_id_for_a3 = gnb_to_cell.get(gnb_name)
+            # tx_name (gnb4#0) → sim cell_id (gnb4_c0); 退 gnb_name → first cell of that gnb
+            cell_id_for_a3 = tx_to_cell.get(key) or gnb_to_cell.get(key)
             if not cell_id_for_a3:
                 continue
             neighbors_list.append({
                 "cell_id": cell_id_for_a3,
                 "rsrp_dbm": neigh_rsrp,
-                "rsrq_db": 0.0,    # 沒實作 RSRQ 計算，A3 不依賴
+                "rsrq_db": 0.0,
             })
 
         if H_raw is None:

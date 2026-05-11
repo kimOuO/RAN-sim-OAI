@@ -7,9 +7,13 @@ export const setupUE = async (ueTrajectories: SetupUERequest['ues']): Promise<vo
   // 只發送有有效軌跡的 UE（至少 2 個 waypoint）
   const validUEs = ueTrajectories.filter(ue => ue.waypoints && ue.waypoints.length >= 2);
 
-  // DU 用 register_ue 取代舊的 SimLoop/setup
+  // DU register_ue schema: { ue_id, serving_cell?, sinr_db?, rsrp_dbm?, qos_5qi? }
+  // Dashboard 的 ue.name → backend 的 ue_id（trajectory 由 RU update_ues + scene 端管理，
+  // 不在 DU 的 register_ue 範圍）
   for (const ue of validUEs) {
-    await duClient.post('/api/v0.1/DU/Tick/TickController/register_ue', ue);
+    await duClient.post('/api/v0.1/DU/Tick/TickController/register_ue', {
+      ue_id: ue.name,
+    });
   }
 };
 
@@ -29,11 +33,23 @@ export const getStatus = async (): Promise<SimStatus> => {
   return response.data.data;
 };
 
+// Kit (omniver_kit) 在 :8080 直接 expose live UE position（USD time-sample 持續 advance）。
+// 比 Omniver-RAN listUes（DB 快照）即時。
+const KIT_LIVE_URL = process.env.NEXT_PUBLIC_KIT_LIVE_URL || 'http://localhost:8080/ues';
+
 export const fetchUEPositions = async (): Promise<Record<string, [number, number, number]>> => {
-  // TickController/read 回傳的 status 應含 ue_positions 子欄位（DU side 已實作）
-  const response = await duClient.post<{ data: SimStatus & { ue_positions?: Record<string, [number, number, number]> } }>(
-    '/api/v0.1/DU/Tick/TickController/read',
-    {}
-  );
-  return response.data.data?.ue_positions || {};
+  try {
+    const r = await fetch(KIT_LIVE_URL, { method: 'GET' });
+    if (!r.ok) return {};
+    const ues = await r.json() as Array<{ name: string; position?: { x: number; y: number; z: number } }>;
+    const out: Record<string, [number, number, number]> = {};
+    for (const ue of ues) {
+      if (ue.name && ue.position) {
+        out[ue.name] = [ue.position.x, ue.position.y, ue.position.z];
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
 };

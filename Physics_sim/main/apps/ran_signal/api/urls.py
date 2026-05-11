@@ -28,48 +28,48 @@ urlpatterns = [
         name="path_solver_compute",
     ),
 
-    # /api/v0.1/RanpSim/RanSignal/ConfigManager/read
+    # /api/v0.1/Physics/RanSignal/ConfigManager/read
     path(
-        "RanpSim/RanSignal/ConfigManager/read",
+        "Physics/RanSignal/ConfigManager/read",
         ConfigActor.read,
         name="config_manager_read",
     ),
-    # /api/v0.1/RanpSim/RanSignal/ConfigManager/reload
+    # /api/v0.1/Physics/RanSignal/ConfigManager/reload
     path(
-        "RanpSim/RanSignal/ConfigManager/reload",
+        "Physics/RanSignal/ConfigManager/reload",
         ConfigActor.reload,
         name="config_manager_reload",
     ),
-    # /api/v0.1/RanpSim/RanSignal/ConfigManager/push_scene
+    # /api/v0.1/Physics/RanSignal/ConfigManager/push_scene
     path(
-        "RanpSim/RanSignal/ConfigManager/push_scene",
+        "Physics/RanSignal/ConfigManager/push_scene",
         ConfigActor.push_scene,
         name="config_manager_push_scene",
     ),
-    # /api/v0.1/RanpSim/RanSignal/ConfigManager/reset_to_default
+    # /api/v0.1/Physics/RanSignal/ConfigManager/reset_to_default
     path(
-        "RanpSim/RanSignal/ConfigManager/reset_to_default",
+        "Physics/RanSignal/ConfigManager/reset_to_default",
         ConfigActor.reset_to_default,
         name="config_manager_reset_to_default",
     ),
 
-    # /api/v0.1/RanpSim/RanSignal/CoverageRunner/compute
+    # /api/v0.1/Physics/RanSignal/CoverageRunner/compute
     path(
-        "RanpSim/RanSignal/CoverageRunner/compute",
+        "Physics/RanSignal/CoverageRunner/compute",
         CoverageActor.compute,
         name="coverage_runner_compute",
     ),
 
-    # /api/v0.1/RanpSim/RanSignal/HealthChecker/read
+    # /api/v0.1/Physics/RanSignal/HealthChecker/read
     path(
-        "RanpSim/RanSignal/HealthChecker/read",
+        "Physics/RanSignal/HealthChecker/read",
         HealthActor.read,
         name="health_checker_read",
     ),
 
-    # /api/v0.1/RanpSim/Scene/SceneGateway/init
+    # /api/v0.1/Physics/Scene/SceneGateway/init
     path(
-        "RanpSim/Scene/SceneGateway/init",
+        "Physics/Scene/SceneGateway/init",
         SceneGatewayActor.init,
         name="scene_gateway_init",
     ),

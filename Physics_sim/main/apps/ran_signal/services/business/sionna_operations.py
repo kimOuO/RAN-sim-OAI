@@ -15,6 +15,7 @@ NOTE (restructure/4-system-split):
 push_scene / reset_to_default 控制 layer 切換。
 """
 import copy
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,9 @@ class SionnaBusinessService:
     _engine: Any = None
     _scene_id: str | None = None
     _loaded_at_ms: int | None = None
+    # 序列化進入 Sionna scene mutation（compute_paths / compute_coverage / engine rebuild）
+    # 防多 thread 同時改 scene.receivers 造成 drjit reshape mismatch。
+    _engine_lock: threading.Lock = threading.Lock()
     # NOTE (restructure/4-system-split): 移除 _pm_aggregator / _rrc_tracker /
     # _pf_scheduler / _mcs_controller — 這些 trackers 屬於 DU 系統的 tick orchestrator。
     _last_tick_ms: int | None = None
@@ -105,6 +109,7 @@ class SionnaBusinessService:
         )
 
         antenna_cfg = cfg.get("scene_antenna_config", {})
+        # 建 engine 過程含 Sionna scene load + warmup（~4s），在 lock 外做避免阻塞 compute_paths
         engine = sionna_engine.SionnaEngine(
             mitsuba_scene_path=mitsuba_scene_path,
             gnbs=cfg["gnbs"],
@@ -118,17 +123,18 @@ class SionnaBusinessService:
             ue_array_cols=antenna_cfg.get("ue_array_cols", 1),
         )
 
-        cls._loaded_config = cfg
-        cls._engine = engine
-        cls._scene_id = scene_id
-        cls._loaded_at_ms = TimestampService.now_ms()
-        cls._source = "default"
-        cls._previous_scene_id = None
-        cls._ttl_expires_at_ms = None
-        cls._current_mitsuba_path = mitsuba_scene_path
-        cls._current_geometry_source_type = None
-        # tick-state trackers 移除（屬於 DU/CU）
-        cls._last_tick_ms = None
+        # 短暫鎖 swap engine（毫秒級）
+        with cls._engine_lock:
+            cls._loaded_config = cfg
+            cls._engine = engine
+            cls._scene_id = scene_id
+            cls._loaded_at_ms = TimestampService.now_ms()
+            cls._source = "default"
+            cls._previous_scene_id = None
+            cls._ttl_expires_at_ms = None
+            cls._current_mitsuba_path = mitsuba_scene_path
+            cls._current_geometry_source_type = None
+            cls._last_tick_ms = None
         return cls.get_loaded_config()  # type: ignore[return-value]
 
     # ── mutate: 外部 push override ───────────────────────────────
@@ -197,6 +203,7 @@ class SionnaBusinessService:
                 "Consider creating gNBs in Omniver-RAN first via BuildingController/write or API."
             )
         antenna_cfg = payload.get("scene_antenna_config", {})
+        # 建 engine 在 lock 外（耗時 ~4s 不阻塞 compute_paths）
         engine = sionna_engine.SionnaEngine(
             mitsuba_scene_path=mitsuba_path,
             gnbs=gnb_list,
@@ -210,24 +217,23 @@ class SionnaBusinessService:
             ue_array_cols=antenna_cfg.get("ue_array_cols", 1),
         )
 
-        # ── Step 4: 提交 state ───────────────────────────────────
-        cls._loaded_config = merged_cfg
-        cls._engine = engine
-        cls._scene_id = new_scene_id
-        cls._loaded_at_ms = TimestampService.now_ms()
-        cls._source = "runtime_push"
-        cls._previous_scene_id = prev_scene_id
-        cls._current_mitsuba_path = mitsuba_path
-        cls._current_geometry_source_type = geometry_type_out
+        # ── Step 4: 提交 state（短暫鎖 swap engine） ─────────────
+        with cls._engine_lock:
+            cls._loaded_config = merged_cfg
+            cls._engine = engine
+            cls._scene_id = new_scene_id
+            cls._loaded_at_ms = TimestampService.now_ms()
+            cls._source = "runtime_push"
+            cls._previous_scene_id = prev_scene_id
+            cls._current_mitsuba_path = mitsuba_path
+            cls._current_geometry_source_type = geometry_type_out
 
-        if ttl_seconds is not None and ttl_seconds > 0:
-            cls._ttl_expires_at_ms = cls._loaded_at_ms + int(ttl_seconds * 1000)
-        else:
-            cls._ttl_expires_at_ms = None
+            if ttl_seconds is not None and ttl_seconds > 0:
+                cls._ttl_expires_at_ms = cls._loaded_at_ms + int(ttl_seconds * 1000)
+            else:
+                cls._ttl_expires_at_ms = None
 
-        # Counters 歸零
-        # tick-state trackers 移除（屬於 DU/CU）
-        cls._last_tick_ms = None
+            cls._last_tick_ms = None
 
         sionna_rebuild_ms = TimestampService.now_ms() - rebuild_start_ms
 
@@ -298,19 +304,21 @@ class SionnaBusinessService:
         for b in buildings:
             logger.info(f"  Building '{b.get('name')}': pos={b.get('position')} size={b.get('size')}")
 
-        result = coverage_solver.compute_coverage_map(
-            scene=cls._engine._scene,
-            gnbs=cls._loaded_config["gnbs"],
-            cell_entries=cls._engine._cell_entries,
-            x_range=tuple(grid["x_range"]),
-            z_range=tuple(grid["z_range"]),
-            x_step=float(grid["x_step"]),
-            z_step=float(grid["z_step"]),
-            sample_height_m=float(grid.get("sample_height_m", 1.5)),
-            max_depth=max_depth,
-            null_threshold_dbm=null_threshold_dbm,
-            include_sinr=include_sinr,
-        )
+        # 序列化 Sionna scene mutation：compute_paths / compute_coverage / rebuild 互鎖
+        with cls._engine_lock:
+            result = coverage_solver.compute_coverage_map(
+                scene=cls._engine._scene,
+                gnbs=cls._loaded_config["gnbs"],
+                cell_entries=cls._engine._cell_entries,
+                x_range=tuple(grid["x_range"]),
+                z_range=tuple(grid["z_range"]),
+                x_step=float(grid["x_step"]),
+                z_step=float(grid["z_step"]),
+                sample_height_m=float(grid.get("sample_height_m", 1.5)),
+                max_depth=max_depth,
+                null_threshold_dbm=null_threshold_dbm,
+                include_sinr=include_sinr,
+            )
         return result
 
     # ── compute (Physics-only) ───────────────────────────────────────
@@ -331,4 +339,6 @@ class SionnaBusinessService:
         if cls._engine is None:
             cls.reload_scene_config()
         assert cls._engine is not None
-        return cls._engine.compute_paths(ue_positions=ue_positions)
+        # 序列化 Sionna scene mutation。多 thread 同時改 scene.receivers 會 race 噴 drjit reshape error。
+        with cls._engine_lock:
+            return cls._engine.compute_paths(ue_positions=ue_positions)

@@ -30,6 +30,9 @@ class UeContext(models.Model):
     gnb_du_id = models.BigIntegerField(null=True, blank=True, db_index=True)
 
     last_measurement_at = models.DateTimeField(null=True, blank=True)
+    # Traffic profile (declarative spec, UE container reads + drives traffic generation).
+    # Schema: {"pattern": "cbr"|"idle"|"bursty", "rate_mbps": float, "sdu_size": int, "bearer_id": int}
+    traffic_profile_json = models.JSONField(blank=True, null=True, default=dict)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
 

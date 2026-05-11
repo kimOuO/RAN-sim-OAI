@@ -37,6 +37,11 @@ class _UeWindowAccumulator:
     dl_bytes_sum: int = 0
     ul_bytes_sum: int = 0
     last_qos_5qi: int = 9
+    rlc_delay_samples: list = None  # type: ignore[assignment]  # filled lazily
+
+    def __post_init__(self) -> None:
+        if self.rlc_delay_samples is None:
+            self.rlc_delay_samples = []
 
     def add(
         self,
@@ -81,6 +86,15 @@ class _UeWindowAccumulator:
             "avg_prb_ul": int(round(self.prb_ul_sum / n)),
             "throughput_dl_mbps": (self.dl_bytes_sum * 8) / max(window_seconds, 1e-3) / 1e6,
             "throughput_ul_mbps": (self.ul_bytes_sum * 8) / max(window_seconds, 1e-3) / 1e6,
+            # 真累計 bytes — 對齊 3GPP TS 28.552 DRB.PdcpSduVolumeDL/UL
+            # 沒做 PDCP layer，用 RLC SDU bytes 當 proxy（差幾 byte PDCP header 不影響 mean）
+            "pdcp_sdu_volume_dl": self.dl_bytes_sum,
+            "pdcp_sdu_volume_ul": self.ul_bytes_sum,
+            # RLC SDU delay (ms) mean over this window — 對齊 DRB.RlcSduDelayDl
+            "rlc_sdu_delay_dl_ms": (
+                sum(self.rlc_delay_samples) / len(self.rlc_delay_samples)
+                if self.rlc_delay_samples else 0.0
+            ),
             "qos_5qi": self.last_qos_5qi,
         }
         # reset
@@ -94,6 +108,7 @@ class _UeWindowAccumulator:
         self.prb_ul_sum = 0
         self.dl_bytes_sum = 0
         self.ul_bytes_sum = 0
+        self.rlc_delay_samples = []
         return report
 
 
@@ -202,10 +217,29 @@ class PmAggregatorService:
                 qos_5qi=qos_5qi,
             )
 
+    def accumulate_rlc_delay(self, ue_id: str, delay_samples_ms: list[float]) -> None:
+        """加入 RLC SDU delay samples (ms) — 從 RLC entity take_delay_samples() 拿來。
+
+        Tick driver 每 N tick 收一次。flush 時取 mean 計入 rlc_sdu_delay_dl_ms。
+        """
+        if not delay_samples_ms:
+            return
+        acc = self._ue_acc_for(ue_id)
+        if acc.rlc_delay_samples is None:
+            acc.rlc_delay_samples = []
+        acc.rlc_delay_samples.extend(delay_samples_ms)
+
     def flush_ue_report(self, ue_id: str, window_seconds: float) -> dict[str, Any] | None:
-        """取出 UE 在 window 內的累積報告並 reset。沒資料回 None。"""
+        """取出 UE 在 window 內的累積報告並 reset。完全沒資料才回 None。
+
+        即使該 window 內 UE buffer status 都是 0（沒被排程），但只要有 RLC SDU delay
+        samples 就應該 flush — 那是有 traffic flow 過、值得報的訊號。
+        """
         acc = self._ue_window.get(ue_id)
-        if acc is None or acc.samples == 0:
+        if acc is None:
+            return None
+        has_delay = bool(acc.rlc_delay_samples)
+        if acc.samples == 0 and not has_delay:
             return None
         return acc.flush(window_seconds)
 
@@ -213,7 +247,10 @@ class PmAggregatorService:
         self._ue_window.pop(ue_id, None)
 
     def active_ue_ids(self) -> list[str]:
-        return [uid for uid, acc in self._ue_window.items() if acc.samples > 0]
+        return [
+            uid for uid, acc in self._ue_window.items()
+            if acc.samples > 0 or acc.rlc_delay_samples
+        ]
 
     def snapshot(self) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}

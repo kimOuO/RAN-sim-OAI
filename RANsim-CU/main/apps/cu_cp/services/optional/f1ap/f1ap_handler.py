@@ -23,12 +23,18 @@ class F1apHandler:
 
     @staticmethod
     def build_ue_context_setup(
-        ue_id: str, drbs: list[dict[str, Any]], rrc_msg_b64: str = "",
+        ue_id: str,
+        drbs: list[dict[str, Any]],
+        rrc_msg_b64: str = "",
+        serving_cell_id: str = "",
     ) -> dict[str, Any]:
+        # serving_cell_id 對齊 OAI F1AP UE Context Setup Request 的 SpCell_ID IE：
+        # CU-CP RRC 是 serving cell 唯一 source of truth，這裡帶下去通知 DU 該 UE 服務在哪個 cell。
         return {
             "ue_id": ue_id,
             "drbs": drbs,
             "rrc_message_b64": rrc_msg_b64,
+            "serving_cell_id": serving_cell_id,
         }
 
     @staticmethod

@@ -42,7 +42,7 @@ export const initScene = async (sceneConfig: SceneConfig): Promise<InitSceneResp
   }
 
   const response = await physicsClient.post<{ data: InitSceneResponse }>(
-    '/api/v0.1/RanpSim/Scene/SceneGateway/init',
+    '/api/v0.1/Physics/Scene/SceneGateway/init',
     payload
   );
   return response.data.data;

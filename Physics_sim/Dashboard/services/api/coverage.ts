@@ -45,7 +45,7 @@ export interface CoverageResponse {
 
 export const computeCoverage = async (payload: CoverageRequest): Promise<CoverageResponse> => {
   const response = await physicsClient.post<{ data: CoverageResponse }>(
-    '/api/v0.1/RanpSim/RanSignal/CoverageRunner/compute',
+    '/api/v0.1/Physics/RanSignal/CoverageRunner/compute',
     payload
   );
   return response.data.data;

@@ -11,6 +11,7 @@ from django.http import HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from main.apps.cu_cp.models.cell_config import CellConfig
 from main.apps.cu_cp.models.ue_context import UeContext
 from main.apps.cu_cp.serializers.ngap_serializers import (
     DownlinkNasTransportWriteSerializer,
@@ -71,9 +72,23 @@ class NgapRouterActor:
         if ue is None:
             return error_response(f"unknown RAN-UE-NGAP-ID {ran_ue_ngap_id}", status=404)
 
+        # 對齊真實 RAN: UE 透過 cell search + RA 選 serving cell；CU 從 RACH 訊息
+        # 學到 SpCell。Sim 沒模擬 cell search/RA, 改用 fallback: 第一個 active cell。
+        # 之後 A3 / xApp HO 會把它 reroute 到正確 cell。
+        # 注意：不 overwrite — 若 UE.serving_cell 已有值（HO 後 attach），尊重。
+        initial_cell = ue.serving_cell or ""
+        if not initial_cell:
+            cell = CellConfig.objects.filter(is_active=True).order_by("cell_id").first()
+            if cell:
+                initial_cell = cell.cell_id
+
         SqlDbBusinessService.update_entity(
             UeContext, "ue_id", ue.ue_id,
-            {"amf_ue_ngap_id": amf_ue_ngap_id, "updated_at": TimestampService.now()},
+            {
+                "amf_ue_ngap_id": amf_ue_ngap_id,
+                "serving_cell": initial_cell,
+                "updated_at": TimestampService.now(),
+            },
         )
 
         # Build DRB list (one DRB per PDU session, mirroring OAI restriction).
@@ -94,10 +109,15 @@ class NgapRouterActor:
         # F1 UE Context Setup → DU (carrying the RRCReconfiguration)
         rrc_b64 = RrcMessageHandler.encode_rrc_reconfiguration(transaction_id=1, drbs=drbs)
         DuClientBusinessService.post_ue_context_setup(
-            F1apHandler.build_ue_context_setup(ue.ue_id, drbs, rrc_b64),
+            F1apHandler.build_ue_context_setup(
+                ue.ue_id, drbs, rrc_b64, serving_cell_id=initial_cell,
+            ),
         )
 
-        logger.info("InitialContextSetup processed for %s (%d DRBs)", ue.ue_id, len(drbs))
+        logger.info(
+            "InitialContextSetup processed for %s (%d DRBs, serving_cell=%s)",
+            ue.ue_id, len(drbs), initial_cell or "<none>",
+        )
         return success_response({
             "ue_id": ue.ue_id,
             "drbs": drbs,

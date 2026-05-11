@@ -6,18 +6,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DJANGO_SETTINGS_MODULE=main.settings.local \
     TZ=UTC
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 換成台灣 mirror 避免 archive.ubuntu.com / security.ubuntu.com 慢
+RUN sed -i 's|http://archive.ubuntu.com|http://tw.archive.ubuntu.com|g; s|http://security.ubuntu.com|http://tw.archive.ubuntu.com|g' /etc/apt/sources.list \
+    && apt-get -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update \
+    && apt-get install -y --no-install-recommends \
       python3.10 \
       python3-pip \
       curl \
       libgl1 \
-      libxrender1 \
-      libatomic1 \
       libglib2.0-0 \
-      libssl3 \
+      libatomic1 \
       tzdata \
-      && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
-      && rm -rf /var/lib/apt/lists/*
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

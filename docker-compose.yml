@@ -62,6 +62,7 @@ services:
       RAN_FUNC_ID_RC: "3"
       # AC4 — A3 handover threshold 調軟讓 demo 觀感好 (HO 易觸發)
       # 預設 1.0 / 0.5 / 80 太嚴, AC1 RSRP calibration 後 multi-UE 場景幾乎不觸發.
+      # AK11: env 是 boot-time default, runtime 用 Dashboard 控制 A3 enable/offset.
       HO_A3_OFFSET_DB: "0.5"
       HO_A3_HYSTERESIS_DB: "0.3"
       HO_TTT_MS: "60"
@@ -145,6 +146,10 @@ services:
       RU_NUMEROLOGY: 1
       RU_NOISE_FLOOR_DBM: -95
       RU_CHANNEL_CACHE_TTL_SEC: 0.5
+      # AK6: cell→Sionna gNB map 改成完全 DB-driven, 不再用 env override.
+      # Dashboard 創 gNB 後 call /Physics/Scene/SceneGateway/init 重建 Sionna scene,
+      # path_gain dict 就會用用戶輸入的 gnb name (e.g. "gnb4") 當 key.
+      # 之前 env hardcode 拔掉 (見 AK5 history).
     volumes:
       - ./RANsim-RU:/app
       - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol

@@ -12,8 +12,10 @@ DEBUG = get_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = get_list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
 INSTALLED_APPS = [
+    "daphne",                              # ASGI server（必須在 staticfiles 之前；WebSocket 用）
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "channels",                            # WebSocket framework
     "corsheaders",
     "rest_framework",
     "main.apps.cu_cp.apps.CuCpConfig",
@@ -23,6 +25,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "main.middleware.ran_log_middleware.RanLogMiddleware",
 ]
 
 ROOT_URLCONF = "main.urls"
@@ -72,4 +75,11 @@ CORS_ALLOW_ALL_ORIGINS = True
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [],
+}
+
+# Channels：用 in-memory channel layer（單 process 夠用；多 worker 才要 Redis）
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
 }

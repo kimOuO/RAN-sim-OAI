@@ -16,9 +16,12 @@ from dataclasses import dataclass, field
 from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from main.utils.env_loader import get_float, get_int
 
-A3_OFFSET_DEFAULT = 3.0
-A3_HYS_DEFAULT = 1.0
-TTT_DEFAULT = 160
+# A3 預設值 — 對齊 3GPP TS 38.331 範例值，但對 sim 場景偏保守
+# Sim 場景因為 antenna pattern + 固定位置常常 RSRP 差距小，為了 demo 容易看到
+# 自動 HO，預設值調軟一些（仍可用 env var 覆蓋回保守值）
+A3_OFFSET_DEFAULT = 1.0     # 真實 spec 通常 0-3 dB；我們用 1 dB 讓 demo 容易觸發
+A3_HYS_DEFAULT = 0.5        # 真實 spec 0-15 dB；用 0.5 加快響應
+TTT_DEFAULT = 80            # 真實 spec 40-5120 ms；用 80 ms 快響應
 
 
 @dataclass
@@ -40,11 +43,51 @@ class A3Verdict:
     elapsed_ms: int = 0
 
 
+@dataclass
+class A3Config:
+    """Runtime config (Dashboard / HTTP 可改). 預設從 env 來, 之後 store override."""
+    enabled: bool
+    offset_db: float
+    hys_db: float
+    ttt_ms: int
+
+
+# Module-level singleton config (per Django process). Default from env, override via HTTP.
+_CONFIG: A3Config = A3Config(
+    enabled=True,
+    offset_db=get_float("HO_A3_OFFSET_DB", default=A3_OFFSET_DEFAULT),
+    hys_db=get_float("HO_A3_HYSTERESIS_DB", default=A3_HYS_DEFAULT),
+    ttt_ms=get_int("HO_TTT_MS", default=TTT_DEFAULT),
+)
+
+
+def get_a3_config() -> A3Config:
+    return _CONFIG
+
+
+def set_a3_config(*, enabled: bool | None = None, offset_db: float | None = None,
+                  hys_db: float | None = None, ttt_ms: int | None = None) -> A3Config:
+    global _CONFIG
+    if enabled is not None:
+        _CONFIG.enabled = bool(enabled)
+    if offset_db is not None:
+        _CONFIG.offset_db = float(offset_db)
+    if hys_db is not None:
+        _CONFIG.hys_db = float(hys_db)
+    if ttt_ms is not None:
+        _CONFIG.ttt_ms = int(ttt_ms)
+    return _CONFIG
+
+
 class A3HandoverCalculation:
     def __init__(self) -> None:
-        self.offset_db = get_float("HO_A3_OFFSET_DB", default=A3_OFFSET_DEFAULT)
-        self.hys_db = get_float("HO_A3_HYSTERESIS_DB", default=A3_HYS_DEFAULT)
-        self.ttt_ms = get_int("HO_TTT_MS", default=TTT_DEFAULT)
+        # Read from runtime config store (which defaults from env).
+        # AK11: each evaluate() call reads current store snapshot → Dashboard 改完即時生效.
+        cfg = get_a3_config()
+        self.enabled = cfg.enabled
+        self.offset_db = cfg.offset_db
+        self.hys_db = cfg.hys_db
+        self.ttt_ms = cfg.ttt_ms
 
     def evaluate(
         self,
@@ -57,6 +100,9 @@ class A3HandoverCalculation:
 
         ``neighbors``: list of (cell_id, rsrp_dbm) excluding serving.
         """
+        if not self.enabled:
+            # A3 disabled via Dashboard — no HO triggered regardless of RSRP
+            return A3Verdict(triggered=False)
         now_ms = TimestampService.now_ms()
         ue_state.serving_cell = serving_cell
         verdict = A3Verdict(triggered=False)

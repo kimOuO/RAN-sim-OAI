@@ -11,6 +11,7 @@ from ran_sim_protocol.f1ap import UeContextSetupResponse
 from main.apps.f1ap_du.serializers.f1ap_message_serializers import (
     DlRrcMessageTransferSerializer,
     F1SetupResponseSerializer,
+    UeContextModificationSerializer,
     UeContextReleaseSerializer,
     UeContextSetupSerializer,
     UlRrcInjectSerializer,
@@ -62,16 +63,23 @@ class F1ApRouterController:
         # MAC: create or update UE state
         ue_mac_uuid = MacUuid.generate_uuid("ue_mac", ue_id)
         ts_mac = MacTs.now_ms()
+        serving_cell_id = v.get("serving_cell_id", "") or payload.get("serving_cell_id", "")
         MacRelDb.upsert_entity(
             UeMacState, "ue_mac_uuid", ue_mac_uuid,
             {
                 "ue_mac_uuid": ue_mac_uuid,
                 "ue_id": ue_id,
-                "serving_cell_id": payload.get("serving_cell_id", ""),
+                "serving_cell_id": serving_cell_id,
                 "ue_mac_created_at": ts_mac,
                 "ue_mac_updated_at": ts_mac,
             },
         )
+
+        # 同步進 TickRunner._ue_registry — F1AP 是 serving_cell 的 source of truth,
+        # 不能等 Dashboard 的 register_ue 來補（會 fallback 成 magic "default-cell-0"）。
+        if serving_cell_id:
+            from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+            get_tick_runner().update_ue_serving_cell(ue_id, serving_cell_id)
 
         # RA + HARQ in-memory hooks
         get_ra_manager().msg1_detected(ue_id, ts_mac)
@@ -125,6 +133,42 @@ class F1ApRouterController:
 
         resp = UeContextSetupResponse(ue_id=ue_id, success=True, drb_setup_list=drbs_setup)
         return success_response(encode_ue_context_setup_response(resp), "OK", http_status=201)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def ue_context_modification(request):
+        """F1AP UE Context Modification — CU-CP 通知 DU 換 serving cell（HO 用）。
+
+        對齊 OAI: openair2/F1AP/f1ap_du_ue_context_management.c::DU_handle_UE_CONTEXT_MODIFICATION_REQUEST。
+        CU 在 RIC HO / A3 自動 HO / 手動 HO 後 push 到這裡，DU 把 serving_cell 換掉:
+          1. UeMacState.serving_cell_id 更新（DB）
+          2. TickRunner._ue_registry[ue]['serving_cell'] 更新（in-memory，影響下個 tick 的 PDU.cell_id）
+        """
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("Invalid JSON", str(e), http_status=400)
+        ser = UeContextModificationSerializer(data=payload)
+        if not ser.is_valid():
+            return error_response("Validation failed", ser.errors, http_status=400)
+        v = ser.validated_data
+        ue_id = v["ue_id"]
+        target_cell = v["target_cell"]
+
+        # 1) 更新 UeMacState.serving_cell_id (DB)
+        ts_mac = MacTs.now_ms()
+        UeMacState.objects.filter(ue_id=ue_id).update(
+            serving_cell_id=target_cell, ue_mac_updated_at=ts_mac,
+        )
+
+        # 2) 同步 TickRunner._ue_registry (in-memory) — 下個 tick 的 dl_tti PDU.cell_id 會生效
+        from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+        get_tick_runner().update_ue_serving_cell(ue_id, target_cell)
+
+        logger.info("UE Context Modification: ue=%s → serving_cell=%s", ue_id, target_cell)
+        return success_response({"ue_id": ue_id, "serving_cell_id": target_cell}, "OK")
 
     @staticmethod
     @csrf_exempt

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+db.sqlite3
+logs/*.log
+.pytest_cache/
+# ASN.1 schemas — 取得方式見 asn1/README.md（不 commit 第三方 schema 檔）
+asn1/*.asn
+asn1/*.asn1

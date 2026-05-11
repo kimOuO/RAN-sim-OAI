@@ -9,4 +9,5 @@ urlpatterns = [
     path("TickController/run_once", TickController.run_once, name="tick_run_once"),
     path("TickController/read", TickController.read, name="tick_read"),
     path("TickController/register_ue", TickController.register_ue, name="tick_register_ue"),
+    path("TickController/replace_ues", TickController.replace_ues, name="tick_replace_ues"),
 ]

@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import { setupUE } from '@/services/api/simLoop';
 import { initScene } from '@/services/api/scene';
 import * as omniverseApi from '@/services/api/omniverse';
+import {
+  setTrajectory as ueSetTrajectory,
+  updateTrafficProfile as ueUpdateTrafficProfile,
+  buildWaypointsFromDraw,
+  type TrafficProfile,
+} from '@/services/api/ueProfile';
 import type { SceneLayout, UE, SceneAntennaConfig } from '@/types';
 
 function toXZ(v: any): [number, number, number] {
@@ -18,8 +24,14 @@ export function useDrawPage() {
   const [sceneConfig, setSceneConfig] = useState<SceneLayout | null>(null);
   const [selectedUEIndex, setSelectedUEIndex] = useState(0);
   const [trajectories, setTrajectories] = useState<UE[]>([]);
+  // 每個 UE 的 traffic profile (per-UE state, key = ue.name)
+  const [trafficProfiles, setTrafficProfiles] = useState<Record<string, TrafficProfile>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const setTrafficProfile = useCallback((ueName: string, profile: TrafficProfile) => {
+    setTrafficProfiles(prev => ({ ...prev, [ueName]: profile }));
+  }, []);
 
   const refreshScene = useCallback(async () => {
     try {
@@ -140,6 +152,12 @@ export function useDrawPage() {
           position: [x, 30, z],
         });
         await refreshScene();
+        // AK6: gNB position 改了, Sionna 也要重建 (path_gain 跟距離強相關)
+        try {
+          await initScene({ scene_id: 'default' });
+        } catch (e) {
+          console.warn('[scene-rebuild] auto-init failed after handleMoveGnb:', e);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to update gNB position');
       }
@@ -217,6 +235,54 @@ export function useDrawPage() {
       await initScene({ scene_id: 'default', scene_antenna_config: sceneAntennaConfig });
       console.log('✅ Sionna 初始化完成');
 
+      // 6. 把同一份 antenna config 推給 RU（PMI precoder 要跟 Sionna scene 對齊）
+      //    Build 時固定一次，後續 sim 中不再變動，符合 user 情境。
+      if (sceneAntennaConfig) {
+        const ruBase = process.env.NEXT_PUBLIC_RU_URL || 'http://localhost:8103';
+        console.log('6️⃣ 同步天線設定到 RU...');
+        try {
+          await fetch(`${ruBase}/api/v0.1/RU/Config/RuController/update_antenna`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rows: sceneAntennaConfig.gnb_array_rows ?? 1,
+              cols: sceneAntennaConfig.gnb_array_cols ?? 1,
+              polarization: sceneAntennaConfig.gnb_polarization ?? 'V',
+              pattern: sceneAntennaConfig.gnb_antenna_pattern ?? 'tr38901',
+            }),
+          });
+          console.log('✅ RU 天線設定已同步');
+        } catch (err) {
+          console.warn('⚠️ RU 同步天線失敗（不阻擋 build）:', err);
+        }
+      }
+
+      // 7. 通知 UE container — 寫 trajectory waypoints + traffic profile
+      //    UE container 每 100ms 用 waypoint+speed 算位置寫進 RU/Kit;
+      //    每 N ms 依 traffic profile 注 SDU 進 DU /RLC/inject_sdu.
+      console.log('7️⃣ 通知 UE container...');
+      let ueOk = 0, ueFail = 0;
+      for (const ue of trajectories) {
+        try {
+          // Trajectory: 把 [[x,0,z],...]+ speed 換成 [{x,y,z,t_ms},...]
+          if (ue.waypoints && ue.waypoints.length >= 2) {
+            const wpsTimed = buildWaypointsFromDraw(
+              ue.waypoints as [number, number, number][],
+              ue.speed_mps ?? 1.0,
+            );
+            await ueSetTrajectory(ue.name, wpsTimed, 'loop');
+          }
+          // Traffic profile: 預設 idle, 若 user 在 UI 設過則用 user 的
+          const profile = trafficProfiles[ue.name] || { pattern: 'idle' as const };
+          await ueUpdateTrafficProfile(ue.name, profile);
+          ueOk += 1;
+        } catch (err) {
+          ueFail += 1;
+          console.warn(`⚠️ UE container sync failed for ${ue.name}:`, err);
+        }
+      }
+      console.log(`✅ UE container 同步: ${ueOk} ok / ${ueFail} fail`);
+
       setError(null);
       console.log('%c【Build Scene 成功】', 'color: #00aa00; font-size: 14px; font-weight: bold');
     } catch (err) {
@@ -225,7 +291,7 @@ export function useDrawPage() {
     } finally {
       setLoading(false);
     }
-  }, [trajectories, refreshScene]);
+  }, [trajectories, trafficProfiles, refreshScene]);
 
   const handleClear = useCallback(async () => {
     try {
@@ -313,6 +379,8 @@ export function useDrawPage() {
     setSelectedUEIndex,
     trajectories,
     setTrajectories,
+    trafficProfiles,
+    setTrafficProfile,
     loading,
     error,
     handleCanvasClick,

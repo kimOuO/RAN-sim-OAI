@@ -255,15 +255,19 @@ class SionnaEngine:
         from main.utils.env_loader import get_bool
         enable_fast_fading = get_bool("ENABLE_FAST_FADING", default=True)
 
+        # AK7: 取消 per-gnb_name aggregation, 直接 emit per-tx_name path_gain.
+        # 同 gNB 多 sectored cell 之間 (各自 azimuth 不同) 的 path_gain 在 cell 邊緣 / 不同方向
+        # 會差很多, 聚合 max 會抹掉 cell-level differentiation. 下游 RU 端用 cell name (= tx_name)
+        # 查 path_gain 才能算對 RSRP / 觸發 CCO 真實 cell PRB imbalance.
         path_gain: dict[str, dict[str, float]] = {}
-        # channel_matrix[ue_id][gnb_name] = H (rx_ant, tx_ant) complex — strongest cell of that gNB
+        # channel_matrix[ue_id][tx_name] = H (rx_ant, tx_ant) complex — per cell
         channel_matrix: dict[str, dict[str, np.ndarray]] = {}
-        serving_cells: dict[str, str] = {}  # ue_id -> gnb_name
+        serving_cells: dict[str, str] = {}  # ue_id -> tx_name (best cell across all)
 
         for rx_i in range(num_rx):
             per_ue: dict[str, float] = {}
             per_ue_H: dict[str, np.ndarray] = {}
-            best_gnb = None
+            best_tx = None
             best_pg = -1.0
 
             for tx_j in range(num_tx):
@@ -286,22 +290,18 @@ class SionnaEngine:
                     combined = np.sum(coeffs, axis=-1)
                     pg = float(np.sum(np.abs(coeffs) ** 2))
 
-                tx_name = tx_names[tx_j]
-                gnb_name = self._cell_entries[tx_j]["gnb_name"]
-                # 聚合：同 gnb 的 cells 取最強 cell（保留該 cell 的 H matrix）
-                if gnb_name not in per_ue or pg > per_ue.get(gnb_name, -1.0):
-                    per_ue[gnb_name] = pg
-                    per_ue_H[gnb_name] = combined
+                tx_name = tx_names[tx_j]   # e.g. "gnb4#0", "gnb4#1"
+                per_ue[tx_name] = pg       # per-cell — 不再聚合到 gnb_name
+                per_ue_H[tx_name] = combined
 
-                # 全域最強 serving gNB（跨所有 cell）
                 if pg > best_pg:
                     best_pg = pg
-                    best_gnb = gnb_name
+                    best_tx = tx_name
 
             path_gain[rx_names[rx_i]] = per_ue
             channel_matrix[rx_names[rx_i]] = per_ue_H
-            if best_gnb:
-                serving_cells[rx_names[rx_i]] = best_gnb
+            if best_tx:
+                serving_cells[rx_names[rx_i]] = best_tx
 
         return {
             "path_gain_linear": path_gain,

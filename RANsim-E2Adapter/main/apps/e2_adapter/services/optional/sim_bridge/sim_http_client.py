@@ -1,0 +1,138 @@
+"""HTTP client for sim CU REST API.
+
+Skeleton (P2.7a): only fetch_e2_node_id() implemented + last-error tracking
+for /Status/read.
+
+P2.8 will add:
+  - call_subscription_create()
+  - call_subscription_delete()
+  - poll_indication()
+  - call_control_request()
+"""
+from __future__ import annotations
+
+import threading
+import time
+from typing import Any
+
+import requests
+
+from main.utils.env_loader import get_str
+from main.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+_HTTP_TIMEOUT_SEC = 5.0
+
+
+class _BridgeState:
+    """Thread-safe last-call tracker — read by /Status/read."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.last_e2_node_id_at_ms = 0
+        self.last_error = ""
+
+    def mark_success(self) -> None:
+        with self._lock:
+            self.last_e2_node_id_at_ms = int(time.time() * 1000)
+            self.last_error = ""
+
+    def mark_error(self, err: str) -> None:
+        with self._lock:
+            self.last_error = err
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {
+                "cu_url": get_str("SIM_CU_URL", ""),
+                "last_e2_node_id_at_ms": self.last_e2_node_id_at_ms,
+                "last_error": self.last_error,
+            }
+
+
+_state = _BridgeState()
+
+
+def get_state_snapshot() -> dict:
+    return _state.snapshot()
+
+
+class SubNotFoundError(RuntimeError):
+    """sim CU 不認得這個 subscription_id（被 sim 重啟後 wipe 過，producer 該停）。"""
+
+
+def _post_sim(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    base = get_str("SIM_CU_URL", "")
+    if not base:
+        _state.mark_error("SIM_CU_URL env var unset")
+        return None
+    url = f"{base.rstrip('/')}{path}"
+    try:
+        resp = requests.post(url, json=payload, timeout=_HTTP_TIMEOUT_SEC)
+        if resp.status_code == 404:
+            # 試讀 body 看是不是 unknown subscription_id（不是 endpoint 不存在）
+            try:
+                msg = resp.json().get("message", "")
+            except Exception:
+                msg = ""
+            if "unknown subscription_id" in msg.lower() or "subscription" in msg.lower():
+                raise SubNotFoundError(msg or f"{path} 404")
+            _state.mark_error(f"{path} HTTP 404 ({msg})")
+            return None
+        if resp.status_code >= 500:
+            _state.mark_error(f"{path} HTTP {resp.status_code}")
+            return None
+        body = resp.json()
+        if not body.get("success"):
+            logger.warning("sim %s non-success: %s", path, body.get("message"))
+            return None
+        _state.mark_success()
+        return body.get("data") or {}
+    except requests.RequestException as exc:
+        _state.mark_error(repr(exc))
+        logger.warning("sim CU %s failed: %s", path, exc)
+        return None
+
+
+def fetch_e2_node_id() -> dict[str, Any] | None:
+    """Pull globalE2node-ID + RAN function inventory from sim CU.
+
+    Adapter calls this once at startup before sending E2 Setup Request.
+    Returns parsed payload or None on failure.
+    """
+    return _post_sim("/api/v0.1/CU/E2/E2NodeId/read", {})
+
+
+def call_subscription_create(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """POST /CU/E2/Subscription/create → returns {subscription_id, ...}."""
+    return _post_sim("/api/v0.1/CU/E2/Subscription/create", payload)
+
+
+def call_subscription_delete(subscription_id: str) -> dict[str, Any] | None:
+    return _post_sim("/api/v0.1/CU/E2/Subscription/delete",
+                     {"subscription_id": subscription_id})
+
+
+def list_subscriptions() -> list[dict[str, Any]]:
+    """Adapter 啟動恢復用 — 拿 sim CU 端所有 active subs。"""
+    data = _post_sim("/api/v0.1/CU/E2/Subscription/list", {})
+    if data is None:
+        return []
+    return data.get("subscriptions") or []
+
+
+def poll_indication(subscription_id: str) -> dict[str, Any] | None:
+    """POST /CU/E2/Indication/poll → returns {indications: [...], count}."""
+    return _post_sim("/api/v0.1/CU/E2/Indication/poll",
+                     {"subscription_id": subscription_id})
+
+
+def call_control_request(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """POST /CU/E2/Control/request — adapter → sim CU forward RC control.
+
+    payload e.g.:
+      {action: "handover", ngap_id, f1ap_id, target_cgi, ...}
+      {action: "prb_quota", min_prb, max_prb, dedicated_prb, ...}
+    """
+    return _post_sim("/api/v0.1/CU/E2/Control/request", payload)

@@ -1,9 +1,15 @@
 """RLC UM — segment、無 ARQ。對齊 OAI nr_rlc_entity_um.c。"""
 from __future__ import annotations
 
+import time
+
 from main.apps.rlc.services.optional.segmentation.segmenter import SduItem, segment, total_buffer_bytes
 
 UM_HEADER_BYTES = 2  # 簡化:2-byte header (SN + SI)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 class UmEntity:
@@ -14,18 +20,27 @@ class UmEntity:
         self._tx: list[SduItem] = []
         self._rx: list[SduItem] = []
         self._next_sdu_id = 0
+        self._delay_samples_ms: list[float] = []
 
     def recv_sdu(self, n_bytes: int) -> int:
         sid = self._next_sdu_id
         self._next_sdu_id += 1
-        self._tx.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes))
+        self._tx.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=_now_ms()))
         return sid
+
+    def take_delay_samples(self) -> list[float]:
+        samples = self._delay_samples_ms
+        self._delay_samples_ms = []
+        return samples
 
     def generate_pdu(self, budget_bytes: int) -> int:
         if budget_bytes <= UM_HEADER_BYTES:
             return 0
         payload_budget = budget_bytes - UM_HEADER_BYTES
-        return segment(self._tx, payload_budget).pdu_bytes + UM_HEADER_BYTES
+        seg = segment(self._tx, payload_budget)
+        if seg.delivered_delay_ms:
+            self._delay_samples_ms.extend(seg.delivered_delay_ms)
+        return seg.pdu_bytes + UM_HEADER_BYTES
 
     def recv_pdu(self, n_bytes: int) -> None:
         if n_bytes <= UM_HEADER_BYTES:

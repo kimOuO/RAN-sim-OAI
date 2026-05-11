@@ -115,4 +115,6 @@ def cell_state_to_config(cell) -> CellConfig:
         frequency_ghz=cell.freq_ghz,
         bandwidth_mhz=cell.bw_mhz,
         served_plmn=cell.served_plmn,
+        gnb_id=getattr(cell, "gnb_id", "") or "",
+        is_active=getattr(cell, "is_active", True),
     )

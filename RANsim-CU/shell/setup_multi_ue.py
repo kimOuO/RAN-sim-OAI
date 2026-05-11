@@ -35,11 +35,12 @@ DU_BASE = "http://localhost:8102"
 UE_BASE = "http://localhost:8105"
 
 # (cell_id, count, rate_mbps_per_ue)
+# AK12: 4 cell 都有 UE, 各自不同 traffic load 展示 cell-level KPM 差異
 UE_PLAN = [
-    ("gnb4_c0", 8, 20.0),   # hot
-    ("gnb4_c1", 4,  5.0),   # warm
-    ("gnb4_c2", 1,  1.0),   # cold
-    # gnb4_c3 idle, 不放
+    ("gnb4_c0", 4, 30.0),   # east   high traffic
+    ("gnb4_c1", 3, 10.0),   # north  medium
+    ("gnb4_c2", 3,  5.0),   # west   low
+    ("gnb4_c3", 3,  1.0),   # south  minimal
 ]
 
 
@@ -130,23 +131,22 @@ def ue_container_attach(ue_id: str) -> bool:
     return resp.get("success", False)
 
 
-# AG3 — per-cell 起始位置, 讓 sionna ray-tracing 有差異 (各 UE path_gain 不同)
-# 沒這個全部 UE 都 (0,0,0) → 同 path_gain → 同 RSRP, 等於 noise-only.
-# 座標系 sim 內部, 大概對齊 Brownstone 場景 (x: -100~+100, y: -100~+100).
+# AK12: 4 cluster 各自貼 cell beam 方向 (Sionna azimuth 對應)
+#   c0 east(+X), c1 north(+Z), c2 west(-X), c3 south(-Z)
 _CELL_CENTER = {
-    "gnb4_c0": (-50.0, -30.0, 1.5),
-    "gnb4_c1": (50.0, -30.0, 1.5),
-    "gnb4_c2": (0.0, 50.0, 1.5),
-    "gnb4_c3": (0.0, 0.0, 1.5),
+    "gnb4_c0": (200.0, 1.5, 0.0),    # east
+    "gnb4_c1": (0.0, 1.5, 200.0),    # north
+    "gnb4_c2": (-200.0, 1.5, 0.0),   # west
+    "gnb4_c3": (0.0, 1.5, -200.0),   # south
 }
 
 def ue_set_static_position(ue_id: str, serving_cell: str, idx: int) -> bool:
-    """以 cell center 為 anchor, idx 偏移避免 UE 重疊."""
-    cx, cy, cz = _CELL_CENTER.get(serving_cell, (0.0, 0.0, 1.5))
-    # idx 0..N spread 在 cell 周圍 5m 範圍
+    """以 cell center 為 anchor, idx 偏移避免 UE 重疊 (Y-up, 偏移在 X / Z 水平面)."""
+    cx, cy, cz = _CELL_CENTER.get(serving_cell, (0.0, 1.5, 0.0))
+    # idx 0..N spread 在 cell 水平 X-Z 周圍 5m 範圍, Y(高度) 保持 cy.
     offset_x = (idx % 4) * 3.0 - 4.5
-    offset_y = ((idx // 4) % 3) * 3.0 - 3.0
-    x, y, z = cx + offset_x, cy + offset_y, cz
+    offset_z = ((idx // 4) % 3) * 3.0 - 3.0
+    x, y, z = cx + offset_x, cy, cz + offset_z
     resp = _post(f"{UE_BASE}/api/v0.1/UE/Trajectory/set",
                  {"ue_id": ue_id, "waypoints": [{"x": x, "y": y, "z": z, "t_ms": 0}],
                   "mode": "hold"})

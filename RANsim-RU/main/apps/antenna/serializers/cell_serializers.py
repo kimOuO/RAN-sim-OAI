@@ -25,6 +25,7 @@ class CellWriteSerializer(serializers.Serializer):
     position = _CellPositionSerializer()
     frequency_ghz = serializers.FloatField(default=2.5)
     bandwidth_mhz = serializers.FloatField(default=100.0)
+    gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
 
 
 class CellListWriteSerializer(serializers.Serializer):
@@ -44,6 +45,7 @@ class CellReadSerializer(serializers.ModelSerializer):
             "position",
             "frequency_ghz",
             "bandwidth_mhz",
+            "gnb_id",
             "cell_updated_at",
         ]
 

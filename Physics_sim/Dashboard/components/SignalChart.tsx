@@ -44,7 +44,9 @@ export function SignalChart({ data, height = 300 }: Props) {
           <YAxis />
           <Tooltip />
           <Legend />
-          {Object.keys(data[0])
+          {/* 由「最新一個 point」決定要畫哪些線 — 不要用 data[0]，
+              否則被刪掉的 UE 因為還在最舊的 100 點裡會永遠出現「鬼魂線」。*/}
+          {Object.keys(data[data.length - 1])
             .filter((key) => key !== 'tick')
             .map((key, idx) => (
               <Line

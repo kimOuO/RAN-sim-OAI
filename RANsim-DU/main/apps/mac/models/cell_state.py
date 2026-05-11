@@ -11,6 +11,8 @@ class CellState(models.Model):
     freq_ghz = models.FloatField(default=3.5)
     bw_mhz = models.FloatField(default=100.0)
     served_plmn = models.CharField(max_length=16, default="00101")
+    gnb_id = models.CharField(max_length=64, db_index=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
     cell_created_at = models.BigIntegerField()
     cell_updated_at = models.BigIntegerField()
 

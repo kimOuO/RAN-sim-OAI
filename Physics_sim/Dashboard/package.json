@@ -9,9 +9,12 @@
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
+    "@nivo/core": "^0.99.0",
+    "@nivo/sankey": "^0.99.0",
     "axios": "^1.15.2",
     "next": "^15.0.3",
     "react": "^19.2.5",
+    "react-circular-progressbar": "^2.2.0",
     "react-dom": "^19.2.5",
     "react-is": "^19.2.5",
     "recharts": "^3.8.1"

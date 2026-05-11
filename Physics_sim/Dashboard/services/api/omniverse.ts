@@ -240,6 +240,16 @@ export const buildScene = async (): Promise<void> => {
   await omniverseApiClient.post('/api/v0.1/RAN/Scene/SceneController/build', {});
 };
 
+// ─── Kit Animation Control ──────────────────────────────────────
+
+export const startAnimation = async (): Promise<void> => {
+  await omniverseApiClient.post('/api/v0.1/RAN/Scene/AnimationController/start', {});
+};
+
+export const stopAnimation = async (): Promise<void> => {
+  await omniverseApiClient.post('/api/v0.1/RAN/Scene/AnimationController/stop', {});
+};
+
 export const clearScene = async (): Promise<void> => {
   try {
     console.log('%c[omniverseApi] 正在調用 SceneController/clear', 'color: #ff0000; font-weight: bold');

@@ -4,5 +4,8 @@ django-cors-headers==4.4.0
 psycopg2-binary==2.9.9
 requests==2.32.3
 python-dotenv==1.0.1
+# ASGI / WebSocket — E2 Indication push（對齊 OAI RIC Indication SCTP push 語意）
+channels==4.1.0
+daphne==4.1.2
 # ran-sim-protocol is installed at runtime by shell/entrypoint.sh
 # from the volume mount /tmp/ran-sim-protocol

@@ -11,6 +11,8 @@ class CellConfig:
     frequency_ghz: float
     bandwidth_mhz: float
     served_plmn: str = "00101"
+    gnb_id: str = ""
+    is_active: bool = True
 
 
 @dataclass

@@ -12,6 +12,8 @@ class Cell(models.Model):
     name = models.CharField(max_length=128, unique=True, db_index=True)
     pci = models.IntegerField(db_index=True)
     azimuth_deg = models.FloatField(default=0.0)
+    gnb_id = models.CharField(max_length=64, db_index=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
 
     position_x = models.FloatField()
     position_y = models.FloatField()

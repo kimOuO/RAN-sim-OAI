@@ -88,6 +88,7 @@ def _build_setup_message() -> F1Setup:
                     frequency_ghz=c.freq_ghz,
                     bandwidth_mhz=c.bw_mhz,
                     served_plmn=c.served_plmn,
+                    gnb_id=getattr(c, "gnb_id", "") or "",
                 ),
             )
     else:
