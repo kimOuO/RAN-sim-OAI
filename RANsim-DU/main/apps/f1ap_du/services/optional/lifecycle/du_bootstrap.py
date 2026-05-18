@@ -89,6 +89,8 @@ def _build_setup_message() -> F1Setup:
                     bandwidth_mhz=c.bw_mhz,
                     served_plmn=c.served_plmn,
                     gnb_id=getattr(c, "gnb_id", "") or "",
+                    # P2.9: F1 Setup 把 OAI 真實 nr_cellid 帶上 CU
+                    nr_cellid=getattr(c, "nr_cellid", None),
                 ),
             )
     else:

@@ -22,12 +22,18 @@ from main.utils.env_loader import get_int, get_str
 # - ranFunctionId KPM=2, RC=3（O-RAN convention）
 _DEFAULT_MCC = "208"
 _DEFAULT_MNC = "95"
-_DEFAULT_GNB_ID_HEX = "0x000038"
+# 2026-05-16: 對齊 OAI gNB_ID 值 0xe00 = 3584。E2AP ASN.1 強制 BIT STRING SIZE(22..32),
+# 所以 wire format 是 22-bit (0x000e00),value 與 OAI 12-bit 0xe00 相同。
+_DEFAULT_GNB_ID_HEX = "0x000e00"
 _DEFAULT_GNB_ID_LENGTH = 22
 _DEFAULT_RAN_FUNC_ID_KPM = 2
 _DEFAULT_RAN_FUNC_ID_RC = 3
 _DEFAULT_KPM_OID = "1.3.6.1.4.1.53148.1.2.2.2"  # E2SM-KPM v2.0.03
 _DEFAULT_RC_OID = "1.3.6.1.4.1.53148.1.1.2.3"   # E2SM-RC  v01.03
+# 2026-05-16: TAC / SST env shells — 接口存在但邏輯未實作。
+# 對齊 OAI tracking_area_code=0xa000、snssaiList.sst=1。
+_DEFAULT_TAC = 0xa000
+_DEFAULT_SST = 1
 
 
 def _normalize_mnc(mnc: str) -> str:
@@ -54,6 +60,10 @@ def _read_du_components() -> list[dict]:
     # Lazy import 避免 Django app registry 在 module-load 階段未 ready
     from main.apps.cu_cp.models import CellConfig, DuRegistry
 
+    # TAC / SST 走 env (P3.2 / P3.3 空殼接口 — 邏輯未實作,只是讓 PDU 帶上正確值)
+    tac = get_int("SERVED_TAC", _DEFAULT_TAC)
+    sst = get_int("SST", _DEFAULT_SST)
+
     components: list[dict] = []
     for du in DuRegistry.objects.all().order_by("gnb_du_id"):
         cells = CellConfig.objects.filter(served_by_du_id=du.gnb_du_id).order_by("cell_id")
@@ -61,10 +71,13 @@ def _read_du_components() -> list[dict]:
         for c in cells:
             cell_list.append({
                 "cell_id": c.cell_id,
-                "nr_cell_id": c.cell_id,    # encoder 會 hash → 36-bit NR-CI
+                "nr_cell_id": c.cell_id,    # legacy: encoder hash 的輸入(平台 ID)
+                # P2.6: explicit nr_cellid 整數 (OAI 真值, e.g. 12345678),encoder 優先用
+                "nr_cellid": getattr(c, "nr_cellid", None),
                 "pci": c.pci,
-                "tac": 1,                    # sim 暫時固定 TAC=1
+                "tac": tac,
                 "served_plmn": c.served_plmn,
+                "s_nssai": {"sst": sst},
                 "is_active": c.is_active,
             })
         if not cell_list:

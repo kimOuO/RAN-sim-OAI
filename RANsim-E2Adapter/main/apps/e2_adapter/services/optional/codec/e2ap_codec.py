@@ -142,21 +142,26 @@ def _pack_plmn_bcd(plmn_str: str) -> bytes:
     return b"\x00\x00\x00"
 
 
-def _hash_nr_cell_id(cell_id: str) -> int:
-    """36-bit NR Cell Identity, deterministic hash from logical name.
+def _hash_nr_cell_id(cell_id: str, explicit: int | None = None) -> int:
+    """36-bit NR Cell Identity, explicit-first then SHA-1 fallback.
+
+    2026-05-16 P2.3: 加 explicit 參數對齊 OAI 真實 nr_cellid (e.g. 12345678).
+    有 explicit 就用,沒有就走 SHA-1 hash(原行為,跟 sim CU compute_nr_cell_id 一致)。
 
     AJ1 critical: 必須跟 sim CU `compute_nr_cell_id` (cu_cp.actors.e2_control_actor)
-    同 hash function (SHA-1 first 5 bytes & 36-bit), 否則 F1 component config
+    同 resolution rule (explicit-first → hash fallback), 否則 F1 component config
     送 NCI_A, 但 CU resolve_target_cell 算 NCI_B, RIC fire control_handover
     target_cgi.nr_cell_id 永遠對不到 sim cell → HO fail.
 
     3GPP TS 38.413 NR Cell Identity 是 36-bit. OAI 真實是 gnb_id + local_cell_id
-    拼出來; sim 用 SHA-1 hash 取前 5 byte 截 36 bit 模擬, deterministic 且
-    collision 機率 < 1e-7.
+    拼出來; sim 沒有 OAI 真值時用 SHA-1 hash 取前 5 byte 截 36 bit 模擬。
     """
+    mask = (1 << 36) - 1
+    if explicit is not None:
+        return int(explicit) & mask
     import hashlib
     h = hashlib.sha1((cell_id or "").encode("utf-8")).digest()
-    return int.from_bytes(h[:5], "big") & ((1 << 36) - 1)
+    return int.from_bytes(h[:5], "big") & mask
 
 
 def _encode_f1_cells_payload(gnb_du_id: int, cells: list[dict]) -> bytes:
@@ -183,7 +188,10 @@ def _encode_f1_cells_payload(gnb_du_id: int, cells: list[dict]) -> bytes:
         out.append(len(cid))
         out += cid
         out += _pack_plmn_bcd(c.get("served_plmn") or "")
-        nr_ci = _hash_nr_cell_id(c.get("nr_cell_id") or c.get("cell_id") or "")
+        # P2.3: cell dict 若帶整數 nr_cellid (OAI 真值) 就直接用,否則 hash cell_id
+        explicit_nr_cellid = c.get("nr_cellid")  # P2.6 sim_http_client 拉進來的真值
+        nr_id_field = c.get("nr_cell_id") or c.get("cell_id") or ""
+        nr_ci = _hash_nr_cell_id(nr_id_field, explicit=explicit_nr_cellid)
         out += int(nr_ci & ((1 << 40) - 1)).to_bytes(5, "big")
         out += int(c.get("pci") or 0).to_bytes(2, "big")
         out += int(c.get("tac") or 0).to_bytes(3, "big")

@@ -40,20 +40,22 @@ class TickController:
     @require_http_methods(["POST"])
     def start(request):
         ok = get_tick_runner().start()
-        if not ok:
-            return error_response("Tick already running", http_status=409)
-        logger.info("Tick driver started")
-        return success_response(_status_dict(), "Started")
+        # AG12: idempotent — 已 running 再 call 不再回 409, 前端 retry 不會 noise.
+        if ok:
+            logger.info("Tick driver started")
+            return success_response(_status_dict(), "Started")
+        return success_response(_status_dict(), "Already running (no-op)")
 
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
     def stop(request):
         ok = get_tick_runner().stop()
-        if not ok:
-            return error_response("Tick not running", http_status=409)
-        logger.info("Tick driver stopped")
-        return success_response(_status_dict(), "Stopped")
+        # AG12: idempotent — 已 stopped 再 call 不再回 409.
+        if ok:
+            logger.info("Tick driver stopped")
+            return success_response(_status_dict(), "Stopped")
+        return success_response(_status_dict(), "Already stopped (no-op)")
 
     @staticmethod
     @csrf_exempt
@@ -112,10 +114,32 @@ class TickController:
 
         runner = get_tick_runner()
         incoming_ids = {u.get("ue_id") for u in ues_in if u.get("ue_id")}
-        existing_ids = set(runner._ue_registry.keys())
-        stale = existing_ids - incoming_ids
+
+        # AG10-extended: stale = (in-memory ∪ DB orphans) − incoming.
+        # 不只清 _ue_registry, 也掃 MAC/RLC DB 把 orphans (從沒走 CU 路徑被別人手動建的)
+        # 一併走完整 F1AP UE Context Release cleanup, 不再殘留。
+        from main.apps.mac.models.ue_mac_state import UeMacState
+        from main.apps.rlc.models.rlc_entity import RlcEntity
+        from main.apps.mac.services.optional.harq.harq_manager import get_harq_manager
+        from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import (
+            get_pm_aggregator,
+        )
+        from main.apps.rlc.services.optional.entities import factory as rlc_factory
+
+        existing_in_mem = set(runner._ue_registry.keys())
+        existing_in_db = (
+            set(UeMacState.objects.values_list("ue_id", flat=True)) |
+            set(RlcEntity.objects.values_list("ue_id", flat=True))
+        )
+        stale = (existing_in_mem | existing_in_db) - incoming_ids
 
         for old_id in stale:
+            # 對齊 f1ap_router_actor.ue_context_release 同條 path:
+            UeMacState.objects.filter(ue_id=old_id).delete()
+            RlcEntity.objects.filter(ue_id=old_id).delete()
+            rlc_factory.unregister_ue(old_id)
+            get_harq_manager().remove_ue(old_id)
+            get_pm_aggregator().remove_ue(old_id)
             runner.unregister_ue(old_id)
 
         for u in ues_in:

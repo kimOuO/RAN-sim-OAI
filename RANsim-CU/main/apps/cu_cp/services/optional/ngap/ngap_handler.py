@@ -70,10 +70,16 @@ def _mock_amf_respond_initial_context_setup(initial_ue_payload: dict[str, Any]) 
 class NgapHandler:
     @staticmethod
     def build_ng_setup_request() -> dict[str, Any]:
+        # 2026-05-16: plmn_id 改成從 MCC+MNC env 衍生 (P3.1),不再硬編 "00101"。
+        # TAC default 0xa000 對齊 OAI conf。SST 加進 supported S-NSSAI list (P3.3 空殼)。
+        mcc = get_str("PLMN_MCC", "001")
+        mnc = get_str("PLMN_MNC", "01")
+        plmn_id = get_str("PLMN_ID", f"{mcc}{mnc}")
         return {
-            "gnb_id": get_int("GNB_ID", default=57344),
-            "plmn_id": get_str("PLMN_ID", "00101"),
-            "served_tac": [get_int("SERVED_TAC", default=1)],
+            "gnb_id": get_int("GNB_ID", default=0xe00),
+            "plmn_id": plmn_id,
+            "served_tac": [get_int("SERVED_TAC", default=0xa000)],
+            "supported_s_nssai": [{"sst": get_int("SST", default=1)}],
         }
 
     @staticmethod

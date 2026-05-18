@@ -257,6 +257,13 @@ export function TopDownMap({
           const py = sz(gz);
           const color = toRgb(g.color);
           const coverageR = (37.5 / (SCENE_MAX - SCENE_MIN)) * width;
+          // AK8 UX: 為每個 sector 畫 azimuth 箭頭。Sionna 慣例 azimuth=0 沿 +X 軸；
+          // 而 sx() 把 +X 鏡到螢幕左 → 0° 箭頭視覺指向螢幕左邊（與使用者觀察一致）。
+          // 用 sx/sz 映射端點，自動套用同一個鏡射 + 縮放，不用手算 screen delta。
+          const sectors: Array<{ az: number; pci?: number }> = (g.cells && g.cells.length > 0)
+            ? g.cells.map((c: any) => ({ az: c.azimuth_deg ?? 0, pci: c.pci }))
+            : [{ az: g.azimuth_deg ?? 0, pci: g.pci }];
+          const arrowLenM = 40; // 世界座標 40 m；視覺長度依場景縮放跟著變
           return (
             <g key={`gnb-${g.name}`} opacity={isBeingDragged ? 0.7 : 1}
                style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
@@ -274,6 +281,41 @@ export function TopDownMap({
                 onClick={() => onSelectObject?.({ type: 'gnb', name: g.name })}
                 style={{ cursor: 'pointer' }}
               />
+              {/* Azimuth arrows per sector — 箭頭尖端標 PCI */}
+              {sectors.map((s, idx) => {
+                const azRad = (s.az * Math.PI) / 180;
+                const endX = gx + arrowLenM * Math.cos(azRad);
+                const endZ = gz + arrowLenM * Math.sin(azRad);
+                const ex = sx(endX);
+                const ey = sz(endZ);
+                return (
+                  <g key={`gnb-${g.name}-sec-${idx}`} pointerEvents="none">
+                    <line
+                      x1={px} y1={py} x2={ex} y2={ey}
+                      stroke={color} strokeWidth={2} strokeOpacity={0.85}
+                      markerEnd={`url(#az-arrow-${g.name}-${idx})`}
+                    />
+                    {s.pci !== undefined && (
+                      <text
+                        x={ex} y={ey - 4}
+                        fill={color} fontSize={9} fontWeight={500}
+                        textAnchor="middle"
+                      >
+                        pci{s.pci}
+                      </text>
+                    )}
+                    <defs>
+                      <marker
+                        id={`az-arrow-${g.name}-${idx}`}
+                        viewBox="0 0 10 10" refX="9" refY="5"
+                        markerWidth="6" markerHeight="6" orient="auto-start-reverse"
+                      >
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
+                      </marker>
+                    </defs>
+                  </g>
+                );
+              })}
               {/* Center dot */}
               <circle
                 cx={px}

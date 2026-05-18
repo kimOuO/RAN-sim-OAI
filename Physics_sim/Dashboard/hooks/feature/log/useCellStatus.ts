@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+// AG16: DU MAC Cells 改用共享 useDuMacCells (跟 useSystemOverview 共用一條 fetch).
+// 此 hook 只 own KPM Reporter + HARQ 兩條 fetch.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CU_BASE_URL, DU_BASE_URL } from '@/config';
+import { useDuMacCells } from './useDuMacCells';
 
 export interface CellInfo {
   cell_id: string;
@@ -10,6 +13,8 @@ export interface CellInfo {
   freq_ghz?: number;
   bw_mhz?: number;
   is_active: boolean;
+  // 2026-05-16 P4.2: 對應 DuMacCell.nr_cellid
+  nr_cellid?: number | null;
 }
 
 export interface UeMacState {
@@ -74,15 +79,26 @@ export function useCellStatus(): State {
     aggregates: [], ueStates: [], cells: [], harq: [], loading: true,
   });
   const sinrHistoryRef = useRef<Map<string, number[]>>(new Map());
+  const cellsSnap = useDuMacCells();
+
+  // 把共享 cells (DuMacCell 形狀) 標準化成 CellInfo 形狀
+  const cells: CellInfo[] = useMemo(() => (cellsSnap.data || []).map(c => ({
+    cell_id: c.cell_id || (c as any).name || '',
+    pci: c.pci,
+    total_prb: c.total_prb,
+    freq_ghz: c.freq_ghz ?? (c as any).frequency_ghz,
+    bw_mhz: c.bw_mhz ?? (c as any).bandwidth_mhz,
+    is_active: c.is_active !== false,
+    nr_cellid: c.nr_cellid ?? null,
+  })), [cellsSnap.data]);
+  // 用 ref 讓 setInterval 內的 closure 永遠讀到最新 cells (不會 stale 在初次值).
+  const cellsRef = useRef<CellInfo[]>(cells);
+  cellsRef.current = cells;
 
   useEffect(() => {
     let stop = false;
     const tick = async () => {
-      const [cellR, kpmR, harqR] = await Promise.allSettled([
-        // Cell topology — DB 落盤 OK
-        fetch(`${DU_BASE_URL}/api/v0.1/DU/MAC/MacCellController/read`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-        }).then(r => r.json()),
+      const [kpmR, harqR] = await Promise.allSettled([
         // RAN runtime UE state — 即時值
         fetch(`${CU_BASE_URL}/api/v0.1/CU/E2/E2KpmReporter/read`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -93,19 +109,6 @@ export function useCellStatus(): State {
         }).then(r => r.json()),
       ]);
       if (stop) return;
-
-      // Cells
-      const cellsRaw = cellR.status === 'fulfilled'
-        ? (cellR.value?.data?.cells || cellR.value?.data || [])
-        : [];
-      const cells: CellInfo[] = (Array.isArray(cellsRaw) ? cellsRaw : []).map((c: any) => ({
-        cell_id: c.cell_id || c.name || '',
-        pci: c.pci,
-        total_prb: c.total_prb,
-        freq_ghz: c.freq_ghz ?? c.frequency_ghz,
-        bw_mhz: c.bw_mhz ?? c.bandwidth_mhz,
-        is_active: c.is_active !== false,
-      }));
 
       // UE states from KPM — only CONNECTED + has serving_cell
       const kpmUes = kpmR.status === 'fulfilled'
@@ -141,7 +144,8 @@ export function useCellStatus(): State {
       }));
 
       // ── per-cell aggregate ──
-      const aggregates: CellAggregate[] = cells.map(cell => {
+      const currentCells = cellsRef.current;
+      const aggregates: CellAggregate[] = currentCells.map(cell => {
         const ues = ueStates.filter(u => u.serving_cell_id === cell.cell_id);
         const prbUsedSum = ues.reduce((acc, u) => acc + (u.last_allocated_prb_dl || 0), 0);
         const prbCap = cell.total_prb || 273;
@@ -170,7 +174,7 @@ export function useCellStatus(): State {
         };
       });
 
-      setState({ aggregates, ueStates, cells, harq, loading: false });
+      setState({ aggregates, ueStates, cells: currentCells, harq, loading: false });
     };
     tick();
     const id = setInterval(tick, POLL_MS);

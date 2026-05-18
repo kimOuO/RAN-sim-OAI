@@ -95,13 +95,32 @@ function CellCard({ agg, hoCount }: { agg: CellAggregate; hoCount: number }) {
       {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C_BORDER}`,
+        marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${C_BORDER}`,
       }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: C_TEXT, fontFamily: 'monospace' }}>
           {agg.cell.cell_id}
         </span>
         <span style={{ fontSize: 11, color: C_MUTED }}>
           {agg.ueCount} UE attached
+        </span>
+      </div>
+
+      {/* 2026-05-16 P4.2: PCI + nr_cellid 對齊資訊。
+          nr_cellid 有填 (explicit OAI 真值) → 綠色 +「OAI」標籤
+          沒填 → 灰色 +「hash」標籤 (走 SHA-1 fallback) */}
+      <div style={{
+        display: 'flex', gap: 12, marginBottom: 10, fontSize: 10, fontFamily: 'monospace',
+      }}>
+        <span style={{ color: C_MUTED }}>
+          PCI <span style={{ color: C_TEXT }}>{agg.cell.pci ?? '—'}</span>
+        </span>
+        <span style={{ color: C_MUTED }}>
+          nr_cellid{' '}
+          {agg.cell.nr_cellid != null ? (
+            <span style={{ color: '#10b981' }}>{agg.cell.nr_cellid} (OAI)</span>
+          ) : (
+            <span style={{ color: '#6b7280' }}>hash</span>
+          )}
         </span>
       </div>
 

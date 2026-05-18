@@ -12,6 +12,9 @@ export interface RingEntry {
   duration_ms: number;
   category: string;
   ue_id: string | null;
+  // 2026-05-16 P4.3: PDU payload (request + response JSON) — 給 RanLogTable 展開檢視
+  request_body?: string;
+  response_body?: string;
 }
 
 export type CategoryGroup =

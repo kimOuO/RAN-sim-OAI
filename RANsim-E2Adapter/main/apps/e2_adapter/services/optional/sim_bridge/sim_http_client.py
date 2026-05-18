@@ -32,6 +32,7 @@ class _BridgeState:
         self._lock = threading.Lock()
         self.last_e2_node_id_at_ms = 0
         self.last_error = ""
+        self.last_error_at_ms = 0
 
     def mark_success(self) -> None:
         with self._lock:
@@ -41,13 +42,24 @@ class _BridgeState:
     def mark_error(self, err: str) -> None:
         with self._lock:
             self.last_error = err
+            self.last_error_at_ms = int(time.time() * 1000)
 
     def snapshot(self) -> dict:
         with self._lock:
+            # AG14: error stale 超過 60s 就 hide — 避免一次性的 transient 錯誤
+            # (例如 CU 重啟 1 秒撞到 connection reset) 之後一直停在 status 上,
+            # 讓人誤以為現在還在壞。E2 Setup 是一次性的, 後續不再 fetch CU,
+            # 所以 error timestamp 不會被覆蓋, 必須在 status read 端主動 stale-out.
+            now_ms = int(time.time() * 1000)
+            err = self.last_error
+            err_at = self.last_error_at_ms
+            if err and err_at and (now_ms - err_at) > 60_000:
+                err = ""
             return {
                 "cu_url": get_str("SIM_CU_URL", ""),
                 "last_e2_node_id_at_ms": self.last_e2_node_id_at_ms,
-                "last_error": self.last_error,
+                "last_error": err,
+                "last_error_at_ms": err_at,
             }
 
 

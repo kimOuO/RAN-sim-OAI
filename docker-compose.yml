@@ -56,16 +56,25 @@ services:
       # globalE2node-ID — e2-adapter 透過 /CU/E2/E2NodeId/read 拿
       PLMN_MCC: "208"
       PLMN_MNC: "95"
-      GNB_ID_HEX: "0x000038"
+      # AC5 — 對齊 OAI gNB_ID 值 0xe00 (= 3584)。E2AP ASN.1 BIT STRING SIZE(22..32) 強制至少 22-bit,
+      # OAI conf 寫 0xe00 但 ASN.1 wire 上是 22-bit (0x000e00),value 相同。
+      GNB_ID_HEX: "0x000e00"
       GNB_ID_LENGTH: "22"
       RAN_FUNC_ID_KPM: "2"
       RAN_FUNC_ID_RC: "3"
+      # 2026-05-16 P3.2/P3.3: TAC / SST env shells — 對齊 OAI conf。
+      # 接口存在,值會編進 NGAP NG Setup PDU,但平台內部不做 TAU / slice 分流邏輯。
+      SERVED_TAC: "0xa000"
+      SST: "1"
       # AC4 — A3 handover threshold 調軟讓 demo 觀感好 (HO 易觸發)
       # 預設 1.0 / 0.5 / 80 太嚴, AC1 RSRP calibration 後 multi-UE 場景幾乎不觸發.
       # AK11: env 是 boot-time default, runtime 用 Dashboard 控制 A3 enable/offset.
       HO_A3_OFFSET_DB: "0.5"
       HO_A3_HYSTERESIS_DB: "0.3"
       HO_TTT_MS: "60"
+      # 2026-05-17 #1: handover_executor 落地後 fire-and-forget 推給 Omniverse,
+      # 讓 playback 把 HO 切回對應 frame。空字串 = 停推。
+      OMNIVERSE_URL: "http://${SERVER_IP:-host.docker.internal}:8001"
     volumes:
       - ./RANsim-CU:/app
       - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
@@ -76,6 +85,8 @@ services:
         condition: service_healthy
     networks:
       - ransim-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ── DU（MAC + RLC + PHY-High + F1AP + FAPI + Tick）──────────
   du:
@@ -98,7 +109,12 @@ services:
       HTTP_RU_HOST: ru
       HTTP_RU_PORT: 8000
       LOG_DIR: /app/logs
-      SIM_TICK_MS: 500
+      # AL: tick 從 500ms → 50ms (10x drain rate) — 跟上 UE 100ms inject 不堆 buffer.
+      SIM_TICK_MS: 50
+      # AL: PM 報告 window (wall-clock 秒). default 1.0s. tick_runner 自動算
+      # REPORT_EVERY_N_TICKS = round(PM_WINDOW_SEC * 1000 / SIM_TICK_MS).
+      # SIM_TICK_MS=50 配 PM_WINDOW_SEC=1.0 → 20 ticks/window.
+      PM_WINDOW_SEC: "1.0"
       # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
       # 不再寫死 dummy "00101"。caller 不指定時 default 走 env 衍生.
       PLMN_MCC: "208"
@@ -146,6 +162,10 @@ services:
       RU_NUMEROLOGY: 1
       RU_NOISE_FLOOR_DBM: -95
       RU_CHANNEL_CACHE_TTL_SEC: 0.5
+      # AC5 — RU link budget。原本程式 fallback (43.0 / 36.0),移到 compose 集中管理。
+      # antenna_gain 已併入 scene_calibration_loss (歷史 50 → 36 = +14 dBi 內含)。
+      RU_TX_POWER_DBM: "43.0"
+      RU_SCENE_CALIBRATION_LOSS_DB: "36.0"
       # AK6: cell→Sionna gNB map 改成完全 DB-driven, 不再用 env override.
       # Dashboard 創 gNB 後 call /Physics/Scene/SceneGateway/init 重建 Sionna scene,
       # path_gain dict 就會用用戶輸入的 gnb name (e.g. "gnb4") 當 key.
@@ -209,6 +229,9 @@ services:
       dockerfile: Dockerfile.dev   # dev mode → 支援 hot-reload + bind mount
     image: ransim-dashboard:dev
     container_name: ransim-dashboard
+    # 啟動時 npm install 補裝 package.json 新增的 dep（已裝的會被 skip）
+    # 避免 anonymous volume 把 node_modules 凍在 image build 時的狀態
+    command: sh -c "npm install --legacy-peer-deps && npm run dev"
     environment:
       # 跨機器存取：browser 在 windows 開 :3010，但 backend port 用 server IP 才連得到
       # 改機器部署時改 .env 的 SERVER_IP 即可
@@ -298,8 +321,12 @@ services:
       OMNIVERSE_KIT_URL: "http://${SERVER_IP:-localhost}:8080"
       # Tick 週期
       UE_TRAJECTORY_PERIOD_MS: "100"
-      UE_MEASUREMENT_PERIOD_MS: "80"
+      # AC5 — 原 80 ms ≥ HO_TTT_MS 60 ms,A3 觸發條件量不到第二次。降到 40 ms 留 buffer。
+      UE_MEASUREMENT_PERIOD_MS: "40"
       UE_LIST_POLL_PERIOD_SEC: "5"
+      # AL: batch inject 模式 — on = per-packet enqueue_ts (對齊 OAI),
+      # off = 舊巨型 SDU (向後相容). 初期 default off, RIC team ready 後切 on.
+      INJECT_BATCH_MODE: "on"
     volumes:
       - ./RANsim-UE:/app
     ports:

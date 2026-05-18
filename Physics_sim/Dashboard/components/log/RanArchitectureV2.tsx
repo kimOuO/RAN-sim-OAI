@@ -3,8 +3,7 @@
 import { useMemo } from 'react';
 import { useSystemOverview } from '@/hooks/feature/log/useSystemOverview';
 import { useCellStatus } from '@/hooks/feature/log/useCellStatus';
-import { useHandoverEvents } from '@/hooks/feature/log/useHandoverEvents';
-import type { RingEntry } from '@/lib/logStats';
+import { useHandoverEventApi } from '@/hooks/feature/log/useHandoverEventApi';
 
 const C_CARD = '#111827';
 const C_BORDER = '#374151';
@@ -16,18 +15,14 @@ const C_DU = '#10b981';
 const C_RU = '#f59e0b';
 const C_RIC = '#a855f7';
 
-interface Props {
-  logs: RingEntry[];
-}
-
 /**
  * 三層 RAN 拓樸圖：xApp/RIC ↔ CU ↔ DU ↔ RU。
  * 每個方塊內顯示 RAN KPI（不是 msg/s rate）。連線顯示業務協定名 + 該層當前活動 KPI。
  */
-export function RanArchitectureV2({ logs }: Props) {
+export function RanArchitectureV2() {
   const overview = useSystemOverview();
   const cellStatus = useCellStatus();
-  const ho = useHandoverEvents(logs, 60);
+  const ho = useHandoverEventApi(60);
 
   const avgPrbPct = useMemo(() => {
     if (cellStatus.aggregates.length === 0) return null;

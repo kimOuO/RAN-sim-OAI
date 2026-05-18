@@ -10,6 +10,10 @@ urlpatterns = [
     path("RlcEntityController/delete", RlcEntityController.delete, name="rlc_entity_delete"),
     path("RlcDataController/inject_sdu", RlcDataController.inject_sdu, name="rlc_data_inject_sdu"),
     path(
+        "RlcDataController/inject_sdu_batch", RlcDataController.inject_sdu_batch,
+        name="rlc_data_inject_sdu_batch",
+    ),
+    path(
         "RlcDataController/read_buffer_status",
         RlcDataController.read_buffer_status,
         name="rlc_data_buffer_status",

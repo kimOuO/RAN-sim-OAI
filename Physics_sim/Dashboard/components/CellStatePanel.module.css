@@ -1,0 +1,93 @@
+.box {
+  background: #111827;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  margin-top: 16px;
+}
+
+.box h3 {
+  margin: 0 0 12px;
+  color: #f3f4f6;
+  font-size: 16px;
+}
+
+.count {
+  color: #9ca3af;
+  font-weight: normal;
+  font-size: 13px;
+}
+
+.empty {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: #0f172a;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.active {
+  border-color: #064e3b;
+}
+
+.inactive {
+  border-color: #7f1d1d;
+  opacity: 0.85;
+}
+
+.row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.cellId {
+  color: #e5e7eb;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.badgeOn, .badgeOff {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.badgeOn {
+  background: #064e3b;
+  color: #6ee7b7;
+}
+
+.badgeOff {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+
+.row2, .row3 {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-top: 4px;
+}
+
+.metaLabel {
+  color: #6b7280;
+}
+
+.metaValue {
+  color: #cbd5e1;
+}

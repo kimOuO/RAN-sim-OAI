@@ -2,8 +2,8 @@
 
 import { useMemo } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
-import { useHandoverEvents, type HoTrigger } from '@/hooks/feature/log/useHandoverEvents';
-import type { RingEntry } from '@/lib/logStats';
+import { useHandoverEventApi } from '@/hooks/feature/log/useHandoverEventApi';
+import type { HoTrigger } from '@/hooks/feature/log/useHandoverEvents';
 
 const C_CARD = '#111827';
 const C_BORDER = '#374151';
@@ -17,13 +17,15 @@ const TRIG_COLORS: Record<HoTrigger, string> = {
   UNKNOWN: '#6b7280',
 };
 
+const sourceNodeId = (cellId: string) => `${cellId} source`;
+const targetNodeId = (cellId: string) => `${cellId} target`;
+
 interface Props {
-  logs: RingEntry[];
   windowSec?: number;
 }
 
-export function HandoverMap({ logs, windowSec = 300 }: Props) {
-  const events = useHandoverEvents(logs, windowSec);
+export function HandoverMap({ windowSec = 300 }: Props) {
+  const events = useHandoverEventApi(windowSec);
 
   const counts = useMemo(() => {
     const c: Record<HoTrigger, number> = {
@@ -34,22 +36,34 @@ export function HandoverMap({ logs, windowSec = 300 }: Props) {
   }, [events]);
 
   const sankeyData = useMemo(() => {
-    // 只把 source / target 都已知的事件畫進 sankey
-    const valid = events.filter(e =>
-      e.source_cell && e.target_cell &&
-      e.source_cell !== 'unknown' && e.target_cell !== 'unknown',
-    );
-    if (valid.length === 0) return null;
-
-    const nodeSet = new Set<string>();
-    valid.forEach(e => { nodeSet.add(e.source_cell); nodeSet.add(e.target_cell); });
-    const nodes = Array.from(nodeSet).map(id => ({ id }));
-
+    const nodeMap = new Map<string, { id: string }>();
     const linkMap = new Map<string, number>();
-    valid.forEach(e => {
-      const k = `${e.source_cell}>>${e.target_cell}`;
+
+    for (const e of events) {
+      const sourceCell = e.source_cell?.trim();
+      const targetCell = e.target_cell?.trim();
+      if (
+        !sourceCell || !targetCell ||
+        sourceCell === 'unknown' || targetCell === 'unknown' ||
+        sourceCell === targetCell
+      ) {
+        continue;
+      }
+
+      // d3-sankey cannot render directed cycles. HO traffic can legitimately
+      // bounce both ways, so render it as source-side cells flowing into
+      // target-side cells instead of reusing the same node id on both sides.
+      const source = sourceNodeId(sourceCell);
+      const target = targetNodeId(targetCell);
+      nodeMap.set(source, { id: source });
+      nodeMap.set(target, { id: target });
+
+      const k = `${source}>>${target}`;
       linkMap.set(k, (linkMap.get(k) || 0) + 1);
-    });
+    }
+    if (linkMap.size === 0) return null;
+
+    const nodes = Array.from(nodeMap.values());
     const links = Array.from(linkMap.entries()).map(([k, value]) => {
       const [source, target] = k.split('>>');
       return { source, target, value };
@@ -118,9 +132,7 @@ export function HandoverMap({ logs, windowSec = 300 }: Props) {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: C_MUTED, fontSize: 11, textAlign: 'center', padding: 16,
             }}>
-              Sankey 需要明確的 source/target cell。
-              <br />目前 ring buffer 只記 path 不記細節。
-              <br />未來加 <code>/CU/Mobility/HandoverEvent/list</code> 後可啟用。
+              過去 {windowSec}s 內無 Handover 事件。
             </div>
           )}
           <div style={{

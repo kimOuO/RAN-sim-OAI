@@ -427,6 +427,20 @@ export function ObjectForm({
                               handleInputChange(field.name, [...cells]);
                             }}
                           />
+                          {/* 2026-05-16 P2.1: OAI 真實 nr_cellid (36-bit int) 對齊欄。
+                              留空走 SHA-1 hash fallback;有填 → e2adapter 編 PDU 用此值 */}
+                          <input
+                            type="number"
+                            placeholder="nr_cellid (OAI int, 可留空)"
+                            min={0}
+                            value={cell.nr_cellid ?? ''}
+                            onChange={(e) => {
+                              const cells = formData[field.name];
+                              const v = e.target.value;
+                              cells[i].nr_cellid = v === '' ? undefined : parseInt(v, 10);
+                              handleInputChange(field.name, [...cells]);
+                            }}
+                          />
                         </div>
                       </div>
                     ))}

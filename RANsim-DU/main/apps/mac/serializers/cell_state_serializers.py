@@ -11,6 +11,8 @@ class CellStateWriteSerializer(serializers.Serializer):
     bw_mhz = serializers.FloatField(default=100.0)
     # 對齊 globalE2node-ID PLMN — caller 沒帶就 env 衍生 (PLMN_MCC + PLMN_MNC).
     served_plmn = serializers.CharField(max_length=16, default=default_served_plmn)
+    # 2026-05-16 P2.9: OAI 真實 nr_cellid 可選欄,沒帶 → SHA-1 hash fallback
+    nr_cellid = serializers.IntegerField(required=False, allow_null=True, default=None)
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
     is_active = serializers.BooleanField(default=True)
 
@@ -27,6 +29,7 @@ class CellStateReadSerializer(serializers.Serializer):
     freq_ghz = serializers.FloatField()
     bw_mhz = serializers.FloatField()
     served_plmn = serializers.CharField()
+    nr_cellid = serializers.IntegerField(allow_null=True, default=None)
     gnb_id = serializers.CharField(default="")
     is_active = serializers.BooleanField(default=True)
     cell_created_at = serializers.IntegerField()

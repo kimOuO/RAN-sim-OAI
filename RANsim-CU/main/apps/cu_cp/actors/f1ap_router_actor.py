@@ -95,6 +95,8 @@ class F1ApRouterActor:
                     "served_plmn": cell.get("served_plmn") or default_served_plmn(),
                     "gnb_id": cell.get("gnb_id", ""),
                     "served_by_du_id": gnb_du_id,
+                    # P2.1: OAI 真實 nr_cellid 從 F1 Setup 帶上來;沒帶就留 None → SHA-1 hash fallback
+                    "nr_cellid": cell.get("nr_cellid"),
                     "created_at": now,
                     "updated_at": now,
                 },

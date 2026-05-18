@@ -3,6 +3,8 @@
 import { usePlaybackPage } from '@/hooks/feature/usePlaybackPage';
 import { PlaybackControls } from '@/components/PlaybackControls';
 import { SignalTable } from '@/components/SignalTable';
+import { ControlActionList } from '@/components/ControlActionList';
+import { CellStatePanel } from '@/components/CellStatePanel';
 import { TopDownMap } from '@/components/TopDownMap';
 
 export default function PlaybackPage() {
@@ -116,7 +118,16 @@ export default function PlaybackPage() {
             onFrameChange={handleFrameChange}
           />
 
-          {currentFrame && <SignalTable data={currentFrame.ues ?? []} />}
+          {currentFrame && (
+            <>
+              <SignalTable
+                data={currentFrame.ues ?? []}
+                handovers={currentFrame.handovers ?? []}
+              />
+              <CellStatePanel cells={currentFrame.cell_states ?? []} />
+              <ControlActionList actions={currentFrame.control_actions ?? []} />
+            </>
+          )}
         </>
       )}
     </div>

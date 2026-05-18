@@ -125,11 +125,19 @@ def compute_coverage_map(
         path_gain = np.stack([gnb_pg[n] for n in gnb_names_ordered], axis=0)
         num_tx = len(gnbs)
 
-    # 轉成 RSRP dBm per (tx, H, W)
+    # 轉成 RSRP dBm per (tx, H, W) — AK8: 公式跟 ran_sim_protocol.rsrp_model 對齊
+    # （vectorized 在這裡內聯展開，避免對 grid 每點呼叫一次 Python；等效於跑
+    # compute_rsrp_dbm(pg_linear, tx_power_dbm=gnb.power_dbm, scene_loss_db=0)）。
+    # Coverage 用 scene_loss_db=0 是設計選擇：heatmap 是 ideal RT 計算結果，
+    # 不疊上 RU 端的 36 dB 場景損耗（那個是 RU 為了把 sim RSRP 校到真機操作範圍
+    # -65~-95 dBm 用的，跟視覺化 heatmap 的目的不同）。
+    from ran_sim_protocol.rsrp_model import NO_SIGNAL_DBM
     with np.errstate(divide="ignore"):
-        rsrp_dbm_all = 10.0 * np.log10(np.maximum(path_gain, 1e-30))
+        path_gain_db = 10.0 * np.log10(np.maximum(path_gain, 1e-30))
+    rsrp_dbm_all = path_gain_db.copy()
     for tx_i, gnb in enumerate(gnbs):
-        rsrp_dbm_all[tx_i] += float(gnb["power_dbm"])
+        rsrp_dbm_all[tx_i] = path_gain_db[tx_i] + float(gnb["power_dbm"])
+    rsrp_dbm_all = np.where(path_gain > 0, rsrp_dbm_all, NO_SIGNAL_DBM)
 
     # 若要 SINR：算每格 serving cell（argmax RSRP）+ 干擾 + 雜訊
     noise_figure_db = get_float("SIM_NOISE_FIGURE_DB", default=7.0)

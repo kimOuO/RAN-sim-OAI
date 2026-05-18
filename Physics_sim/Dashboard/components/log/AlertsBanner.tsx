@@ -78,18 +78,10 @@ export function AlertsBanner({ logs }: Props) {
 function deriveAlerts(sys: ReturnType<typeof useSystemOverview>, logs: RingEntry[]): Alert[] {
   const out: Alert[] = [];
 
-  // 1) E2 silent peer — sent/recv ratio 異常高
-  if (sys.e2.connected && sys.e2.sent > 100) {
-    const ratio = sys.e2.sent / Math.max(sys.e2.recv, 1);
-    if (ratio > 100) {
-      out.push({
-        id: 'e2_silent',
-        severity: 'critical',
-        title: 'RIC silent peer',
-        detail: `Adapter sent ${sys.e2.sent} pdu but only received ${sys.e2.recv}. RIC may be dropping indications.`,
-      });
-    }
-  }
+  // AG13: 移除舊「sent/recv ratio > 100 → silent peer」heuristic.
+  // E2 Indication 是 push-only, RIC 對每筆 Indication 不會回 PDU; 真實流量自然會出現
+  // 數百:1 甚至數千:1 比例 — 不是 silent peer。
+  // 真正的「沒在通」需要 SCTP-disconnect / setup-fail / SUB_REQ-loss 才算, 由其他 alert 處理。
 
   // 2) E2 setup not completed
   if (sys.e2.connected && !sys.e2.setup_ok) {

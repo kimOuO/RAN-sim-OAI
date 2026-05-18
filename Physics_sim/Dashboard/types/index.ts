@@ -132,6 +132,13 @@ export interface UESignalData {
   mimo_streams_sinr_db?: number[];
   mimo_streams_mcs?: number[];
   throughput_dl_mbps?: number;
+  throughput_ul_mbps?: number;
+  mcs_dl?: number;
+  prb_used_dl?: number;
+  rsrp_map?: Record<string, number>;
+  serving_gnb?: string;
+  serving_pci?: number;
+  serving_cell_id?: string;
 }
 
 export interface SimStatus {
@@ -154,8 +161,47 @@ export interface PlaybackSession {
   scene_snapshot?: SceneSnapshot;
 }
 
+export interface HandoverEventRecord {
+  ho_uuid: string;
+  ue_name: string;
+  source_cell: string;
+  target_cell: string;
+  trigger: string;
+  status: string;
+  event_ts: string | null;
+}
+
+export interface ControlActionRecord {
+  id: number;
+  ric_req_id: Record<string, unknown>;
+  control_style: number;
+  control_action_id: number;
+  action_label: string;
+  ue_name: string | null;
+  cell_id: string | null;
+  payload_json: Record<string, unknown>;
+  outcome: string;
+  error: string | null;
+  action_ts: string | null;
+}
+
+export interface CellStateSnapshot {
+  cell_id: string;
+  gnb_id?: string | null;
+  pci?: number | null;
+  is_active: boolean;
+  prb_quota: {
+    min_prb?: number | null;
+    max_prb?: number | null;
+    dedicated_prb?: number | null;
+  } | null;
+}
+
 export interface PlaybackFrame {
   tick: number;
   ues: UESignalData[];
+  handovers?: HandoverEventRecord[];
+  control_actions?: ControlActionRecord[];
+  cell_states?: CellStateSnapshot[];
   scene_snapshot?: SceneSnapshot;
 }

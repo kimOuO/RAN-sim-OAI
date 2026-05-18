@@ -24,21 +24,22 @@ logger = get_logger(__name__)
 
 
 _NOISE_FLOOR_DBM = get_float("RU_NOISE_FLOOR_DBM", default=-95.0)
-_TX_POWER_DBM = get_float("RU_TX_POWER_DBM", default=43.0)  # 典型 macrocell 20W = 43 dBm
-_ANTENNA_GAIN_DBI = get_float("RU_ANTENNA_GAIN_DBI", default=14.0)  # TR 38.901 antenna 預設
+# Fallback TX power 給沒 Cell DB record 的極早期啟動階段；正常運行讀 Cell.power_dbm。
+_TX_POWER_DBM_FALLBACK = get_float("RU_TX_POWER_DBM", default=43.0)
 _NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.0)
 """比 -120 dBm 弱的 neighbor 不報，避免 A3 evaluator 看一堆 noise。"""
 
-# AC1: scene calibration loss — sim Brownstone 場景比真實 urban 環境小, Sionna ray-tracing
-# 只算了 free-space + scene geometry (建物反射/繞射), 沒模擬以下真機常見額外損耗:
+# scene calibration loss — sim Brownstone 場景比真實 urban 環境少模擬以下損耗:
 #   • building penetration (UE 在室內, 18-25 dB)
 #   • body loss / clutter (UE 拿手裡或包裡, 5-10 dB)
 #   • shadowing fade (lognormal, ~8 dB σ)
-#   • foliage / weather attenuation
-# 對映 3GPP TR 38.901 §7.4.3.1 Outdoor-to-Indoor (O2I) loss + shadowing.
-# 加總約 50 dB, 把 sim RSRP 從 ~-15 dBm 校正到真機典型 -65~-95 dBm 範圍.
-_SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=50.0)
-"""場景外建物穿透 + body loss + shadowing 額外損耗 (Brownstone 場景沒模擬到的)."""
+# 加總約 36 dB。對映 3GPP TR 38.901 §7.4.3.1 O2I loss + shadowing。
+#
+# 歷史值是 50 dB，因為當時又 +14 dBi antenna_gain（與 Sionna PlanarArray 內建增益
+# 重複計算），實際淨損耗是 36 dB。AK8 改成 per-cell power 後拔掉雙重 gain，
+# 此值直接命名為「真實場景損耗」，與 ran_sim_protocol.rsrp_model 共用。
+_SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=36.0)
+"""真實場景額外損耗 (Brownstone 場景沒模擬到的 O2I + body + shadowing)."""
 
 # SINR 同樣需要校正: sim 場景算出來太乾淨 (47-60 dB), 真機常見 5-25 dB.
 # 干擾沒模擬足 (其他 cell 的 inter-cell interference 沒進 SINR 算式).
@@ -94,23 +95,44 @@ def _build_cell_to_tx_map() -> dict[str, str]:
         return {}
 
 
-def _path_gain_to_rsrp_dbm(path_gain_linear: float) -> float:
-    """從 Sionna 回的 linear path_gain 算 RSRP (dBm)。
+def _build_cell_to_power_map() -> dict[str, float]:
+    """sim cell_name → TX power (dBm)，從 Cell DB 撈，Dashboard 透過 update_cells 推進來。
 
-    RSRP = TX_power_dBm + antenna_gain_dBi + 10*log10(path_gain_linear)
-                       - SCENE_CALIBRATION_LOSS_DB  (sim 場景額外損耗校正)
-
-    path_gain_linear 是 Sionna 算出的 "received power / transmit power"（無量綱），
-    所以 10*log10(it) = path_gain_dB（負值，因為衰減）。
-
-    SCENE_CALIBRATION_LOSS_DB 補償 sim Brownstone 場景沒模擬到的 building
-    penetration + body loss + shadowing (真機這些加總 30-50 dB 額外損耗).
-    沒這個校正 sim 算出來 RSRP -15 dBm 會撞 3GPP encoding 上限 -31 dBm → 127.
+    AK8: 解決 power_dbm 從 Dashboard 改了 RU 卻沒反映的問題 — 過去 RU 永遠用
+    env _TX_POWER_DBM=43，per-gNB power 只在 Coverage Solver 端有效，兩條
+    pipeline 結果背離。現在 RU 也讀 Cell.power_dbm，跟 Coverage 同源。
     """
-    if path_gain_linear is None or path_gain_linear <= 0:
-        return -200.0  # 沒訊號 sentinel
-    path_gain_db = 10.0 * np.log10(float(path_gain_linear))
-    return _TX_POWER_DBM + _ANTENNA_GAIN_DBI + path_gain_db - _SCENE_CALIBRATION_LOSS_DB
+    try:
+        from main.apps.antenna.models.cell import Cell
+        return {c.name: float(c.power_dbm) for c in Cell.objects.all()}
+    except Exception:
+        return {}
+
+
+def _path_gain_to_rsrp_dbm(
+    path_gain_linear: float,
+    *,
+    cell_power_dbm: float | None = None,
+) -> float:
+    """從 Sionna path_gain 算 RSRP (dBm)，走平台共用 rsrp_model（單一事實源）。
+
+    AK8: 改成呼叫 ran_sim_protocol.rsrp_model.compute_rsrp_dbm，跟 Coverage
+    Solver 用同一個公式，避免兩條 pipeline 計算規則分歧。同時把過去 +14 dBi
+    antenna gain 雙重計算的問題拔掉（Sionna PlanarArray 已內建天線 pattern）。
+
+    Args:
+        path_gain_linear: Sionna 線性 path gain（含天線 pattern，不含 TX 功率）。
+        cell_power_dbm: 該 cell 的 TX 功率（從 Cell.power_dbm DB 讀）。
+            None 時退到 env fallback，保留早期啟動 / 測試環境的相容。
+    """
+    from ran_sim_protocol.rsrp_model import compute_rsrp_dbm
+
+    tx_power = cell_power_dbm if cell_power_dbm is not None else _TX_POWER_DBM_FALLBACK
+    return compute_rsrp_dbm(
+        path_gain_linear,
+        tx_power_dbm=tx_power,
+        scene_loss_db=_SCENE_CALIBRATION_LOSS_DB,
+    )
 
 
 def _to_complex_matrix(raw: Any) -> np.ndarray:
@@ -219,6 +241,9 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     gnb_to_cell = _build_gnb_to_cell_map()       # gnb_id → 第一個 cell.name (legacy fallback)
     cell_to_gnb = _build_cell_to_gnb_map()       # cell.name → gnb_id (legacy fallback)
     cell_to_tx  = _build_cell_to_tx_map()        # cell.name → tx_name (主 path)
+    # AK8: 每 cell 的 TX 功率 — Dashboard 透過 update_cells 推進來，這裡用來算 RSRP，
+    # 一次撈起來給整個 batch 用，不在 inner loop 打 DB。
+    cell_to_power = _build_cell_to_power_map()   # cell.name → power_dbm
 
     out: list[CqiIndication] = []
     for pdu in req.pdus:
@@ -258,7 +283,11 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             path_gain_linear = path_gain_dict.get(best_key)
             if H_raw is None:
                 H_raw = channel_dict.get(best_key)
-        rsrp_dbm = _path_gain_to_rsrp_dbm(path_gain_linear)
+        # AK8: 用 per-cell power 算 RSRP。serving_label 是 sim cell_name（如 gnb4_c0）。
+        rsrp_dbm = _path_gain_to_rsrp_dbm(
+            path_gain_linear,
+            cell_power_dbm=cell_to_power.get(serving_label),
+        )
 
         # Neighbor cell measurements — Sionna path_gain dict 現在 key 是 tx_name
         # (e.g. "gnb4#0", "gnb4#1"). 排除 serving_tx (跟 serving 同 cell 不算 neighbor).
@@ -271,12 +300,16 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 continue
             if not isinstance(pg, (int, float)) or pg <= 0:
                 continue
-            neigh_rsrp = _path_gain_to_rsrp_dbm(pg)
-            if neigh_rsrp <= _NEIGHBOR_RSRP_FLOOR_DBM:
-                continue
+            # AK8: 先 resolve cell_id 再算 RSRP，這樣可以用該 neighbor cell 自己的 power_dbm
             # tx_name (gnb4#0) → sim cell_id (gnb4_c0); 退 gnb_name → first cell of that gnb
             cell_id_for_a3 = tx_to_cell.get(key) or gnb_to_cell.get(key)
             if not cell_id_for_a3:
+                continue
+            neigh_rsrp = _path_gain_to_rsrp_dbm(
+                pg,
+                cell_power_dbm=cell_to_power.get(cell_id_for_a3),
+            )
+            if neigh_rsrp <= _NEIGHBOR_RSRP_FLOOR_DBM:
                 continue
             neighbors_list.append({
                 "cell_id": cell_id_for_a3,

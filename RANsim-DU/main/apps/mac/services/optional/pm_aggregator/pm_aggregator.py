@@ -38,6 +38,10 @@ class _UeWindowAccumulator:
     ul_bytes_sum: int = 0
     last_qos_5qi: int = 9
     rlc_delay_samples: list = None  # type: ignore[assignment]  # filled lazily
+    # AK10 — RLC tx buffer 滿被 reject 的 drop 計數（OAI 對齊；對應 KPM 新欄位
+    # DRB.PdcpSduDropDl bytes/count）。flush 後歸零跟其他欄位一樣。
+    rlc_drop_sdus: int = 0
+    rlc_drop_bytes: int = 0
 
     def __post_init__(self) -> None:
         if self.rlc_delay_samples is None:
@@ -95,6 +99,11 @@ class _UeWindowAccumulator:
                 sum(self.rlc_delay_samples) / len(self.rlc_delay_samples)
                 if self.rlc_delay_samples else 0.0
             ),
+            # AK10 — Window 內 RLC tx-cap drop 計數 / bytes，對應 OAI sdu_rejected /
+            # txpdu_dd_pkts / txpdu_dd_bytes。MAC measurement_report 帶上去後
+            # e2adapter 可以發 KPM DRB.PdcpSduDropDl-like 給 RIC。
+            "rlc_drop_sdus": self.rlc_drop_sdus,
+            "rlc_drop_bytes": self.rlc_drop_bytes,
             "qos_5qi": self.last_qos_5qi,
         }
         # reset
@@ -109,6 +118,8 @@ class _UeWindowAccumulator:
         self.dl_bytes_sum = 0
         self.ul_bytes_sum = 0
         self.rlc_delay_samples = []
+        self.rlc_drop_sdus = 0
+        self.rlc_drop_bytes = 0
         return report
 
 
@@ -284,6 +295,18 @@ class PmAggregatorService:
         if acc.rlc_delay_samples is None:
             acc.rlc_delay_samples = []
         acc.rlc_delay_samples.extend(delay_samples_ms)
+
+    def accumulate_rlc_drop(self, ue_id: str, *, dropped_sdus: int, dropped_bytes: int) -> None:
+        """加入 RLC tx-cap drop 計數 — 從 entity.take_drop_samples() 拿來。
+
+        AK10: 對齊 OAI nr_rlc_entity_am.c 的 sdu_rejected / txpdu_dd_pkts/bytes。
+        flush_ue_report() 會把累計值送進 measurement_report → e2adapter → KPM DRB.PdcpSduDropDl。
+        """
+        if dropped_sdus <= 0 and dropped_bytes <= 0:
+            return
+        acc = self._ue_acc_for(ue_id)
+        acc.rlc_drop_sdus += int(dropped_sdus)
+        acc.rlc_drop_bytes += int(dropped_bytes)
 
     def flush_ue_report(self, ue_id: str, window_seconds: float) -> dict[str, Any] | None:
         """取出 UE 在 window 內的累積報告並 reset。完全沒資料才回 None。

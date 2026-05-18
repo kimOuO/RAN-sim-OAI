@@ -69,6 +69,26 @@ class DuClientBusinessService:
             "/api/v0.1/DU/F1AP/F1ApRouter/ue_context_release", payload,
         )
 
+    @staticmethod
+    def read_mac_cells() -> list[str]:
+        """讀 DU 當前的 cell 清單，回 cell_id list。
+        AK12: release_stale 用來檢查 UeContext.serving_cell 是不是 orphan（指到
+        已經不存在的 cell）。空 list 表示讀不到 — 呼叫端應該降級處理。"""
+        resp = DuClientBusinessService._post(
+            "/api/v0.1/DU/MAC/MacCellController/read", {},
+        )
+        data = resp.get("data") if isinstance(resp, dict) else None
+        if isinstance(data, list):
+            cells_raw = data
+        elif isinstance(data, dict):
+            cells_raw = data.get("cells", []) or []
+        else:
+            cells_raw = []
+        return [
+            c.get("cell_id") or c.get("name")
+            for c in cells_raw if isinstance(c, dict) and (c.get("cell_id") or c.get("name"))
+        ]
+
     # ── Cell on/off — energy saving xApp 用 ───────────────────────
     @staticmethod
     def post_cell_disable(cell_id: str) -> dict[str, Any]:

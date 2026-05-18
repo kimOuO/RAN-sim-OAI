@@ -1,16 +1,9 @@
 'use client';
 
+// AG16: 不再自己 poll — 改 derive 自共享 useE2EventLog.
 import { useEffect, useRef, useState } from 'react';
-import { E2_ADAPTER_BASE_URL } from '@/config';
+import { useE2EventLog, type E2Event as Event } from '@/hooks/feature/log/useE2EventLog';
 
-interface Event {
-  seq: number;
-  ts_ms: number;
-  kind: string;
-  [k: string]: any;
-}
-
-const POLL_MS = 2000;
 const MAX_DISPLAY = 80;
 
 // Lanes: 0=xApp/RIC  1=Adapter  2=Sim CU
@@ -66,56 +59,25 @@ function fmtTs(ms: number): string {
 }
 
 export function E2SequenceDiagram() {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [error, setError] = useState<string>('');
+  const { events: allEvents, error } = useE2EventLog();
   const [autoScroll, setAutoScroll] = useState(true);
   const [filter, setFilter] = useState<Set<string>>(new Set([
     'sctp_connect', 'sctp_disconnect', 'e2_setup_outcome',
     'sub_req_recv', 'sub_resp_sent', 'indication_sent',
     'control_req_recv', 'control_ack_sent', 'control_failure',
   ]));
-  const lastSeqRef = useRef<number>(0);
-  const seenSeqsRef = useRef<Set<number>>(new Set());   // atomic dedupe gate
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 共享 ring 最多 500,本 component 只顯示最後 MAX_DISPLAY 筆.
+  const events: Event[] = allEvents.slice(-MAX_DISPLAY);
+
   useEffect(() => {
-    let cancelled = false;
-    const pollOnce = async () => {
-      try {
-        const resp = await fetch(
-          `${E2_ADAPTER_BASE_URL}/api/v0.1/E2Adapter/EventLog/EventLogReader/read`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ since_seq: lastSeqRef.current, limit: 200 }) },
-        );
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        if (cancelled) return;
-        const fresh: Event[] = json.data?.entries || [];
-        // atomic dedupe by seq — Strict Mode 雙 effect 同時 fetch 也安全
-        const uniq = fresh.filter(f => {
-          if (seenSeqsRef.current.has(f.seq)) return false;
-          seenSeqsRef.current.add(f.seq);
-          return true;
-        });
-        if (uniq.length > 0) {
-          lastSeqRef.current = Math.max(lastSeqRef.current, ...uniq.map(u => u.seq));
-          setEvents(prev => [...prev, ...uniq].slice(-MAX_DISPLAY));
-          if (autoScroll && scrollRef.current) {
-            setTimeout(() => {
-              scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-            }, 50);
-          }
-        }
-        setError('');
-      } catch (e: any) {
-        if (cancelled) return;
-        setError(e?.message || String(e));
-      }
-    };
-    pollOnce();
-    const id = setInterval(pollOnce, POLL_MS);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [autoScroll]);
+    if (autoScroll && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight, behavior: 'smooth',
+      });
+    }
+  }, [events.length, autoScroll]);
 
   const allKinds = [
     'sctp_connect', 'sctp_disconnect', 'e2_setup_outcome',
@@ -149,7 +111,7 @@ export function E2SequenceDiagram() {
           🪜 E2 Plane Sequence Diagram (ladder view)
         </h3>
         <span style={{ fontSize: 11, color: '#6b7280' }}>
-          {events.length} events · poll {POLL_MS}ms
+          {events.length} events · shared poll 2s
           {error && <span style={{ color: '#ef4444', marginLeft: 8 }}>· err: {error}</span>}
         </span>
       </div>

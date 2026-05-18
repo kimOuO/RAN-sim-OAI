@@ -11,6 +11,7 @@ import { SignalTable } from '@/components/SignalTable';
 import { SignalChart } from '@/components/SignalChart';
 import { MimoSettingsPanel } from '@/components/MimoSettingsPanel';
 import * as omniverseApi from '@/services/api/omniverse';
+import { initScene } from '@/services/api/scene';
 import { computeCoverage, type CoverageResponse } from '@/services/api/coverage';
 import { updateTrafficProfile, type TrafficProfile } from '@/services/api/ueProfile';
 import type { SceneAntennaConfig } from '@/types';
@@ -1224,6 +1225,14 @@ export default function SceneEditor() {
                     if (editValues[cellsKey]) updateData.cells = editValues[cellsKey];
                     if (Object.keys(updateData).length > 0) {
                       await omniverseApi.updateGnb(selectedObject.name, updateData);
+                      // AK9: gNB 任何屬性改了都要重建 Sionna scene，否則 PathSolver 還用舊
+                      // azimuth / power / position。對齊 handleMoveGnb (useDrawPage.ts:157)
+                      // 的行為 — 它早就有，只是 inspector Update 路徑漏了。
+                      try {
+                        await initScene({ scene_id: 'default' });
+                      } catch (e) {
+                        console.warn('[scene-rebuild] initScene after gNB update failed:', e);
+                      }
                     }
                   } else if (selectedObject.type === 'ue') {
                     const posKey = `${selectedObject.name}-pos`;

@@ -127,9 +127,17 @@ def build_indication(subscription: dict[str, Any]) -> dict[str, Any] | None:
                 value, unit = None, ""
             meas_data.append({"name": m, "value": value, "unit": unit})
         # serving cell info — xApp CCO 要按 cell 分組 metric，沒這個就無法做
-        from main.apps.cu_cp.actors.e2_control_actor import compute_nr_cell_id
+        # P2.2: 走集中化 helper,有 OAI explicit nr_cellid 就用真值
+        from main.apps.cu_cp.services.common.cell_id_map import to_nr_cellid
+        from main.apps.cu_cp.models import CellConfig as _CellConfig
         serving_cell = ue.serving_cell or ""
-        nr_cell_id = compute_nr_cell_id(serving_cell) if serving_cell else 0
+        explicit = (
+            _CellConfig.objects.filter(cell_id=serving_cell)
+            .values_list("nr_cellid", flat=True)
+            .first()
+            if serving_cell else None
+        )
+        nr_cell_id = to_nr_cellid(serving_cell, explicit=explicit) if serving_cell else 0
 
         ue_lst.append({
             "ue_id": ue.ue_id,

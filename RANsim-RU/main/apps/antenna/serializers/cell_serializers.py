@@ -26,6 +26,9 @@ class CellWriteSerializer(serializers.Serializer):
     frequency_ghz = serializers.FloatField(default=2.5)
     bandwidth_mhz = serializers.FloatField(default=100.0)
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
+    # Dashboard 端對應 gNB 的 power_dbm；同 gNB 所有 cell 共用一個值。預設保留
+    # macro 典型 43 dBm，向後相容沒帶 power 的舊 client（仍會走預設）。
+    power_dbm = serializers.FloatField(default=43.0)
 
 
 class CellListWriteSerializer(serializers.Serializer):
@@ -46,6 +49,7 @@ class CellReadSerializer(serializers.ModelSerializer):
             "frequency_ghz",
             "bandwidth_mhz",
             "gnb_id",
+            "power_dbm",
             "cell_updated_at",
         ]
 

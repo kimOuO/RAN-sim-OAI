@@ -29,12 +29,21 @@ class _RanFunctionSerializer(serializers.Serializer):
     version = serializers.CharField()
 
 
+class _SNssaiSerializer(serializers.Serializer):
+    sst = serializers.IntegerField()
+    sd = serializers.CharField(required=False, allow_blank=True)
+
+
 class _ComponentCellSerializer(serializers.Serializer):
     cell_id = serializers.CharField()
     nr_cell_id = serializers.CharField()
+    # 2026-05-16 P2.6: 露出 explicit nr_cellid (OAI 真實 36-bit 整數);null → e2adapter SHA-1 hash fallback
+    nr_cellid = serializers.IntegerField(allow_null=True, required=False, default=None)
     pci = serializers.IntegerField()
     tac = serializers.IntegerField()
     served_plmn = serializers.CharField()
+    # 2026-05-16 P3.3: S-NSSAI 空殼接口
+    s_nssai = _SNssaiSerializer(required=False)
     is_active = serializers.BooleanField()
 
 

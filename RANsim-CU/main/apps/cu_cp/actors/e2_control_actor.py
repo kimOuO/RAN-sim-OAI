@@ -21,12 +21,11 @@ from django.http import HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-import hashlib
-
 from main.apps.cu_cp.models.cell_config import CellConfig
 from main.apps.cu_cp.models.handover_event import HandoverEvent
 from main.apps.cu_cp.models.ue_context import UeContext
 from main.apps.cu_cp.services.business.du_client_operations import DuClientBusinessService
+from main.apps.cu_cp.services.business.omniverse_push import push_control_action
 from main.apps.cu_cp.services.business.sqldb_operations import SqlDbBusinessService
 from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from main.apps.cu_cp.services.common.uuid_service import UUIDService
@@ -40,14 +39,15 @@ from main.utils.response import error_response, success_response
 # 這幾個 helper 把外部標準格式翻成我們內部欄位。
 # ────────────────────────────────────────────────────────────────────
 
-def compute_nr_cell_id(cell_id: str) -> int:
+def compute_nr_cell_id(cell_id: str, explicit: int | None = None) -> int:
     """Stable cell_id (str) → 36-bit nr_cell_id (int) mapping.
 
-    3GPP TS 38.413 NR Cell Identity 是 36-bit。OAI 真實是 gnb_id+local_cell_id 拼出來；
-    這裡用 SHA-1 hash 取前 5 byte 截 36 bit 模擬，deterministic 且 collision 機率 < 1e-7。
+    2026-05-16 P2.2: 改 explicit-first。有 explicit (來自 CellConfig.nr_cellid) 就用,
+    沒有再退回 SHA-1 hash(原行為)。
+    canonical implementation 在 services.common.cell_id_map。
     """
-    h = hashlib.sha1(cell_id.encode()).digest()
-    return int.from_bytes(h[:5], "big") & ((1 << 36) - 1)
+    from main.apps.cu_cp.services.common.cell_id_map import to_nr_cellid
+    return to_nr_cellid(cell_id, explicit=explicit)
 
 
 def resolve_ue_id(header: dict[str, Any]) -> tuple[str | None, str]:
@@ -97,11 +97,12 @@ def resolve_target_cell(message: dict[str, Any]) -> tuple[str | None, str]:
 
     nr_id = cgi.get("nr_cell_id")
     if nr_id is not None:
-        # 反查：scan all CellConfig, 比對 hash
+        # 2026-05-16 P2.5: 走集中化 helper,先精確比對 nr_cellid 欄位再退回 hash 反查
+        from main.apps.cu_cp.services.common.cell_id_map import to_platform_cell_id
         target = int(nr_id)
-        for c in CellConfig.objects.all():
-            if compute_nr_cell_id(c.cell_id) == target:
-                return c.cell_id, f"nr_cell_id={target}"
+        platform_id = to_platform_cell_id(target)
+        if platform_id:
+            return platform_id, f"nr_cell_id={target}"
 
     return None, "unresolved"
 
@@ -196,6 +197,14 @@ def _handle_qos_flow_mapping(
         "E2 Control [QoS flow mapping] ue=%s drb=%s flows=%s ric_req=%s",
         ue_id, drb_id, qos_flows, ric_req_id,
     )
+    push_control_action(
+        control_style=1, control_action_id=2,
+        action_label="QOS_FLOW_MAPPING",
+        ric_req_id=ric_req_id, ue_name=ue_id,
+        payload_json={"drb_id": drb_id, "qos_flows": qos_flows},
+        outcome="QOS_FLOW_MAPPING_APPLIED",
+        action_ts=TimestampService.now().isoformat(),
+    )
     # 真機會呼 CU-UP E1AP；我們 sim 端只 log + 回 ack
     return success_response(
         {
@@ -260,6 +269,20 @@ def _handle_handover(
         "E2 Control [Handover] ue=%s (via %s) %s → %s (via %s) ric_req=%s",
         ue_id, ue_src, source_cell_pre, target_cell, cell_src, ric_req_id,
     )
+    push_control_action(
+        control_style=3, control_action_id=1,
+        action_label="HANDOVER",
+        ric_req_id=ric_req_id, ue_name=ue_id, cell_id=target_cell,
+        payload_json={
+            "source_cell": source_cell_pre,
+            "target_cell": target_cell,
+            "ue_resolved_from": ue_src,
+            "target_resolved_from": cell_src,
+            "ho_uuid": result.get("ho_uuid", ""),
+        },
+        outcome="HANDOVER_TRIGGERED" if not result.get("skipped") else "HANDOVER_SKIPPED",
+        action_ts=TimestampService.now().isoformat(),
+    )
     return success_response(
         {
             "ric_req_id": ric_req_id,
@@ -270,7 +293,13 @@ def _handle_handover(
             "source_cell": source_cell_pre,
             "target_cell": target_cell,
             "target_resolved_from": cell_src,
-            "target_nr_cell_id": compute_nr_cell_id(target_cell),
+            # P2.2: 用 target_cell 對應 CellConfig.nr_cellid (explicit) 編出真正 nr_cell_id;沒有就 hash
+            "target_nr_cell_id": compute_nr_cell_id(
+                target_cell,
+                explicit=CellConfig.objects.filter(cell_id=target_cell)
+                .values_list("nr_cellid", flat=True)
+                .first(),
+            ),
             "ngap_id": ue_pre.amf_ue_ngap_id,
             "f1ap_id": ue_pre.rrc_ue_id,
         },
@@ -395,6 +424,22 @@ def _handle_slice_prb_quota(
         node, targets, min_prb, max_prb, dedicated, len(results), len(failures),
     )
 
+    outcome_str = "PRB_QUOTA_APPLIED" if not failures else "PRB_QUOTA_PARTIAL"
+    push_control_action(
+        control_style=2, control_action_id=6,
+        action_label="PRB_QUOTA",
+        ric_req_id=ric_req_id,
+        cell_id=(targets[0] if len(targets) == 1 else None),
+        payload_json={
+            "node": node, "cells": targets,
+            "min_prb": min_prb, "max_prb": max_prb, "dedicated_prb": dedicated,
+            "applied": results, "failed": failures,
+        },
+        outcome=outcome_str,
+        error=(f"{failures}" if failures and not results else None),
+        action_ts=TimestampService.now().isoformat(),
+    )
+
     if failures and not results:
         return error_response(
             f"DU rejected all cells: {failures}", status=502,
@@ -403,7 +448,7 @@ def _handle_slice_prb_quota(
     return success_response(
         {
             "ric_req_id": ric_req_id,
-            "control_outcome": "PRB_QUOTA_APPLIED" if not failures else "PRB_QUOTA_PARTIAL",
+            "control_outcome": outcome_str,
             "applied": results,
             "failed": failures,
         },
@@ -443,6 +488,15 @@ def _handle_cell_on_off(
     logger.info(
         "E2 Control [Cell On/Off] cell=%s action=%s ric_req=%s accepted=%s",
         cell_id, action, ric_req_id, accepted,
+    )
+    push_control_action(
+        control_style=2, control_action_id=7,
+        action_label=f"CELL_{action.upper()}",
+        ric_req_id=ric_req_id, cell_id=cell_id,
+        payload_json={"action": action},
+        outcome=f"CELL_{action.upper()}D" if accepted else "CELL_ACTION_REJECTED",
+        error=(None if accepted else (resp.get("message") or resp.get("error", "unknown"))),
+        action_ts=TimestampService.now().isoformat(),
     )
     if not accepted:
         return error_response(

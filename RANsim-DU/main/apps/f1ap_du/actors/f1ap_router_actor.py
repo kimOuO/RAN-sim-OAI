@@ -189,6 +189,9 @@ class F1ApRouterController:
         rlc_factory.unregister_ue(ue_id)
         get_harq_manager().remove_ue(ue_id)
         get_pm_aggregator().remove_ue(ue_id)
+        # AG10: 同步清 tick_runner in-memory _ue_registry, 跟其他層對稱
+        from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+        get_tick_runner().unregister_ue(ue_id)
         logger.info("UE context release ue=%s", ue_id)
         return success_response({"ue_id": ue_id}, "Released")
 

@@ -13,6 +13,7 @@ class HandoverEvent(models.Model):
     )
     TRIGGER_CHOICES = (
         ("A3_TTT", "A3_TTT"),
+        ("E2_RIC_CONTROL", "E2_RIC_CONTROL"),
         ("MANUAL", "MANUAL"),
     )
 

@@ -14,6 +14,9 @@ class CellConfig(models.Model):
     bandwidth_mhz = models.FloatField()
     served_plmn = models.CharField(max_length=16, default="00101")
 
+    # 2026-05-16 P2.4: OAI 真實 nr_cellid (36-bit int)。null=True → fallback 走 SHA-1 hash。
+    nr_cellid = models.BigIntegerField(null=True, blank=True, db_index=True)
+
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
 

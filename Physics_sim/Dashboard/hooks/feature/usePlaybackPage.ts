@@ -23,14 +23,20 @@ export function usePlaybackPage() {
         setLoading(true);
         const data = await listSessions();
         setSessions(data);
-        const firstWithFrames = data.find((s) => s.frame_count > 0);
-        if (firstWithFrames) {
-          setSelectedSession(firstWithFrames);
-          loadFrame(firstWithFrames.session_uuid, 0);
-          if (firstWithFrames.scene_snapshot &&
-              ((firstWithFrames.scene_snapshot.buildings?.length ?? 0) > 0 ||
-               (firstWithFrames.scene_snapshot.gnbs?.length ?? 0) > 0)) {
-            setSceneSnapshot(firstWithFrames.scene_snapshot);
+        // 2026-05-17: 先挑有 frames 的;沒有就挑最近一筆「有 scene_snapshot」的,
+        // 讓「重建 3D 場景」按鈕至少能用,即使還沒累積 frame_count > 0。
+        const hasSnapshot = (s: PlaybackSession) =>
+          !!s.scene_snapshot &&
+          ((s.scene_snapshot.buildings?.length ?? 0) > 0 ||
+           (s.scene_snapshot.gnbs?.length ?? 0) > 0);
+        const auto = data.find((s) => s.frame_count > 0) || data.find(hasSnapshot);
+        if (auto) {
+          setSelectedSession(auto);
+          if (auto.frame_count > 0) {
+            loadFrame(auto.session_uuid, 0);
+          }
+          if (hasSnapshot(auto)) {
+            setSceneSnapshot(auto.scene_snapshot);
           }
         }
         setError(null);

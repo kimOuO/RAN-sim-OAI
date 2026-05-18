@@ -74,7 +74,8 @@ def extract_ue_id(path: str, body_text: str) -> str | None:
     return None
 
 
-def make_entry(*, service: str, path: str, method: str, status: int, duration_ms: int, body_text: str = "") -> dict[str, Any]:
+def make_entry(*, service: str, path: str, method: str, status: int, duration_ms: int, body_text: str = "", response_text: str = "") -> dict[str, Any]:
+    # 2026-05-16 P4.3: 同 CU/DU 版,留 request/response body 給前端展開看 PDU。
     return {
         "ts_ms": int(time.time() * 1000),
         "service": service,
@@ -84,4 +85,6 @@ def make_entry(*, service: str, path: str, method: str, status: int, duration_ms
         "duration_ms": duration_ms,
         "category": categorize(path),
         "ue_id": extract_ue_id(path, body_text),
+        "request_body": body_text[:4096] if body_text else "",
+        "response_body": response_text[:4096] if response_text else "",
     }

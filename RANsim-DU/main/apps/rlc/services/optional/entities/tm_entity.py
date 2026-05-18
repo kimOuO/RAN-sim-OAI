@@ -19,10 +19,13 @@ class TmEntity:
         self._next_sdu_id = 0
         self._delay_samples_ms: list[float] = []
 
-    def recv_sdu(self, n_bytes: int) -> int:
+    def recv_sdu(self, n_bytes: int, enqueue_ts_ms: int | None = None) -> int:
+        # AL: caller (e.g. inject_sdu_batch) 若提供 per-packet ts 就用 caller 給的,
+        # 否則 fallback wall-clock now — 對齊 OAI per-packet enqueue 時序.
         sid = self._next_sdu_id
         self._next_sdu_id += 1
-        self._tx.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=_now_ms()))
+        ts = enqueue_ts_ms if enqueue_ts_ms is not None else _now_ms()
+        self._tx.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts))
         return sid
 
     def take_delay_samples(self) -> list[float]:

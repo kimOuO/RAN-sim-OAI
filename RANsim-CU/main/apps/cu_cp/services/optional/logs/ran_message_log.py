@@ -111,7 +111,10 @@ def make_entry(
     status: int,
     duration_ms: int,
     body_text: str = "",
+    response_text: str = "",
 ) -> dict[str, Any]:
+    # 2026-05-16 P4.3: request_body + response_body 留進 entry,
+    # 前端 RanLogTable 可展開看完整 PDU JSON(plmn_id / tac / s_nssai / nr_cellid 編出來什麼樣)。
     return {
         "ts_ms": int(time.time() * 1000),
         "service": service,           # "CU" / "DU" / "RU"
@@ -121,4 +124,6 @@ def make_entry(
         "duration_ms": duration_ms,
         "category": categorize(path),
         "ue_id": extract_ue_id(path, body_text),
+        "request_body": body_text[:4096] if body_text else "",
+        "response_body": response_text[:4096] if response_text else "",
     }

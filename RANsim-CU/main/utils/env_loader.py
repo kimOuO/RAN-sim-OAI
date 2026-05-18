@@ -36,7 +36,11 @@ def get_int(key: str, default: int | None = None, *, required: bool = False) -> 
         if default is None:
             raise EnvVarMissing(f"env var {key!r} has no default")
         return default
-    return int(raw)
+    # 2026-05-16: 認 hex prefix "0x..." (TAC=0xa000 等對齊 OAI 慣例);其餘走十進制。
+    s = raw.strip()
+    if s.lower().startswith("0x"):
+        return int(s, 16)
+    return int(s)
 
 
 def get_float(key: str, default: float | None = None, *, required: bool = False) -> float:

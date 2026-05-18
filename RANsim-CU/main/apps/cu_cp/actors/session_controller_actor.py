@@ -200,24 +200,116 @@ class SessionControllerActor:
         stale_qs = UeContext.objects.exclude(ue_id__in=keep)
         stale_ids = list(stale_qs.values_list("ue_id", flat=True))
 
-        if not stale_ids:
+        # AK12: 偵測 kept UE 裡 serving_cell 指到「已經不存在的 cell」的情況。
+        # 過去 Build Scene 改 gNB 命名後，CU 端 UeContext.serving_cell 永遠停在
+        # 舊 cell（如 gnb4_c0），但 DU 端早已換成 gnbDT_c0 → CellStatusGrid 用
+        # serving_cell 對 DU cell list 做 filter 永遠 0 match，整個 grid 空白。
+        # 這裡向 DU 查 current cells，把 kept UE 裡 orphan 的也降回 IDLE 讓下一輪
+        # Start Sim 重新 attach，serving_cell 會被填正確。
+        orphan_kept_ids: list[str] = []
+        try:
+            from main.apps.cu_cp.services.business.du_client_operations import (
+                DuClientBusinessService,
+            )
+            du_cell_ids = set(DuClientBusinessService.read_mac_cells())
+            if du_cell_ids:
+                kept_qs = UeContext.objects.filter(ue_id__in=keep).exclude(serving_cell="")
+                for u in kept_qs:
+                    if u.serving_cell and u.serving_cell not in du_cell_ids:
+                        orphan_kept_ids.append(u.ue_id)
+                if orphan_kept_ids:
+                    logger.warning(
+                        "release_stale: %d kept UE 的 serving_cell 已不存在於 DU "
+                        "(cells=%s) → 降回 IDLE 重 attach: %s",
+                        len(orphan_kept_ids), sorted(du_cell_ids), orphan_kept_ids,
+                    )
+        except Exception as exc:
+            logger.warning("release_stale orphan-detect failed: %r (continuing)", exc)
+
+        if not stale_ids and not orphan_kept_ids:
             return success_response(
-                {"released": [], "deleted": [], "force": force, "kept": keep},
+                {"released": [], "deleted": [], "force": force, "kept": keep,
+                 "orphan_reset": []},
                 "no stale UEs",
             )
 
+        # AG10: fan-out F1AP UE Context Release to DU (對齊 3GPP TS 38.473 §8.3.3).
+        # 失敗 best-effort, 不阻擋 CU 側 mark IDLE/delete — DU 的 MAC/RLC/tick_registry
+        # 一條 path 統一清, 不再留殭屍。
+        from main.apps.cu_cp.services.business.du_client_operations import (
+            DuClientBusinessService,
+        )
+        du_release_ok = 0
+        du_release_fail = 0
+        for ue_id in stale_ids:
+            try:
+                DuClientBusinessService.post_ue_context_release({"ue_id": ue_id})
+                du_release_ok += 1
+            except Exception as exc:
+                du_release_fail += 1
+                logger.warning(
+                    "release_stale DU fan-out failed ue=%s: %r (continuing)", ue_id, exc,
+                )
+        logger.info(
+            "release_stale DU fan-out: ok=%d fail=%d", du_release_ok, du_release_fail,
+        )
+
         now = TimestampService.now()
+        # AK10: 清掉這些 stale UE 在 CU-UP 端的 Drb packet counter，避免下次同 ue_id
+        # re-attach 時數字繼續往上加，KPM 看起來像「上一次模擬封包還沒清乾淨」。
+        # 對應 DU 側 tick_runner.start() 的 rlc_factory.clear_all() — 兩邊一起乾淨。
+        try:
+            from main.apps.cu_up.models.drb import Drb
+            drb_zeroed = Drb.objects.filter(ue_id__in=stale_ids).update(
+                dl_packets=0, ul_packets=0,
+            )
+            if drb_zeroed:
+                logger.info("release_stale zeroed dl/ul packet counters on %d Drbs", drb_zeroed)
+        except Exception as exc:
+            # 表不存在或欄位 schema 不同時別擋主流程
+            logger.warning("release_stale Drb counter zero failed: %r (continuing)", exc)
+
         if force:
             count, _ = stale_qs.delete()
             logger.info("release_stale force-deleted %d UEs: %s", count, stale_ids)
             return success_response(
-                {"released": [], "deleted": stale_ids, "force": True, "kept": keep},
+                {"released": [], "deleted": stale_ids, "force": True, "kept": keep,
+                 "du_release_ok": du_release_ok, "du_release_fail": du_release_fail},
                 f"deleted {count} stale UEs",
             )
 
         updated = stale_qs.update(rrc_state="IDLE", serving_cell="", updated_at=now)
         logger.info("release_stale marked %d UEs IDLE: %s", updated, stale_ids)
+
+        # AK12: 把 orphan kept UE 也降回 IDLE — 它們會在下一輪 Start Sim 重新 attach
+        # 拿到正確的 serving_cell。同時對 DU 發 UE Context Release 確保 DU 端
+        # _ue_registry / RLC entity 清乾淨，避免「DU 還在排程舊 ue_id 但 CU 已重設」
+        # 那種半新半舊的狀態。
+        orphan_updated = 0
+        orphan_du_ok = 0
+        orphan_du_fail = 0
+        if orphan_kept_ids:
+            orphan_qs = UeContext.objects.filter(ue_id__in=orphan_kept_ids)
+            orphan_updated = orphan_qs.update(
+                rrc_state="IDLE", serving_cell="", updated_at=now,
+            )
+            for ue_id in orphan_kept_ids:
+                try:
+                    DuClientBusinessService.post_ue_context_release({"ue_id": ue_id})
+                    orphan_du_ok += 1
+                except Exception as exc:
+                    orphan_du_fail += 1
+                    logger.warning(
+                        "release_stale orphan DU fan-out failed ue=%s: %r", ue_id, exc,
+                    )
+            logger.info(
+                "release_stale marked %d orphan UEs IDLE (DU release ok=%d fail=%d): %s",
+                orphan_updated, orphan_du_ok, orphan_du_fail, orphan_kept_ids,
+            )
+
         return success_response(
-            {"released": stale_ids, "deleted": [], "force": False, "kept": keep},
+            {"released": stale_ids, "deleted": [], "force": False, "kept": keep,
+             "orphan_reset": orphan_kept_ids,
+             "du_release_ok": du_release_ok, "du_release_fail": du_release_fail},
             f"released {updated} stale UEs to IDLE",
         )

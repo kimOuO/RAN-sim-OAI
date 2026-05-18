@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { startSim, stopSim, setupUE } from '@/services/api/simLoop';
+import { ueSimStart, ueSimStop } from '@/services/api/ueProfile';
 import { SIM_LOOP_TICK_MS, DU_BASE_URL, CU_BASE_URL, OMNIVERSE_API_URL } from '@/config';
 import * as omniverseApi from '@/services/api/omniverse';
 import type { UESignalData } from '@/types';
@@ -85,26 +86,36 @@ export function useSimPage(options?: UseSimPageOptions) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 頁面載入時檢查後端 SimLoop 狀態
+  // Sim 狀態定期跟後端對齊 — backend (DU TickRunner) 才是 source of truth。
+  // 原本只在 mount 一次性 check，導致多 tab 之間狀態完全各自為政：A tab 按 Stop
+  // 後，B tab 的 simRunning 仍是舊值（看到「Stop Sim」按鈕但按下去其實只會送
+  // 重複 stop），pause 操作也同樣 stale。改成每 2s polling reconcile，任何 tab
+  // 在 ≤2s 內會自動跟齊 backend 真實狀態。觀測台應該由後端推狀態，前端不該
+  // 持有 source of truth。
   useEffect(() => {
-    const checkSimStatus = async () => {
+    let cancelled = false;
+    const reconcileSimStatus = async () => {
       try {
         const response = await fetch(`${DU_BASE_URL}/api/v0.1/DU/Tick/TickController/read`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: '{}',
         });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.data?.is_running) {
-            setSimRunning(true);
-          }
-        }
+        if (!response.ok || cancelled) return;
+        const data = await response.json();
+        const backendRunning = !!data.data?.is_running;
+        // 只在 backend 跟本地 state 不一致時才 setState，避免每 2s 觸發無謂 re-render
+        setSimRunning(prev => prev === backendRunning ? prev : backendRunning);
       } catch {
-        // 無法查詢狀態，靜默失敗
+        // 後端暫不可達時靜默忽略，下次 tick 再試
       }
     };
-    checkSimStatus();
+    reconcileSimStatus();  // mount 立即對齊一次，不用等 2s
+    const id = setInterval(reconcileSimStatus, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   const handleStartSim = useCallback(async () => {
@@ -160,6 +171,7 @@ export function useSimPage(options?: UseSimPageOptions) {
         position: [number, number, number];
         frequency_ghz: number;
         bandwidth_mhz: number;
+        power_dbm: number;     // AK8: 同 gNB 所有 sector 共用 gNB.power_dbm
       };
       const cellPayload: CellRow[] = [];
       for (const g of gnbsFromDb as any[]) {
@@ -167,6 +179,7 @@ export function useSimPage(options?: UseSimPageOptions) {
         const sectors = (g.cells && g.cells.length > 0)
           ? g.cells
           : [{ pci: g.pci ?? 1, azimuth_deg: g.azimuth_deg ?? 0 }]; // 沒設 cells[] 則退回 1 sector
+        const gnbPower = g.power_dbm ?? 43.0;  // AK8: gNB 級的 TX 功率，往下傳給每個 cell
         sectors.forEach((s: any, i: number) => {
           cellPayload.push({
             cell_id: `${g.name}_c${i}`,
@@ -177,6 +190,7 @@ export function useSimPage(options?: UseSimPageOptions) {
             position: pos,
             frequency_ghz: g.frequency_ghz ?? 3.5,
             bandwidth_mhz: g.bandwidth_mhz ?? 100.0,
+            power_dbm: gnbPower,
           });
         });
       }
@@ -203,6 +217,7 @@ export function useSimPage(options?: UseSimPageOptions) {
                 name: c.name, pci: c.pci, azimuth_deg: c.azimuth_deg,
                 position: c.position, frequency_ghz: c.frequency_ghz,
                 bandwidth_mhz: c.bandwidth_mhz, gnb_id: c.gnb_id,
+                power_dbm: c.power_dbm,  // AK8: 讓 RU 在 RSRP 計算用每 gNB 自己的功率
               })),
             }),
           }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
@@ -300,6 +315,9 @@ export function useSimPage(options?: UseSimPageOptions) {
       }
 
       await tryStep('DU Tick.start', async () => { await startSim(); });
+      // AG15: 把 UE container 從 STANDBY → RUNNING. 沒這步 traffic_gen 不發 SDU,
+      // RLC/MAC/cell PRB 全 0. Start Sim chain 原本漏掉這一步.
+      await tryStep('UE Lifecycle.start', async () => { await ueSimStart(); });
       setSimRunning(true);
 
       // ── 報告 scene-apply 過程的失敗（best-effort：sim 仍會跑起來）──
@@ -348,8 +366,19 @@ export function useSimPage(options?: UseSimPageOptions) {
             }).catch(() => {});
           }
 
-          // 3. 讀 CU E2-KPM 拿最新 RSRP/SINR
-          let ueStatus: Array<{ ue_id: string; serving_cell: string; rsrp_dbm: number | null; sinr_db: number | null; throughput_dl_mbps: number }> = [];
+          // 3. 讀 CU E2-KPM 拿最新 RSRP/SINR/throughput/MCS/PRB/rank
+          let ueStatus: Array<{
+            ue_id: string;
+            serving_cell: string;
+            rsrp_dbm: number | null;
+            sinr_db: number | null;
+            throughput_dl_mbps: number;
+            throughput_ul_mbps?: number;
+            mcs_dl?: number;
+            rb_width_dl?: number;
+            mimo_rank?: number;
+            neighbor_cells?: Array<{ cell_id: string; rsrp_dbm: number }>;
+          }> = [];
           try {
             const kpmRes = await fetch(`${CU_BASE_URL}/api/v0.1/CU/E2/E2KpmReporter/read`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -371,6 +400,19 @@ export function useSimPage(options?: UseSimPageOptions) {
             .filter(u => activeUeNames.has(u.ue_id) && u.rsrp_dbm !== null && u.sinr_db !== null)
             .map(u => {
               const cellInfo = u.serving_cell ? cellInfoMap[u.serving_cell] : null;
+              // 把 CU KPM 的 neighbor_cells [{cell_id, rsrp_dbm, rsrq_db}] 攤平成
+              // rsrp_map {cell_id: rsrp_dbm},Playback / SignalTable 展開列要用。
+              const neighbors: Array<{ cell_id: string; rsrp_dbm: number }> =
+                ((u as any).neighbor_cells ?? []) as Array<{ cell_id: string; rsrp_dbm: number }>;
+              const rsrpMap: Record<string, number> = {};
+              for (const n of neighbors) {
+                if (n && n.cell_id != null && typeof n.rsrp_dbm === 'number') {
+                  rsrpMap[n.cell_id] = n.rsrp_dbm;
+                }
+              }
+              if (u.serving_cell && typeof u.rsrp_dbm === 'number' && !(u.serving_cell in rsrpMap)) {
+                rsrpMap[u.serving_cell] = u.rsrp_dbm;
+              }
               return {
                 ue_name: u.ue_id,
                 serving_cell: u.serving_cell || 'unknown',
@@ -379,7 +421,14 @@ export function useSimPage(options?: UseSimPageOptions) {
                 serving_cell_id: cellInfo?.cell_id || '',
                 rsrp_dbm: u.rsrp_dbm,
                 sinr_db: u.sinr_db,
-                rsrp_map: {},
+                rsrp_map: rsrpMap,
+                // 2026-05-17 #2: 把 KPM 的 wireless KPI 一併帶進 ingest,
+                // SignalHistory 落地後 playback 才能重現吞吐/MCS/PRB/rank
+                throughput_dl_mbps: u.throughput_dl_mbps ?? null,
+                throughput_ul_mbps: u.throughput_ul_mbps ?? null,
+                mcs_dl: u.mcs_dl ?? null,
+                prb_used_dl: u.rb_width_dl ?? null,
+                mimo_rank: u.mimo_rank ?? null,
                 position: positions[u.ue_id],   // ★ 跟 RU 同一份位置
               };
             })
@@ -393,8 +442,17 @@ export function useSimPage(options?: UseSimPageOptions) {
             setSignalData(signals.map(s => ({
               ue_name: s.ue_name,
               serving_cell: s.serving_cell,
+              serving_gnb: s.serving_gnb,
+              serving_pci: s.serving_pci ?? undefined,
+              serving_cell_id: s.serving_cell_id,
               rsrp_dbm: s.rsrp_dbm,
               sinr_db: s.sinr_db,
+              rsrp_map: s.rsrp_map,
+              throughput_dl_mbps: s.throughput_dl_mbps ?? undefined,
+              throughput_ul_mbps: s.throughput_ul_mbps ?? undefined,
+              mcs_dl: s.mcs_dl ?? undefined,
+              prb_used_dl: s.prb_used_dl ?? undefined,
+              mimo_rank: s.mimo_rank ?? undefined,
             } as UESignalData)));
             setChartData(prev => {
               const tick = (prev[prev.length - 1]?.tick as number || 0) + 1;
@@ -451,6 +509,8 @@ export function useSimPage(options?: UseSimPageOptions) {
         await omniverseApi.stopAnimation();
       } catch { /* ignore */ }
       await stopSim();
+      // AG15: 對稱關掉 UE container traffic_gen.
+      try { await ueSimStop(); } catch { /* best effort */ }
       setSimRunning(false);
       router.push('/playback');
     } catch (err) {

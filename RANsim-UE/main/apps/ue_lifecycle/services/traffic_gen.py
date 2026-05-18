@@ -16,6 +16,7 @@ Patterns:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -25,6 +26,16 @@ logger = logging.getLogger(__name__)
 
 # AL3 — re-sync 節流參數 (避免 DU 全死時 CU 被 update_traffic_profile spam)
 _RESYNC_COOLDOWN_MS = 10_000   # 10 秒只能 re-sync 一次
+
+
+def _batch_mode_enabled() -> bool:
+    """AL: 讀 env INJECT_BATCH_MODE — 控制是否走 batch inject 路徑.
+
+    on / true / 1 → 用 inject_sdu_batch (per-packet ts, 對齊 OAI)
+    off / false / 0 / 未設 → 用舊 inject_sdu (single big SDU, 向後相容)
+    """
+    val = (os.environ.get("INJECT_BATCH_MODE") or "off").strip().lower()
+    return val in ("on", "true", "1", "yes")
 
 
 def _now_ms() -> int:
@@ -69,9 +80,15 @@ class UeTrafficGen:
             self.last_inject_at_ms = now
             return 0
 
+        # AL: 先 clamp elapsed_ms — 防止 inject 持續失敗時 elapsed 無上限累積 (batch
+        # mode 會把 elapsed_ms 直接送 window_ms 參數, 超過 60s 會被 DU 拒).
+        # 1000ms 上限 = 即使一個 tick 拉長 10×, batch payload 也算合理範圍 (10×625KB = 6MB).
         elapsed_ms = now - self.last_inject_at_ms
         if elapsed_ms <= 0:
             return 0
+        if elapsed_ms > 1000:
+            logger.debug("UE[%s] clamp elapsed_ms %d → 1000", self.ue_id, elapsed_ms)
+            elapsed_ms = 1000
 
         # 計算 elapsed window 內 CBR 該傳的 byte 量
         # bytes = rate_bps × elapsed_s / 8
@@ -84,7 +101,33 @@ class UeTrafficGen:
         if bytes_to_inject > max_per_tick:
             bytes_to_inject = max_per_tick
 
-        result = du_client.inject_sdu(self.ue_id, bytes_to_inject, bearer_id=bearer_id)
+        if _batch_mode_enabled():
+            # AL: batch mode — 拆 packet, per-packet ts_offset_us 線性散布, 對齊 OAI inject.
+            sdu_size = int(self.profile.get("sdu_size", 1500))
+            if sdu_size <= 0:
+                sdu_size = 1500
+            n_full = bytes_to_inject // sdu_size
+            remainder = bytes_to_inject % sdu_size
+            items: list[dict[str, Any]] = []
+            total_pkts = n_full + (1 if remainder > 0 else 0)
+            if total_pkts == 0:
+                return 0
+            window_us = elapsed_ms * 1000
+            for i in range(n_full):
+                items.append({
+                    "sdu_bytes": sdu_size,
+                    "ts_offset_us": int(window_us * i / total_pkts),
+                })
+            if remainder > 0:
+                items.append({
+                    "sdu_bytes": remainder,
+                    "ts_offset_us": int(window_us * (total_pkts - 1) / total_pkts),
+                })
+            result = du_client.inject_sdu_batch(
+                self.ue_id, items, window_ms=elapsed_ms, bearer_id=bearer_id,
+            )
+        else:
+            result = du_client.inject_sdu(self.ue_id, bytes_to_inject, bearer_id=bearer_id)
         if result == "ok":
             self.injected_call_count += 1
             self.injected_bytes += bytes_to_inject

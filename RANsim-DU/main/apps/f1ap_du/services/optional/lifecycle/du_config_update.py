@@ -117,4 +117,6 @@ def cell_state_to_config(cell) -> CellConfig:
         served_plmn=cell.served_plmn,
         gnb_id=getattr(cell, "gnb_id", "") or "",
         is_active=getattr(cell, "is_active", True),
+        # P2.9: 把 OAI 真實 nr_cellid 帶到 CU 端 (None 時 CU 走 SHA-1 hash fallback)
+        nr_cellid=getattr(cell, "nr_cellid", None),
     )

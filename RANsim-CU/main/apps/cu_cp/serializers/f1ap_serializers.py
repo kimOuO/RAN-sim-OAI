@@ -13,6 +13,8 @@ class _CellConfigSerializer(serializers.Serializer):
     bandwidth_mhz = serializers.FloatField()
     # 對齊 globalE2node-ID PLMN — caller 沒帶就 env 衍生.
     served_plmn = serializers.CharField(max_length=16, default=default_served_plmn)
+    # 2026-05-16 P2.9: F1 Setup 帶上 OAI 真實 nr_cellid;沒帶 → CU 走 SHA-1 hash fallback
+    nr_cellid = serializers.IntegerField(required=False, allow_null=True, default=None)
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
 
 

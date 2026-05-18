@@ -28,6 +28,7 @@ from main.apps.f1ap_du.services.optional.message_codec.f1ap_codec import (
 from main.apps.fapi_north.services.business.ru_client_operations import RuClientBusinessService
 from main.apps.fapi_north.services.optional.message_codec.fapi_codec import encode_dl_tti
 from main.apps.fapi_north.services.optional.tti_builder.tti_builder import build_dl_tti
+from main.apps.mac.services.optional.harq.harq_manager import get_harq_manager
 from main.apps.mac.services.optional.link_adaptation.mcs_controller import get_mcs_controller
 from main.apps.mac.services.optional.link_adaptation.mcs_table import (
     mcs_to_throughput_mbps,
@@ -36,6 +37,7 @@ from main.apps.mac.services.optional.link_adaptation.mcs_table import (
 from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_aggregator
 from main.apps.mac.services.optional.scheduler.scheduler_factory import get_scheduler
 from main.apps.rlc.services.optional.entities import factory as rlc_factory
+from main.services_logs.ran_message_log import get_ring as get_log_ring
 from main.utils.env_loader import get_int
 from main.utils.logger import get_logger
 
@@ -55,9 +57,18 @@ class TickStatus:
 class TickRunner:
     """全局 tick driver 單例。"""
 
-    REPORT_EVERY_N_TICKS = 5
+    # AL: REPORT_EVERY_N_TICKS 改 lazy property — 從 PM_WINDOW_SEC (default 1.0s) /
+    # SIM_TICK_MS 動態算. 預設 500ms tick → 2 ticks/s × 1s = 2 ticks/window (太少),
+    # 因此 default PM_WINDOW_SEC = 1.0 配 SIM_TICK_MS=50 → 20 ticks/window.
     SLOTS_PER_FRAME = 20  # numerology=1 (30 kHz SCS)
     SFN_MAX = 1024
+
+    @property
+    def REPORT_EVERY_N_TICKS(self) -> int:
+        from main.utils.env_loader import get_float
+        window_s = get_float("PM_WINDOW_SEC", 1.0)
+        tick_ms = get_int("SIM_TICK_MS", 500)
+        return max(1, int(round(window_s * 1000 / max(tick_ms, 1))))
 
     def __init__(self) -> None:
         self._stop_event = threading.Event()
@@ -127,6 +138,42 @@ class TickRunner:
     def start(self) -> bool:
         if self.status.is_running:
             return False
+        # AK10: 每次 Start Sim 都必須從乾淨狀態開始，避免上次 session 的 SDU buffer /
+        # delay sample / counter / tick phase 影響這次 KPM。對齊 OAI 真機 — 每次
+        # gNB cold restart 是真的所有 state wipe。
+        self.status.tick_count = 0
+        self.status.sfn = 0
+        self.status.slot = 0
+        self.status.last_tick_ms = 0
+        # 清 PM aggregator（avg delay / throughput / PRB / volume 累積資料）
+        try:
+            get_pm_aggregator().reset()
+        except Exception:
+            logger.exception("pm_aggregator.reset() failed; continuing")
+        # 清掉所有 RLC entity，連同它們內部 _tx_queue 裡殘留的 SDU
+        try:
+            n = rlc_factory.clear_all()
+            if n > 0:
+                logger.info("TickRunner.start: cleared %d stale RLC entities from previous session", n)
+        except Exception:
+            logger.exception("rlc_factory.clear_all() failed; continuing")
+        # AK11 Bug A: 清 HARQ manager — 過去 Stop Sim 時若某 UE 還在 WAIT_FEEDBACK 等
+        # CRC ind，下次同名 UE re-attach 時 _pool_for() 沿用舊 pool，會卡住 5-15 個
+        # process 在 WAIT_FEEDBACK，acquire_process() 找不到 NEW → 排程量被吃掉，極端
+        # 情況變 throughput=0 但 RSRP/SINR 都正常（最難 debug 的 leakage）。
+        try:
+            get_harq_manager().reset()
+        except Exception:
+            logger.exception("harq_manager.reset() failed; continuing")
+        # AK11 Bug B: 防禦性清 _ue_registry — Dashboard 的 replace_ues 一般會清，但若
+        # Dashboard chain 中斷（RU 500 / 網路抖）就會殘留「鬼魂 UE」靠 ue_registry
+        # 繼續出 KPM。這裡 Tick.start 一律清空當保險。後續 add_ue() 會把當前 sim 的
+        # UE 重新加進來，所以對正常流程是 no-op。
+        stale_count = len(self._ue_registry)
+        if stale_count > 0:
+            logger.info("TickRunner.start: cleared %d stale UEs from _ue_registry", stale_count)
+            self._ue_registry.clear()
+
         self._stop_event.clear()
         self.status.is_running = True
         self.status.started_at_ms = int(time.time() * 1000)
@@ -172,6 +219,7 @@ class TickRunner:
         # 1) RLC buffer status + 收集 SDU delay samples → PM aggregator
         bo_by_ue: dict[str, int] = {}
         delay_by_ue: dict[str, list[float]] = {}
+        drops_by_ue: dict[str, tuple[int, int]] = {}  # AK10: per-UE (sdus, bytes) drop in this tick
         for (ue_id, _btype, _bid), entity in rlc_factory.all_entities():
             bo_by_ue[ue_id] = bo_by_ue.get(ue_id, 0) + entity.buffer_status()
             # 收 RLC entity 累計的 SDU delivery delay（取出後 entity 內部 buffer 清空）
@@ -181,6 +229,14 @@ class TickRunner:
                     delay_by_ue.setdefault(ue_id, []).extend(samples)
             except AttributeError:
                 pass  # 舊 entity 沒有此 API — 忽略
+            # AK10: 收 RLC AM 因 tx buffer 滿 reject 的 SDU drop 計數（OAI 行為對齊）
+            try:
+                ds, db = entity.take_drop_samples()
+                if ds > 0 or db > 0:
+                    prev_s, prev_b = drops_by_ue.get(ue_id, (0, 0))
+                    drops_by_ue[ue_id] = (prev_s + ds, prev_b + db)
+            except AttributeError:
+                pass  # TM/UM entity 沒實作 — 忽略
         # 所有 CONNECTED UE 都要 measurement (對齊真實 OAI: CSI-RS 跟 PDSCH 解耦).
         # measurement 跟 scheduling 解耦 — 沒 traffic 的 UE 也要算 channel state,
         # 否則 RIC 看到的 KPM 會凍結 (rsrp/sinr 永遠是 attach 當下的值).
@@ -368,6 +424,12 @@ class TickRunner:
         # 4b) Accumulate RLC SDU delay (從 step 1 收的 samples)
         for uid, delays in delay_by_ue.items():
             pm.accumulate_rlc_delay(uid, delays)
+        # AK10 — accumulate RLC tx-cap drops 進 PM window，flush 時報出去
+        for uid, (ds, db) in drops_by_ue.items():
+            try:
+                pm.accumulate_rlc_drop(uid, dropped_sdus=ds, dropped_bytes=db)
+            except AttributeError:
+                pass  # pm aggregator 還沒實作 — 不擋 tick
         # DEBUG (commented out — enable to trace per-tick PM)
         if False and (ues_with_bo or delay_by_ue):
             logger.info(
@@ -400,6 +462,37 @@ class TickRunner:
                     for n in neighbor_dicts
                     if n.get("cell_id")
                 ]
+
+                # AK10 — drop 計數仍保留在 PM window dict 裡（w["rlc_drop_*"]），
+                # 但不打上 KPM wire；只在 DU 本地 log 觀察。沒有送 CU/e2adapter/Dashboard。
+                drop_sdus = int(w.get("rlc_drop_sdus", 0) or 0)
+                drop_bytes = int(w.get("rlc_drop_bytes", 0) or 0)
+                if drop_sdus > 0 or drop_bytes > 0:
+                    cap_bytes = get_int("RLC_TX_MAXSIZE_BYTES", 100_000)
+                    logger.warning(
+                        "[RLC-DROP] ue=%s window=%.1fs drop_sdus=%d drop_bytes=%d "
+                        "(tx buffer cap %d B 達上限 → reject 新進 SDU；對齊 OAI sdu_rejected)",
+                        uid, window_s, drop_sdus, drop_bytes, cap_bytes,
+                    )
+                    # AK11 Q1 — 推進 ring buffer 讓 Dashboard /logs 頁面看得到。
+                    # path 把 drop 數字塞進去（Dashboard table 預設只 render path 欄位，
+                    # 把資訊壓進 path 是讓使用者不用點開 row 就看到的最直接方法）。
+                    try:
+                        get_log_ring().append({
+                            "ts_ms": int(time.time() * 1000),
+                            "service": "DU",
+                            "method": "INTERNAL",
+                            "path": f"internal:rlc_drop sdus={drop_sdus} bytes={drop_bytes} cap={cap_bytes}",
+                            "status": 0,
+                            "duration_ms": int(window_s * 1000),
+                            "category": "RLC_DROP",
+                            "ue_id": uid,
+                            "drop_sdus": drop_sdus,
+                            "drop_bytes": drop_bytes,
+                            "cap_bytes": cap_bytes,
+                        })
+                    except Exception:
+                        pass  # ring buffer 故障不影響 sim
 
                 report = GnbDuMeasurementReport(
                     ue_id=uid,

@@ -15,8 +15,7 @@ export function SystemOverviewBar() {
 
   const tickColor = !o.tick ? C_MUTED : (o.tick.is_running ? C_OK : C_FAIL);
   const e2Color = !o.e2.connected ? C_FAIL : (o.e2.setup_ok ? C_OK : C_WARN);
-  const e2SilentRatio = o.e2.recv > 0 ? o.e2.sent / Math.max(o.e2.recv, 1) : Infinity;
-  const e2Silent = o.e2.connected && e2SilentRatio > 100;
+  // AG13: 移除 silent-peer 偽警報 — E2 Indication push-only, sent>>recv 是正常.
 
   const cellsColor = o.cells.total === 0 ? C_MUTED
     : o.cells.active === o.cells.total ? C_OK : C_WARN;
@@ -46,12 +45,8 @@ export function SystemOverviewBar() {
             !o.e2.connected ? 'DISCONNECTED'
             : o.e2.setup_ok ? `up · sent ${o.e2.sent}` : 'connected · setup pending'
           }
-          sub={
-            e2Silent
-              ? `⚠ silent peer (sent/recv ratio ${e2SilentRatio.toFixed(0)}:1)`
-              : `recv ${o.e2.recv}`
-          }
-          subColor={e2Silent ? C_WARN : C_MUTED}
+          sub={`recv ${o.e2.recv}`}
+          subColor={C_MUTED}
         />
         <KpiCard
           label="Cells"

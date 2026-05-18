@@ -10,6 +10,7 @@ from typing import Any
 from main.apps.cu_cp.models.handover_event import HandoverEvent
 from main.apps.cu_cp.models.ue_context import UeContext
 from main.apps.cu_cp.services.business.du_client_operations import DuClientBusinessService
+from main.apps.cu_cp.services.business.omniverse_push import push_handover_event
 from main.apps.cu_cp.services.business.sqldb_operations import SqlDbBusinessService
 from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from main.apps.cu_cp.services.common.uuid_service import UUIDService
@@ -77,6 +78,16 @@ def execute_f1_handover(
     )
     logger.info("F1 Handover [%s]: UE %s  %s → %s  (ho_uuid=%s)",
                 trigger, ue_id, source_cell, target_cell, ho_uuid[:8])
+    # 2026-05-17 #1: fire-and-forget 推給 Omniverse,playback 能把 HO 切回 frame_ts
+    push_handover_event(
+        ho_uuid=ho_uuid,
+        ue_id=ue_id,
+        source_cell=source_cell,
+        target_cell=target_cell,
+        trigger=trigger,
+        status="SUCC",
+        event_ts=now.isoformat() if hasattr(now, "isoformat") else None,
+    )
     return {
         "ho_uuid": ho_uuid,
         "ue_id": ue_id,

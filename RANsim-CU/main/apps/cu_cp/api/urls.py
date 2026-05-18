@@ -7,6 +7,7 @@ from main.apps.cu_cp.actors.e2_node_id_actor import E2NodeIdActor
 from main.apps.cu_cp.actors.e2_subscription_actor import E2IndicationActor, E2SubscriptionActor
 from main.apps.cu_cp.actors.f1ap_router_actor import F1ApRouterActor
 from main.apps.cu_cp.actors.log_actor import LogActor
+from main.apps.cu_cp.actors.handover_event_actor import HandoverEventActor
 from main.apps.cu_cp.actors.mobility_actor import MobilityActor
 from main.apps.cu_cp.actors.ngap_router_actor import NgapRouterActor
 from main.apps.cu_cp.actors.session_controller_actor import SessionControllerActor
@@ -43,4 +44,6 @@ urlpatterns = [
     # AK11: Mobility A3 runtime config (Dashboard 控制 A3 開關 + 參數)
     path("Mobility/A3Controller/read", MobilityActor.read_a3, name="mobility_a3_read"),
     path("Mobility/A3Controller/set",  MobilityActor.set_a3,  name="mobility_a3_set"),
+    # Mobility HO event history (Dashboard HandoverMap)
+    path("Mobility/HandoverEvent/list", HandoverEventActor.list, name="ho_event_list"),
 ]

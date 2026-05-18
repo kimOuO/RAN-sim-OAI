@@ -1,47 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { E2_ADAPTER_BASE_URL } from '@/config';
-
-interface AdapterStatus {
-  sctp_link: {
-    enabled: boolean;
-    target_host: string;
-    target_port: number;
-    connected: boolean;
-    last_connect_at_ms: number;
-    last_disconnect_at_ms: number;
-    last_error: string;
-    pdu_sent_count: number;
-    pdu_recv_count: number;
-  };
-  e2_setup: {
-    completed: boolean;
-    accepted_ran_function_ids: number[];
-    rejected_ran_function_ids: number[];
-  };
-  schemas: {
-    loaded: boolean;
-    file_list: string[];
-    error: string;
-  };
-  sim_bridge: {
-    cu_url: string;
-    last_e2_node_id_at_ms: number;
-    last_error: string;
-  };
-  codec_selftest: {
-    e2_setup_request_ok: boolean;
-    e2_setup_request_size: number;
-    kpm_indication_ok: boolean;
-    kpm_indication_size: number;
-    subscription_decode_ok: boolean;
-    subscription_decoded_metrics: string[];
-    last_error: string;
-  };
-}
-
-const POLL_INTERVAL_MS = 3000;
+// AG16: 不再自己 poll — 改用共享的 useE2AdapterStatus (跟 useSystemOverview 共用同一條 fetch).
+import { useE2AdapterStatus } from '@/hooks/feature/log/useE2AdapterStatus';
 
 // ── color tokens ───────
 const C_OK = '#10b981';      // green
@@ -94,33 +54,7 @@ function Section({ title, children, statusColor }: SectionProps) {
 }
 
 export function E2AdapterCard() {
-  const [status, setStatus] = useState<AdapterStatus | null>(null);
-  const [fetchErr, setFetchErr] = useState<string>('');
-  const [lastFetchMs, setLastFetchMs] = useState<number>(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchOnce = async () => {
-      try {
-        const resp = await fetch(
-          `${E2_ADAPTER_BASE_URL}/api/v0.1/E2Adapter/Status/AdapterStatusReader/read`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
-        );
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        if (cancelled) return;
-        setStatus(json.data);
-        setFetchErr('');
-        setLastFetchMs(Date.now());
-      } catch (e: any) {
-        if (cancelled) return;
-        setFetchErr(e?.message || String(e));
-      }
-    };
-    fetchOnce();
-    const id = setInterval(fetchOnce, POLL_INTERVAL_MS);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  const { data: status, error: fetchErr } = useE2AdapterStatus();
 
   if (!status) {
     return (
@@ -162,7 +96,7 @@ export function E2AdapterCard() {
             E2 Adapter （sim ↔ Near-RT RIC bridge）
           </h3>
           <span style={{ fontSize: 11, color: '#6b7280' }}>
-            {fmtAge(lastFetchMs)} · poll {POLL_INTERVAL_MS}ms
+            shared poll 2s
           </span>
         </div>
         <span style={{ fontSize: 11, color: '#6b7280' }}>

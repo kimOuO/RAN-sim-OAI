@@ -40,5 +40,16 @@ def unregister_ue(ue_id: str) -> None:
         _registry.pop(k, None)
 
 
+def clear_all() -> int:
+    """清空整個 RLC entity registry — 給 Tick/start 用，確保新 sim 從乾淨狀態開始。
+
+    AK10: 過去 entity 跟其內部 _tx_queue 跨 session 殘留是 KPM bufferbloat 主因
+    之一（舊 SDU 仍在 queue 影響新 sim 的 delay/throughput 量測）。回傳被清掉的
+    entity 數量供 log。"""
+    n = len(_registry)
+    _registry.clear()
+    return n
+
+
 def all_entities() -> list[tuple[tuple[str, str, int], object]]:
     return list(_registry.items())

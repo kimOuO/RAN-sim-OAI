@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment, useState } from 'react';
 import { RingEntry } from '@/lib/logStats';
 
 interface Props {
@@ -16,6 +17,16 @@ export function RanLogTable({ entries, autoScroll, maxRows = 60 }: Props) {
   const rows = autoScroll
     ? entries.slice(-maxRows).slice().reverse()
     : entries.slice(0, maxRows);
+  // 2026-05-16 P4.3: row 展開狀態 — 點一下顯示 PDU body
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggle = (key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <div style={{
@@ -30,6 +41,7 @@ export function RanLogTable({ entries, autoScroll, maxRows = 60 }: Props) {
         <table style={{ fontSize: 10.5, width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace' }}>
           <thead style={{ position: 'sticky', top: 0, background: '#0b1220' }}>
             <tr style={{ borderBottom: '1px solid #374151', textAlign: 'left' }}>
+              <Th style={{ width: 14 }}></Th>
               <Th>t</Th>
               <Th>SVC</Th>
               <Th>Category</Th>
@@ -40,39 +52,111 @@ export function RanLogTable({ entries, autoScroll, maxRows = 60 }: Props) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((e) => (
-              <tr key={`${e.service}-${e.seq}`} style={{
-                borderBottom: '1px solid #1f2937',
-                background: e.status >= 400 ? '#3f1d1d' : 'transparent',
-              }}>
-                <Td color="#6b7280">{formatT(e.ts_ms)}</Td>
-                <Td>
-                  <span style={{
-                    background: SVC_COLORS[e.service] || '#6b7280',
-                    color: '#fff', padding: '1px 5px', borderRadius: 3,
-                    fontSize: 9, fontWeight: 700,
-                  }}>
-                    {e.service}
-                  </span>
-                </Td>
-                <Td bold color="#cbd5e1">{e.category}</Td>
-                <Td color="#9ca3af">{e.ue_id || '-'}</Td>
-                <Td color="#9ca3af" title={e.path}>
-                  <span style={{ display: 'inline-block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                    {shortenPath(e.path)}
-                  </span>
-                </Td>
-                <Td align="right" color={e.duration_ms > 100 ? '#f59e0b' : '#6b7280'}>
-                  {e.duration_ms}
-                </Td>
-                <Td align="right" color={e.status >= 400 ? '#ef4444' : '#10b981'} bold>
-                  {e.status}
-                </Td>
-              </tr>
-            ))}
+            {rows.map((e) => {
+              const key = `${e.service}-${e.seq}`;
+              const isOpen = expanded.has(key);
+              const hasPdu = (e.request_body && e.request_body.length > 0)
+                || (e.response_body && e.response_body.length > 0);
+              return (
+                <Fragment key={key}>
+                  <tr
+                    style={{
+                      borderBottom: isOpen ? 'none' : '1px solid #1f2937',
+                      background: e.status >= 400 ? '#3f1d1d' : 'transparent',
+                      cursor: hasPdu ? 'pointer' : 'default',
+                    }}
+                    onClick={() => { if (hasPdu) toggle(key); }}
+                  >
+                    <Td color={hasPdu ? '#9ca3af' : '#374151'}>
+                      {hasPdu ? (isOpen ? '▼' : '▶') : ''}
+                    </Td>
+                    <Td color="#6b7280">{formatT(e.ts_ms)}</Td>
+                    <Td>
+                      <span style={{
+                        background: SVC_COLORS[e.service] || '#6b7280',
+                        color: '#fff', padding: '1px 5px', borderRadius: 3,
+                        fontSize: 9, fontWeight: 700,
+                      }}>
+                        {e.service}
+                      </span>
+                    </Td>
+                    <Td bold color="#cbd5e1">{e.category}</Td>
+                    <Td color="#9ca3af">{e.ue_id || '-'}</Td>
+                    <Td color="#9ca3af" title={e.path}>
+                      <span style={{ display: 'inline-block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                        {shortenPath(e.path)}
+                      </span>
+                    </Td>
+                    <Td align="right" color={e.duration_ms > 100 ? '#f59e0b' : '#6b7280'}>
+                      {e.duration_ms}
+                    </Td>
+                    <Td align="right" color={e.status >= 400 ? '#ef4444' : '#10b981'} bold>
+                      {e.status}
+                    </Td>
+                  </tr>
+                  {isOpen && hasPdu && (
+                    <tr style={{ borderBottom: '1px solid #1f2937' }}>
+                      <td colSpan={8} style={{ padding: '6px 12px 10px 26px', background: '#0a0f1c' }}>
+                        <PduDetail req={e.request_body || ''} resp={e.response_body || ''} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+function PduDetail({ req, resp }: { req: string; resp: string }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <Block label="Request body" body={req} />
+      <Block label="Response body" body={resp} />
+    </div>
+  );
+}
+
+function Block({ label, body }: { label: string; body: string }) {
+  if (!body) {
+    return (
+      <div>
+        <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 3 }}>{label}</div>
+        <div style={{ fontSize: 10, color: '#4b5563', fontStyle: 'italic' }}>(empty)</div>
+      </div>
+    );
+  }
+  // 嘗試 JSON pretty-print;不是 JSON 就原樣顯示
+  let pretty = body;
+  try {
+    pretty = JSON.stringify(JSON.parse(body), null, 2);
+  } catch {
+    // body 不是 JSON,保留原始
+  }
+  return (
+    <div>
+      <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 3, display: 'flex', justifyContent: 'space-between' }}>
+        <span>{label}</span>
+        <span style={{ color: '#374151' }}>{body.length}B {body.length >= 4096 ? '(truncated)' : ''}</span>
+      </div>
+      <pre style={{
+        margin: 0,
+        padding: 8,
+        background: '#000',
+        border: '1px solid #1f2937',
+        borderRadius: 4,
+        fontSize: 10,
+        color: '#cbd5e1',
+        maxHeight: 240,
+        overflow: 'auto',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-all',
+      }}>
+        {pretty}
+      </pre>
     </div>
   );
 }

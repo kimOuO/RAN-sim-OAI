@@ -29,6 +29,11 @@ RUN pip install --upgrade pip --no-cache-dir && \
 
 COPY . /app
 
+# AK8: ran-sim-protocol 在 sibling repo (CU/DU/RU 都用), Physics 也走同一個 DTO + 共用
+# rsrp_model 計算 util, 跟 RU realtime KPM 同源。editable install 讓 bind-mount 改檔
+# 立即生效, 不用 rebuild。
+RUN pip install --no-cache-dir -e /app/ran-sim-protocol/
+
 EXPOSE 8000
 
 CMD ["daphne", "main.asgi:application", "-b", "0.0.0.0", "-p", "8000"]

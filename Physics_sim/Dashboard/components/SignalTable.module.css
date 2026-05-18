@@ -34,3 +34,101 @@
 .table tbody tr:hover {
   background-color: #1f2937;
 }
+
+.expandBtn {
+  background: transparent;
+  border: 1px solid #374151;
+  color: #93c5fd;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+}
+
+.expandBtn:hover {
+  background: #1f2937;
+  border-color: #60a5fa;
+}
+
+.expandPlaceholder {
+  color: #4b5563;
+  display: inline-block;
+  width: 24px;
+  text-align: center;
+}
+
+.detailRow {
+  background: #0b1220;
+}
+
+.detailRow:hover {
+  background: #0b1220 !important;
+}
+
+.detailWrap {
+  padding: 8px 12px 12px;
+}
+
+.detailTitle {
+  color: #9ca3af;
+  font-size: 12px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.neighborTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: #0f172a;
+  border: 1px solid #1f2937;
+}
+
+.neighborTable th {
+  background: #111827;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid #1f2937;
+}
+
+.neighborTable td {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid #111827;
+  color: #cbd5e1;
+}
+
+.neighborTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.servingRow td {
+  color: #34d399;
+  font-weight: 500;
+}
+
+.neighborEmpty {
+  color: #6b7280;
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.hoBadge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fde68a;
+  background: #78350f;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  vertical-align: middle;
+  cursor: help;
+}
