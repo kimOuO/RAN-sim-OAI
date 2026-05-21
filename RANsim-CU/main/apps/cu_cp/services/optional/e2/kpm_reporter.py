@@ -71,25 +71,30 @@ class KpmReporter:
                 "measured_at": last_meas.recorded_at.isoformat() if last_meas else None,
             })
 
-        # Per-cell HO counters (rolling — full-table counts).
+        # 先抓當下 active cell set — HandoverEvent / UeContext.serving_cell 可能含
+        # 歷史 cell_id(舊測試用的 gnb4_c0、gNB_Macro_NW 等),pm{} 只列當下存在的
+        # cell 避免吐殘留 counter 給 xApp/前端。memory `feedback_clean_scene_reset`:
+        # audit table(HandoverEvent)本身不清,但 KPM snapshot 要做 fresh-only filter。
+        cells = list(CellConfig.objects.values_list("cell_id", flat=True))
+        active_cells = set(cells)
+
+        # Per-cell HO counters(rolling — 只算 source_cell 仍在 active_cells 的事件)
         pm_per_cell: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        for evt in HandoverEvent.objects.all():
+        for evt in HandoverEvent.objects.filter(source_cell__in=active_cells):
             pm_per_cell[evt.source_cell]["MM.HoExeIntraReq"] += 1
             if evt.status == "SUCC":
                 pm_per_cell[evt.source_cell]["MM.HoExeIntraSucc"] += 1
             if evt.trigger == "A3_TTT":
                 pm_per_cell[evt.source_cell]["gnb.MR.Event.A3"] += 1
 
-        # Connection counts
+        # Connection counts — 也過濾掉 serving_cell 已不存在的 stale UeContext
         connected_per_cell: dict[str, int] = defaultdict(int)
         for ue in UeContext.objects.filter(rrc_state="CONNECTED"):
-            if ue.serving_cell:
+            if ue.serving_cell and ue.serving_cell in active_cells:
                 connected_per_cell[ue.serving_cell] += 1
         for cell_id, n in connected_per_cell.items():
             pm_per_cell[cell_id]["RRC.ConnMean"] = n
             pm_per_cell[cell_id]["RRC.ConnMax"] = max(pm_per_cell[cell_id]["RRC.ConnMax"], n)
-
-        cells = list(CellConfig.objects.values_list("cell_id", flat=True))
         bbu_status = BbuTelemetryService.per_gnb_snapshot(cells)
         bbu_status["timestamp"] = timestamp  # type: ignore[assignment]
 

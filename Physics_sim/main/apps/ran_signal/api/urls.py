@@ -17,6 +17,7 @@ from main.apps.ran_signal.actors.config_actor import ConfigActor
 from main.apps.ran_signal.actors.coverage_actor import CoverageActor
 from main.apps.ran_signal.actors.health_actor import HealthActor
 from main.apps.ran_signal.actors.path_solver_actor import PathSolverActor
+from main.apps.ran_signal.actors.precompute_actor import PrecomputeActor
 from main.apps.ran_signal.actors.scene_gateway_actor import SceneGatewayActor
 
 
@@ -27,6 +28,10 @@ urlpatterns = [
         PathSolverActor.compute,
         name="path_solver_compute",
     ),
+
+    # /api/v0.1/Physics/Precompute/{run,status} (Phase B B.6)
+    path("Physics/Precompute/run", PrecomputeActor.run, name="precompute_run"),
+    path("Physics/Precompute/status", PrecomputeActor.status, name="precompute_status"),
 
     # /api/v0.1/Physics/RanSignal/ConfigManager/read
     path(

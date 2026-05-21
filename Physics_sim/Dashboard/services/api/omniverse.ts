@@ -176,43 +176,6 @@ export const updateUe = async (name: string, data: any): Promise<any> => {
   return response.data.data;
 };
 
-// ─── Obstacles ──────────────────────────────────────────────────
-
-export const listObstacles = async (): Promise<any[]> => {
-  try {
-    const response = await omniverseApiClient.post<{ data: any[] }>(
-      '/api/v0.1/RAN/Scene/ObstacleController/read',
-      {}
-    );
-    return response.data.data || [];
-  } catch (error) {
-    console.warn('Failed to list obstacles, returning empty list:', error);
-    return [];
-  }
-};
-
-export const createObstacle = async (data: any): Promise<any> => {
-  const response = await omniverseApiClient.post<{ data: any }>(
-    '/api/v0.1/RAN/Scene/ObstacleController/create',
-    data
-  );
-  return response.data.data;
-};
-
-export const deleteObstacle = async (name: string): Promise<void> => {
-  try {
-    await omniverseApiClient.post('/api/v0.1/RAN/Scene/ObstacleController/delete', {
-      name,
-    });
-  } catch (error: any) {
-    if (error.response?.status === 404) {
-      console.warn(`Obstacle '${name}' not found in database, skipping delete`);
-      return;
-    }
-    throw error;
-  }
-};
-
 // ─── Scene Control ──────────────────────────────────────────────
 
 export const getSceneLayout = async (): Promise<SceneLayout> => {

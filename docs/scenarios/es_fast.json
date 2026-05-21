@@ -1,0 +1,95 @@
+{
+  "scenario_id": "es_fast",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 80,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "ues": [
+    {
+      "name": "es_ue_01",
+      "positions": [
+        [
+          0,
+          0.0,
+          1.5,
+          -60.0
+        ],
+        [
+          80,
+          0.0,
+          1.5,
+          -60.0
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "es_ue_01",
+      "profile": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          40,
+          2000,
+          200
+        ],
+        [
+          60,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "oai_origin": "es_traffic.sh",
+    "intent": "ES (energy saving)",
+    "required_topology": {
+      "min_gnbs": 1,
+      "min_cells_per_gnb": 1,
+      "min_ues": 1,
+      "rationale": "per-cell 低載判定 — 1 個 cell 就夠;HO 動作需要鄰居 cell 但不一定要 2 gNB"
+    },
+    "expected_kpm": {
+      "phase 0~40s": "RRU.PrbTotDl mean < 0.10",
+      "phase 40~60s": "volume 回升 ≥ 1MB"
+    },
+    "xapp_expected_action": "trigger: control_handover + control_slice_level_prb_quota (min=0,max=5); recovery: control_slice_level_prb_quota (min=10,max=100)"
+  },
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 100,
+      "power_dbm": 23,
+      "active": true,
+      "color": [
+        0.2,
+        0.8,
+        0.4
+      ],
+      "cells": [
+        {
+          "cell_id": "gnbDT_c0",
+          "pci": 0,
+          "azimuth_deg": 0
+        },
+        {
+          "cell_id": "gnbDT_c1",
+          "pci": 1,
+          "azimuth_deg": 180
+        }
+      ]
+    }
+  ],
+  "buildings": []
+}

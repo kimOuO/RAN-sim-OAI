@@ -586,16 +586,22 @@ def _indication_producer_loop(sock, meta: dict) -> None:
         MemoryStateBusinessService,
     )
     from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec, e2sm_kpm_codec
+    from main.apps.e2_adapter.services.optional.sctp_link import sim_speed
     from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
 
     registry = get_registry()
     sub_id = meta["sub_id"]
-    period_sec = max(0.1, meta["period_ms"] / 1000.0)
-    logger.info("indication producer started sub_id=%s period=%.1fs", sub_id, period_sec)
+    base_period_sec = meta["period_ms"] / 1000.0
+    logger.info("indication producer started sub_id=%s base_period=%.1fs", sub_id, base_period_sec)
 
     poll_count = 0
     sent_count = 0
     while not meta["stop"].is_set():
+        # 每輪重讀 speed,Dashboard 改速度時下一輪生效。lower bound 50ms — 實測
+        # 20ms 反而把 hit-rate 從 88% 降到 77%(burst poll 多了 indications=0 空包),
+        # 因為 CU 的 build_indication produce-period 才是瓶頸,polling 再密無益。
+        speed = sim_speed.get_speed()
+        period_sec = max(0.05, base_period_sec / max(speed, 0.1))
         try:
             poll_resp = sim_http_client.poll_indication(sub_id)
         except sim_http_client.SubNotFoundError as exc:

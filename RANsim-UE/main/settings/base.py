@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "main.apps.ue_lifecycle",
+    "main.apps.scenario",
 ]
 
 MIDDLEWARE = [
@@ -64,6 +65,8 @@ SIM_DU_URL = os.getenv("SIM_DU_URL", "http://du:8000")
 SIM_RU_URL = os.getenv("SIM_RU_URL", "http://ru:8000")
 SIM_PHYSICS_URL = os.getenv("SIM_PHYSICS_URL", "http://physics:8000")
 OMNIVERSE_KIT_URL = os.getenv("OMNIVERSE_KIT_URL", "http://localhost:8080")
+# Omniverse Django backend (scene + UE + handover write-back) — port 8001
+OMNIVERSE_URL = os.getenv("OMNIVERSE_URL", "http://host.docker.internal:8001")
 
 # Tick periods (ms)
 UE_TRAJECTORY_PERIOD_MS = int(os.getenv("UE_TRAJECTORY_PERIOD_MS", "100"))

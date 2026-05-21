@@ -8,3 +8,7 @@ class TickStateReadSerializer(serializers.Serializer):
     started_at_ms = serializers.IntegerField(allow_null=True)
     last_tick_ms = serializers.IntegerField()
     is_running = serializers.BooleanField()
+    # Phase A — 時間軸三個欄位:wall (set_speed 改的) / sim_dt (固定) / 派生 speed
+    wall_tick_ms = serializers.IntegerField(required=False)
+    sim_dt_ms = serializers.IntegerField(required=False)
+    sim_speed_x = serializers.FloatField(required=False)

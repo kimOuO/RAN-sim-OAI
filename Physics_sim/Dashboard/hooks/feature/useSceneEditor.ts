@@ -14,7 +14,6 @@ export interface SceneEditorState {
   createBuilding: (data: Partial<Building>) => Promise<void>;
   createGNB: (data: any) => Promise<void>;
   createUE: (data: any) => Promise<void>;
-  createObstacle: (data: any) => Promise<void>;
   deleteBuilding: (name: string) => Promise<void>;
   deleteGNB: (name: string) => Promise<void>;
   deleteUE: (name: string) => Promise<void>;
@@ -102,22 +101,6 @@ export function useSceneEditor(): SceneEditorState {
     [ues]
   );
 
-  const createObstacle = useCallback(
-    async (data: any) => {
-      try {
-        setIsCreating(true);
-        const fullData = {
-          position: [0, 0, 0],
-          ...data,
-        };
-        await omniverseApi.createObstacle(fullData);
-      } finally {
-        setIsCreating(false);
-      }
-    },
-    []
-  );
-
   const deleteBuilding = useCallback(
     async (name: string) => {
       try {
@@ -189,7 +172,6 @@ export function useSceneEditor(): SceneEditorState {
     createBuilding,
     createGNB,
     createUE,
-    createObstacle,
     deleteBuilding,
     deleteGNB,
     deleteUE,

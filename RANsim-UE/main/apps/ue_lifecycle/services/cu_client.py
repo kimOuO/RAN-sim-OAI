@@ -40,6 +40,26 @@ def list_sessions() -> list[dict[str, Any]]:
     return []
 
 
+def release_stale(keep_ue_ids: list[str], force: bool = False) -> bool:
+    """POST CU /Session/SessionController/release_stale — 把不在 keep 名單裡的 UE
+    標 IDLE(或 force=True 直接刪掉),同時 fan-out 通知 DU 清掉對應 UE。
+
+    給 scenario_driver start() 用,跟 Dashboard handleStartSim C.5 一樣的清理動作,
+    避免上一場 sim 殘留的 CONNECTED UE 在 /logs 的 KpmReporter 視圖裡冒出來。
+    """
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Session/SessionController/release_stale"
+    body = {"keep_ue_ids": list(keep_ue_ids), "force": bool(force)}
+    try:
+        r = requests.post(url, json=body, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            logger.warning("release_stale non-OK %s: %s", r.status_code, r.text[:200])
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("release_stale HTTP failed: %s", exc)
+        return False
+
+
 def update_traffic_profile(ue_id: str, profile: dict[str, Any]) -> bool:
     """POST CU /Session/SessionController/update_traffic_profile to re-establish
     F1AP UE Context Setup (which auto-creates RLC entity on DU).
@@ -54,4 +74,81 @@ def update_traffic_profile(ue_id: str, profile: dict[str, Any]) -> bool:
         return r.ok
     except requests.RequestException as exc:
         logger.warning("update_traffic_profile HTTP failed for %s: %s", ue_id, exc)
+        return False
+
+
+# Phase B B.x — 給 scenario_driver 用的 attach helpers,複製 Dashboard handleStartSim 流程。
+import base64
+import json as _json
+
+
+def _rrc_b64(msg_type: str, payload: dict | None = None) -> str:
+    body = {"type": msg_type, "payload": payload or {}}
+    return base64.b64encode(_json.dumps(body).encode()).decode()
+
+
+def is_ue_connected(ue_id: str) -> bool:
+    """看 CU session list 確認 UE 是否已在 CONNECTED 狀態。"""
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Session/SessionController/list"
+    try:
+        r = requests.post(url, json={}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            return False
+        sessions = r.json().get("data", [])
+        for s in sessions:
+            if s.get("ue_id") == ue_id and s.get("rrc_state") == "CONNECTED":
+                return True
+        return False
+    except requests.RequestException:
+        return False
+
+
+def rrc_attach(ue_id: str) -> bool:
+    """走 RRC SetupRequest + SetupComplete 兩步,把 UE 帶到 CONNECTED。
+
+    Idempotent:已 CONNECTED 就直接回 True 不重發(否則 CU RRC handler 會 500)。
+    """
+    if is_ue_connected(ue_id):
+        logger.info("rrc_attach %s: already CONNECTED, skip", ue_id)
+        return True
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message"
+    for msg_type, payload in (
+        ("RRCSetupRequest", {}),
+        ("RRCSetupComplete", {"transaction_id": 1}),
+    ):
+        try:
+            r = requests.post(
+                url,
+                json={"ue_id": ue_id, "rrc_msg_b64": _rrc_b64(msg_type, payload)},
+                timeout=_TIMEOUT_SEC,
+            )
+            if not r.ok:
+                logger.warning(
+                    "rrc_attach %s %s non-OK %s: %s",
+                    ue_id, msg_type, r.status_code, r.text[:200],
+                )
+                return False
+        except requests.RequestException as exc:
+            logger.warning("rrc_attach HTTP failed: %s %s: %s", ue_id, msg_type, exc)
+            return False
+    return True
+
+
+def force_serving_cell(ue_id: str, target_cell: str) -> bool:
+    """走 SessionController/handover 強制把 UE serving_cell 設成 target_cell。
+    (對 driver 沒先驗 measurement_report 的情境用 — 一刀切先設好讓後續 inject 找得到。)
+    """
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Session/SessionController/handover"
+    body = {"ue_id": ue_id, "target_cell": target_cell}
+    try:
+        r = requests.post(url, json=body, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            logger.warning(
+                "force_serving_cell %s → %s non-OK %s: %s",
+                ue_id, target_cell, r.status_code, r.text[:200],
+            )
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("force_serving_cell HTTP failed: %s: %s", ue_id, exc)
         return False

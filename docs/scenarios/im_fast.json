@@ -1,0 +1,86 @@
+{
+  "scenario_id": "im_fast",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 60,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "ues": [
+    {
+      "name": "im_ue_01",
+      "positions": [
+        [
+          0,
+          0.0,
+          1.5,
+          150.0
+        ],
+        [
+          60,
+          0.0,
+          1.5,
+          150.0
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "im_ue_01",
+      "profile": [
+        [
+          0,
+          3000,
+          672
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "oai_origin": "im_traffic.sh",
+    "intent": "IM (interference mitigation)",
+    "required_topology": {
+      "min_gnbs": 1,
+      "min_cells_per_gnb": 1,
+      "min_ues": 1,
+      "rationale": "單 cell 內擁塞 — 1 gNB 1 cell 1 UE 即可"
+    },
+    "expected_kpm": {
+      "RRU.PrbTotDl": "> 0.70",
+      "DRB.UEThpDl": "< 5000 kbps (channel-limited)",
+      "DRB.RlcSduDelayDl": "> 50 ms"
+    },
+    "xapp_expected_action": "control_slice_level_prb_quota (style=2 action=6)"
+  },
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 100,
+      "power_dbm": 23,
+      "active": true,
+      "color": [
+        0.2,
+        0.8,
+        0.4
+      ],
+      "cells": [
+        {
+          "cell_id": "gnbDT_c0",
+          "pci": 0,
+          "azimuth_deg": 0
+        },
+        {
+          "cell_id": "gnbDT_c1",
+          "pci": 1,
+          "azimuth_deg": 180
+        }
+      ]
+    }
+  ],
+  "buildings": []
+}

@@ -18,12 +18,15 @@ function toXZ(v: any): [number, number, number] {
   return [v?.x ?? 0, v?.y ?? 0, v?.z ?? 0];
 }
 
-export function useDrawPage() {
+export function useDrawPage(opts?: { simRunning?: boolean }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [sceneConfig, setSceneConfig] = useState<SceneLayout | null>(null);
   const [selectedUEIndex, setSelectedUEIndex] = useState(0);
   const [trajectories, setTrajectories] = useState<UE[]>([]);
+  // simRunning 透過 ref 給 polling closure 用,避免每次 simRunning 變 dep 都重起 interval
+  const simRunningRef = useRef<boolean>(false);
+  simRunningRef.current = !!opts?.simRunning;
   // 每個 UE 的 traffic profile (per-UE state, key = ue.name)
   const [trafficProfiles, setTrafficProfiles] = useState<Record<string, TrafficProfile>>({});
   const [loading, setLoading] = useState(true);
@@ -88,6 +91,42 @@ export function useDrawPage() {
     console.log('調用: useDrawPage.useEffect -> refreshScene()');
     refreshScene();
   }, [refreshScene]);
+
+  // 跑 scenario 時 scenario_driver 會把 UE 位置寫回 Omniverse DB(update_db=True),
+  // 但 useDrawPage 只在 mount 抓一次,Scene Layout 不會動。
+  // 這裡只 patch trajectories[].position(不動 waypoints/speed/color/UI 選取),
+  // 使用者一邊看 scenario 跑、一邊還能繼續編 waypoints 不會被覆蓋。
+  //
+  // ⚠ simRunning=true 時跳過 polling — 那條路位置真實來源是 useSimPage 的
+  // client-side waypoint interpolation(每 1s 算),DB 不會即時被寫(RU update_ues
+  // 是 fire-and-forget,且 Omniverse DB 不一定同步反映)。若這時還拉 DB 蓋,
+  // Scene Layout 的 UE 會週期性「跳回 DB 內舊位置」。
+  useEffect(() => {
+    let cancelled = false;
+    const id = setInterval(async () => {
+      if (simRunningRef.current) return;  // sim 跑時讓 useSimPage 獨占位置寫入
+      try {
+        const ues = await omniverseApi.listUes();
+        if (cancelled) return;
+        setTrajectories((prev) => {
+          if (prev.length === 0) return prev;
+          const byName = new Map(ues.map(u => [u.name, u]));
+          let changed = false;
+          const next = prev.map((t) => {
+            const fresh = byName.get(t.name);
+            const newPos = fresh ? toXZ(fresh.position) : t.position;
+            if (newPos[0] !== t.position[0] || newPos[1] !== t.position[1] || newPos[2] !== t.position[2]) {
+              changed = true;
+              return { ...t, position: newPos };
+            }
+            return t;
+          });
+          return changed ? next : prev;
+        });
+      } catch { /* 拉失敗忽略,下次再試 */ }
+    }, 2000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
 
   const handleAddWaypoint = useCallback(

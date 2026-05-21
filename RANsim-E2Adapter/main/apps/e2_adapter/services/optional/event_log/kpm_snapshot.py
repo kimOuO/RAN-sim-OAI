@@ -16,6 +16,11 @@ from typing import Any, Deque
 _MAX_HISTORY = 60          # 每個 UE 每 metric 保 60 筆時序（1Hz × 1分鐘）
 _MAX_RECENT = 200          # 全域最近 N 筆 (跨所有 UE) 給 timeline
 
+# latest_snapshot() 的 UE 過期視窗 — 最新 metric ts 超過這時間就不出現在
+# Dashboard 上(_latest 內仍保留,history 查還用得到)。30s 對齊 1Hz polling
+# 的「最近沒有資料來」直覺。
+_SNAPSHOT_STALE_AFTER_MS = 30_000
+
 
 class _KpmRing:
     def __init__(self) -> None:
@@ -69,25 +74,37 @@ class _KpmRing:
                     })
 
     def latest_snapshot(self) -> dict[str, Any]:
-        """Dashboard 主面板用 — table by UE × metric。"""
+        """Dashboard 主面板用 — table by UE × metric。
+
+        只列「最近 _SNAPSHOT_STALE_AFTER_MS(30s)有 indication 來」的 UE。
+        _latest 內舊資料仍保留,history 查詢還能拉到,但 Dashboard 不會看到
+        死掉的 UE(例如上一場 scenario 的、52 小時前 demo 殘留 sub)。
+        """
+        now_ms = int(time.time() * 1000)
+        cutoff_ms = now_ms - _SNAPSHOT_STALE_AFTER_MS
         with self._lock:
+            ues_out = []
+            for ue_id, metrics in self._latest.items():
+                if not metrics:
+                    continue
+                latest_ts = max(m.get("ts_ms", 0) for m in metrics.values())
+                if latest_ts < cutoff_ms:
+                    continue  # UE 沉默太久,當作離線不顯示
+                ues_out.append({
+                    "ue_id": ue_id,
+                    "metrics": [
+                        {
+                            "name": m_name,
+                            "value": m_data["value"],
+                            "unit": m_data["unit"],
+                            "ts_ms": m_data["ts_ms"],
+                            "serving_cell": m_data.get("serving_cell", ""),
+                        }
+                        for m_name, m_data in metrics.items()
+                    ],
+                })
             return {
-                "ues": [
-                    {
-                        "ue_id": ue_id,
-                        "metrics": [
-                            {
-                                "name": m_name,
-                                "value": m_data["value"],
-                                "unit": m_data["unit"],
-                                "ts_ms": m_data["ts_ms"],
-                                "serving_cell": m_data.get("serving_cell", ""),
-                            }
-                            for m_name, m_data in metrics.items()
-                        ],
-                    }
-                    for ue_id, metrics in self._latest.items()
-                ],
+                "ues": ues_out,
                 "last_update_ms": self._last_update_ms,
                 "total_indications": self._total_indications,
             }

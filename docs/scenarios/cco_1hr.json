@@ -1,0 +1,123 @@
+{
+  "scenario_id": "cco_1hr",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 3600,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "ues": [
+    {
+      "name": "cco_ue_01",
+      "positions": [
+        [
+          0,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          600,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          900,
+          0.0,
+          1.5,
+          -60.0
+        ],
+        [
+          1500,
+          0.0,
+          1.5,
+          -60.0
+        ],
+        [
+          1800,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          2400,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          2700,
+          0.0,
+          1.5,
+          -60.0
+        ],
+        [
+          3300,
+          0.0,
+          1.5,
+          -60.0
+        ],
+        [
+          3600,
+          0.0,
+          1.5,
+          60.0
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "cco_ue_01",
+      "profile": [
+        [
+          0,
+          1500,
+          100
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "oai_origin": "cco_traffic.sh × 30(1hr 持續流量)",
+    "intent": "CCO — UE 多次 N↔S 來回,期待 4 次以上 cross-cell HO",
+    "required_topology": {
+      "min_gnbs": 1,
+      "min_cells_per_gnb": 2,
+      "min_ues": 1,
+      "rationale": "cell c0 / c1 間 handover"
+    },
+    "phases": "10:00-10:15 北 / 10:15-10:30 南 / 10:30-10:45 北 / 10:45-11:00 南"
+  },
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 100,
+      "power_dbm": 23,
+      "active": true,
+      "color": [
+        0.2,
+        0.8,
+        0.4
+      ],
+      "cells": [
+        {
+          "cell_id": "gnbDT_c0",
+          "pci": 0,
+          "azimuth_deg": 0
+        },
+        {
+          "cell_id": "gnbDT_c1",
+          "pci": 1,
+          "azimuth_deg": 180
+        }
+      ]
+    }
+  ],
+  "buildings": []
+}

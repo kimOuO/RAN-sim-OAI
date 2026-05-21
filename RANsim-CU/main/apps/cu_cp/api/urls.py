@@ -3,6 +3,7 @@ from django.urls import path
 
 from main.apps.cu_cp.actors.e2_control_actor import E2ControlActor
 from main.apps.cu_cp.actors.e2_kpm_reporter_actor import E2KpmReporterActor
+from main.apps.cu_cp.actors.e2_kpm_speed_actor import E2KpmSpeedActor
 from main.apps.cu_cp.actors.e2_node_id_actor import E2NodeIdActor
 from main.apps.cu_cp.actors.e2_subscription_actor import E2IndicationActor, E2SubscriptionActor
 from main.apps.cu_cp.actors.f1ap_router_actor import F1ApRouterActor
@@ -39,6 +40,10 @@ urlpatterns = [
     path("E2/Indication/poll", E2IndicationActor.poll, name="e2_ind_poll"),            # ↔ OAI RIC Indication (polling 取代 SCTP push)
     path("E2/Control/request", E2ControlActor.request, name="e2_ctrl_request"),        # ↔ OAI RIC Control Request
     path("E2/E2NodeId/read", E2NodeIdActor.read, name="e2_node_id_read"),              # ↔ globalE2node-ID for E2 adapter
+    # KPM sim-speed knob — Dashboard 切 DU tick 速度時同步通知,讓 indication producer
+    # 用 sim-time 為單位算 report_period_ms,不是 wall-clock。
+    path("E2/KpmSpeed/set",  E2KpmSpeedActor.set,  name="e2_kpm_speed_set"),
+    path("E2/KpmSpeed/read", E2KpmSpeedActor.read, name="e2_kpm_speed_read"),
     # Logs（Dashboard /logs page 用）
     path("Logs/Ring/read", LogActor.read_ring, name="logs_ring_read"),
     # AK11: Mobility A3 runtime config (Dashboard 控制 A3 開關 + 參數)

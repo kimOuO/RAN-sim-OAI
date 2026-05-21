@@ -16,6 +16,7 @@ export function usePlaybackPage() {
   const [sceneSnapshot, setSceneSnapshot] = useState<any>(null);
   const [enable3DReplay, setEnable3DReplay] = useState(true);
   const [sceneRestoring, setSceneRestoring] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);  // Phase A: 1/2/4/10x
 
   useEffect(() => {
     const loadSessions = async () => {
@@ -77,6 +78,8 @@ export function usePlaybackPage() {
   useEffect(() => {
     if (!selectedSession || !isPlaying) return;
 
+    // Phase A — playbackSpeed: 1x=500ms, 2x=250ms, 4x=125ms, 10x=50ms
+    const intervalMs = Math.max(20, Math.floor(500 / Math.max(1, playbackSpeed)));
     const timer = setInterval(() => {
       setFrameIndex((prev) => {
         const next = prev + 1;
@@ -87,10 +90,10 @@ export function usePlaybackPage() {
         loadFrame(selectedSession.session_uuid, next);
         return next;
       });
-    }, 500);
+    }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [isPlaying, selectedSession, loadFrame]);
+  }, [isPlaying, selectedSession, loadFrame, playbackSpeed]);
 
   // 3D Replay: push UE positions + signals when frame changes
   useEffect(() => {
@@ -176,5 +179,7 @@ export function usePlaybackPage() {
     handleSessionChange,
     handlePlayPause,
     handleFrameChange,
+    playbackSpeed,
+    setPlaybackSpeed,
   };
 }

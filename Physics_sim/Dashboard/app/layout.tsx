@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { NavBar } from '@/components/NavBar';
 import { SimProvider } from '@/components/SimProvider';
+import { ScenarioProvider } from '@/components/ScenarioProvider';
 import '@/styles/globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -38,10 +39,12 @@ export default function RootLayout({
       </head>
       <body style={{ background: '#0b1220', color: '#cbd5e1', minHeight: '100vh' }}>
         <SimProvider>
-          <NavBar />
-          <main style={{ padding: '24px', background: '#0b1220', minHeight: 'calc(100vh - 60px)' }}>
-            {children}
-          </main>
+          <ScenarioProvider>
+            <NavBar />
+            <main style={{ padding: '24px', background: '#0b1220', minHeight: 'calc(100vh - 60px)' }}>
+              {children}
+            </main>
+          </ScenarioProvider>
         </SimProvider>
       </body>
     </html>

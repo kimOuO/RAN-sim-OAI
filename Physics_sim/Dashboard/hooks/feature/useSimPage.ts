@@ -80,6 +80,10 @@ export function useSimPage(options?: UseSimPageOptions) {
     loop: boolean;
   }>>([]);
   const simStartTimeRef = useRef<number>(0);
+  // Phase A — sim_speed_x = sim_dt_ms / wall_tick_ms. UE 移動需要按這個倍率把
+  // wall-clock elapsed 換算成 sim-time elapsed,否則高速時 UE 仍按 wall 跑(看起來慢)。
+  // 用 ref 是因為 interpolate 在 interval closure 內取最新值。
+  const simSpeedXRef = useRef<number>(1);
   const [simRunning, setSimRunning] = useState(false);
   const [signalData, setSignalData] = useState<UESignalData[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -106,6 +110,9 @@ export function useSimPage(options?: UseSimPageOptions) {
         const backendRunning = !!data.data?.is_running;
         // 只在 backend 跟本地 state 不一致時才 setState，避免每 2s 觸發無謂 re-render
         setSimRunning(prev => prev === backendRunning ? prev : backendRunning);
+        // 同步 sim_speed_x — interpolate UE 移動會用這個
+        const sx = data.data?.sim_speed_x;
+        if (typeof sx === 'number' && sx > 0) simSpeedXRef.current = sx;
       } catch {
         // 後端暫不可達時靜默忽略，下次 tick 再試
       }
@@ -337,10 +344,12 @@ export function useSimPage(options?: UseSimPageOptions) {
       //   • Omniverse ingest    (3D 視窗 prim 位置 + RSRP/SINR label)
       // 沒有「位置 1s 推一次給 RU、信號 8s 才到 Omniverse」的時序錯位。
       const computeCurrentPositions = (): Record<string, [number, number, number]> => {
-        const elapsed = (Date.now() - simStartTimeRef.current) / 1000;
+        // wall elapsed → sim elapsed (sim 跑得快 N 倍)
+        const wallElapsed = (Date.now() - simStartTimeRef.current) / 1000;
+        const simElapsed = wallElapsed * simSpeedXRef.current;
         const out: Record<string, [number, number, number]> = {};
         for (const tj of trajectoriesRef.current) {
-          out[tj.name] = interpolateAlongWaypoints(tj.waypoints, tj.speed_mps, elapsed, tj.loop);
+          out[tj.name] = interpolateAlongWaypoints(tj.waypoints, tj.speed_mps, simElapsed, tj.loop);
         }
         return out;
       };
@@ -530,10 +539,12 @@ export function useSimPage(options?: UseSimPageOptions) {
     if (trajectoriesRef.current.length === 0) return;  // 沒軌跡就不啟 fallback loop
 
     const pollPositions = () => {
-      const elapsed = (Date.now() - simStartTimeRef.current) / 1000;
+      // wall elapsed → sim elapsed,跟 unifiedLoop 內一致
+      const wallElapsed = (Date.now() - simStartTimeRef.current) / 1000;
+      const simElapsed = wallElapsed * simSpeedXRef.current;
       const out: Record<string, [number, number, number]> = {};
       for (const tj of trajectoriesRef.current) {
-        out[tj.name] = interpolateAlongWaypoints(tj.waypoints, tj.speed_mps, elapsed, tj.loop);
+        out[tj.name] = interpolateAlongWaypoints(tj.waypoints, tj.speed_mps, simElapsed, tj.loop);
       }
       options.onUpdateUEPositions!(out);
     };

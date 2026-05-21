@@ -73,6 +73,71 @@ class TickController:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def dump_pm(request):
+        """Debug-only — dump PM aggregator non-destructive snapshot per gNB。
+
+        snapshot() 從 _acc (cumulative per-gNB counters) 拉,不像 flush_ue_report() 是
+        destructive,所以 periodic measurement_report 每秒 flush 不會清掉這份資料。
+        用於 Phase A KPM 一致性測試:固定 SINR 餵進去,看 avg_sinr/rsrp 跨 tick_ms 是否一致。
+
+        回傳 {tick_count, sim_tick_ms, ue_registry, gnbs: {gnb_id: {avg_sinr_db, avg_rsrp_dbm, ...}}}
+        """
+        from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_aggregator
+        runner = get_tick_runner()
+        pm = get_pm_aggregator()
+        # Phase B — 從 _ue_registry 撈每個 UE 的「上一 tick RU CqiIndication 推上來的瞬時值」
+        # 這個比 pm.snapshot() 的累積平均更能反映 UE 即時移動造成的訊號變化。
+        ue_latest: dict[str, dict] = {}
+        for uid, ue in runner._ue_registry.items():
+            ue_latest[uid] = {
+                "serving_cell": ue.get("serving_cell", ""),
+                "sinr_db": ue.get("sinr_db"),
+                "rsrp_dbm": ue.get("rsrp_dbm"),
+                "neighbors": ue.get("neighbors", []),
+            }
+        return success_response(
+            {
+                "tick_count": runner.status.tick_count,
+                "wall_tick_ms": runner.wall_tick_ms,
+                "sim_dt_ms": runner.sim_dt_ms,
+                "sim_speed_x": runner.sim_speed_x,
+                "report_every_n_ticks": runner.REPORT_EVERY_N_TICKS,
+                "ue_registry": list(runner._ue_registry.keys()),
+                "ue_latest": ue_latest,         # 瞬時 RSRP/SINR/neighbors
+                "last_ue_stats": runner.last_ue_stats,      # ← per-tick 即時 throughput/delay/PRB/MCS
+                "last_cell_stats": runner.last_cell_stats,  # ← per-tick 即時 cell PRB / %
+                "gnbs": pm.snapshot(),          # 累積平均(舊行為,還在以避免破壞既有用例)
+            },
+            "PM dumped",
+        )
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def set_speed(request):
+        """Phase A — runtime 調整 sim_tick_ms (default 500). Clamp 10~500ms.
+
+        Body: {"tick_ms": int}      # 例: 125 → 4x 壓縮
+        Returns: 含 sim_tick_ms 的 status dict + 訊息。
+        下一輪 tick 即生效 (不需 stop/start)。
+        """
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("Invalid JSON", str(e), http_status=400)
+        tick_ms = payload.get("tick_ms")
+        if tick_ms is None:
+            return error_response("tick_ms required", http_status=400)
+        try:
+            tick_ms_int = int(tick_ms)
+        except (TypeError, ValueError):
+            return error_response("tick_ms must be int", http_status=400)
+        actual = get_tick_runner().set_tick_ms(tick_ms_int)
+        return success_response(_status_dict(), f"tick_ms set to {actual}")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def register_ue(request):
         """測試/開發用:手動把 UE 推進 tick registry。"""
         try:
@@ -172,4 +237,7 @@ def _status_dict() -> dict:
         "started_at_ms": s.started_at_ms,
         "last_tick_ms": s.last_tick_ms,
         "is_running": s.is_running,
+        "wall_tick_ms": runner.wall_tick_ms,
+        "sim_dt_ms": runner.sim_dt_ms,
+        "sim_speed_x": runner.sim_speed_x,
     }).data

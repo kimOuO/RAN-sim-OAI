@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -13,6 +14,9 @@ from ran_sim_protocol.fapi import CqiIndication, DlTtiRequest
 from ran_sim_protocol.physics import PathSolverResponse
 
 from main.apps.beamforming.services.optional import codebook, precoder, sinr_estimator
+from main.apps.fapi_south.services.optional.channel_cache_loader import (
+    get_channel_cache, is_cached_mode,
+)
 from main.apps.physics_client.services.optional import physics_http
 from main.apps.physics_client.services.optional.channel_cache import default_cache, quantize_position
 from main.apps.physics_client.services.optional.payload_builder import build_path_solver_request
@@ -41,10 +45,74 @@ _NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.
 _SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=36.0)
 """真實場景額外損耗 (Brownstone 場景沒模擬到的 O2I + body + shadowing)."""
 
-# SINR 同樣需要校正: sim 場景算出來太乾淨 (47-60 dB), 真機常見 5-25 dB.
-# 干擾沒模擬足 (其他 cell 的 inter-cell interference 沒進 SINR 算式).
-_SINR_INTERFERENCE_PENALTY_DB = get_float("RU_SINR_INTERFERENCE_PENALTY_DB", default=20.0)
-"""inter-cell interference + multipath fading penalty (sim 沒完整模擬)."""
+# SINR 校正:過去用固定 20 dB hack 補「sim 沒算 inter-cell interference」。改用真實
+# 從 path_gain_dict 算多 cell 干擾(task #91)後 penalty 預設 0,只保留 env 給特殊
+# 需求(例如想額外模擬 multipath fading)拉一點點。
+_SINR_INTERFERENCE_PENALTY_DB = get_float("RU_SINR_INTERFERENCE_PENALTY_DB", default=0.0)
+"""額外 SINR fade margin。預設 0(真實 interference 已從多 cell path_gain 算)."""
+
+
+def _compute_sinr_db_with_real_interference(
+    *,
+    path_gain_dict: dict[str, float],
+    serving_tx: str | None,
+    serving_gnb: str | None,
+    tx_to_cell: dict[str, str],
+    gnb_to_cell: dict[str, str],
+    cell_to_power: dict[str, float],
+) -> float:
+    """從 path_gain_dict 算真實 SINR(含真正 inter-cell interference)。
+
+    formula: SINR = serving_rx / (sum_other_cells_rx + noise),全部 linear mW。
+
+    Sionna PathSolver 對每個 (TX, RX) pair 算出 path_gain(含 antenna pattern,
+    不含 TX power)。組成 SINR 是我們 RU 的工作。以前用固定 -20 dB 一刀切補,
+    現在這個 helper 把 path_gain_dict 內**所有**非 serving cell 的訊號加總當干擾,
+    更貼近真實 RAN(UE 在 cell center → 干擾自然低、SINR 高;在 cell edge 反之)。
+
+    各 cell 的 received signal_mW = TX_power_mW × path_gain_linear。
+
+    注意:這裡 **不套 scene_loss**,跟 live mode `sinr_estimator.estimate_sinr` 一致
+    (那邊 H matrix 也沒 scene_loss)。scene_loss 是 RSRP 顯示用的真實環境校正
+    (body / O2I / shadowing),只在 _path_gain_to_rsrp_dbm 套一次。SINR 純 sim
+    內部 ratio,套了反而會跟 live 不一致(差 ~36 dB)。
+    """
+    if not serving_tx and not serving_gnb:
+        return -float("inf")
+    # 抓 serving cell 的 path_gain(優先 tx_name,沒 hit 退 gnb_name)
+    serving_key = serving_tx if serving_tx in path_gain_dict else serving_gnb
+    serving_pg = path_gain_dict.get(serving_key)
+    if not isinstance(serving_pg, (int, float)) or serving_pg <= 0:
+        return -float("inf")
+
+    def _power_for_tx(tx_name: str) -> float:
+        cell_id = tx_to_cell.get(tx_name) or gnb_to_cell.get(tx_name)
+        if cell_id and cell_id in cell_to_power:
+            return cell_to_power[cell_id]
+        return _TX_POWER_DBM_FALLBACK
+
+    def _rx_mw(pg: float, tx_power_dbm: float) -> float:
+        tx_mw = 10.0 ** (tx_power_dbm / 10.0)
+        return tx_mw * pg
+
+    serving_mw = _rx_mw(serving_pg, _power_for_tx(serving_key))
+
+    interference_mw = 0.0
+    for tx_name, pg in path_gain_dict.items():
+        if tx_name == serving_key:
+            continue
+        if not isinstance(pg, (int, float)) or pg <= 0:
+            continue
+        interference_mw += _rx_mw(pg, _power_for_tx(tx_name))
+
+    noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
+    denom = interference_mw + noise_mw
+    if denom <= 0:
+        return float("inf")
+    sinr_linear = serving_mw / denom
+    if sinr_linear <= 0:
+        return -float("inf")
+    return 10.0 * math.log10(sinr_linear)
 
 
 def _build_gnb_to_cell_map() -> dict[str, str]:
@@ -217,21 +285,46 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             miss_ids.append(ue_id)
 
     if miss_ids:
-        # 只對 miss 的 UE 重新打 Physics（ue_positions 可裁切）
-        psr.ue_positions = [u for u in psr.ue_positions if u.id in miss_ids]
-        try:
-            resp = physics_http.compute_paths(psr)
-        except physics_http.PhysicsHttpError as exc:
-            logger.warning("physics call failed: %s — fall back to noise-only SINR", exc)
-            resp = PathSolverResponse(channel_matrix={}, path_gain={}, serving_cells={})
-        for ue_id in miss_ids:
-            value = {
-                "channel_matrix": (resp.channel_matrix or {}).get(ue_id, {}),
-                "path_gain": (resp.path_gain or {}).get(ue_id, {}),
-                "serving_cell": _resolve_serving(resp, ue_id),
-            }
-            cached[ue_id] = value
-            default_cache.set(_cache_key(ue_id, pos_map.get(ue_id, [0, 0, 0]), ant_sig), value)
+        # Phase B B.3 — cached mode: 跳過 physics_http,從 npz 查表
+        ccache = get_channel_cache() if is_cached_mode() else None
+        if ccache is not None:
+            # tick_idx = sfn × SLOTS_PER_FRAME + slot,跟 DU tick_count 對齊
+            tick_idx = int(req.sfn) * 20 + int(req.slot)
+            for ue_id in miss_ids:
+                gains, serving_tx = ccache.lookup(tick_idx, ue_id)
+                value = {
+                    "channel_matrix": {},          # MVP 不從 cache 還原 MIMO matrices
+                    "path_gain": gains,
+                    "serving_cell": serving_tx,
+                }
+                cached[ue_id] = value
+                default_cache.set(_cache_key(ue_id, pos_map.get(ue_id, [0, 0, 0]), ant_sig), value)
+            # log every 50 ticks 不要太吵
+            if tick_idx % 50 == 0:
+                # 也看 lookup 第一個 UE 拿到什麼,debug cache miss
+                first_ue = next(iter(miss_ids), None)
+                first_val = cached.get(first_ue, {})
+                pg = first_val.get("path_gain") or {}
+                logger.info(
+                    "dl_tti CACHED tick_idx=%d ues=%d first=%s gains_keys=%s",
+                    tick_idx, len(miss_ids), first_ue, list(pg.keys())[:3],
+                )
+        else:
+            # live mode (原本邏輯不動)
+            psr.ue_positions = [u for u in psr.ue_positions if u.id in miss_ids]
+            try:
+                resp = physics_http.compute_paths(psr)
+            except physics_http.PhysicsHttpError as exc:
+                logger.warning("physics call failed: %s — fall back to noise-only SINR", exc)
+                resp = PathSolverResponse(channel_matrix={}, path_gain={}, serving_cells={})
+            for ue_id in miss_ids:
+                value = {
+                    "channel_matrix": (resp.channel_matrix or {}).get(ue_id, {}),
+                    "path_gain": (resp.path_gain or {}).get(ue_id, {}),
+                    "serving_cell": _resolve_serving(resp, ue_id),
+                }
+                cached[ue_id] = value
+                default_cache.set(_cache_key(ue_id, pos_map.get(ue_id, [0, 0, 0]), ant_sig), value)
 
     logger.debug("dl_tti sfn=%d slot=%d pdus=%d cache_hit=%d/%d",
                  req.sfn, req.slot, len(req.pdus), cache_hits, len(set(ue_ids)))
@@ -317,24 +410,35 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 "rsrq_db": 0.0,
             })
 
+        # SINR 統一算法(cached + live 同源):從 path_gain_dict 算真實 inter-cell
+        # interference。task #91 — 之前 cached 跟 live 兩條公式各自有 bug(cached
+        # 漏 35 dB per-RE 單位,live 用 H matrix 但忽略其他 cell 干擾),改成兩個
+        # 都走同一個 helper,cell center 跟 edge SINR 自然不同。
+        sinr_db = _compute_sinr_db_with_real_interference(
+            path_gain_dict=path_gain_dict,
+            serving_tx=serving_tx,
+            serving_gnb=serving_gnb,
+            tx_to_cell=tx_to_cell,
+            gnb_to_cell=gnb_to_cell,
+            cell_to_power=cell_to_power,
+        )
+        # 額外保留的 env penalty(0 default),想模擬 multipath fade margin 才動
+        if sinr_db != -float("inf"):
+            sinr_db -= _SINR_INTERFERENCE_PENALTY_DB
+
+        # rank:有 H matrix 就走 SVD(支援 MIMO),沒有就 rank=1(SISO)
         if H_raw is None:
-            # 沒 channel — 給最差量測（SINR ≈ noise floor）
-            sinr_db = -float("inf")
             rank = 1
-            cqi = 0
         else:
-            H = _to_complex_matrix(H_raw)
-            num_ports = H.shape[1]
             try:
+                H = _to_complex_matrix(H_raw)
                 H_eff = precoder.apply_pmi(H, pmi=pdu.pmi, layers=pdu.layers)
-                sinr_db = sinr_estimator.estimate_sinr(H_eff, _NOISE_FLOOR_DBM)
-                # AC1: 補償 sim 沒模擬的 inter-cell interference + multipath fading
-                sinr_db -= _SINR_INTERFERENCE_PENALTY_DB
                 rank = sinr_estimator.estimate_rank(H_eff)
-                cqi = sinr_estimator.sinr_to_cqi(sinr_db)
             except codebook.CodebookError as exc:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
-                sinr_db, rank, cqi = -float("inf"), 1, 0
+                rank = 1
+
+        cqi = sinr_estimator.sinr_to_cqi(sinr_db) if sinr_db != -float("inf") else 0
 
         logger.debug(
             "DL TTI ue=%s serving_cell=%s (gnb=%s, src=%s) path_gain=%s → rsrp=%.1f dBm, sinr=%.1f dB",

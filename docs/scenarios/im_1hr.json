@@ -1,0 +1,117 @@
+{
+  "scenario_id": "im_1hr",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 3600,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "ues": [
+    {
+      "name": "im_ue_01",
+      "positions": [
+        [
+          0,
+          0.0,
+          1.5,
+          150.0
+        ],
+        [
+          900,
+          0.0,
+          1.5,
+          150.0
+        ],
+        [
+          1200,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          1800,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          2100,
+          0.0,
+          1.5,
+          150.0
+        ],
+        [
+          2700,
+          0.0,
+          1.5,
+          150.0
+        ],
+        [
+          3000,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          3600,
+          0.0,
+          1.5,
+          60.0
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "im_ue_01",
+      "profile": [
+        [
+          0,
+          3000,
+          672
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "oai_origin": "im_traffic.sh × 40(1hr 持續壓 channel)",
+    "intent": "IM (interference mitigation) — 1hr 長劇本",
+    "required_topology": {
+      "min_gnbs": 1,
+      "min_cells_per_gnb": 1,
+      "min_ues": 1,
+      "rationale": "單 cell 內擁塞 — 1 UE 在 NORTH 區擺動觸發多次 PRB 滿"
+    },
+    "phases": "10:00-10:15 邊緣 / 10:15-10:30 近 / 10:30-10:45 邊緣 / 10:45-11:00 近"
+  },
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 100,
+      "power_dbm": 23,
+      "active": true,
+      "color": [
+        0.2,
+        0.8,
+        0.4
+      ],
+      "cells": [
+        {
+          "cell_id": "gnbDT_c0",
+          "pci": 0,
+          "azimuth_deg": 0
+        },
+        {
+          "cell_id": "gnbDT_c1",
+          "pci": 1,
+          "azimuth_deg": 180
+        }
+      ]
+    }
+  ],
+  "buildings": []
+}

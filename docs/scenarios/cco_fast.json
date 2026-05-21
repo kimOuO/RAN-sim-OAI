@@ -1,0 +1,98 @@
+{
+  "scenario_id": "cco_fast",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 60,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "ues": [
+    {
+      "name": "cco_ue_01",
+      "positions": [
+        [
+          0,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          20,
+          0.0,
+          1.5,
+          60.0
+        ],
+        [
+          40,
+          0.0,
+          1.5,
+          -60.0
+        ],
+        [
+          60,
+          0.0,
+          1.5,
+          -60.0
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "cco_ue_01",
+      "profile": [
+        [
+          0,
+          1500,
+          100
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "oai_origin": "cco_traffic.sh (adapted: cross-cell within same gNB)",
+    "intent": "CCO (intra-gNB cell handover load-balance)",
+    "required_topology": {
+      "min_gnbs": 1,
+      "min_cells_per_gnb": 2,
+      "min_ues": 1,
+      "rationale": "Cell 間 PRB 失衡 — 1 gNB 2 cells 即可(原 OAI 是跨 gNB,這版改為同 gNB 內 cross-cell)"
+    },
+    "expected_kpm": {
+      "phase 0~20s": "c0 PRB > 50, c1 PRB ≈ 0",
+      "phase 40~60s": "c1 PRB > 50, c0 PRB ≈ 0",
+      "imbalance_gap": "> 50 in both phases"
+    },
+    "xapp_expected_action": "control_handover (style=3 action=1) — F1 intra-gNB"
+  },
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 100,
+      "power_dbm": 23,
+      "active": true,
+      "color": [
+        0.2,
+        0.8,
+        0.4
+      ],
+      "cells": [
+        {
+          "cell_id": "gnbDT_c0",
+          "pci": 0,
+          "azimuth_deg": 0
+        },
+        {
+          "cell_id": "gnbDT_c1",
+          "pci": 1,
+          "azimuth_deg": 180
+        }
+      ]
+    }
+  ],
+  "buildings": []
+}

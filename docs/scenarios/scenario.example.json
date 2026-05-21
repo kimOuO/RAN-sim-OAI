@@ -1,0 +1,73 @@
+{
+  "scenario_id": "demo_cco_walkthrough",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 60,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+
+  "ues": [
+    {
+      "name": "demo_ue_01",
+      "positions": [
+        [0,   0.0, 1.5,  60.0],
+        [20,  0.0, 1.5,  60.0],
+        [40,  0.0, 1.5, -60.0],
+        [60,  0.0, 1.5, -60.0]
+      ]
+    }
+  ],
+
+  "traffic": [
+    {
+      "ue_name": "demo_ue_01",
+      "profile": [
+        [0,  1500, 100],
+        [30, 3000, 100]
+      ]
+    }
+  ],
+
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [0, 30, 0],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 100,
+      "power_dbm": 23,
+      "active": true,
+      "cells": [
+        { "cell_id": "gnbDT_c0", "pci": 0, "azimuth_deg": 0 },
+        { "cell_id": "gnbDT_c1", "pci": 1, "azimuth_deg": 180 }
+      ]
+    }
+  ],
+
+  "buildings": [],
+
+  "_metadata": {
+    "intent": "DEMO — UE 沿 z 軸從 +60 走到 -60(60s 內),期望第 30s 流量翻倍時觸發 PRB 失衡 → A3 handover c0→c1",
+    "expected_kpm": {
+      "RRU.PrbTotDl": "c0 在 30-40s 段 > 60% 後快速降到 ~0% (handover 完成)",
+      "DRB.UEThpDl": "全程 > 1 Mbps 直到 handover 完成",
+      "handover_count": ">= 1"
+    },
+    "xapp_expected_action": "CCO style=3 action=1 trigger_handover",
+
+    "_field_doc": {
+      "scenario_id": "PK,唯一字串。同 ID 重 upload 會覆蓋既有 raw_json。",
+      "scene_id": "對應 scene_config.json 的 scene_id 標籤。目前固定 'twocell_1gnb',將來 multi-scene 才會用上。",
+      "duration_sec": "劇本總長(sim-time 秒)。",
+      "tick_ms": "母 scenario tick 長度(sim-time 毫秒)。500 = sim 每 0.5s 算一筆 channel/位置/SDU。",
+      "default_serving_cell": "scenario_driver._setup_rlc_entities 用,新建 UE 第一個 serving cell。建議跟 gnbs.cells[0].cell_id 對齊。",
+      "ues[].name": "UE 唯一字串,scenario_driver 會在 CU/DU/RU + Omniverse 全部用這個 name 註冊。",
+      "ues[].positions": "[[t_sec, x, y, z], ...] waypoints。t 不在 waypoint 上時 linear interpolate。x/y/z 單位 = 公尺,Omniverse 跟 Sionna 共用同個座標。y 高度(地面 1.5 = 人高;30 = 樓上)。",
+      "traffic[].ue_name": "對應到 ues[].name。",
+      "traffic[].profile": "[[t_sec, dl_kbps, ul_kbps], ...] piecewise-constant。t 落在 [t_i, t_{i+1}) 區間取 t_i 的值,不內插。",
+      "gnbs": "可選。劇本起跑時推到 RU/DU/Omniverse,空 [] 則沿用 backend 既有 gnb 配置(/editor 拉的那組)。",
+      "gnbs[].cells[].cell_id": "用 '{gnb_name}_c{i}' 慣例,driver 內部會做 prefix match。",
+      "gnbs[].cells[].azimuth_deg": "天線方位角。0 = 正北,90 = 正東。",
+      "buildings": "可選。空 [] 表示不覆寫 DB 既有建築。要在劇本層級加,塞 [{name, position:[x,y,z], (optional) size/rotation_xyz_deg/color}]。預設用 brownstone01 preset USD + 預設大小/旋轉。",
+      "_metadata": "純註記,後端原樣存。intent / expected_kpm 是給 ActiveSessionLens / KPM 門檻檢查 panel 看的(只在 PRESETS 列出的 scenario_id 才會跑門檻 evaluator)。"
+    }
+  }
+}

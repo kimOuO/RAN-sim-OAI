@@ -24,6 +24,8 @@ export default function PlaybackPage() {
     handleSessionChange,
     handlePlayPause,
     handleFrameChange,
+    playbackSpeed,
+    setPlaybackSpeed,
   } = usePlaybackPage();
 
   if (loading) return <div className="loading">Loading sessions...</div>;
@@ -47,11 +49,23 @@ export default function PlaybackPage() {
           >
             {sessions.map((session) => (
               <option key={session.session_uuid} value={session.session_uuid}>
+                {session.mode === 'fast_cached' ? '⚡ ' : ''}
                 {session.scene_id} — {new Date(session.timestamp).toLocaleString()}
+                {session.mode === 'fast_cached' && session.time_compression_ratio
+                  ? ` (${session.time_compression_ratio}x ${session.scenario_id})`
+                  : ''}
               </option>
             ))}
           </select>
         </label>
+        {selectedSession?.mode === 'fast_cached' && (
+          <div style={{
+            marginTop: 8, padding: '6px 10px', background: '#1e3a8a', color: '#dbeafe',
+            borderRadius: 4, fontSize: 12, display: 'inline-block',
+          }}>
+            ⚡ Fast-replay session · scenario={selectedSession.scenario_id} · {selectedSession.time_compression_ratio}x compressed
+          </div>
+        )}
       </div>
 
       {selectedSession && (
@@ -116,6 +130,8 @@ export default function PlaybackPage() {
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
             onFrameChange={handleFrameChange}
+            playbackSpeed={playbackSpeed}
+            onPlaybackSpeedChange={setPlaybackSpeed}
           />
 
           {currentFrame && (

@@ -12,7 +12,7 @@ import {
 import styles from './ObjectForm.module.css';
 
 interface ObjectFormProps {
-  type: 'building' | 'gnb' | 'ue' | 'obstacle';
+  type: 'building' | 'gnb' | 'ue';
   assets: UsdAsset[];
   sceneConfig?: SceneConfig | null;
   onSubmit: (data: any) => Promise<void>;
@@ -46,7 +46,7 @@ export function ObjectForm({
   // 可编辑字段定义
   const editableFields = EDITABLE_FIELDS_BY_TYPE[type] || [];
 
-  // 場景目前已存在的 gNB 頻率與建物/障礙物材質,用來決定哪些下拉選項該被禁用。
+  // 場景目前已存在的 gNB 頻率與建物材質,用來決定哪些下拉選項該被禁用。
   // 例:已有一個 gNB 用 0.617 GHz (n71),那 concrete/brick/metal 三種材質就不能再選,
   // 因為它們的 ITU 有效範圍下限都是 1 GHz,送到後端會被 SceneFrequencyMismatch 擋掉。
   const existingFrequencies = useMemo<number[]>(() => {
@@ -56,18 +56,13 @@ export function ObjectForm({
 
   const existingMaterials = useMemo<string[]>(() => {
     const buildings = sceneConfig?.buildings || [];
-    const obstacles = (sceneConfig as any)?.obstacles || [];
     const out: string[] = [];
     for (const b of buildings) {
       const m = (b as any).material;
       if (typeof m === 'string' && m) out.push(m);
     }
-    for (const o of obstacles) {
-      const m = (o as any).material;
-      if (typeof m === 'string' && m) out.push(m);
-    }
     return Array.from(new Set(out));
-  }, [sceneConfig?.buildings, sceneConfig]);
+  }, [sceneConfig?.buildings]);
 
   // 选择资产时初始化表单
   const handleAssetSelect = (assetId: string) => {
@@ -149,7 +144,6 @@ export function ObjectForm({
     building: '🏢 Building',
     gnb: '📡 gNB',
     ue: '📱 User Equipment',
-    obstacle: '🚧 Obstacle',
   };
 
   return (

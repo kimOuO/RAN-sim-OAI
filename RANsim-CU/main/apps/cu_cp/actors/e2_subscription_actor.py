@@ -19,7 +19,7 @@ from django.http import HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from main.apps.cu_cp.services.optional.e2 import kpm_indication
+from main.apps.cu_cp.services.optional.e2 import kpm_indication, sim_speed
 from main.apps.cu_cp.services.optional.e2.subscription_registry import (
     RAN_FUNC_ID_KPM,
     RAN_FUNC_ID_RC,
@@ -168,9 +168,13 @@ class E2IndicationActor:
             return error_response(f"unknown subscription_id {sub_id}", status=404)
 
         # 看是不是該產新 indication（按 event_trigger.report_period_ms）
+        # 同步加速:report_period_ms 是 sim-time 約定,wall 上要 / sim_speed_x。
+        # 例:speed=10x,period 1000(sim) → wall 100ms 就產一筆。
         period_ms = int(sub.get("event_trigger", {}).get("report_period_ms", 1000))
+        speed = sim_speed.get_speed()
+        effective_period_ms = period_ms / max(speed, 0.1)
         now_ms = int(time.time() * 1000)
-        if now_ms - sub["last_indication_at_ms"] >= period_ms:
+        if now_ms - sub["last_indication_at_ms"] >= effective_period_ms:
             if sub["service_model"] == "KPM":
                 ind = kpm_indication.build_indication(sub)
                 if ind is not None:

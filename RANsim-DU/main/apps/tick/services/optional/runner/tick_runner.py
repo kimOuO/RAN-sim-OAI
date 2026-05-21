@@ -57,18 +57,26 @@ class TickStatus:
 class TickRunner:
     """全局 tick driver 單例。"""
 
-    # AL: REPORT_EVERY_N_TICKS 改 lazy property — 從 PM_WINDOW_SEC (default 1.0s) /
-    # SIM_TICK_MS 動態算. 預設 500ms tick → 2 ticks/s × 1s = 2 ticks/window (太少),
-    # 因此 default PM_WINDOW_SEC = 1.0 配 SIM_TICK_MS=50 → 20 ticks/window.
+    # Phase A — 時間軸有兩個獨立常量:
+    #   _wall_tick_ms  : 控 wall-clock sleep 節奏(set_speed 改這個)
+    #   _sim_dt_ms     : 每個 tick 認多少 sim-time(固定,不隨 wall 加速改變)
+    # sim_speed_x = _sim_dt_ms / _wall_tick_ms。例:wall=50, sim_dt=500 → 10x。
+    # 結果:KPM report 每 PM_WINDOW_SEC sim-second 一份(= 每 N_ticks=
+    # PM_WINDOW_SEC*1000/_sim_dt_ms tick),於 wall 上隨 speed 自動加快;
+    # 每份 window 內樣本數固定不變(fidelity 不隨 speed 退化)。
     SLOTS_PER_FRAME = 20  # numerology=1 (30 kHz SCS)
     SFN_MAX = 1024
+    # 固定 sim-time per tick。500ms 對應 3GPP 一個 measurement reporting period 的一半。
+    # 改這個 = 整體 RAN 時間刻度改變;一般情況下不應動。set_speed 不會碰這個。
+    SIM_DT_MS_DEFAULT = 500
 
     @property
     def REPORT_EVERY_N_TICKS(self) -> int:
+        # 用 _sim_dt_ms (sim-time) 算,不用 _wall_tick_ms。
+        # default sim_dt=500, PM_WINDOW=1.0 → 2 ticks/window 恆定。
         from main.utils.env_loader import get_float
         window_s = get_float("PM_WINDOW_SEC", 1.0)
-        tick_ms = get_int("SIM_TICK_MS", 500)
-        return max(1, int(round(window_s * 1000 / max(tick_ms, 1))))
+        return max(1, int(round(window_s * 1000 / max(self._sim_dt_ms, 1))))
 
     def __init__(self) -> None:
         self._stop_event = threading.Event()
@@ -76,8 +84,48 @@ class TickRunner:
         self.status = TickStatus()
         # in-memory UE registry — UE info by ue_id (sinr / cell / qos)
         self._ue_registry: dict[str, dict[str, Any]] = {}
+        # Phase A — wall_tick_ms (set_speed 改它) / sim_dt_ms (固定) 解耦。
+        self._wall_tick_ms: int = max(10, min(500, get_int("SIM_TICK_MS", 500)))
+        self._sim_dt_ms: int = self.SIM_DT_MS_DEFAULT
+        self._tick_ms_lock = threading.Lock()
+        # Phase B — per-tick 即時 stats(每 _tick_body 結尾覆寫),給 Dashboard chart 用
+        self.last_ue_stats: dict[str, dict[str, Any]] = {}
+        self.last_cell_stats: dict[str, dict[str, Any]] = {}
 
     # --- public API ----------------------------------------------------------
+
+    @property
+    def wall_tick_ms(self) -> int:
+        """wall-clock 上 tick 多久一次(set_speed 改這個)。"""
+        with self._tick_ms_lock:
+            return self._wall_tick_ms
+
+    @property
+    def sim_dt_ms(self) -> int:
+        """每個 tick 在 sim-time 上前進多少 ms(固定,不隨 speed 變)。"""
+        return self._sim_dt_ms
+
+    @property
+    def sim_speed_x(self) -> float:
+        """sim-time 跑得比 wall-time 快幾倍 = sim_dt_ms / wall_tick_ms。"""
+        return self._sim_dt_ms / max(self.wall_tick_ms, 1)
+
+    def set_tick_ms(self, tick_ms: int) -> int:
+        """thread-safe 設 wall tick interval, clamp 10~500ms. 回傳實際生效值.
+
+        改變後 sim_speed_x = sim_dt_ms / tick_ms 立即更新(e.g. tick_ms=50 → 10x)。
+        sim_dt_ms 不會被這個 method 改動。
+        """
+        clamped = max(10, min(500, int(tick_ms)))
+        with self._tick_ms_lock:
+            old = self._wall_tick_ms
+            self._wall_tick_ms = clamped
+        if old != clamped:
+            logger.info(
+                "TickRunner.set_tick_ms: wall %d -> %d ms (sim_speed=%.2fx)",
+                old, clamped, self._sim_dt_ms / clamped,
+            )
+        return clamped
 
     def register_ue(
         self,
@@ -145,6 +193,9 @@ class TickRunner:
         self.status.sfn = 0
         self.status.slot = 0
         self.status.last_tick_ms = 0
+        # Phase B — 清 last-tick stats(避免上次 session 的最後一筆殘留)
+        self.last_ue_stats = {}
+        self.last_cell_stats = {}
         # 清 PM aggregator（avg delay / throughput / PRB / volume 累積資料）
         try:
             get_pm_aggregator().reset()
@@ -195,15 +246,18 @@ class TickRunner:
     # --- internals -----------------------------------------------------------
 
     def _loop(self) -> None:
-        tick_ms = get_int("SIM_TICK_MS", 500)
-        period = tick_ms / 1000.0
-        logger.info("TickRunner started, period=%.2fs", period)
+        logger.info(
+            "TickRunner started, wall_tick=%dms sim_dt=%dms speed=%.2fx",
+            self.wall_tick_ms, self.sim_dt_ms, self.sim_speed_x,
+        )
         next_t = time.time()
         while not self._stop_event.is_set():
             try:
                 self._tick_body()
             except Exception as e:
                 logger.exception("tick body error: %s", e)
+            # 每輪重讀 wall_tick_ms,set_tick_ms() 變更下一輪即生效
+            period = self.wall_tick_ms / 1000.0
             next_t += period
             sleep_for = next_t - time.time()
             if sleep_for > 0:
@@ -271,7 +325,8 @@ class TickRunner:
         from main.apps.mac.services.optional.scheduler.prb_quota import get_store as _get_quota_store
         _quota_store = _get_quota_store()
 
-        tick_ms_for_sched = get_int("SIM_TICK_MS", 500)
+        # MAC scheduler 看的是 sim-time (一個 TTI 在 sim 上多長),不是 wall
+        tick_ms_for_sched = self._sim_dt_ms
         rb_alloc_global: dict[str, int] = {}
         scheduler = get_scheduler()
         # AL2 — cell-level PRB accumulator (一個 tick 一筆, idle cell 也記 0).
@@ -327,8 +382,8 @@ class TickRunner:
             mcs_map[uid] = mcs
             _, bps_re = sinr_to_mcs(ue["sinr_db"])
             mbps = mcs_to_throughput_mbps(mcs=mcs, bps_re=bps_re, n_rb=rb_alloc_global.get(uid, 0))
-            # 每 tick 對應 bytes(粗估)
-            tick_s = get_int("SIM_TICK_MS", 500) / 1000.0
+            # 每 tick 對應 bytes — 用 sim-time (=throughput × sim-second-per-tick)
+            tick_s = self._sim_dt_ms / 1000.0
             tbs_map[uid] = int(mbps * 1e6 * tick_s / 8)
 
         # 3.5) Drain RLC queue — 對應 MAC 給 RLC 的 PDU 預算
@@ -444,7 +499,8 @@ class TickRunner:
         # 5) Periodic measurement report — 從 PM aggregator window 取平均/總和而非當下瞬時
         report_sent = False
         if self.status.tick_count % self.REPORT_EVERY_N_TICKS == 0:
-            tick_s = get_int("SIM_TICK_MS", 500) / 1000.0
+            # window 在 sim-time 軸上度量(用 _sim_dt_ms,不是 wall_tick_ms)
+            tick_s = self._sim_dt_ms / 1000.0
             window_s = self.REPORT_EVERY_N_TICKS * tick_s
             for uid in pm.active_ue_ids():
                 w = pm.flush_ue_report(uid, window_seconds=window_s)
@@ -526,6 +582,71 @@ class TickRunner:
                     encode_cell_measurement_report(cell_report),
                 )
             report_sent = True
+
+        # Phase B — 存「此 tick 即時 stats」給 Dashboard 用(不是 cumulative)
+        # 注意:_acc 是累積,_ue_window 是 rolling,這裡 last_*_stats 是真正「最後一個 tick」
+        sim_dt_s = self._sim_dt_ms / 1000.0
+        new_ue_stats: dict[str, dict[str, Any]] = {}
+        for ue in ues_for_measurement:
+            uid = ue["id"]
+            delays = delay_by_ue.get(uid, [])
+            avg_delay = (sum(delays) / len(delays)) if delays else 0.0
+            bytes_drained = actual_drained_map.get(uid, 0)
+            new_ue_stats[uid] = {
+                "serving_cell": ue.get("serving_cell", ""),
+                "sinr_db": ue["sinr_db"],
+                "rsrp_dbm": ue["rsrp_dbm"],
+                "prb_dl_this_tick": rb_alloc_global.get(uid, 0),
+                "mcs_dl": mcs_map.get(uid, 0),
+                "bytes_dl_this_tick": bytes_drained,
+                "throughput_dl_mbps_this_tick":
+                    (bytes_drained * 8 / 1e6 / sim_dt_s) if sim_dt_s > 0 else 0.0,
+                "rlc_delay_ms_avg_this_tick": avg_delay,
+                "rlc_buffer_bo_this_tick": bo_by_ue.get(uid, 0),
+                "neighbors": ue.get("neighbors", []),
+            }
+        self.last_ue_stats = new_ue_stats
+
+        new_cell_stats: dict[str, dict[str, Any]] = {}
+        # 先 build attached/scheduled UE list per cell
+        cell_to_attached: dict[str, list[str]] = {}
+        cell_to_scheduled: dict[str, list[str]] = {}
+        cell_to_dl_mbps: dict[str, float] = {}
+        for uid, s in new_ue_stats.items():
+            scell = s.get("serving_cell") or ""
+            if not scell:
+                continue
+            cell_to_attached.setdefault(scell, []).append(uid)
+            if s.get("prb_dl_this_tick", 0) > 0:
+                cell_to_scheduled.setdefault(scell, []).append(uid)
+            cell_to_dl_mbps[scell] = cell_to_dl_mbps.get(scell, 0.0) + \
+                s.get("throughput_dl_mbps_this_tick", 0.0)
+
+        for cell_name in all_active_cells:
+            used = cell_prb_used.get(cell_name, 0)
+            total = cell_prb_total.get(cell_name, prb_per_cell)
+            cap = _quota_store.cap_factor(cell_name)
+            new_cell_stats[cell_name] = {
+                "prb_used_this_tick": used,
+                "prb_total": total,
+                "prb_pct_this_tick": (used / max(total, 1)) * 100.0,
+                "is_active": True,
+                "attached_ue_list": cell_to_attached.get(cell_name, []),
+                "attached_ue_count": len(cell_to_attached.get(cell_name, [])),
+                "scheduled_ue_count": len(cell_to_scheduled.get(cell_name, [])),
+                "dl_aggregate_mbps_this_tick": cell_to_dl_mbps.get(cell_name, 0.0),
+                "quota_cap_factor": cap,                   # 0~1 from xApp PRB quota
+                "quota_max_prb_pct": cap * 100.0,
+            }
+        for inactive_cell in inactive_cells:
+            new_cell_stats[inactive_cell] = {
+                "prb_used_this_tick": 0, "prb_total": prb_per_cell,
+                "prb_pct_this_tick": 0.0, "is_active": False,
+                "attached_ue_list": [], "attached_ue_count": 0,
+                "scheduled_ue_count": 0, "dl_aggregate_mbps_this_tick": 0.0,
+                "quota_cap_factor": 0.0, "quota_max_prb_pct": 0.0,
+            }
+        self.last_cell_stats = new_cell_stats
 
         # 6) Advance sfn/slot
         self.status.slot += 1

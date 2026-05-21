@@ -11,10 +11,13 @@ TTT:      condition must hold for at least ``ttt_ms`` to fire.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from main.utils.env_loader import get_float, get_int
+
+logger = logging.getLogger(__name__)
 
 # A3 預設值 — 對齊 3GPP TS 38.331 範例值，但對 sim 場景偏保守
 # Sim 場景因為 antenna pattern + 固定位置常常 RSRP 差距小，為了 demo 容易看到
@@ -112,6 +115,14 @@ class A3HandoverCalculation:
                 continue
             condition_met = (nb_rsrp - self.hys_db) > (serving_rsrp + self.offset_db)
             pending = ue_state.pending.get(nb_cell)
+
+            # 只在 condition 滿足時 log;一般 eval 不洗版
+            if condition_met:
+                logger.info(
+                    "A3 condition MET ue serving=%s rsrp_s=%.1f nb=%s rsrp_n=%.1f delta=%.1f (need>%.1f)",
+                    serving_cell, serving_rsrp, nb_cell, nb_rsrp,
+                    nb_rsrp - serving_rsrp, self.offset_db + self.hys_db,
+                )
 
             if condition_met:
                 if pending is None:

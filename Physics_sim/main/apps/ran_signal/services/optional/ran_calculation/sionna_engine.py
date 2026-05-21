@@ -109,6 +109,8 @@ class SionnaEngine:
 
         # 裝 Transmitters：每個 cell 建一個 TX（帶正確 azimuth）
         # _cell_entries: [{tx_name, gnb_name, pci}] — 用於 compute_paths 聚合
+        # DAS / multi-TRP 支援:cell.position 給的話用 cell 位置(物理分離 antenna),
+        # 沒給就 fallback 到 gnb.position(傳統 co-sited sector)。
         self._cell_entries: list[dict[str, Any]] = []
         for g in gnbs:
             cells = g.get("cells") or []
@@ -118,9 +120,10 @@ class SionnaEngine:
                     azimuth_rad = math.radians(float(cell.get("azimuth_deg", 0)))
                     # AL5.2: 試 α 正號. γ 經實驗繞 beam 軸自身 → c1/c3 沒方向性.
                     # 改成 α 正號 (預設 Sionna world Z = our scene Y = 高度).
+                    tx_position = cell.get("position") or g["position"]
                     tx = rt.Transmitter(
                         name=tx_name,
-                        position=g["position"],
+                        position=tx_position,
                         orientation=[azimuth_rad, 0.0, 0.0],
                     )
                     self._scene.add(tx)

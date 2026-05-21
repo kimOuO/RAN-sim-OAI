@@ -1,0 +1,48 @@
+{
+  "$schema": "scenario.schema.v1",
+  "_doc": [
+    "Scenario upload template — 直接上傳這份 JSON 到 /scenarios 即可。",
+    "必填欄位:scenario_id, scene_id, duration_sec, tick_ms, ues, traffic",
+    "選填欄位:default_serving_cell, gnbs, buildings, _metadata",
+    "把所有 'TODO_*' 字串改成你要的值。'_doc' 跟 '_metadata' 後端會原樣存,不影響運算。",
+    "詳細欄位語意見 scenario.example.json,那邊每欄都有真實值。"
+  ],
+
+  "scenario_id": "TODO_my_scenario_id",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 60,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+
+  "ues": [
+    {
+      "name": "TODO_ue_name",
+      "positions": [
+        [0,   0.0, 1.5,  60.0],
+        [60,  0.0, 1.5, -60.0]
+      ]
+    }
+  ],
+
+  "traffic": [
+    {
+      "ue_name": "TODO_ue_name",
+      "profile": [
+        [0, 1500, 100]
+      ]
+    }
+  ],
+
+  "gnbs": [],
+
+  "buildings": [],
+
+  "_metadata": {
+    "intent": "TODO description",
+    "expected_kpm": {
+      "RRU.PrbTotDl": "TODO threshold expectation",
+      "DRB.UEThpDl": "TODO threshold expectation"
+    },
+    "xapp_expected_action": "TODO which xApp action should fire"
+  }
+}

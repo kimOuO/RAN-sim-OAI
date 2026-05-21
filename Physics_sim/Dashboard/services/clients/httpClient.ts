@@ -3,6 +3,7 @@ import {
   API_BASE_URL,
   CU_BASE_URL,
   DU_BASE_URL,
+  E2_ADAPTER_BASE_URL,
   RU_BASE_URL,
   PHYSICS_BASE_URL,
   UE_BASE_URL,
@@ -39,6 +40,14 @@ export const physicsClient: AxiosInstance = axios.create({
 // UE container (RANsim-UE, port 8105) — active UE object 跑 traffic + measurement
 export const ueClient: AxiosInstance = axios.create({
   baseURL: UE_BASE_URL,
+  timeout: DEFAULT_FETCH_TIMEOUT_MS,
+  headers,
+});
+
+// E2 adapter (RANsim-E2Adapter, port 8201) — SCTP-out 給 RIC,Dashboard 用來
+// 同步 KPM 加速 + 讀 snapshot
+export const e2AdapterClient: AxiosInstance = axios.create({
+  baseURL: E2_ADAPTER_BASE_URL,
   timeout: DEFAULT_FETCH_TIMEOUT_MS,
   headers,
 });

@@ -145,6 +145,9 @@ export interface SimStatus {
   running: boolean;
   current_tick?: number;
   ues?: UESignalData[];
+  wall_tick_ms?: number;
+  sim_dt_ms?: number;
+  sim_speed_x?: number;
 }
 
 export interface SceneSnapshot {
@@ -159,6 +162,10 @@ export interface PlaybackSession {
   timestamp: string;
   frame_count: number;
   scene_snapshot?: SceneSnapshot;
+  // Phase B B.5 — fast_cached session metadata
+  mode?: 'live' | 'fast_cached';
+  scenario_id?: string;
+  time_compression_ratio?: number;
 }
 
 export interface HandoverEventRecord {
@@ -204,4 +211,8 @@ export interface PlaybackFrame {
   control_actions?: ControlActionRecord[];
   cell_states?: CellStateSnapshot[];
   scene_snapshot?: SceneSnapshot;
+  // Phase B B.5 — fast_cached session metadata
+  mode?: 'live' | 'fast_cached';
+  scenario_id?: string;
+  time_compression_ratio?: number;
 }

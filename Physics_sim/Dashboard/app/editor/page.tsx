@@ -14,12 +14,20 @@ import * as omniverseApi from '@/services/api/omniverse';
 import { initScene } from '@/services/api/scene';
 import { computeCoverage, type CoverageResponse } from '@/services/api/coverage';
 import { updateTrafficProfile, type TrafficProfile } from '@/services/api/ueProfile';
+import { setSimSpeed, getStatus } from '@/services/api/simLoop';
 import type { SceneAntennaConfig } from '@/types';
+
+// Phase A — 1x/2x/4x/10x → tick_ms 對應 (DU 預設 500ms = 1x)
+const SIM_SPEED_OPTIONS: Array<{ label: string; tickMs: number }> = [
+  { label: '1x', tickMs: 500 },
+  { label: '2x', tickMs: 250 },
+  { label: '4x', tickMs: 125 },
+  { label: '10x', tickMs: 50 },
+];
 
 export default function SceneEditor() {
   const router = useRouter();
   const editor = useSceneEditor();
-  const draw = useDrawPage();
   // ← sim state 在 SimProvider context 內，切 page 不會中斷
   const {
     simRunning, signalData, chartData,
@@ -27,6 +35,9 @@ export default function SceneEditor() {
     coverageLoading, setCoverageLoading,
     uePositions,
   } = useSimContext();
+  // sim 跑時 useDrawPage 的 2s DB polling 要 skip,讓 useSimPage client-side
+  // interpolation 獨占位置寫入 — 不然 UE 會「往前走 → 跳回 DB 內舊位置」來回跳。
+  const draw = useDrawPage({ simRunning });
   // 把 sim 算的位置同步給 draw map。
   // 注意 dep 只能放 updateUEPositions（useCallback 包過 stable），
   // 不能放 draw 整個物件 — 那是新物件，會觸發無窮迴圈。
@@ -37,13 +48,36 @@ export default function SceneEditor() {
   }, [uePositions, draw.updateUEPositions]);
 
   const [showForm, setShowForm] = useState(false);
-  const [formType, setFormType] = useState<'building' | 'gnb' | 'ue' | 'obstacle'>('building');
+  const [formType, setFormType] = useState<'building' | 'gnb' | 'ue'>('building');
   const [selectedObject, setSelectedObject] = useState<{
     type: 'building' | 'gnb' | 'ue';
     name: string;
   } | null>(null);
   const [retryLoading, setRetryLoading] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string>('');
+  const [simSpeedTickMs, setSimSpeedTickMs] = useState<number>(500);  // Phase A: 1x default (= wall_tick_ms)
+  // mount 時拉 DU 當前 wall_tick_ms 同步到 dropdown (dev env SIM_TICK_MS=50 → 10x)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await getStatus();
+        if (!cancelled && typeof status?.wall_tick_ms === 'number') {
+          setSimSpeedTickMs(status.wall_tick_ms);
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSimSpeedChange = async (tickMs: number) => {
+    setSimSpeedTickMs(tickMs);
+    try {
+      await setSimSpeed(tickMs);
+    } catch (e) {
+      console.warn('setSimSpeed failed:', e);
+    }
+  };
   const [editValues, setEditValues] = useState<Record<string, any>>({});
   const [coverageMode, setCoverageMode] = useState(false);
   const [coverageData, setCoverageData] = useState<CoverageResponse | null>(null);
@@ -67,7 +101,7 @@ export default function SceneEditor() {
     try { window.localStorage.setItem('ran-sim:mimo', JSON.stringify(next)); } catch {}
   };
 
-  const handleOpenForm = (type: 'building' | 'gnb' | 'ue' | 'obstacle') => {
+  const handleOpenForm = (type: 'building' | 'gnb' | 'ue') => {
     setFormType(type);
     setShowForm(true);
   };
@@ -89,9 +123,6 @@ export default function SceneEditor() {
           break;
         case 'gnb':
           await editor.createGNB(submitData);
-          break;
-        case 'obstacle':
-          await editor.createObstacle(submitData);
           break;
       }
       setShowForm(false);
@@ -273,24 +304,6 @@ export default function SceneEditor() {
             >
               + User Equipment
             </button>
-            <button
-              onClick={() => handleOpenForm('obstacle')}
-              disabled={editor.isCreating || simRunning || coverageLoading}
-              style={{
-                padding: '10px 12px',
-                background: '#888',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: '500',
-                opacity: (editor.isCreating || simRunning || coverageLoading) ? 0.4 : 1,
-                cursor: (editor.isCreating || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
-              }}
-            >
-              + Obstacle
-            </button>
           </div>
         </div>
 
@@ -429,6 +442,9 @@ export default function SceneEditor() {
                   <div style={{ fontWeight: '600', marginBottom: '4px' }}>
                     {u.name}
                     {draw.selectedUEIndex === idx && ' ✓'}
+                  </div>
+                  <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '4px' }}>
+                    Pos: [{(u.position?.[0] ?? 0).toFixed(1)}, {(u.position?.[2] ?? 0).toFixed(1)}]
                   </div>
                   <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '4px' }}>
                     Speed: {u.speed_mps} m/s
@@ -675,6 +691,37 @@ export default function SceneEditor() {
             >
               🏗️ Build Scene
             </button>
+            <label
+              title="Phase A: 壓縮 DU tick interval. 1x=500ms, 10x=50ms (Sionna 撐得住的話). KPM 精度不偏."
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                color: '#cbd5e1',
+              }}
+            >
+              <span style={{ color: '#94a3b8' }}>Speed</span>
+              <select
+                value={simSpeedTickMs}
+                onChange={(e) => handleSimSpeedChange(parseInt(e.target.value, 10))}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #334155',
+                  background: '#0f172a',
+                  color: '#e5e7eb',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {SIM_SPEED_OPTIONS.map((opt) => (
+                  <option key={opt.tickMs} value={opt.tickMs}>
+                    {opt.label} ({opt.tickMs}ms)
+                  </option>
+                ))}
+              </select>
+            </label>
             {!simRunning ? (
               <button
                 onClick={handleStartSim}

@@ -17,7 +17,7 @@ import threading
 import time
 from typing import Any
 
-from main.apps.cu_cp.services.optional.e2 import kpm_indication
+from main.apps.cu_cp.services.optional.e2 import kpm_indication, sim_speed
 from main.apps.cu_cp.services.optional.e2.subscription_registry import get_store
 from main.utils.logger import get_logger
 
@@ -31,14 +31,21 @@ _stop = threading.Event()
 
 
 async def _producer_coro() -> None:
-    """主 producer loop：每 100ms 掃一次。"""
+    """主 producer loop:wall-clock 每 max(20ms, 100/speed) 掃一次。
+
+    加速時(e.g. 10x)scan interval 也跟著縮成 10ms,確保 sim-time 1Hz 取樣
+    不會被 scan 粒度卡住(否則 100ms wall scan @ 10x = 1 sim-sec,只能 1 sim-sec
+    觸發一次,跟想要的 1Hz sim 邊緣)。
+    """
     logger.info("E2 indication producer started")
     while not _stop.is_set():
         try:
             await _tick()
         except Exception as e:  # pragma: no cover
             logger.exception("producer tick failed: %s", e)
-        await asyncio.sleep(0.1)
+        speed = sim_speed.get_speed()
+        scan_sec = max(0.02, 0.1 / speed)
+        await asyncio.sleep(scan_sec)
     logger.info("E2 indication producer stopped")
 
 
@@ -48,12 +55,16 @@ async def _tick() -> None:
     if not sub_ids:
         return
     now_ms = int(time.time() * 1000)
+    speed = sim_speed.get_speed()  # 1.0 = live; 10.0 = 10x
     for sub_id in sub_ids:
         sub = store.get(sub_id)
         if sub is None:
             continue
         period_ms = int(sub.get("event_trigger", {}).get("report_period_ms", 1000))
-        if now_ms - sub["last_indication_at_ms"] < period_ms:
+        # 同步加速:RIC 訂閱以 sim-time 為單位談的 report_period_ms,
+        # wall 上的觸發頻率要 / speed。例:speed=10x 時 period 1000(sim) → wall 100ms。
+        effective_period_ms = period_ms / max(speed, 0.1)
+        if now_ms - sub["last_indication_at_ms"] < effective_period_ms:
             continue
         # 產生 indication（KPM only；RC 之後再加）
         if sub["service_model"] != "KPM":

@@ -33,6 +33,18 @@ export const getStatus = async (): Promise<SimStatus> => {
   return response.data.data;
 };
 
+// Phase A — 改 DU sim_tick_ms,壓縮整段 RAN tick wall-clock 節奏。
+// tick_ms 500=1x, 250=2x, 125=4x, 50=10x。下一輪 tick 即生效。
+//
+// 只設 DU — CU + e2adapter 會 background pull 自動跟上(~4s wall 全鏈路收斂)。
+export const setSimSpeed = async (tickMs: number): Promise<{ sim_tick_ms: number }> => {
+  const response = await duClient.post<{ data: { sim_tick_ms: number } }>(
+    '/api/v0.1/DU/Tick/TickController/set_speed',
+    { tick_ms: tickMs }
+  );
+  return response.data.data;
+};
+
 // Kit (omniver_kit) 在 :8080 直接 expose live UE position（USD time-sample 持續 advance）。
 // 比 Omniver-RAN listUes（DB 快照）即時。
 const KIT_LIVE_URL = process.env.NEXT_PUBLIC_KIT_LIVE_URL || 'http://localhost:8080/ues';
