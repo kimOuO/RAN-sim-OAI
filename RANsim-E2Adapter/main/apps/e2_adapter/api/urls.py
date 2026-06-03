@@ -15,6 +15,7 @@ urlpatterns = [
     path("Status/AdapterStatusReader/read", AdapterStatusActor.read, name="adapter_status_read"),
     path("EventLog/EventLogReader/read", EventLogActor.read, name="event_log_read"),
     path("KpmSnapshot/SnapshotReader/read", KpmSnapshotActor.read, name="kpm_snapshot_read"),
+    path("KpmSnapshot/SnapshotReader/reset", KpmSnapshotActor.reset, name="kpm_snapshot_reset"),
     path("KpmSnapshot/RecentReader/read", KpmRecentActor.read, name="kpm_recent_read"),
     path("KpmSnapshot/HistoryReader/read", KpmHistoryActor.read, name="kpm_history_read"),
     # Sim-speed knob — Dashboard 同步加速時呼這個讓 SCTP poll 也加速。

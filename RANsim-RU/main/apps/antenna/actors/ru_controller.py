@@ -114,7 +114,7 @@ class RuController:
                 "frequency_ghz": c["frequency_ghz"],
                 "bandwidth_mhz": c["bandwidth_mhz"],
                 "gnb_id": c.get("gnb_id", ""),
-                "power_dbm": c.get("power_dbm", 43.0),
+                "power_dbm": c.get("power_dbm", 23.0),
                 "cell_updated_at": now,
                 "cell_created_at": now,
             }

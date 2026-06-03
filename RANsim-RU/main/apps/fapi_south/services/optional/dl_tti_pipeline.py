@@ -27,9 +27,9 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-_NOISE_FLOOR_DBM = get_float("RU_NOISE_FLOOR_DBM", default=-95.0)
+_NOISE_FLOOR_DBM = get_float("RU_NOISE_FLOOR_DBM", default=-98.0)
 # Fallback TX power 給沒 Cell DB record 的極早期啟動階段；正常運行讀 Cell.power_dbm。
-_TX_POWER_DBM_FALLBACK = get_float("RU_TX_POWER_DBM", default=43.0)
+_TX_POWER_DBM_FALLBACK = get_float("RU_TX_POWER_DBM", default=23.0)
 _NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.0)
 """比 -120 dBm 弱的 neighbor 不報，避免 A3 evaluator 看一堆 noise。"""
 
@@ -42,7 +42,7 @@ _NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.
 # 歷史值是 50 dB，因為當時又 +14 dBi antenna_gain（與 Sionna PlanarArray 內建增益
 # 重複計算），實際淨損耗是 36 dB。AK8 改成 per-cell power 後拔掉雙重 gain，
 # 此值直接命名為「真實場景損耗」，與 ran_sim_protocol.rsrp_model 共用。
-_SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=36.0)
+_SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=0.0)
 """真實場景額外損耗 (Brownstone 場景沒模擬到的 O2I + body + shadowing)."""
 
 # SINR 校正:過去用固定 20 dB hack 補「sim 沒算 inter-cell interference」。改用真實

@@ -120,6 +120,16 @@ class _KpmRing:
         with self._lock:
             return list(self._recent)[-limit:]
 
+    def reset(self) -> None:
+        """清空所有 KPM buffer — sim_orchestrator.stop_sim 在 sim 結束時呼叫,
+        確保下一次 RecentReader/SnapshotReader 不回上輪殘留(避免 xApp 拿到舊 sim 數字誤判)。
+        保留 _total_indications 累計值給 debug 用。"""
+        with self._lock:
+            self._latest.clear()
+            self._history.clear()
+            self._recent.clear()
+            self._last_update_ms = 0
+
 
 _ring = _KpmRing()
 

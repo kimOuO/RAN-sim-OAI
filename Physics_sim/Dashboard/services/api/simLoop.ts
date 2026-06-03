@@ -1,7 +1,28 @@
 // 4-system 拆分後：tick driver / sim 控制權限轉移到 DU
 // 舊 path /api/v0.1/RanpSim/RanSignal/SimLoop/* → 新 /api/v0.1/DU/Tick/TickController/*
-import { duClient } from '@/services/clients/httpClient';
+import { duClient, ueClient } from '@/services/clients/httpClient';
 import type { SetupUERequest, SimStatus } from '@/types';
+
+// Stage 5A — 統一 sim 入口。/editor live_db + /scenarios 都打這個。
+// RANsim-UE SimController 接管整段 C.1〜G(scene-apply / UE attach / DU tick / lifecycle)。
+export const startUnifiedSim = async (params: {
+  source: 'live_db' | 'scenario';
+  scenario_id?: string;
+  speed_x?: number;
+  sim_dt_ms?: number;   // scenarios=100, editor=500(default)
+}): Promise<any> => {
+  const body: Record<string, any> = { source: params.source };
+  if (params.scenario_id) body.scenario_id = params.scenario_id;
+  if (params.speed_x !== undefined) body.speed_x = params.speed_x;
+  if (params.sim_dt_ms !== undefined) body.sim_dt_ms = params.sim_dt_ms;
+  const r = await ueClient.post('/api/v0.1/UE/Sim/SimController/start', body);
+  return (r.data as any)?.data ?? r.data;
+};
+
+export const stopUnifiedSim = async (): Promise<any> => {
+  const r = await ueClient.post('/api/v0.1/UE/Sim/SimController/stop', {});
+  return (r.data as any)?.data ?? r.data;
+};
 
 export const setupUE = async (ueTrajectories: SetupUERequest['ues']): Promise<void> => {
   // 只發送有有效軌跡的 UE（至少 2 個 waypoint）
@@ -15,10 +36,6 @@ export const setupUE = async (ueTrajectories: SetupUERequest['ues']): Promise<vo
       ue_id: ue.name,
     });
   }
-};
-
-export const startSim = async (): Promise<void> => {
-  await duClient.post('/api/v0.1/DU/Tick/TickController/start', {});
 };
 
 export const stopSim = async (): Promise<void> => {

@@ -24,11 +24,10 @@ class CellWriteSerializer(serializers.Serializer):
     azimuth_deg = serializers.FloatField(default=0.0)
     position = _CellPositionSerializer()
     frequency_ghz = serializers.FloatField(default=2.5)
-    bandwidth_mhz = serializers.FloatField(default=100.0)
+    bandwidth_mhz = serializers.FloatField(default=40.0)
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
-    # Dashboard 端對應 gNB 的 power_dbm；同 gNB 所有 cell 共用一個值。預設保留
-    # macro 典型 43 dBm，向後相容沒帶 power 的舊 client（仍會走預設）。
-    power_dbm = serializers.FloatField(default=43.0)
+    # 預設 23 dBm 對齊 OAI rfsim 實效 link budget(字面 4 + max_rxgain 補)。
+    power_dbm = serializers.FloatField(default=23.0)
 
 
 class CellListWriteSerializer(serializers.Serializer):

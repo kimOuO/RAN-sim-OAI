@@ -61,7 +61,7 @@ class SessionControllerActor:
             return error_response("ue_id required", status=400)
         # validate pattern
         pattern = profile.get("pattern", "idle")
-        if pattern not in ("cbr", "idle", "bursty"):
+        if pattern not in ("cbr", "idle", "bursty", "piecewise"):
             return error_response(f"invalid pattern {pattern!r}", status=400)
         ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
         if ue is None:
@@ -173,6 +173,69 @@ class SessionControllerActor:
         )
         logger.info("Manual HO requested: UE %s → %s", ue_id, target_cell)
         return success_response({"ho_uuid": ho_uuid, "ue_id": ue_id, "target_cell": target_cell})
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def release_all(request: HttpRequest):
+        """Mark every CONNECTED UE as IDLE — Stop Sim 用,讓 CU indication_producer
+        看到沒 active UE 就停 emit,避免 Influx 在 sim 停止後還持續收到 stale KPM.
+
+        body 可選 {"force": false}; force=true 時直接刪 UeContext row.
+
+        Internally fan-outs F1AP UE Context Release to DU 對齊 DU 端 _ue_registry.
+        """
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("invalid JSON", str(exc), status=400)
+        force = bool(body.get("force", False))
+
+        all_qs = UeContext.objects.all()
+        ue_ids = list(all_qs.values_list("ue_id", flat=True))
+
+        if not ue_ids:
+            return success_response({"released": [], "deleted": [], "force": force},
+                                    "no UEs to release")
+
+        # Fan-out F1AP release to DU (best-effort, 不擋 CU 側 IDLE)
+        from main.apps.cu_cp.services.business.du_client_operations import (
+            DuClientBusinessService,
+        )
+        du_ok = du_fail = 0
+        for uid in ue_ids:
+            try:
+                DuClientBusinessService.post_ue_context_release({"ue_id": uid})
+                du_ok += 1
+            except Exception as exc:
+                du_fail += 1
+                logger.warning("release_all DU fan-out failed ue=%s: %r", uid, exc)
+
+        # Zero Drb counters (對齊 release_stale 的清理)
+        try:
+            from main.apps.cu_up.models.drb import Drb
+            Drb.objects.filter(ue_id__in=ue_ids).update(dl_packets=0, ul_packets=0)
+        except Exception as exc:
+            logger.warning("release_all Drb counter zero failed: %r (continuing)", exc)
+
+        if force:
+            count, _ = all_qs.delete()
+            logger.info("release_all force-deleted %d UEs", count)
+            return success_response(
+                {"released": [], "deleted": ue_ids, "force": True,
+                 "du_release_ok": du_ok, "du_release_fail": du_fail},
+                f"deleted {count} UEs",
+            )
+
+        now = TimestampService.now()
+        updated = all_qs.update(rrc_state="IDLE", serving_cell="", updated_at=now)
+        logger.info("release_all marked %d UEs IDLE", updated)
+        return success_response(
+            {"released": ue_ids, "deleted": [], "force": False,
+             "du_release_ok": du_ok, "du_release_fail": du_fail},
+            f"released {updated} UEs to IDLE",
+        )
 
     @staticmethod
     @csrf_exempt

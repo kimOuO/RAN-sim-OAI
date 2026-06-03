@@ -70,10 +70,12 @@ services:
       # 原為快觸發 (0.5/0.3/60),fast-replay 模式 RSRP 雜訊 ±5dB 導致 ping-pong。
       # 拉成保守值 (3 dB offset / 2 dB hys / 300 ms TTT) 抑制反覆切換。
       # Runtime 還是可以透過 Dashboard /Mobility/A3Controller/set 覆寫。
-      # 為避免 fast-replay 模式下 RSRP 雜訊 ping-pong,設更保守
+      # 2026-05-28 — Bug A:Sionna live mode RSRP multipath 抖動,
+      # 8 dB 門檻 + 1s TTT 仍頻繁 ping-pong(實測 24h 50 筆 SUCC HO 在兩 cell 之間反覆)。
+      # 拉高 HYSTERESIS 3 → 6(total 11 dB),TTT 1s → 3s。
       HO_A3_OFFSET_DB: "5.0"      # 鄰居要強過服務 5 dB 才考慮
-      HO_A3_HYSTERESIS_DB: "3.0"  # 加 3 dB 緩衝 → 實際門檻 8 dB
-      HO_TTT_MS: "1000"           # 1 秒 wall(4x mode = 4 sim-sec)持續滿足才觸發
+      HO_A3_HYSTERESIS_DB: "6.0"  # 加 6 dB 緩衝 → 實際門檻 11 dB
+      HO_TTT_MS: "3000"           # 3 秒 wall(2x mode = 6 sim-sec)持續滿足才觸發
       # 2026-05-17 #1: handover_executor 落地後 fire-and-forget 推給 Omniverse,
       # 讓 playback 把 HO 切回對應 frame。空字串 = 停推。
       OMNIVERSE_URL: "http://${SERVER_IP:-host.docker.internal}:8001"
@@ -117,10 +119,24 @@ services:
       # REPORT_EVERY_N_TICKS = round(PM_WINDOW_SEC * 1000 / SIM_TICK_MS).
       # SIM_TICK_MS=50 配 PM_WINDOW_SEC=1.0 → 20 ticks/window.
       PM_WINDOW_SEC: "1.0"
-      # RLC tx buffer 上限。3 Mbps × 500ms tick = 187 KB / tick,100K(預設)cap 會爆
-      # 又因 PF demand cap 算 prb_needed=ceil(buffer/bytes_per_prb) 只給 3 PRB,
-      # drain 跟不上 inject 永遠卡 cap。拉到 500K 讓 PF 算出更多 PRB,3 Mbps 真正流動。
-      RLC_TX_MAXSIZE_BYTES: 500000
+      # PRB% KPM 輸出校正係數(`pm_aggregator.PRB_OAI_CALIB`)。
+      # 2026-05-23 P1.11 設 10.0 是為對齊 OAI rfsim normal phase(DT raw 1% × 10 ≈ OAI 10%)。
+      # 但這是經驗映射不是物理常數,raw > 10% 後 ×10 必爆 100% clamp,xApp 看到的
+      # RC PRB quota 效果完全失真(下 max=3% → KPM 仍報 100%)。
+      # 預設改回 1.0(raw 不校正),docs/test_records/oai_kpm_calibration_2026-05-23.md
+      # 對照測試前再切回 10.0。
+      PRB_OAI_CALIB: "1.0"
+      # RLC tx buffer 上限。
+      # 2026-05-23 P1.12 — 從 500K 拉到 10 MB。500K 對 3 Mbps × 500ms tick (187 KB/tick)
+      # 仍只能撐 2-3 tick 就觸發 drop,scheduler 還沒 scale up PRB 就丟 SDU。
+      # 10 MB headroom 讓 scheduler 有時間靠 prb_needed=ceil(buffer/bytes_per_prb)
+      # 自動拉高 PRB 配額(burst 期間可達 ≥50 PRB / 接近 BW cap),3 Mbps 真正流通。
+      RLC_TX_MAXSIZE_BYTES: 10000000
+      # P0b — RLC delay 計算模式:calib(現狀,wall+/30擬合) | subtick(FIFO sim-time 解析模型)。
+      # 2026-06-01 B1 驗證發現:subtick 誠實報出 DT 真實 ~140KB 常駐 backlog → ~430ms delay,
+      # 比 OAI 14ms 大,因 DT 注入 burst + tick 粒度排空。calib 的 /30 是把這壓成虛構 14ms。
+      # → subtick 單獨無法達 OAI(delay 是真實佇列非量測假象),default 維持 calib。
+      RLC_DELAY_MODEL: "calib"
       # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
       # 不再寫死 dummy "00101"。caller 不指定時 default 走 env 衍生.
       PLMN_MCC: "208"
@@ -166,12 +182,18 @@ services:
       RU_DEFAULT_POLARIZATION: V
       RU_DEFAULT_PATTERN: tr38901
       RU_NUMEROLOGY: 1
-      RU_NOISE_FLOOR_DBM: -95
+      # P1.5 — 40 MHz thermal noise (-174 + 10log(40e6) + NF=3) ≈ -98 dBm。
+      RU_NOISE_FLOOR_DBM: -98
       RU_CHANNEL_CACHE_TTL_SEC: 0.5
       # AC5 — RU link budget。原本程式 fallback (43.0 / 36.0),移到 compose 集中管理。
       # antenna_gain 已併入 scene_calibration_loss (歷史 50 → 36 = +14 dBi 內含)。
-      RU_TX_POWER_DBM: "43.0"
-      RU_SCENE_CALIBRATION_LOSS_DB: "36.0"
+      # P1.4 補修 — OAI rfsim 字面 PDSCH total ≈ 4 dBm,但 max_rxgain=114 dB 等效
+      # 把 link budget 抬回去。DT 沒 RX gain 元件,直接用 23 dBm TX 補上,讓
+      # RSRP 落在 -82 dBm 對齊 OAI 實效範圍(非字面 TX)。
+      RU_TX_POWER_DBM: "23.0"
+      # P0.2 — OAI rfsim AWGN 通道沒模擬 O2I/body/shadowing,DT 改 0 dB 對齊。
+      # 歷史值 36 (Brownstone urban 校正);換 OAI 對照場景時設 0。
+      RU_SCENE_CALIBRATION_LOSS_DB: "0.0"
       # AK6: cell→Sionna gNB map 改成完全 DB-driven, 不再用 env override.
       # Dashboard 創 gNB 後 call /Physics/Scene/SceneGateway/init 重建 Sionna scene,
       # path_gain dict 就會用用戶輸入的 gnb name (e.g. "gnb4") 當 key.

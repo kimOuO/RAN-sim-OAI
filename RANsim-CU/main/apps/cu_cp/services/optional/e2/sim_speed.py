@@ -5,7 +5,8 @@ sim_dt_ms / wall_tick_ms)。CU 端要做 sim-time KPM 取樣就得跟 DU 同步,
 有獨立的速度狀態 — 否則 DU 改速度時 CU/adapter 會漂離。
 
 設計:
-  - 後台 thread 每 2s pull 一次 DU /TickController/read,cache `sim_speed_x`
+  - 後台 thread 每 2s pull 一次 DU /TickController/read,cache `achieved_speed_x`
+    (實際達成倍速;P1-out 後改跟 achieved 而非設定 sim_speed_x — 見 _refresh_from_du)
   - get_speed() 純查 cache,沒有 HTTP cost
   - DU 暫時連不上保留 last-known 值,下輪 retry(不掉到 1.0)
   - 暴露 set_speed() 給 endpoint 做手動 override(測試 / 偶爾 Dashboard 手切),
@@ -55,7 +56,14 @@ def _refresh_from_du() -> None:
             json={}, timeout=_HTTP_TIMEOUT_SEC,
         )
         data = (r.json() or {}).get("data") or {}
-        new_speed = float(data.get("sim_speed_x", 1.0))
+        # P1-out (2026-06-01): 用 DU「實際達成」倍速校準 KPM 送出頻率,而非設定值。
+        # 設定 10 但實際 6.7 時,若用設定值 producer 每 100ms(=1000/10)送一筆,但新
+        # KPM 數據每 149ms(=1000/6.7)才來 → 過量送出 ~1.49×(含 1/3 重複)。改用
+        # achieved → period/achieved=149ms 精準對上數據速率。achieved 尚未量到(0.0,
+        # 剛啟動/沒在跑)時 fallback 設定值,免得 effective_period 爆大讓 KPM 停送。
+        achieved = float(data.get("achieved_speed_x", 0.0) or 0.0)
+        configured = float(data.get("sim_speed_x", 1.0) or 1.0)
+        new_speed = achieved if achieved > 0.1 else configured
     except Exception:
         return  # 保留上次值
     new_speed = max(0.1, min(30.0, new_speed))

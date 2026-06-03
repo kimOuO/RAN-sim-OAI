@@ -29,6 +29,7 @@ urlpatterns = [
     path("Session/SessionController/handover", SessionControllerActor.handover, name="session_ho"),
     path("Session/SessionController/get_state", SessionControllerActor.get_state, name="session_state"),
     path("Session/SessionController/release_stale", SessionControllerActor.release_stale, name="session_release_stale"),
+    path("Session/SessionController/release_all", SessionControllerActor.release_all, name="session_release_all"),
     path("Session/SessionController/update_traffic_profile", SessionControllerActor.update_traffic_profile, name="session_update_traffic"),
     # ── E2 介面（對齊 OAI E2AP / E2-SM-KPM / E2-SM-RC）─────────────────
     # 舊的：簡單 polling snapshot（保留向後相容）

@@ -21,6 +21,18 @@ logger = get_logger(__name__)
 MCS_BINS = 32
 CQI_BINS = 16
 
+# 2026-05-23 P1.11 — OAI KPM calibration:DT scheduler 一個 tick (500ms) 跑一次,
+# OAI 一個 slot (1ms) 跑一次,1 sec 內 schedule 次數差 500×。OAI numerator 跨 1000
+# slot 累積 PRB,DT 只跨 2 tick 累積,raw prb_pct 偏低 ~10×。校正係數從 normal phase
+# 實測 DT 1.09% / OAI 10.67% 反推 ≈ 9.78,取整 10。套在 _CellWindowAccumulator.flush()
+# 出口,scheduler 內部數學不變(避免破壞 PRB allocation / drain budget 自洽)。
+# 風險:burst phase (im/cco/es) traffic pattern 不同,校正可能偏 ±50%。
+# 詳見 docs/test_records/oai_kpm_calibration_2026-05-23.md
+import os as _os
+# P1.11 calibration — 從 env var 讀,方便 scenarios(sim_dt=100ms) 和 editor(sim_dt=500ms) 用不同值。
+# sim_dt=500ms → 10.0 (原始實測);sim_dt=100ms → 需跑完後重測。
+PRB_OAI_CALIB: float = float(_os.getenv("PRB_OAI_CALIB", "10.0"))
+
 
 @dataclass
 class _UeWindowAccumulator:
@@ -152,7 +164,10 @@ class _CellWindowAccumulator:
     """
     tick_count: int = 0           # window 內該 cell 真實 tick 次數 (含沒 UE 的 tick)
     prb_used_sum: int = 0         # window 內該 cell 累計 PRB usage (每 tick 0..n_prb_total)
-    n_prb_total_sum: int = 0      # window 內每 tick n_prb_total 累計 (應對 PRB quota 變動)
+    # 3GPP TS 28.552 RRU.PrbTotDl 分母 = cell 物理 PRB 容量,**不受 PRB quota 影響**。
+    # caller (tick_runner) 必須傳未 cap 前的 prb_per_cell;傳 capped 值會讓 xApp
+    # 一下 max_prb=3 RC 立刻看到 PRB%=100%,違反 28.552 語意。
+    n_prb_total_sum: int = 0      # window 內每 tick 物理 PRB capacity 累計
 
     def add_tick(self, prb_used: int, n_prb_total: int) -> None:
         self.tick_count += 1
@@ -160,13 +175,22 @@ class _CellWindowAccumulator:
         self.n_prb_total_sum += int(n_prb_total)
 
     def flush(self) -> dict[str, Any]:
-        """回傳 cell window report 並 reset. tick_count=0 仍 emit (idle cell 0%)."""
+        """回傳 cell window report 並 reset. tick_count=0 仍 emit (idle cell 0%).
+
+        2026-05-23 P1.11 — OAI calibration:DT scheduler 一個 tick (sim_dt=500ms) 跑
+        一次,OAI 一個 slot (1ms) 跑一次,1 sec 內 schedule 次數差 500×。
+        OAI numerator 跨 1000 slot 累積 PRB,DT 只跨 2 tick 累積。
+        校正係數從 normal phase 實測 DT 1.09% / OAI 10.67% 反推 ≈ 9.78,取 10。
+        說明文件:docs/test_records/oai_kpm_calibration_2026-05-23.md。
+        """
         capacity = max(self.n_prb_total_sum, 1)
-        prb_pct = self.prb_used_sum / capacity * 100.0
+        prb_pct_raw = self.prb_used_sum / capacity * 100.0
+        prb_pct = prb_pct_raw * PRB_OAI_CALIB
         report = {
             "tick_count": self.tick_count,
             "prb_used_sum": self.prb_used_sum,
-            "prb_pct_dl": min(100.0, max(0.0, prb_pct)),  # clamp 防意外 round-off
+            "prb_pct_dl": min(100.0, max(0.0, prb_pct)),  # clamp 防意外 round-off + calib overshoot
+            "prb_pct_dl_raw": min(100.0, max(0.0, prb_pct_raw)),  # debug 用,未校正值
         }
         self.tick_count = 0
         self.prb_used_sum = 0

@@ -96,7 +96,7 @@ def _build_setup_message() -> F1Setup:
     else:
         served_cells.append(
             CellConfig(
-                cell_id="default-cell-0", pci=0, frequency_ghz=3.5, bandwidth_mhz=100.0,
+                cell_id="default-cell-0", pci=0, frequency_ghz=3.5, bandwidth_mhz=40.0,
             ),
         )
 

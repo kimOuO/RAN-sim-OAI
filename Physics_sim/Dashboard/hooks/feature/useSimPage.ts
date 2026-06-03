@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { startSim, stopSim, setupUE } from '@/services/api/simLoop';
-import { ueSimStart, ueSimStop } from '@/services/api/ueProfile';
+import { stopSim, startUnifiedSim, stopUnifiedSim, fetchUEPositions } from '@/services/api/simLoop';
+import { ueSimStop } from '@/services/api/ueProfile';
 import { SIM_LOOP_TICK_MS, DU_BASE_URL, CU_BASE_URL, OMNIVERSE_API_URL } from '@/config';
 import * as omniverseApi from '@/services/api/omniverse';
 import type { UESignalData } from '@/types';
@@ -13,54 +13,6 @@ export interface ChartData {
   [ueKey: string]: number | string;
 }
 
-/**
- * 沿 waypoints 內插 UE 位置。Dashboard-driven 位置權威核心：
- * 不再依賴 Omniverse Kit 的 USD time-sample 動畫，前端按 elapsed time × speed 算位置。
- * 之後把這位置同時推給 RU（給 Physics 算 channel）跟 Omniverse ingest（move_ue 顯示）。
- */
-function interpolateAlongWaypoints(
-  waypoints: [number, number, number][],
-  speedMps: number,
-  elapsedSec: number,
-  loop: boolean,
-): [number, number, number] {
-  if (waypoints.length === 0) return [0, 0, 0];
-  if (waypoints.length === 1) return waypoints[0];
-
-  // 算每段 segment 長度
-  const segs: { start: number; len: number }[] = [];
-  let total = 0;
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const dx = waypoints[i + 1][0] - waypoints[i][0];
-    const dy = waypoints[i + 1][1] - waypoints[i][1];
-    const dz = waypoints[i + 1][2] - waypoints[i][2];
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    segs.push({ start: total, len });
-    total += len;
-  }
-  if (total === 0) return waypoints[0];
-
-  // 已走距離
-  let target = elapsedSec * speedMps;
-  if (loop) target = target % total;
-  else target = Math.min(target, total);
-
-  // 找該距離落在哪段
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
-    if (target >= s.start && target <= s.start + s.len) {
-      const t = s.len > 0 ? (target - s.start) / s.len : 0;
-      const a = waypoints[i];
-      const b = waypoints[i + 1];
-      return [
-        a[0] + (b[0] - a[0]) * t,
-        a[1] + (b[1] - a[1]) * t,
-        a[2] + (b[2] - a[2]) * t,
-      ];
-    }
-  }
-  return waypoints[waypoints.length - 1];
-}
 
 interface UseSimPageOptions {
   onUpdateUEPositions?: (positions: Record<string, [number, number, number]>) => void;
@@ -71,19 +23,6 @@ export function useSimPage(options?: UseSimPageOptions) {
   const router = useRouter();
   const positionPollRef = useRef<NodeJS.Timeout | null>(null);
   const slowPollRef = useRef<NodeJS.Timeout | null>(null);
-  // Dashboard-driven 位置權威：在 handleStartSim 抓到 trajectories 後存進 ref，
-  // 每輪 polling 從 ref 讀軌跡 + 用 elapsed 內插出當前位置（不再 polling Kit /ues）
-  const trajectoriesRef = useRef<Array<{
-    name: string;
-    waypoints: [number, number, number][];
-    speed_mps: number;
-    loop: boolean;
-  }>>([]);
-  const simStartTimeRef = useRef<number>(0);
-  // Phase A — sim_speed_x = sim_dt_ms / wall_tick_ms. UE 移動需要按這個倍率把
-  // wall-clock elapsed 換算成 sim-time elapsed,否則高速時 UE 仍按 wall 跑(看起來慢)。
-  // 用 ref 是因為 interpolate 在 interval closure 內取最新值。
-  const simSpeedXRef = useRef<number>(1);
   const [simRunning, setSimRunning] = useState(false);
   const [signalData, setSignalData] = useState<UESignalData[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -112,7 +51,6 @@ export function useSimPage(options?: UseSimPageOptions) {
         setSimRunning(prev => prev === backendRunning ? prev : backendRunning);
         // 同步 sim_speed_x — interpolate UE 移動會用這個
         const sx = data.data?.sim_speed_x;
-        if (typeof sx === 'number' && sx > 0) simSpeedXRef.current = sx;
       } catch {
         // 後端暫不可達時靜默忽略，下次 tick 再試
       }
@@ -158,201 +96,35 @@ export function useSimPage(options?: UseSimPageOptions) {
         await omniverseApi.stopAnimation();
       } catch { /* ignore */ }
 
-      trajectoriesRef.current = uePayload.map(u => ({
-        name: u.name,
-        waypoints: u.waypoints as [number, number, number][],
-        speed_mps: u.speed_mps,
-        loop: u.loop,
-      }));
-      simStartTimeRef.current = Date.now();
 
-      // ── B. 構 cell payload — 把 gNB.cells[] 完整展開（每個 sector 一個 cell）─
-      // 之前的 bug：只取每個 gNB 的第一個 cell，多餘 sector 被吃掉。
-      // 命名規則：cell_id = `${gnbName}_c${index}`，標 gnb_id = gnb name。
-      type CellRow = {
-        cell_id: string;       // unique
-        gnb_id: string;        // 標屬於哪個 gNB
-        name: string;          // RU 用的 unique name（=cell_id）
-        pci: number;
-        azimuth_deg: number;
-        position: [number, number, number];
-        frequency_ghz: number;
-        bandwidth_mhz: number;
-        power_dbm: number;     // AK8: 同 gNB 所有 sector 共用 gNB.power_dbm
-      };
-      const cellPayload: CellRow[] = [];
-      for (const g of gnbsFromDb as any[]) {
-        const pos: [number, number, number] = g.position || [g.x ?? 0, g.y ?? 0, g.z ?? 0];
-        const sectors = (g.cells && g.cells.length > 0)
-          ? g.cells
-          : [{ pci: g.pci ?? 1, azimuth_deg: g.azimuth_deg ?? 0 }]; // 沒設 cells[] 則退回 1 sector
-        const gnbPower = g.power_dbm ?? 43.0;  // AK8: gNB 級的 TX 功率，往下傳給每個 cell
-        sectors.forEach((s: any, i: number) => {
-          cellPayload.push({
-            cell_id: `${g.name}_c${i}`,
-            gnb_id: g.name,
-            name: `${g.name}_c${i}`,
-            pci: s.pci ?? 1,
-            azimuth_deg: s.azimuth_deg ?? 0,
-            position: pos,
-            frequency_ghz: g.frequency_ghz ?? 3.5,
-            bandwidth_mhz: g.bandwidth_mhz ?? 100.0,
-            power_dbm: gnbPower,
-          });
-        });
-      }
-
-      // ── C. Best-effort scene-apply chain ─────────────────────
-      // 每步 try/catch，失敗不中斷後續。errors[] 收集起來最後 console.warn 列出。
-      const ruBase = process.env.NEXT_PUBLIC_RU_URL || 'http://localhost:8103';
-      const duBase = process.env.NEXT_PUBLIC_DU_URL || 'http://localhost:8102';
-      const cuBase = process.env.NEXT_PUBLIC_CU_URL || 'http://localhost:8101';
-      const sceneApplyErrors: Array<{ step: string; err: any }> = [];
-
-      const tryStep = async (step: string, fn: () => Promise<any>) => {
-        try { await fn(); }
-        catch (e) { sceneApplyErrors.push({ step, err: e }); console.warn(`[scene-apply] ${step}:`, e); }
-      };
-
-      // C.1 RU update_cells（已自帶 exclude-delete 邏輯，加 gnb_id）
-      if (cellPayload.length > 0) {
-        await tryStep('RU update_cells', () =>
-          fetch(`${ruBase}/api/v0.1/RU/Config/RuController/update_cells`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cells: cellPayload.map(c => ({
-                name: c.name, pci: c.pci, azimuth_deg: c.azimuth_deg,
-                position: c.position, frequency_ghz: c.frequency_ghz,
-                bandwidth_mhz: c.bandwidth_mhz, gnb_id: c.gnb_id,
-                power_dbm: c.power_dbm,  // AK8: 讓 RU 在 RSRP 計算用每 gNB 自己的功率
-              })),
-            }),
-          }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        );
-      }
-
-      // C.2 RU update_ues（新加 exclude-delete）
-      if (uePayload.length > 0) {
-        await tryStep('RU update_ues', () =>
-          fetch(`${ruBase}/api/v0.1/RU/Config/RuController/update_ues`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ues: uePayload.map(u => ({ id: u.name, position: u.position })) }),
-          }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        );
-      }
-
-      // C.3 DU MAC replace_cells（全量替換）
-      if (cellPayload.length > 0) {
-        await tryStep('DU MAC replace_cells', () =>
-          fetch(`${duBase}/api/v0.1/DU/MAC/MacCellController/replace_cells`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cells: cellPayload.map(c => ({
-                cell_id: c.cell_id, pci: c.pci,
-                freq_ghz: c.frequency_ghz, bw_mhz: c.bandwidth_mhz,
-                gnb_id: c.gnb_id,
-              })),
-            }),
-          }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        );
-      }
-
-      // C.4 DU Tick replace_ues（unregister 舊 UE）
-      if (uePayload.length > 0) {
-        await tryStep('DU Tick replace_ues', () =>
-          fetch(`${duBase}/api/v0.1/DU/Tick/TickController/replace_ues`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ues: uePayload.map(u => ({ ue_id: u.name })),
-            }),
-          }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        );
-      }
-
-      // C.5 CU release_stale（把舊 UE 標 IDLE，row 保留）
-      if (uePayload.length > 0) {
-        await tryStep('CU release_stale', () =>
-          fetch(`${cuBase}/api/v0.1/CU/Session/SessionController/release_stale`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keep_ue_ids: uePayload.map(u => u.name), force: false }),
-          }).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        );
-      }
-
-      // ── D. CU RRC attach（每個 UE 進 CONNECTED；已 CONNECTED 就 skip） ────
-      const b64 = (msgType: string, payload: any = {}) =>
-        btoa(JSON.stringify({ type: msgType, payload }));
-      // 先抓 session list 看誰已經 CONNECTED
-      const connectedUes = new Set<string>();
+      // ── B. 單一統一呼叫 — 走 RANsim-UE SimController.start ─────────
+      // Stage 5A: C.1~G 整段(scene-apply + UE attach + DU Tick.start + UE Lifecycle.start)
+      // 都委派給 sim_orchestrator.start_sim(source="live_db"),它 reuse SceneApplyService /
+      // UeAttachService,跟 /scenarios 走完全同一份 backend code path。Browser 不再直 call
+      // RU/DU/CU 30+ 行 fetch。
+      let simStartResult: any = null;
       try {
-        const sessRes = await fetch(`${cuBase}/api/v0.1/CU/Session/SessionController/list`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-        });
-        if (sessRes.ok) {
-          const sl = await sessRes.json();
-          for (const s of (sl.data || [])) {
-            if (s.rrc_state === 'CONNECTED') connectedUes.add(s.ue_id);
-          }
-        }
-      } catch { /* fall through, attempt attach blindly */ }
-
-      for (const ue of uePayload) {
-        if (connectedUes.has(ue.name)) continue;  // idempotent
-        try {
-          await fetch(`${cuBase}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ue_id: ue.name, rrc_msg_b64: b64('RRCSetupRequest') }),
-          });
-          await fetch(`${cuBase}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ue_id: ue.name, rrc_msg_b64: b64('RRCSetupComplete', { transaction_id: 1 }) }),
-          });
-        } catch (err) {
-          console.warn(`RRC attach failed for ${ue.name}:`, err);
-        }
+        simStartResult = await startUnifiedSim({ source: 'live_db' });
+      } catch (e) {
+        console.error('[Start Sim] SimController.start failed:', e);
+        setError(`Start Sim failed: ${(e as Error).message || e}`);
+        setLoading(false);
+        return;
       }
-
-      // ── E. DU 端：CU.update_traffic_profile 自動走 F1AP UE Context Setup ───
-      // AI1: 砍掉直 call DU RlcEntityController/create + inject_sdu 的 sim hack.
-      // AG2 已治本 — CU update_traffic_profile 觸發 F1AP UeCtxSetup → DU 自動建
-      // MAC + RLC entity per DRB + RA + HARQ + tick UE registry. 對齊 OAI
-      // 真實流程 (3GPP TS 38.473 §8.3.1).
-      if (uePayload.length > 0) {
-        await setupUE(uePayload);
-      }
-
-      await tryStep('DU Tick.start', async () => { await startSim(); });
-      // AG15: 把 UE container 從 STANDBY → RUNNING. 沒這步 traffic_gen 不發 SDU,
-      // RLC/MAC/cell PRB 全 0. Start Sim chain 原本漏掉這一步.
-      await tryStep('UE Lifecycle.start', async () => { await ueSimStart(); });
       setSimRunning(true);
 
-      // ── 報告 scene-apply 過程的失敗（best-effort：sim 仍會跑起來）──
-      if (sceneApplyErrors.length > 0) {
-        const summary = sceneApplyErrors.map(e => e.step).join(', ');
-        console.warn(`[Start Sim] ${sceneApplyErrors.length} step(s) failed during scene apply: ${summary}. Sim will still run with partial state — re-click Start Sim to retry.`);
-        setError(`Scene apply: ${sceneApplyErrors.length} step(s) failed (${summary}). Sim is running but may have stale state. Re-click Start Sim to retry.`);
+      // 回報 scene-apply / UE attach 過程的失敗(best-effort:sim 仍會跑起來)
+      const applyErrors: Array<{ step: string; error: string }> = simStartResult?.apply?.errors ?? [];
+      const attachFailed: Array<{ ue: string; step: string; error: string }> = simStartResult?.attach?.failed ?? [];
+      if (applyErrors.length > 0 || attachFailed.length > 0) {
+        const parts: string[] = [];
+        if (applyErrors.length > 0) parts.push(`scene-apply: ${applyErrors.map(e => e.step).join(', ')}`);
+        if (attachFailed.length > 0) parts.push(`UE attach: ${attachFailed.length} failed`);
+        console.warn(`[Start Sim] partial failures —`, parts.join(' / '), simStartResult);
+        setError(`${parts.join('; ')}. Sim is running but may have stale state. Re-click Start Sim to retry.`);
       }
-
       // 只 sync 這次 startSim 註冊的 UE
       const activeUeNames = new Set(uePayload.map(u => u.name));
-
-      // ── 統一 loop：每 1 秒做一輪「位置 + 信號」全鏈推送 ─────────────────
-      // 同一份 (position, signal) payload 同時餵：
-      //   • RU update_ues       (給 Physics 算 channel)
-      //   • frontend TopDownMap (2D 顯示)
-      //   • Omniverse ingest    (3D 視窗 prim 位置 + RSRP/SINR label)
-      // 沒有「位置 1s 推一次給 RU、信號 8s 才到 Omniverse」的時序錯位。
-      const computeCurrentPositions = (): Record<string, [number, number, number]> => {
-        // wall elapsed → sim elapsed (sim 跑得快 N 倍)
-        const wallElapsed = (Date.now() - simStartTimeRef.current) / 1000;
-        const simElapsed = wallElapsed * simSpeedXRef.current;
-        const out: Record<string, [number, number, number]> = {};
-        for (const tj of trajectoriesRef.current) {
-          out[tj.name] = interpolateAlongWaypoints(tj.waypoints, tj.speed_mps, simElapsed, tj.loop);
-        }
-        return out;
-      };
 
       let inFlight = false;
       const unifiedLoop = async () => {
@@ -360,22 +132,13 @@ export function useSimPage(options?: UseSimPageOptions) {
         if (inFlight) return;
         inFlight = true;
         try {
-          // 1. 算當前位置
-          const positions = computeCurrentPositions();
+          // 1. 從 Kit /ues 拉位置(UE container manager._trajectory_tick 推進去的)
+          //    Stage 5B: browser 不再 client-side 算位置,也不直推 RU。
+          //    UeLifecycleManager 已負責把位置 batch 推給 RU + Kit。
+          const positions = await fetchUEPositions();
           if (options?.onUpdateUEPositions) options.onUpdateUEPositions(positions);
 
-          // 2. 推給 RU（fire-and-forget；給 DU 下個 tick 用）
-          const ueUpdates = Object.entries(positions)
-            .filter(([name]) => activeUeNames.has(name))
-            .map(([name, pos]) => ({ id: name, position: pos }));
-          if (ueUpdates.length > 0) {
-            fetch(`${ruBase}/api/v0.1/RU/Config/RuController/update_ues`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ues: ueUpdates }),
-            }).catch(() => {});
-          }
-
-          // 3. 讀 CU E2-KPM 拿最新 RSRP/SINR/throughput/MCS/PRB/rank
+          // 2. 讀 CU E2-KPM 拿最新 RSRP/SINR/throughput/MCS/PRB/rank
           let ueStatus: Array<{
             ue_id: string;
             serving_cell: string;
@@ -399,10 +162,16 @@ export function useSimPage(options?: UseSimPageOptions) {
           } catch { /* CU 拿不到 KPI 不影響推位置 */ }
 
           // 4. 組單一 payload (signal + position bundled per UE) → ingest
-          // 從 cellPayload 建 cell_id → {gnb_id, pci} 查表（讓 Omniverse 3D viz 可用）
+          // 從 gnbsFromDb 展開 cell_id → {gnb_id, pci} 查表（讓 Omniverse 3D viz 可用）
           const cellInfoMap: Record<string, { gnb_id: string; pci: number; cell_id: string }> = {};
-          for (const c of cellPayload) {
-            cellInfoMap[c.cell_id] = { gnb_id: c.gnb_id, pci: c.pci, cell_id: c.cell_id };
+          for (const g of gnbsFromDb as any[]) {
+            const sectors = (g.cells && g.cells.length > 0)
+              ? g.cells
+              : [{ pci: g.pci ?? 1 }];
+            sectors.forEach((s: any, i: number) => {
+              const cid = s.cell_id || `${g.name}_c${i}`;
+              cellInfoMap[cid] = { gnb_id: g.name, pci: s.pci ?? 1, cell_id: cid };
+            });
           }
 
           const signals = ueStatus
@@ -510,16 +279,16 @@ export function useSimPage(options?: UseSimPageOptions) {
         clearInterval(slowPollRef.current);
         slowPollRef.current = null;
       }
-      // 清掉 trajectory state（避免下次 Start Sim 用到舊軌跡）
-      trajectoriesRef.current = [];
-      simStartTimeRef.current = 0;
       // 停 Kit 動畫（保險起見，雖然 Dashboard-driven 模式下沒呼 startAnimation）
       try {
         await omniverseApi.stopAnimation();
       } catch { /* ignore */ }
-      await stopSim();
-      // AG15: 對稱關掉 UE container traffic_gen.
-      try { await ueSimStop(); } catch { /* best effort */ }
+      // Stage 5A: 用統一 stop endpoint(內部停 DU tick + UE Lifecycle + scenario_driver)
+      try { await stopUnifiedSim(); } catch (e) {
+        console.warn('[Stop Sim] stopUnifiedSim failed, falling back:', e);
+        try { await stopSim(); } catch { /* best effort */ }
+        try { await ueSimStop(); } catch { /* best effort */ }
+      }
       setSimRunning(false);
       router.push('/playback');
     } catch (err) {
@@ -529,24 +298,17 @@ export function useSimPage(options?: UseSimPageOptions) {
     }
   }, [router]);
 
-  // 當 simRunning 變 true 但 trajectoriesRef 是空（refresh 後從後端讀到 is_running=true）時，
-  // 沒辦法 reproduce 軌跡 → 維持靜止，user 按 Stop/Start 重置即可。
-  // 不再走「polling Kit /ues」這條路（Dashboard 才是位置權威）。
+  // Stage 5B: simRunning 變 true 但 unifiedLoop 還沒接管(例如 refresh 重整後)時,
+  // 啟動一個 fallback polling 從 Kit /ues 拉位置餵 onUpdateUEPositions,
+  // 確保 2D TopDownMap 看得到動的 UE。
   useEffect(() => {
     if (!simRunning) return;
     if (!options?.onUpdateUEPositions) return;
     if (positionPollRef.current) return;
-    if (trajectoriesRef.current.length === 0) return;  // 沒軌跡就不啟 fallback loop
 
-    const pollPositions = () => {
-      // wall elapsed → sim elapsed,跟 unifiedLoop 內一致
-      const wallElapsed = (Date.now() - simStartTimeRef.current) / 1000;
-      const simElapsed = wallElapsed * simSpeedXRef.current;
-      const out: Record<string, [number, number, number]> = {};
-      for (const tj of trajectoriesRef.current) {
-        out[tj.name] = interpolateAlongWaypoints(tj.waypoints, tj.speed_mps, simElapsed, tj.loop);
-      }
-      options.onUpdateUEPositions!(out);
+    const pollPositions = async () => {
+      const positions = await fetchUEPositions();
+      options.onUpdateUEPositions!(positions);
     };
     pollPositions();
     positionPollRef.current = setInterval(pollPositions, SIM_LOOP_TICK_MS);

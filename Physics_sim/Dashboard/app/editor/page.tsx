@@ -17,12 +17,12 @@ import { updateTrafficProfile, type TrafficProfile } from '@/services/api/ueProf
 import { setSimSpeed, getStatus } from '@/services/api/simLoop';
 import type { SceneAntennaConfig } from '@/types';
 
-// Phase A — 1x/2x/4x/10x → tick_ms 對應 (DU 預設 500ms = 1x)
+// 2026-05-23 實測 cached mode sustained 上限 ~7-8x(DU tick body wall ~63ms 為底限),
+// 設 10x 只跑 7.2x 造成 wall-clock 估算漂移。只保留實測達標的 1x / 5x。
+// 詳見 docs/test_records/sim_speed_ceiling_2026-05-23.md
 const SIM_SPEED_OPTIONS: Array<{ label: string; tickMs: number }> = [
   { label: '1x', tickMs: 500 },
-  { label: '2x', tickMs: 250 },
-  { label: '4x', tickMs: 125 },
-  { label: '10x', tickMs: 50 },
+  { label: '5x', tickMs: 100 },
 ];
 
 export default function SceneEditor() {

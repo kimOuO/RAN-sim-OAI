@@ -61,7 +61,7 @@ class GnbScenarioRow:
     name: str
     position: tuple[float, float, float]            # (x, y, z)
     frequency_ghz: float = 3.5
-    bandwidth_mhz: float = 100.0
+    bandwidth_mhz: float = 40.0
     power_dbm: float = 23.0
     active: bool = True
     color: tuple[float, float, float] = (0.2, 0.8, 0.4)
@@ -150,7 +150,7 @@ def fetch(scenario_id: str) -> ScenarioSpec:
             name=str(g["name"]),
             position=(float(pos[0]), float(pos[1]), float(pos[2])),
             frequency_ghz=float(g.get("frequency_ghz") or 3.5),
-            bandwidth_mhz=float(g.get("bandwidth_mhz") or 100.0),
+            bandwidth_mhz=float(g.get("bandwidth_mhz") or 40.0),
             power_dbm=float(g.get("power_dbm") or 23.0),
             active=bool(g.get("active", True)),
             color=tuple(g.get("color") or [0.2, 0.8, 0.4]),  # type: ignore[arg-type]
@@ -215,18 +215,59 @@ def interpolate_position(positions: list[list[float]], t_sec: float) -> tuple[fl
     return (positions[-1][1], positions[-1][2], positions[-1][3])
 
 
-def interpolate_traffic(profile: list[list[float]], t_sec: float) -> tuple[float, float]:
-    """piecewise-constant 不內插 — t 落在 [t_i, t_{i+1}) 區間取 t_i 的值。
-    回傳 (dl_kbps, ul_kbps)。
+def waypoints_with_speed_to_trajectory(
+    waypoints: list[list[float]],
+    speed_mps: float,
+) -> list[dict[str, float]]:
+    """Omniverse UeConfig `[[x,y,z], ...] + speed_mps` → trajectory waypoints `[{x,y,z,t_ms}, ...]`.
+
+    用途:讓 /editor 拉拖的 UE 軌跡(沒時間軸,只有 waypoint+速度)走跟劇本同一個
+    trajectory_store / interp.interp_position 機制。t_ms 從累積距離 / speed 算。
+
+    第一個 waypoint t_ms=0。之後 t_ms[i] = t_ms[i-1] + dist(wp[i-1], wp[i]) / speed_mps × 1000。
+    speed_mps <= 0 或 waypoints < 2 → 回空 list(caller skip 不推 store)。
     """
-    if not profile:
-        return (0.0, 0.0)
-    if t_sec < profile[0][0]:
-        return (0.0, 0.0)
-    last = profile[0]
-    for p in profile:
-        if p[0] > t_sec:
-            break
-        last = p
-    return (float(last[1]) if len(last) > 1 else 0.0,
-            float(last[2]) if len(last) > 2 else 0.0)
+    if not waypoints or len(waypoints) < 2 or speed_mps <= 0:
+        return []
+    out: list[dict[str, float]] = []
+    t_ms_acc = 0.0
+    prev: list[float] | None = None
+    for wp in waypoints:
+        if len(wp) < 3:
+            continue
+        x, y, z = float(wp[0]), float(wp[1]), float(wp[2])
+        if prev is None:
+            out.append({"x": x, "y": y, "z": z, "t_ms": 0})
+        else:
+            dx = x - prev[0]
+            dy = y - prev[1]
+            dz = z - prev[2]
+            dist = (dx * dx + dy * dy + dz * dz) ** 0.5
+            t_ms_acc += dist / speed_mps * 1000.0
+            out.append({"x": x, "y": y, "z": z, "t_ms": int(t_ms_acc)})
+        prev = [x, y, z]
+    return out
+
+
+def positions_to_waypoints(positions: list[list[float]]) -> list[dict[str, float]]:
+    """劇本 `[[t_sec, x, y, z], ...]` → trajectory_store 用的 `[{x,y,z,t_ms}, ...]`。
+
+    用途:讓劇本 UE 走 UeLifecycleManager._trajectory_loop 既有的位置內插 +
+    RU 推送機制(共用 interp.interp_position),不再走 scenario_driver 自己的
+    tick loop。
+
+    僅做格式轉換,不做 sanity check / sort — 假設劇本 raw_json 已經是時間遞增。
+    interp.interp_position 對非單調 t 也只是 fallback first / last,不會崩。
+    """
+    return [
+        {
+            "x": float(p[1]),
+            "y": float(p[2]),
+            "z": float(p[3]),
+            "t_ms": int(float(p[0]) * 1000),
+        }
+        for p in positions
+        if len(p) >= 4
+    ]
+
+

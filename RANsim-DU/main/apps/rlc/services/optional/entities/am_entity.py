@@ -29,7 +29,7 @@ MAX_RETX = 4
 # - drain 25 kbps + cap 100 KB → avg ~16 s（仍偏大但比無限好）
 # - drain 50 Mbps + cap 100 KB → avg ~8 ms（合理）
 # 想壓到 ms 級可以用 RLC_TX_MAXSIZE_BYTES=2048 等。
-TX_MAXSIZE_BYTES = get_int("RLC_TX_MAXSIZE_BYTES", 100_000)
+TX_MAXSIZE_BYTES = get_int("RLC_TX_MAXSIZE_BYTES", 10_000_000)  # P1.12: 100K→10M
 
 
 @dataclass
@@ -54,6 +54,7 @@ class AmEntity:
         self._status_pending = False
         self._rx: list[SduItem] = []
         self._delay_samples_ms: list[float] = []     # 累計 SDU delivery delay，take_delay_samples() 取出後清空
+        self._server_free_sim_ms: float = 0.0        # P0b subtick 模型:FIFO 伺服器空閒時刻(sim-time),跨 tick 持有
         # AK10 — running tx buffer 估算（避免每次 recv_sdu 都 O(n) 掃 _tx_queue）
         # 跟 segment() 同步：segment 從 _tx_queue 消費 bytes 後也要扣，但 segment 不
         # 知道這個欄位 → 維持「entry/exit 各一次的近似量」就好，掃描 fallback 由
@@ -65,7 +66,8 @@ class AmEntity:
         self.tx_dropped_sdus_total: int = 0
         self.tx_dropped_bytes_total: int = 0
 
-    def recv_sdu(self, n_bytes: int, enqueue_ts_ms: int | None = None) -> int:
+    def recv_sdu(self, n_bytes: int, enqueue_ts_ms: int | None = None,
+                 arrival_sim_ms: float = 0.0) -> int:
         # AL: caller (e.g. inject_sdu_batch) 若提供 per-packet ts 就用 caller 給的,
         # 否則 fallback wall-clock now — 對齊 OAI per-packet enqueue 時序.
         # AK10: 對齊 OAI nr_rlc_entity_am.c:1842-1847 — cap 滿了 reject 新 SDU
@@ -81,7 +83,10 @@ class AmEntity:
         sid = self._next_sdu_id
         self._next_sdu_id += 1
         ts = enqueue_ts_ms if enqueue_ts_ms is not None else _now_ms()
-        self._tx_queue.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts))
+        self._tx_queue.append(SduItem(
+            sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts,
+            arrival_sim_ms=arrival_sim_ms,
+        ))
         return sid
 
     def take_drop_samples(self) -> tuple[int, int]:
@@ -103,7 +108,8 @@ class AmEntity:
         self._delay_samples_ms = []
         return samples
 
-    def generate_pdu(self, budget_bytes: int) -> int:
+    def generate_pdu(self, budget_bytes: int, *, subtick: bool = False,
+                     rate_bytes_per_sim_ms: float = 0.0, now_sim_ms: float = 0.0) -> int:
         # retx 優先
         for blk in self._tx_window:
             if blk.acked:
@@ -118,7 +124,12 @@ class AmEntity:
         if budget_bytes <= AM_HEADER_BYTES:
             return 0
         payload_budget = budget_bytes - AM_HEADER_BYTES
-        seg = segment(self._tx_queue, payload_budget)
+        seg = segment(
+            self._tx_queue, payload_budget,
+            subtick=subtick, rate_bytes_per_sim_ms=rate_bytes_per_sim_ms,
+            server_free_sim_ms=self._server_free_sim_ms, now_sim_ms=now_sim_ms,
+        )
+        self._server_free_sim_ms = seg.server_free_sim_ms
         if seg.pdu_bytes <= 0:
             return 0
         sn = self._next_sn

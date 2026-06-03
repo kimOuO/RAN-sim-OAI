@@ -14,6 +14,31 @@ _TIMEOUT_SEC = 2.0
 _session = requests.Session()
 
 
+def tick_start() -> bool:
+    """POST DU /Tick/TickController/start — 啟動 DU 內部 sim tick loop。
+
+    sim_orchestrator + scenario_driver 都用這個取代散落各處的 HTTP call。
+    """
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/start"
+    try:
+        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException as exc:
+        logger.warning("DU TickController.start failed: %s", exc)
+        return False
+
+
+def tick_stop() -> bool:
+    """POST DU /Tick/TickController/stop。"""
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/stop"
+    try:
+        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException as exc:
+        logger.warning("DU TickController.stop failed: %s", exc)
+        return False
+
+
 def inject_sdu(
     ue_id: str, sdu_bytes: int, *, bearer_type: str = "DRB", bearer_id: int = 1,
 ) -> str:
@@ -156,10 +181,11 @@ def inject_sdu_batch(
 
 
 def fetch_ue_signals() -> dict[str, dict[str, Any]]:
-    """POST DU /Tick/TickController/dump_pm → 抽 per-UE 即時訊號(scenario_driver
-    每隔幾百 ms 拉一次,跟著位置一起塞給 Omniverse 顯示)。
+    """POST DU /Tick/TickController/dump_pm → 抽 per-UE 即時訊號(UeLifecycleManager
+    每 N tick 拉一次,跟位置一起寫進 signal_history)。
 
-    回傳 {ue_name: {sinr_db, rsrp_dbm, serving_cell}} — 拉不到時回空 dict 不擋 driver。
+    回傳 {ue_name: {sinr_db, rsrp_dbm, serving_cell, throughput_dl_mbps, mcs_dl,
+                      prb_used_dl, rlc_buffer_bo}} — 拉不到時回空 dict 不擋 driver。
     """
     url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/dump_pm"
     try:
@@ -178,5 +204,9 @@ def fetch_ue_signals() -> dict[str, dict[str, Any]]:
             "sinr_db": s.get("sinr_db"),
             "rsrp_dbm": s.get("rsrp_dbm"),
             "serving_cell": s.get("serving_cell") or "",
+            "throughput_dl_mbps": s.get("throughput_dl_mbps_this_tick"),
+            "mcs_dl": s.get("mcs_dl"),
+            "prb_used_dl": s.get("prb_dl_this_tick"),
+            "rlc_buffer_bo": s.get("rlc_buffer_bo_this_tick"),
         }
     return out

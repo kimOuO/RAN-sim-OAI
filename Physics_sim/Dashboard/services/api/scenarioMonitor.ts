@@ -54,14 +54,18 @@ export interface DuPmSnapshot {
 export interface ScenarioDriverStatus {
   running: boolean;
   scenario_id?: string;
-  sim_tick_idx: number;
-  total_ticks: number;
-  elapsed_wall_sec: number;
-  elapsed_sim_sec: number;
+  source?: string;
+  started_at_ms?: number;
+  sim_tick_idx?: number;
+  total_ticks?: number;
+  elapsed_wall_sec?: number;
+  elapsed_sim_sec?: number;
   sim_speed_x: number;
-  inject_call_count: number;
-  position_push_count: number;
-  last_error: string;
+  ue_count?: number;
+  traffic_count?: number;
+  inject_call_count?: number;
+  position_push_count?: number;
+  last_error?: string;
 }
 
 export interface ControlActionRow {
@@ -131,12 +135,20 @@ export interface TriggerEval {
   triggered: boolean;
 }
 
-// 改用 per-tick stats(last_cell_stats / last_ue_stats),對齊 OAI intent 真實門檻
-export function evaluateIm(pm: DuPmSnapshot): TriggerEval {
+// IM/ES 評估是 UE-centric 門檻 — 必須看 UE 真正的 serving cell 而非寫死 c0。
+// 之前寫死 cellStats['gnbDT_c0'] 在 UE attach 到 c1 / HO 場景全錯。
+function pickServingCell(pm: DuPmSnapshot) {
   const cellStats = pm.last_cell_stats ?? {};
   const ueStats = pm.last_ue_stats ?? {};
-  const cell = cellStats['gnbDT_c0'] ?? Object.values(cellStats)[0];
   const ue = Object.values(ueStats)[0];
+  const servingId = ue?.serving_cell;
+  const cell = (servingId && cellStats[servingId]) ?? Object.values(cellStats)[0];
+  return { cell, ue, servingId };
+}
+
+// 改用 per-tick stats(last_cell_stats / last_ue_stats),對齊 OAI intent 真實門檻
+export function evaluateIm(pm: DuPmSnapshot): TriggerEval {
+  const { cell, ue } = pickServingCell(pm);
   const prbPct = cell?.prb_pct_this_tick ?? 0;
   const thp = ue?.throughput_dl_mbps_this_tick ?? 0;
   const delay = ue?.rlc_delay_ms_avg_this_tick ?? 0;
@@ -179,10 +191,7 @@ export function evaluateCco(pm: DuPmSnapshot): TriggerEval {
 }
 
 export function evaluateEs(pm: DuPmSnapshot): TriggerEval {
-  const cellStats = pm.last_cell_stats ?? {};
-  const ueStats = pm.last_ue_stats ?? {};
-  const cell = cellStats['gnbDT_c0'] ?? Object.values(cellStats)[0];
-  const ue = Object.values(ueStats)[0];
+  const { cell, ue } = pickServingCell(pm);
   const prbPct = cell?.prb_pct_this_tick ?? 0;
   const thp = ue?.throughput_dl_mbps_this_tick ?? 0;
   const prbLow = prbPct < 10;

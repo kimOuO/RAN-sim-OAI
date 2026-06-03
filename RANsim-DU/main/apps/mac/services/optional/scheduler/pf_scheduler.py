@@ -16,12 +16,22 @@ from dataclasses import dataclass
 from typing import Any
 
 from main.apps.mac.services.optional.link_adaptation.mcs_table import (
+    TDD_DL_SLOT_RATIO,
     mcs_to_throughput_mbps,
     sinr_to_mcs,
 )
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# OAI PF scheduler 強制最小 5 PRB 分配 — 對齊 OAI gNB_scheduler_dlsch.c:753:
+#   `const int min_rbSize = 5;`
+# 即使 UE 只需 1 PRB 容量,OAI 也分 5 PRB(避免 DCI 浪費 + 留 retx margin)。
+# DT 加這個下限後 prb_pct 從 ~0.6% 拉到 ~4.7%,接近 OAI 10.67%(剩 ~6% 為 OAI
+# 的 retx + SDU 多 PDU 切分,DT 沒模擬)。
+# 詳見 docs/test_records/oai_prb_calc_evidence_2026-05-23.md
+MIN_PRB = 5
 
 
 @dataclass
@@ -73,9 +83,9 @@ class PfScheduler:
             else:
                 # 直接 float 計算, 不走 mcs_to_throughput_mbps() 避免 int() 截 0
                 # 對齊原公式: re_per_slot = 1 PRB × 12 subcarrier × 12 symbol = 144
-                # bits/sec = re_per_slot × bps_re × slots_per_sec × overhead
-                # 常數見 mcs_table.mcs_to_throughput_mbps: slots_per_sec=2000, overhead=0.85
-                bits_per_prb_per_sec = 144.0 * bps_re * 2000.0 * 0.85
+                # bits/sec = re_per_slot × bps_re × slots_per_sec × overhead × tdd_dl_ratio
+                # 常數見 mcs_table.mcs_to_throughput_mbps: slots_per_sec=2000, overhead=0.80
+                bits_per_prb_per_sec = 144.0 * bps_re * 2000.0 * 0.80 * TDD_DL_SLOT_RATIO
                 bytes_per_prb = bits_per_prb_per_sec * tick_s / 8.0
                 prb_needed[uid] = max(1, math.ceil(buf_bytes / bytes_per_prb))
 
@@ -87,18 +97,42 @@ class PfScheduler:
             pf_weights[uid] = inst_rates[uid] / max(state.avg_rate_mbps, 1.0)
 
         # ── 3. Pass 1: fair share with demand cap ──
+        # P1.14 (2026-05-25): 改 demand-based MIN_PRB —
+        # 舊行為 (P1.9): 有 BO UE 強分 MIN_PRB=5 即使 demand 只有 1 PRB → low-rate phase
+        # (normal-2 16 kbps / normal-3 5 kbps) 被分過頭 PRB,PRB% 報出來 11% 對 OAI 0.26-0.89%
+        # 過高 12-43×。
+        # 新行為: floor = min(MIN_PRB, prb_needed) — UE 只拿真實 demand 對應 PRB,
+        # demand >= 5 才拉到 5。對齊 OAI dlsch_scheduler:demand-driven 分 PRB,不浪費。
+        # 預期: normal-2/3 PRB% 從 11% 降到 ~1%,normal-1/im 不變 (demand 已 >= 5)。
         total_pf = sum(pf_weights.values())
         rb_alloc: dict[str, int] = {}
+
+        def _floor_for(uid: str, ue: dict[str, Any]) -> int:
+            buf = ue.get("buffer_occupancy")
+            # buffer empty / measurement-only UE: 維持 1 PRB(對齊 OAI 不浪費 PRB 給 idle UE)
+            if buf is None or buf <= 0:
+                return 1
+            # P1.14: floor cap by demand — low-rate UE 不再被強拉到 5
+            return min(MIN_PRB, prb_needed[uid])
+
         if total_pf <= 0:
             share = max(1, n_prb_total // len(ues_on_gnb))
             for ue in ues_on_gnb:
                 uid = ue["id"]
-                rb_alloc[uid] = min(share, prb_needed[uid])
+                floor = _floor_for(uid, ue)
+                rb_alloc[uid] = min(max(share, floor), prb_needed[uid] if floor == 1 else max(prb_needed[uid], floor))
         else:
             for ue in ues_on_gnb:
                 uid = ue["id"]
+                floor = _floor_for(uid, ue)
                 fair = max(1, int(n_prb_total * pf_weights[uid] / total_pf))
-                rb_alloc[uid] = min(fair, prb_needed[uid])
+                # OAI: nr_find_nb_rb 強制 ≥ min_rbSize。即使 fair=1 也拉到 MIN_PRB,
+                # 但不超過 n_prb_total(防超 BW)。對 idle UE (floor=1) 退回原本 demand cap。
+                if floor == 1:
+                    rb_alloc[uid] = min(fair, prb_needed[uid])
+                else:
+                    target = max(fair, floor)
+                    rb_alloc[uid] = min(target, n_prb_total, max(prb_needed[uid], floor))
 
         # ── 4. Pass 2: redistribute leftover to UEs still short of need ──
         leftover = n_prb_total - sum(rb_alloc.values())

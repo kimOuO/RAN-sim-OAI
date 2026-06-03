@@ -45,6 +45,12 @@ export const triggerPrecompute = async (scenarioId: string): Promise<void> => {
   await physicsClient.post('/api/v0.1/Physics/Precompute/run', { scenario_id: scenarioId });
 };
 
+// 強制 RU 切到 live mode — sim 起來後呼叫覆寫 scenario_driver 自動套的 cached。
+// 用途:cached SINR 公式有 bug 時繞過,或想跑物理真實 ray tracing 對照。
+export const forceRuLiveMode = async (): Promise<void> => {
+  await ruClient.post('/api/v0.1/RU/Config/RuController/set_channel_mode', { mode: 'live' });
+};
+
 // Orchestrate Start Fast Run — 完整序列。
 // 假設前提:UE 已透過 /editor flow 跑過 attach(CU UE session 存在)。
 export interface StartFastRunOptions {

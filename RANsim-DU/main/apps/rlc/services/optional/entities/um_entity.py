@@ -21,14 +21,19 @@ class UmEntity:
         self._rx: list[SduItem] = []
         self._next_sdu_id = 0
         self._delay_samples_ms: list[float] = []
+        self._server_free_sim_ms: float = 0.0  # P0b subtick FIFO 伺服器游標
 
-    def recv_sdu(self, n_bytes: int, enqueue_ts_ms: int | None = None) -> int:
+    def recv_sdu(self, n_bytes: int, enqueue_ts_ms: int | None = None,
+                 arrival_sim_ms: float = 0.0) -> int:
         # AL: caller (e.g. inject_sdu_batch) 若提供 per-packet ts 就用 caller 給的,
         # 否則 fallback wall-clock now — 對齊 OAI per-packet enqueue 時序.
         sid = self._next_sdu_id
         self._next_sdu_id += 1
         ts = enqueue_ts_ms if enqueue_ts_ms is not None else _now_ms()
-        self._tx.append(SduItem(sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts))
+        self._tx.append(SduItem(
+            sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts,
+            arrival_sim_ms=arrival_sim_ms,
+        ))
         return sid
 
     def take_delay_samples(self) -> list[float]:
@@ -36,11 +41,17 @@ class UmEntity:
         self._delay_samples_ms = []
         return samples
 
-    def generate_pdu(self, budget_bytes: int) -> int:
+    def generate_pdu(self, budget_bytes: int, *, subtick: bool = False,
+                     rate_bytes_per_sim_ms: float = 0.0, now_sim_ms: float = 0.0) -> int:
         if budget_bytes <= UM_HEADER_BYTES:
             return 0
         payload_budget = budget_bytes - UM_HEADER_BYTES
-        seg = segment(self._tx, payload_budget)
+        seg = segment(
+            self._tx, payload_budget,
+            subtick=subtick, rate_bytes_per_sim_ms=rate_bytes_per_sim_ms,
+            server_free_sim_ms=self._server_free_sim_ms, now_sim_ms=now_sim_ms,
+        )
+        self._server_free_sim_ms = seg.server_free_sim_ms
         if seg.delivered_delay_ms:
             self._delay_samples_ms.extend(seg.delivered_delay_ms)
         return seg.pdu_bytes + UM_HEADER_BYTES

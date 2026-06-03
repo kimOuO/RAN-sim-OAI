@@ -42,7 +42,11 @@ class RlcDataController:
         if entity is None:
             return error_response("RLC entity not found", http_status=404)
 
-        sdu_id = entity.recv_sdu(v["sdu_bytes"])
+        # P0b — 非 batch 沒有 sub-tick offset,arrival 用當下 sim-time(tick 起點)
+        from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+        _runner = get_tick_runner()
+        _now_sim_ms = _runner.status.tick_count * _runner.sim_dt_ms
+        sdu_id = entity.recv_sdu(v["sdu_bytes"], arrival_sim_ms=_now_sim_ms)
         return success_response({"sdu_id": sdu_id, "bo": entity.buffer_status()}, "Injected")
 
     @staticmethod
@@ -86,11 +90,23 @@ class RlcDataController:
         # 若 window_ms=100, offset=0 → enqueue 100ms 前. offset=100000 → enqueue 現在.
         now_ms = _now_ms()
         window_ms = v["window_ms"]
+        # P0b — 同時用 DU sim-clock 把 per-packet ts_offset 映到 sim-time 到達時戳,給 subtick
+        # FIFO delay 模型用。offset_frac = batch 內相對位置(0..1),散在「過去一個 sim_dt」上,
+        # 讓封包在 tick 內散開(命門:不能全壓 tick 起點,否則尾包又等滿整個 tick)。
+        window_us = max(1.0, float(window_ms) * 1000.0)
+        from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+        _runner = get_tick_runner()
+        now_sim_ms = _runner.status.tick_count * _runner.sim_dt_ms
+        sim_dt_ms = _runner.sim_dt_ms
         sdu_ids: list[int] = []
         for item in items:
             offset_ms = item["ts_offset_us"] / 1000.0
             enqueue_ts = int(now_ms - (window_ms - offset_ms))
-            sdu_id = entity.recv_sdu(item["sdu_bytes"], enqueue_ts_ms=enqueue_ts)
+            offset_frac = min(1.0, max(0.0, item["ts_offset_us"] / window_us))
+            arrival_sim_ms = now_sim_ms - (1.0 - offset_frac) * sim_dt_ms
+            sdu_id = entity.recv_sdu(
+                item["sdu_bytes"], enqueue_ts_ms=enqueue_ts, arrival_sim_ms=arrival_sim_ms,
+            )
             sdu_ids.append(sdu_id)
         return success_response(
             {"sdu_ids": sdu_ids, "n_items": len(items), "bo": entity.buffer_status()},

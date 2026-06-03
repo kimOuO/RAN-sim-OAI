@@ -97,14 +97,17 @@ def _open_sctp_socket() -> socket.socket | None:
 def _send_sctp(sock, data: bytes, ppid: int = _E2AP_SCTP_PPID) -> bool:
     """SCTP send on stream 0 with E2AP PPID.
 
-    pysctp 0.7.2 在 _sctp.c 裡有自動 htonl（看 sctp_sendmsg call），所以這裡傳
-    host order 70 即可。E2AP 標準 PPID = 70 per O-RAN.
+    PPID byte order: pysctp 0.7.2 註解曾說會自動 htonl,但 2026-05-27 跟 RIC
+    對 pcap 證實 *沒有*。我方送 host-order 70 → wire 上變成 0x46000000,
+    RIC 端看到 PPID 非 E2AP(0x46) → kernel ABORT 整條 SCTP association
+    (典型現象:E2 Setup OK → 收到 SUB_REQ 後 ~55μs 被踢)。
+    這裡顯式 htonl,wire 上 PPID = 0x00000046 = 70 per O-RAN E2AP.
 
-    多 indication thread 共用一個 socket，這裡 lock serialize send。
+    多 indication thread 共用一個 socket,這裡 lock serialize send。
     """
     try:
         with _SCTP_SOCK_LOCK:
-            sock.sctp_send(msg=data, ppid=ppid, stream=0)
+            sock.sctp_send(msg=data, ppid=socket.htonl(ppid), stream=0)
         return True
     except Exception as exc:
         logger.error("SCTP send failed: %s", exc)
@@ -532,6 +535,12 @@ def _handle_sub_req(sock, sub_req_value: dict) -> None:
         registry, pdu_sent_count=registry.get_connection().pdu_sent_count + 1,
     )
     logger.info("SUB_RESP sent (%d bytes) — admitted actions=%s", len(resp_bytes), admitted_ids)
+    # DEBUG (2026-05-27, RIC SUB_RESP timeout investigation):
+    # 印 byte hex + echo 的 RICrequestID 給 RIC 手動 APER decode 比對 ID/spec compliance.
+    logger.info(
+        "SUB_RESP hex (for RIC APER decode): ric_req_id=%s ran_func_id=%d bytes=%s",
+        ric_req_id, ran_func_id, resp_bytes.hex(),
+    )
     event_ring.record_sub_resp_sent(sub_id=sub_id, admitted_action_ids=admitted_ids,
                                      pdu_size=len(resp_bytes))
 
@@ -592,7 +601,13 @@ def _indication_producer_loop(sock, meta: dict) -> None:
     registry = get_registry()
     sub_id = meta["sub_id"]
     base_period_sec = meta["period_ms"] / 1000.0
-    logger.info("indication producer started sub_id=%s base_period=%.1fs", sub_id, base_period_sec)
+    # DEBUG (2026-05-27): producer lifecycle 完整紀錄 — 配合 RIC 端 epoll/abort 對時.
+    logger.info(
+        "indication producer LIFECYCLE.start sub_id=%s base_period=%.1fs "
+        "ric_req_id=%s ran_func_id=%s action_id=%s thread_id=%s",
+        sub_id, base_period_sec, meta.get("ric_req_id"), meta.get("ran_func_id"),
+        meta.get("action_id"), threading.get_ident(),
+    )
 
     poll_count = 0
     sent_count = 0
@@ -708,7 +723,12 @@ def _indication_producer_loop(sock, meta: dict) -> None:
 
         meta["stop"].wait(period_sec)
 
-    logger.info("indication producer stopped sub_id=%s", sub_id)
+    # DEBUG (2026-05-27): 印 exit 原因 + 累積 stats — 配合 RIC epoll/abort 對時.
+    logger.info(
+        "indication producer LIFECYCLE.exit sub_id=%s reason=stop_event "
+        "poll_count=%d sent_count=%d thread_id=%s",
+        sub_id, poll_count, sent_count, threading.get_ident(),
+    )
 
 
 def _stop_all_indication_threads() -> None:

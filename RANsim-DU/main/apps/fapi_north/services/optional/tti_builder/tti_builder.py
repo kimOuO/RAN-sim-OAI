@@ -32,7 +32,7 @@ def build_dl_tti(
     cell_id_map = cell_id_map or {}
 
     pdus: list[DlPduConfig] = []
-    # AD1 fix: prb_start 必須 per-cell 獨立累積, 不能跨 cell. 每個 cell PRB 0..273
+    # AD1 fix: prb_start 必須 per-cell 獨立累積, 不能跨 cell. 每個 cell PRB 0..n_prb_total
     # 是獨立 frequency resource. 之前 single global prb_cursor 在 multi-cell + multi-UE
     # 場景 (e.g., 14 UE 分 3 cells) 第 N+ 個 UE 會撞 RU serializer max=274 → 整個 dl_tti
     # 400 Bad Request, 物理層完全沒跑.

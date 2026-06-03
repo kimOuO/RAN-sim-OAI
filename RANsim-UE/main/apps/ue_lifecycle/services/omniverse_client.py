@@ -273,6 +273,32 @@ def sync_scene_to_scenario(scenario_ue_names: list[str]) -> dict[str, int]:
     return {"deleted": n_del, "created": n_add, "kept": len(kept)}
 
 
+def ingest_signals(signals: list[dict[str, Any]], session_uuid: str | None = None) -> bool:
+    """POST Omniverse /api/v0.1/RAN/Ingest/SignalIngestor/create — 把 per-UE 訊號落
+    signal_history 表(Playback 用)。
+
+    signals = [{ue_name, serving_cell, rsrp_dbm, sinr_db, rsrp_map?, throughput_dl_mbps?,
+                throughput_ul_mbps?, mcs_dl?, prb_used_dl?, mimo_rank?, position?}, ...]
+    session_uuid 沒提供時 SignalHistory.session_uuid 會是 NULL,Playback 無法 group 該 sim。
+    失敗只 warn,不擋 UE loop。
+    """
+    if not signals:
+        return True
+    url = f"{settings.OMNIVERSE_URL.rstrip('/')}/api/v0.1/RAN/Ingest/SignalIngestor/create"
+    body: dict[str, Any] = {"signals": signals}
+    if session_uuid:
+        body["session_uuid"] = session_uuid
+    try:
+        r = _session.post(url, json=body, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            logger.warning("omniverse ingest_signals non-OK: %d %s", r.status_code, r.text[:200])
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("omniverse ingest_signals HTTP failed: %s", exc)
+        return False
+
+
 def batch_move_ues(
     ues: list[dict[str, Any]],
     signals: dict[str, dict[str, Any]] | None = None,

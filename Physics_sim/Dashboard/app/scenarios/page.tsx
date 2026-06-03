@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listScenarios, readScenario, uploadScenario, deleteScenario,
-  triggerPrecompute, startFastRun, stopFastRun,
+  triggerPrecompute, forceRuLiveMode,
   type ScenarioRow,
 } from '@/services/api/scenario';
 import {
@@ -15,6 +15,7 @@ import {
 import {
   buildTrafficSeries, buildPositionZSeries, type RawScenario,
 } from '@/services/api/scenarioProfile';
+import { startUnifiedSim, stopUnifiedSim } from '@/services/api/simLoop';
 import { SignalChart } from '@/components/SignalChart';
 import { ScenarioMap } from '@/components/ScenarioMap';
 import { SimTimeChart } from '@/components/SimTimeChart';
@@ -49,9 +50,9 @@ const SCENE_LAYOUTS: Record<string, Array<{
 }>> = {
   twocell_1gnb: [
     { cell_id: 'gnbDT_c0', x: 0, y: 30, z: 0, azimuth_deg: 0,   pci: 0,
-      power_dbm: 23, freq_ghz: 3.5, bandwidth_mhz: 100, total_prb: 273, gnb_id: 'gnbDT' },
+      power_dbm: 23, freq_ghz: 3.5, bandwidth_mhz: 40, total_prb: 106, gnb_id: 'gnbDT' },
     { cell_id: 'gnbDT_c1', x: 0, y: 30, z: 0, azimuth_deg: 180, pci: 1,
-      power_dbm: 23, freq_ghz: 3.5, bandwidth_mhz: 100, total_prb: 273, gnb_id: 'gnbDT' },
+      power_dbm: 23, freq_ghz: 3.5, bandwidth_mhz: 40, total_prb: 106, gnb_id: 'gnbDT' },
   ],
 };
 
@@ -101,6 +102,18 @@ export default function ScenariosPage() {
   const [history, setHistory] = useState<OutHistorySample[]>([]);
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 偵測 driver 從 running → finished 的單次邊緣事件,防 race 重複清空。
+  const autoStopFiredRef = useRef(false);
+  const sawRunningRef = useRef(false);
+  // Per-card chart 展開狀態 — 預設摺疊只顯示 header 1-2 行,避免 chart 大量 re-render
+  // 卡死頁面。Stage 6 後對應減少前端負擔的設計。
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
+  const [expandedUes, setExpandedUes] = useState<Set<string>>(new Set());
+  const toggleSet = (s: Set<string>, id: string): Set<string> => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  };
 
   // Map<scenario_id, { raw, updatedAt }>:用 updated_at 當 cache key,只要 DB 有改就 refetch。
   // 之前只用 `Map<id, raw>` + 「沒在 Map 才抓」的策略,DB 改完 raw_json 後前端永遠
@@ -132,8 +145,12 @@ export default function ScenariosPage() {
         if (raw) saved = JSON.parse(raw);
       } catch { /* ignore */ }
       const ratio = Math.max(1, Math.round(d.sim_speed_x || 1));
+      // Backend driver.state expose 的是 started_at_ms (wall-clock 開跑時間);
+      // 沒有 elapsed_wall_sec。讀 started_at_ms 直接還原 wall-clock 起點,讓
+      // dispatcher / 第三方派的 sim 也能正確顯示「已跑 X 分鐘」。
       const startedAtWallMs = saved?.startedAtWallMs
-        ?? (Date.now() - (d.elapsed_wall_sec ?? 0) * 1000);
+        ?? d.started_at_ms
+        ?? Date.now();
       const sessionUuid = saved?.sessionUuid ?? `runs_${d.scenario_id}_${startedAtWallMs}`;
       try {
         const sc = await readScenario(d.scenario_id);
@@ -196,6 +213,16 @@ export default function ScenariosPage() {
       if (d) setDriver(d);
       if (p) setPm(p);
       setActions(a); setHandovers(ho); setNowMs(Date.now());
+      // Auto-stop:driver 從 running → false 的邊緣 → scenario 跑完(或自然中止)。
+      // 用 sawRunningRef 確認真的看過 true 才算 transition,避免剛 mount 那一拍
+      // 還沒有 driver state 就被誤判成已停。autoStopFiredRef 防止後續 poll 重複觸發。
+      if (d) {
+        if (d.running) sawRunningRef.current = true;
+        else if (sawRunningRef.current && !autoStopFiredRef.current) {
+          autoStopFiredRef.current = true;
+          void autoStopOnFinish();
+        }
+      }
       // 推 history sample — 用 per-tick stats(非 cumulative)
       if (d && p) {
         const ueStats = p.last_ue_stats ?? {};
@@ -296,8 +323,11 @@ export default function ScenariosPage() {
     finally { setBusy(false); }
   };
 
-  const onRun = async (s: ScenarioRow, ratio: number) => {
+  const onRun = async (s: ScenarioRow, ratio: number, forceLive: boolean = false) => {
     setBusy(true); setError('');
+    // 新一輪 run:重置 auto-stop 偵測,確保下次 driver running→false 能再次觸發
+    autoStopFiredRef.current = false;
+    sawRunningRef.current = false;
     try {
       const wallTickMs = Math.max(10, Math.round(s.tick_ms / ratio));
       const sessionUuid = `runs_${s.scenario_id}_${Date.now()}`;
@@ -307,12 +337,21 @@ export default function ScenariosPage() {
       const raw: RawScenario = sc?.raw_json || sc;
       setActiveScenario(raw);
       setHistory([]);
-      await startFastRun({
-        scenarioId: s.scenario_id, targetWallTickMs: wallTickMs,
-        sceneId: s.scene_id, sessionUuid, timeCompressionRatio: ratio,
+      // Stage 統一架構:走 SimController.start(source=scenario),它內部建 SimSession +
+      // 廣播 speed 給 DU/CU + 反向 sync scenario → DB + UE attach + lifecycle start。
+      const res = await startUnifiedSim({
+        source: 'scenario', scenario_id: s.scenario_id, speed_x: ratio, sim_dt_ms: 250,
       });
+      // forceLive:scenario_driver 若 precompute_status==ready 會自動切 cached,
+      // 在 start 完成「之後」呼 set_channel_mode=live 覆寫,繞過 cached SINR bug
+      // 或單純想跑 Sionna 即時 ray tracing 對齊真實物理。
+      if (forceLive) {
+        try { await forceRuLiveMode(); }
+        catch (e) { console.warn('forceRuLiveMode failed', e); }
+      }
+      const actualSession = res?.session_uuid || sessionUuid;
       setRunning({
-        scenarioId: s.scenario_id, sessionUuid, ratio,
+        scenarioId: s.scenario_id, sessionUuid: actualSession, ratio,
         startedAtWallMs, scenarioStartHHMMSS: scenarioStart,
       });
       // 存到 sessionStorage,讓使用者切走又切回 /scenarios 時 mount effect 能還原監控視圖
@@ -321,7 +360,8 @@ export default function ScenariosPage() {
           sessionUuid, scenarioStartHHMMSS: scenarioStart, startedAtWallMs,
         }));
       } catch { /* quota / private mode 忽略 */ }
-      setError(`✓ ${s.scenario_id} @ ${ratio}x — session=${sessionUuid}`);
+      const modeTag = forceLive ? ' (Live)' : '';
+      setError(`✓ ${s.scenario_id} @ ${ratio}x${modeTag} — session=${sessionUuid}`);
     } catch (e: any) { setError(`start failed: ${e?.message ?? e}`); }
     finally { setBusy(false); }
   };
@@ -329,12 +369,23 @@ export default function ScenariosPage() {
   const onStop = async () => {
     setBusy(true);
     try {
-      await stopFastRun();
+      await stopUnifiedSim();
       setRunning(null); setActiveScenario(null);
       setDriver(null); setPm(null); setActions([]); setHandovers([]); setHistory([]);
+      autoStopFiredRef.current = false; sawRunningRef.current = false;
       try { sessionStorage.removeItem('scenarios:run'); } catch { /* ignore */ }
     } catch (e: any) { setError(`stop failed: ${e?.message ?? e}`); }
     finally { setBusy(false); }
+  };
+
+  // 劇本自然跑完時的 cleanup — 等同 onStop 但不擋 UI(不 setBusy),
+  // 也補送 stopUnifiedSim 確保後端 sim_orchestrator residual state 收乾淨。
+  const autoStopOnFinish = async () => {
+    try { await stopUnifiedSim(); } catch { /* driver 已停,呼叫失敗可忽略 */ }
+    setRunning(null); setActiveScenario(null);
+    setDriver(null); setPm(null); setActions([]); setHandovers([]); setHistory([]);
+    try { sessionStorage.removeItem('scenarios:run'); } catch { /* ignore */ }
+    setError('✓ scenario finished — reset to pre-sim view');
   };
 
   // ── derived ─────────────────────────────────────────
@@ -352,8 +403,14 @@ export default function ScenariosPage() {
     return undefined;
   };
   const trigEval = (pm && running) ? getPreset(running.scenarioId)?.evaluator(pm) : null;
-  const driverPct = driver ? (driver.sim_tick_idx / Math.max(1, driver.total_ticks) * 100) : 0;
-  const simNowSec = driver?.elapsed_sim_sec ?? 0;
+  const driverPct = driver?.sim_tick_idx && driver?.total_ticks
+    ? (driver.sim_tick_idx / Math.max(1, driver.total_ticks)) * 100
+    : 0;
+  // 後端新 driver state 沒 expose elapsed_sim_sec — 從 wall-clock 跑的時間 × ratio 直接推:
+  // 速率 2x → wall 跑 5s = sim 跑 10s。Fallback 用 driver.elapsed_sim_sec(舊路徑)。
+  const simNowSec = running
+    ? ((nowMs - running.startedAtWallMs) / 1000) * running.ratio
+    : (driver?.elapsed_sim_sec ?? 0);
 
   // Input charts(from activeScenario raw_json)
   const trafficData  = useMemo(() => activeScenario ? buildTrafficSeries(activeScenario, 1) : [], [activeScenario]);
@@ -602,19 +659,6 @@ export default function ScenariosPage() {
                       }
                     </div>
                   </div>
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-                      UE z 座標(南北軸)— 沿 sim-time 軸(紅線 = 目前 sim cursor)
-                    </div>
-                    <SimTimeChart
-                      data={positionData as any}
-                      scenarioStart={running.scenarioStartHHMMSS}
-                      leftSeries={positionLeft}
-                      leftLabel="z (m)"
-                      height={120}
-                      cursor={Math.round(simNowSec)}
-                    />
-                  </div>
                 </>
               );
             })()}
@@ -628,8 +672,22 @@ export default function ScenariosPage() {
             </div>
 
             {/* Per-Cell grid */}
-            <div style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 600, marginTop: 6 }}>
-              📡 Cell 狀態(每 cell 一個 card)
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 600 }}>
+                📡 Cell 狀態({allCellIds.length})— 點 card 展開圖表
+              </div>
+              <button
+                onClick={() => setExpandedCells(
+                  expandedCells.size === allCellIds.length ? new Set() : new Set(allCellIds),
+                )}
+                style={{
+                  marginLeft: 'auto', padding: '2px 8px', fontSize: 10,
+                  background: '#1e293b', color: '#cbd5e1',
+                  border: '1px solid #334155', borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                {expandedCells.size === allCellIds.length ? '全部摺疊' : '全部展開'}
+              </button>
             </div>
             <div style={{
               display: 'grid',
@@ -642,13 +700,18 @@ export default function ScenariosPage() {
                   .find(c => c.cell_id === cid);
                 const dlAgg = cur?.dl_aggregate_mbps_this_tick ?? 0;
                 const isActive = cur?.is_active ?? true;
+                const isExpanded = expandedCells.has(cid);
                 return (
-                  <div key={cid} style={{
-                    padding: 10, background: '#0f172a',
-                    border: `1px solid ${isActive ? '#1e293b' : '#7f1d1d'}`, borderRadius: 4,
-                  }}>
+                  <div key={cid}
+                    onClick={() => setExpandedCells(s => toggleSet(s, cid))}
+                    style={{
+                      padding: 10, background: '#0f172a',
+                      border: `1px solid ${isActive ? '#1e293b' : '#7f1d1d'}`, borderRadius: 4,
+                      cursor: 'pointer', transition: 'border-color 0.15s',
+                    }}>
                     {/* Static config 1 行 */}
                     <div style={{ fontSize: 11, color: '#fde68a', fontFamily: 'ui-monospace,monospace' }}>
+                      <span style={{ color: '#64748b', marginRight: 4 }}>{isExpanded ? '▼' : '▶'}</span>
                       📡 <strong>{cid}</strong>
                       {cfg && (
                         <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>
@@ -663,46 +726,55 @@ export default function ScenariosPage() {
                       {cur && (
                         <>
                           {' · '}PRB <strong>{cur.prb_used_this_tick}</strong>/{cur.prb_total} ({cur.prb_pct_this_tick.toFixed(1)}%)
-                          {' · '}attached <strong>{cur.attached_ue_count ?? 0}</strong> UE
-                          {' · '}sched <strong>{cur.scheduled_ue_count ?? 0}</strong>
+                          {' · '}attached <strong>{cur.attached_ue_count ?? 0}</strong>
                           {' · '}DL <strong>{dlAgg.toFixed(2)}</strong> Mbps
+                          {(cur.quota_cap_factor ?? 1.0) < 1.0 && (
+                            <span style={{ color: '#fbbf24', marginLeft: 4 }}>· xApp capped {(cur.quota_max_prb_pct ?? 100).toFixed(0)}%</span>
+                          )}
                         </>
                       )}
                     </div>
-                    {/* xApp quota 1 行 */}
-                    {cur && (
-                      <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
-                        🎚 xApp quota: max <strong>{(cur.quota_max_prb_pct ?? 100).toFixed(0)}%</strong>
-                        {(cur.quota_cap_factor ?? 1.0) < 1.0 && (
-                          <span style={{ color: '#fbbf24', marginLeft: 4 }}>(xApp capped)</span>
-                        )}
+                    {/* Chart:展開才 render(避免大量 SVG 重畫卡 UI)*/}
+                    {isExpanded && (
+                      <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+                        <SimTimeChart
+                          data={cellChartData(cid)}
+                          scenarioStart={running.scenarioStartHHMMSS}
+                          leftSeries={[
+                            { key: 'prb_pct', label: 'PRB %', color: '#f59e0b' },
+                          ]}
+                          rightSeries={[
+                            { key: 'dl_mbps', label: 'DL aggregate (Mbps)', color: '#22c55e' },
+                          ]}
+                          leftLabel="%" rightLabel="Mbps"
+                          height={150}
+                          cursor={Math.round(simNowSec)}
+                          markers={hoMarkers}
+                        />
                       </div>
                     )}
-                    {/* Chart:PRB% + DL Mbps */}
-                    <div style={{ marginTop: 6 }}>
-                      <SimTimeChart
-                        data={cellChartData(cid)}
-                        scenarioStart={running.scenarioStartHHMMSS}
-                        leftSeries={[
-                          { key: 'prb_pct', label: 'PRB %', color: '#f59e0b' },
-                        ]}
-                        rightSeries={[
-                          { key: 'dl_mbps', label: 'DL aggregate (Mbps)', color: '#22c55e' },
-                        ]}
-                        leftLabel="%" rightLabel="Mbps"
-                        height={150}
-                        cursor={Math.round(simNowSec)}
-                        markers={hoMarkers}
-                      />
-                    </div>
                   </div>
                 );
               })}
             </div>
 
             {/* Per-UE grid */}
-            <div style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 600, marginTop: 12 }}>
-              📱 UE 狀態(每 UE 一個 card)
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 600 }}>
+                📱 UE 狀態({allUeIds.length})— 點 card 展開圖表
+              </div>
+              <button
+                onClick={() => setExpandedUes(
+                  expandedUes.size === allUeIds.length ? new Set() : new Set(allUeIds),
+                )}
+                style={{
+                  marginLeft: 'auto', padding: '2px 8px', fontSize: 10,
+                  background: '#1e293b', color: '#cbd5e1',
+                  border: '1px solid #334155', borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                {expandedUes.size === allUeIds.length ? '全部摺疊' : '全部展開'}
+              </button>
             </div>
             <div style={{
               display: 'grid',
@@ -740,13 +812,18 @@ export default function ScenariosPage() {
                   key: `rsrp_${cid}`, label: `RSRP ${cid}`,
                   color: ['#0ea5e9', '#ec4899', '#a855f7', '#f97316'][ci % 4],
                 }));
+                const isExpanded = expandedUes.has(uid);
                 return (
-                  <div key={uid} style={{
-                    padding: 10, background: '#0f172a',
-                    border: '1px solid #1e293b', borderRadius: 4,
-                  }}>
+                  <div key={uid}
+                    onClick={() => setExpandedUes(s => toggleSet(s, uid))}
+                    style={{
+                      padding: 10, background: '#0f172a',
+                      border: '1px solid #1e293b', borderRadius: 4,
+                      cursor: 'pointer', transition: 'border-color 0.15s',
+                    }}>
                     {/* Static info 1 行 */}
                     <div style={{ fontSize: 11, color: '#a7f3d0', fontFamily: 'ui-monospace,monospace' }}>
+                      <span style={{ color: '#64748b', marginRight: 4 }}>{isExpanded ? '▼' : '▶'}</span>
                       📱 <strong>{uid}</strong>
                       {cur && (
                         <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>
@@ -761,29 +838,31 @@ export default function ScenariosPage() {
                       <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
                         ⚡ Thp <strong>{cur.throughput_dl_mbps_this_tick.toFixed(2)}</strong> Mbps
                         {' · '}Delay <strong>{cur.rlc_delay_ms_avg_this_tick.toFixed(1)}</strong> ms
-                        {' · '}buffer BO <strong>{(cur.rlc_buffer_bo_this_tick/1024).toFixed(1)}</strong> KB
+                        {' · '}buffer <strong>{(cur.rlc_buffer_bo_this_tick/1024).toFixed(1)}</strong> KB
                         {' · '}SINR <strong>{cur.sinr_db.toFixed(1)}</strong> dB
                       </div>
                     )}
-                    {/* Chart:RSRP per cell + SINR + Thp + Delay */}
-                    <div style={{ marginTop: 6 }}>
-                      <SimTimeChart
-                        data={ueChartData(uid)}
-                        scenarioStart={running.scenarioStartHHMMSS}
-                        leftSeries={[
-                          ...rsrpSeries,
-                          { key: 'sinr', label: 'SINR (serving)', color: '#fbbf24' },
-                        ]}
-                        rightSeries={[
-                          { key: 'throughput', label: 'Thp (Mbps)', color: '#22c55e' },
-                          { key: 'delay',      label: 'Delay (ms)', color: '#ef4444' },
-                        ]}
-                        leftLabel="dB" rightLabel="Mbps/ms"
-                        height={180}
-                        cursor={Math.round(simNowSec)}
-                        markers={hoMarkers}
-                      />
-                    </div>
+                    {/* Chart:展開才 render(避免 4-line SVG × N UE 卡 UI)*/}
+                    {isExpanded && (
+                      <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+                        <SimTimeChart
+                          data={ueChartData(uid)}
+                          scenarioStart={running.scenarioStartHHMMSS}
+                          leftSeries={[
+                            ...rsrpSeries,
+                            { key: 'sinr', label: 'SINR (serving)', color: '#fbbf24' },
+                          ]}
+                          rightSeries={[
+                            { key: 'throughput', label: 'Thp (Mbps)', color: '#22c55e' },
+                            { key: 'delay',      label: 'Delay (ms)', color: '#ef4444' },
+                          ]}
+                          leftLabel="dB" rightLabel="Mbps/ms"
+                          height={180}
+                          cursor={Math.round(simNowSec)}
+                          markers={hoMarkers}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -961,7 +1040,7 @@ function ScenarioCard({
   rawJson?: RawScenario;
   scenarioStart: string;
   busy: boolean;
-  onRun: (s: ScenarioRow, ratio: number) => void;
+  onRun: (s: ScenarioRow, ratio: number, forceLive?: boolean) => void;
   onPrecompute: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
@@ -1125,10 +1204,20 @@ function ScenarioCard({
             {status === 'pending' ? '🔧 Pre(必要)' : 'Pre'}
           </button>
         )}
-        {scenario && ready && [2, 4, 10].map((r) => (
+        {/* 速度倍率 1x / 2x / 3x — precompute ready 時走 cached(快、SINR 可能失真);
+            「▶ Live 2x」強制走 Sionna 即時 ray tracing,繞 cached SINR bug。
+            註:2x 為安全 baseline;3x 以上會掉封包/KPM 失真,只 demo 用不當量測比較對象。 */}
+        {scenario && ready && [1, 2, 3].map((r) => (
           <button key={r} onClick={() => onRun(scenario, r)}
             disabled={busy} style={btn('#22c55e')}>▶ {r}x</button>
         ))}
+        {scenario && ready && (
+          <button onClick={() => onRun(scenario, 1, true)}
+            disabled={busy} style={btn('#3b82f6')}
+            title="強制 RU 走 live mode(Sionna 即時 ray tracing,繞 cached SINR bug)。1x 真實速度跑,不加速。">
+            ▶ Live
+          </button>
+        )}
         {scenario && !preset && (
           <button onClick={() => onDelete(scenario.scenario_id)}
             disabled={busy} style={btn('#475569')}>Del</button>

@@ -20,12 +20,10 @@ class Cell(models.Model):
     position_z = models.FloatField()
 
     frequency_ghz = models.FloatField(default=2.5)
-    bandwidth_mhz = models.FloatField(default=100.0)
-    # 每 cell 的 TX 功率，Dashboard 由 update_cells 推。預設 43 dBm = macro 20 W 的典型值；
-    # 跟 ran_sim_protocol.rsrp_model.DEFAULT_SCENE_LOSS_DB=36 搭配在 path_gain=0dB 時
-    # 得到 +7 dBm，與舊 pipeline 43+14-50=+7 等價，避免 schema 變動引入計算偏移。
-    # 改 Dashboard 端 power_dbm 會在 ≤1 tick 內反映到 RU 算出的 RSRP。
-    power_dbm = models.FloatField(default=43.0)
+    bandwidth_mhz = models.FloatField(default=40.0)
+    # 預設 23 dBm — OAI rfsim 字面 PDSCH total=4 dBm 但 max_rxgain=114 dB 等效
+    # 把 link budget 抬回。DT 沒 RX gain,改用 23 dBm 補,RSRP 落 OAI 實效範圍。
+    power_dbm = models.FloatField(default=23.0)
 
     cell_created_at = models.DateTimeField()
     cell_updated_at = models.DateTimeField()

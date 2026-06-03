@@ -38,7 +38,10 @@ from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_a
 from main.apps.mac.services.optional.scheduler.scheduler_factory import get_scheduler
 from main.apps.rlc.services.optional.entities import factory as rlc_factory
 from main.services_logs.ran_message_log import get_ring as get_log_ring
-from main.utils.env_loader import get_int
+from main.utils.env_loader import get_int, get_str
+
+# P0b — RLC delay 計算模式:calib(現狀,wall 量測 + /30 擬合校正) | subtick(FIFO sim-time 解析模型)
+_RLC_DELAY_SUBTICK = (get_str("RLC_DELAY_MODEL", "calib") or "calib").strip().lower() == "subtick"
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -91,8 +94,26 @@ class TickRunner:
         # Phase B — per-tick 即時 stats(每 _tick_body 結尾覆寫),給 Dashboard chart 用
         self.last_ue_stats: dict[str, dict[str, Any]] = {}
         self.last_cell_stats: dict[str, dict[str, Any]] = {}
+        # P0a (2026-06-01) — 實際達成倍速 achieved_speed_x。
+        # sim_speed_x 是「設定值」(sim_dt/wall_tick),但 loop 在負載下 body 塞不進
+        # wall_tick 時實際跑不到那麼快。achieved = 近 ~1s 內 tick_count 真實增長率換算,
+        # 是唯一誠實的「sim-time 跑多快」來源。設定 vs achieved 的差距 = 漂移。
+        # 0.0 = 尚未量到(剛啟動 < 1s)。
+        self._achieved_speed_x: float = 0.0
+        self._achv_window_start_wall: float = 0.0
+        self._achv_window_start_tick: int = 0
 
     # --- public API ----------------------------------------------------------
+
+    @property
+    def achieved_speed_x(self) -> float:
+        """實際達成倍速 = 近 ~1s 內 tick_count 增長率換算的 sim-time/wall-time 比。
+
+        跟 sim_speed_x(設定值)的差距就是「漂移」。0.0 = 尚未量到(剛啟動)。
+        UE traffic_gen / 監看工具讀這個,而不是相信沒人兌現的設定值。
+        """
+        with self._tick_ms_lock:
+            return self._achieved_speed_x
 
     @property
     def wall_tick_ms(self) -> int:
@@ -102,8 +123,27 @@ class TickRunner:
 
     @property
     def sim_dt_ms(self) -> int:
-        """每個 tick 在 sim-time 上前進多少 ms(固定,不隨 speed 變)。"""
-        return self._sim_dt_ms
+        """每個 tick 在 sim-time 上前進多少 ms。set_sim_dt() 可 runtime 改。"""
+        with self._tick_ms_lock:
+            return self._sim_dt_ms
+
+    def set_sim_dt(self, sim_dt_ms: int) -> int:
+        """thread-safe 設 sim_dt_ms, clamp 10~500ms. 回傳實際生效值.
+
+        scenarios (cached mode) 用較小值(e.g. 100ms)提升 KPM 精度;
+        editor (live mode) 保持 500ms 預設。
+        改變後 sim_speed_x = sim_dt_ms / wall_tick_ms 立即更新。
+        """
+        clamped = max(10, min(500, int(sim_dt_ms)))
+        with self._tick_ms_lock:
+            old = self._sim_dt_ms
+            self._sim_dt_ms = clamped
+        if old != clamped:
+            logger.info(
+                "TickRunner.set_sim_dt: sim_dt %d -> %d ms (sim_speed=%.2fx)",
+                old, clamped, clamped / max(self._wall_tick_ms, 1),
+            )
+        return clamped
 
     @property
     def sim_speed_x(self) -> float:
@@ -225,6 +265,12 @@ class TickRunner:
             logger.info("TickRunner.start: cleared %d stale UEs from _ue_registry", stale_count)
             self._ue_registry.clear()
 
+        # P0a — 重置 achieved 量測視窗(每次 cold start 重新量漂移)
+        with self._tick_ms_lock:
+            self._achieved_speed_x = 0.0
+        self._achv_window_start_wall = 0.0
+        self._achv_window_start_tick = 0
+
         self._stop_event.clear()
         self.status.is_running = True
         self.status.started_at_ms = int(time.time() * 1000)
@@ -256,6 +302,8 @@ class TickRunner:
                 self._tick_body()
             except Exception as e:
                 logger.exception("tick body error: %s", e)
+            # P0a — 更新 achieved_speed_x(每 ~1s wall 重算一次,純觀測不影響節拍)
+            self._update_achieved_speed()
             # 每輪重讀 wall_tick_ms,set_tick_ms() 變更下一輪即生效
             period = self.wall_tick_ms / 1000.0
             next_t += period
@@ -266,6 +314,27 @@ class TickRunner:
                 next_t = time.time()
         logger.info("TickRunner stopped after %d ticks", self.status.tick_count)
 
+    def _update_achieved_speed(self) -> None:
+        """P0a — 用 tick_count 真實增長率算 achieved_speed_x。
+
+        achieved = (Δtick × sim_dt_ms / 1000) / Δwall_sec
+                 = 這段 wall 時間內推進的 sim-time / 花的 wall-time。
+        每 ~1s wall 重算一次,避免過短視窗噪音。純觀測,不碰節拍。
+        """
+        now = time.time()
+        if self._achv_window_start_wall == 0.0:
+            self._achv_window_start_wall = now
+            self._achv_window_start_tick = self.status.tick_count
+            return
+        dw = now - self._achv_window_start_wall
+        if dw >= 1.0:
+            dtick = self.status.tick_count - self._achv_window_start_tick
+            achieved = dtick * self._sim_dt_ms / 1000.0 / dw
+            with self._tick_ms_lock:
+                self._achieved_speed_x = round(achieved, 3)
+            self._achv_window_start_wall = now
+            self._achv_window_start_tick = self.status.tick_count
+
     def _tick_body(self) -> dict[str, Any]:
         self.status.tick_count += 1
         self.status.last_tick_ms = int(time.time() * 1000)
@@ -275,12 +344,51 @@ class TickRunner:
         delay_by_ue: dict[str, list[float]] = {}
         drops_by_ue: dict[str, tuple[int, int]] = {}  # AK10: per-UE (sdus, bytes) drop in this tick
         for (ue_id, _btype, _bid), entity in rlc_factory.all_entities():
-            bo_by_ue[ue_id] = bo_by_ue.get(ue_id, 0) + entity.buffer_status()
-            # 收 RLC entity 累計的 SDU delivery delay（取出後 entity 內部 buffer 清空）
+            _bo = entity.buffer_status()
+            bo_by_ue[ue_id] = bo_by_ue.get(ue_id, 0) + _bo
+            # 收 RLC entity 累計的 SDU delivery delay(取出後 entity 內部 buffer 清空)
+            # 2026-05-23 P1.8: segment.py 用 wall clock 算 dequeue-enqueue,samples 是 wall ms。
+            # 在 sim_speed_x > 1 下,KPM 該報 sim-ms(對齊 OAI semantic — OAI wall=sim)。
+            #
+            # 2026-05-23 P1.10 — OAI calibration:DT scheduler 一個 tick (sim_dt=500ms) 跑
+            # 一次,OAI 一個 slot (1ms) 跑一次。SDU 等待粒度差 sim_dt/oai_slot_ms = 500x。
+            # ÷ 500 把 DT 報的 sim-ms delay 校正成 OAI-equivalent slot-grained delay。
+            # 數學依據:詳見 docs/test_records/oai_prb_calc_evidence_2026-05-23.md。
+            # 套在 KPM 顯示層,scheduler 內部數學不變(buffer drain timing 維持自洽)。
+            # P1.15 (2026-05-25): phase-aware DELAY_CALIB —
+            # 舊行為 (P1.10): 一律 ÷sim_dt_ms,假設「DT tick 跟 OAI slot 差 sim_dt 倍」均勻
+            #   套整個 phase。實測在高流量 phase 校過頭 (DT 報 1.6 ms 對 OAI 14.4 ms = 11%),
+            #   低流量 phase 對得很好 (normal-2 DT 2.7 ms 對 OAI 1.5 ms = 180%)。
+            # 新行為: bo > 1KB 視為「高流量 phase」(queue 有實質排隊) → /30 (8.3× less aggressive)
+            #         bo <= 1KB 用原 /sim_dt (低流量 sample 量小,維持 P1.10 校正)
+            # 預期: normal-1 delay 1.6 → ~13 ms 對 OAI 14.4,低流量 phase 不變。
+            # P1.15.1 (2026-05-25 update): HIGH_TRAFFIC_BO_BYTES 從 1024 拉到 50000
+            # 原因:1KB 太低,連 cco_1hr 200 kbps (bo ~6-12 KB) 都被誤判 high-traffic,
+            # 導致 cco 在 DT 上 delay 衝到 20ms,過不了 xApp CCO 門檻 < 5ms。
+            # 50 KB 對齊 OAI iperf3 -b 1M (~31 KB/tick) 跟 -b 5M (~156 KB/tick) 的中線。
+            # 副作用:full_day_24hr normal-1 (195 kbps, bo ~6-12 KB) 會回 low-delay 模式,
+            # 失去 v7 的 17ms 對齊 OAI 14.4ms — 但 xApp 不查 normal-1 phase delay,可接受。
+            _OAI_SLOT_MS = 1.0
+            _SIM_DT_MS = float(self._sim_dt_ms)
+            _HIGH_TRAFFIC_BO_BYTES = 50_000
+            if _bo > _HIGH_TRAFFIC_BO_BYTES:
+                _DELAY_CALIB = _OAI_SLOT_MS / 30.0  # high-traffic: 8.3× scaling
+            else:
+                _DELAY_CALIB = _OAI_SLOT_MS / _SIM_DT_MS  # low-traffic: original P1.10
             try:
                 samples = entity.take_delay_samples()
                 if samples:
-                    delay_by_ue.setdefault(ue_id, []).extend(samples)
+                    if _RLC_DELAY_SUBTICK:
+                        # P0b subtick:samples 已是 sim-time ms 的真實排隊延遲 →
+                        # 不乘 sim_x(已 sim-time)、不套 /30 擬合(已有物理依據)。
+                        delay_by_ue.setdefault(ue_id, []).extend(samples)
+                    else:
+                        sim_x = self.sim_speed_x
+                        if sim_x != 1.0:
+                            samples = [s * sim_x for s in samples]
+                        # KPM-layer calibration:對齊 OAI per-slot scheduler 粒度
+                        samples = [s * _DELAY_CALIB for s in samples]
+                        delay_by_ue.setdefault(ue_id, []).extend(samples)
             except AttributeError:
                 pass  # 舊 entity 沒有此 API — 忽略
             # AK10: 收 RLC AM 因 tx buffer 滿 reject 的 SDU drop 計數（OAI 行為對齊）
@@ -300,7 +408,7 @@ class TickRunner:
         ]
 
         # 2) Scheduling — 把 UE 依 serving_cell 分組
-        prb_per_cell = get_int("SIM_DEFAULT_PRB_PER_CELL", 273)
+        prb_per_cell = get_int("SIM_DEFAULT_PRB_PER_CELL", 106)
         # Energy-saving: 跳過 is_active=False 的 cell（FAPI 不發給 RU、PM 不累積）
         try:
             from main.apps.mac.models.cell_state import CellState
@@ -354,12 +462,15 @@ class TickRunner:
             cell_prb_used[cell_name] = sum(alloc.values())
 
         # 每 tick 把 cell-level usage 餵給 pm aggregator (cell-level, 不從 per-UE sum)
+        # 3GPP TS 28.552 RRU.PrbTotDl/Ul 是「以 cell 物理容量為分母的占用率」,
+        # 分母必須用未 cap 前的 prb_per_cell;不可用 cell_prb_total(=quota 縮過的容量),
+        # 否則 xApp 一下 RC max_prb=3 立刻看到 PRB%=100% 觸發誤判。
         _pm_cell = get_pm_aggregator()
         for cell_name, used in cell_prb_used.items():
             _pm_cell.accumulate_cell_tick(
                 cell_id=cell_name,
                 prb_used=used,
-                n_prb_total=cell_prb_total.get(cell_name, prb_per_cell),
+                n_prb_total=prb_per_cell,
             )
 
         # 沒 traffic 的 CONNECTED UE 也要送 dl_tti (PRB=0, measurement-only).
@@ -422,10 +533,16 @@ class TickRunner:
                 continue
             # 簡化：平均分配 budget 給此 UE 的所有 RLC entity
             per_entity = max(1, budget // len(entities_for_ue))
+            # P0b subtick — 排空速率 = per_entity budget / sim_dt(bytes per sim-ms);now_sim 給 FIFO 模型
+            _rate = per_entity / max(self._sim_dt_ms, 1)
+            _now_sim = self.status.tick_count * self._sim_dt_ms
             total_actual = 0
             for ent in entities_for_ue:
                 try:
-                    actual = ent.generate_pdu(per_entity)
+                    actual = ent.generate_pdu(
+                        per_entity, subtick=_RLC_DELAY_SUBTICK,
+                        rate_bytes_per_sim_ms=_rate, now_sim_ms=_now_sim,
+                    )
                     if _trace and uid == "demo_0508":
                         logger.info(
                             "DRAIN TRACE ue=%s ent_type=%s per_entity=%d actual=%s",
@@ -524,7 +641,7 @@ class TickRunner:
                 drop_sdus = int(w.get("rlc_drop_sdus", 0) or 0)
                 drop_bytes = int(w.get("rlc_drop_bytes", 0) or 0)
                 if drop_sdus > 0 or drop_bytes > 0:
-                    cap_bytes = get_int("RLC_TX_MAXSIZE_BYTES", 100_000)
+                    cap_bytes = get_int("RLC_TX_MAXSIZE_BYTES", 10_000_000)  # P1.12
                     logger.warning(
                         "[RLC-DROP] ue=%s window=%.1fs drop_sdus=%d drop_bytes=%d "
                         "(tx buffer cap %d B 達上限 → reject 新進 SDU；對齊 OAI sdu_rejected)",
@@ -624,12 +741,13 @@ class TickRunner:
 
         for cell_name in all_active_cells:
             used = cell_prb_used.get(cell_name, 0)
-            total = cell_prb_total.get(cell_name, prb_per_cell)
+            # prb_total = 物理容量(對齊 KPM RRU.PrbTotDl 語意);quota 縮過的 capped 值
+            # 從 quota_cap_factor / quota_max_prb_pct 另外暴露,不混進 prb_pct。
             cap = _quota_store.cap_factor(cell_name)
             new_cell_stats[cell_name] = {
                 "prb_used_this_tick": used,
-                "prb_total": total,
-                "prb_pct_this_tick": (used / max(total, 1)) * 100.0,
+                "prb_total": prb_per_cell,
+                "prb_pct_this_tick": (used / max(prb_per_cell, 1)) * 100.0,
                 "is_active": True,
                 "attached_ue_list": cell_to_attached.get(cell_name, []),
                 "attached_ue_count": len(cell_to_attached.get(cell_name, [])),

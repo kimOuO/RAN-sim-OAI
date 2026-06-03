@@ -1,10 +1,18 @@
 """Traffic generator — 依 UE traffic_profile 計算注 SDU 時序。
 
 Patterns:
-  - "idle":    不注
-  - "cbr":     constant bitrate, 每 tick 一次 inject 大 SDU
-                 bytes_per_tick = rate_mbps × elapsed_ms / 1000 / 8
-  - "bursty":  (Phase C v2 才實作, v1 先支援 cbr/idle)
+  - "idle":      不注
+  - "cbr":       constant bitrate, 每 tick 一次 inject 大 SDU
+                   bytes_per_tick = rate_mbps × elapsed_ms / 1000 / 8
+  - "piecewise": rate 依 sim-time 段切換,scenario 用
+                   profile = {
+                     pattern: "piecewise",
+                     schedule: [[t_sec, dl_kbps], ...],  # sim-second
+                     sim_speed_x: 1.0,                    # wallclock → sim-time 倍率
+                     bearer_id?: 1,
+                   }
+                   tick 時用 (wallclock_elapsed × sim_speed_x) 查 schedule 找對應 rate
+  - "bursty":    (Phase C v2 才實作)
 
 設計:
   manager 每 ~100ms tick 一次. 我們不為每個 1500B SDU 開一個 HTTP request
@@ -20,7 +28,7 @@ import os
 import time
 from typing import Any
 
-from main.apps.ue_lifecycle.services import cu_client, du_client
+from main.apps.ue_lifecycle.services import cu_client, du_client, sim_speed
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +57,7 @@ class UeTrafficGen:
         self.ue_id = ue_id
         self.last_inject_at_ms = 0     # 上次成功 inject 的 wallclock
         self.profile: dict[str, Any] = {}
+        self.profile_installed_at_ms = 0  # update_profile 時設,piecewise 算 sim-time elapsed 用
         self.injected_call_count = 0   # 對 DU /RLC/inject_sdu 呼叫總次數
         self.injected_bytes = 0        # 累計注入 byte 數
         self.last_resync_at_ms = 0     # AL3 — 上次因 no_entity 觸發 re-sync 的時間
@@ -62,14 +71,56 @@ class UeTrafficGen:
         if profile != self.profile:
             self.profile = dict(profile or {})
             # reset 計時 — 換 profile 立即開始 (or 停)
-            self.last_inject_at_ms = _now_ms()
+            now = _now_ms()
+            self.last_inject_at_ms = now
+            self.profile_installed_at_ms = now
             logger.info("UE[%s] traffic profile updated: %s", self.ue_id, self.profile)
+
+    def _effective_sim_speed_x(self) -> float:
+        """P1 (2026-06-01) — 注入量該用的 sim_speed_x。
+
+        過去直接用 profile 設定值(例如 10),但 DU 實際只跑到 achieved(例如 6.7),
+        造成 10/6.7 ≈ 1.49× 慢性過量注入。改讀 DU 實際達成倍速;尚未量到(0.0,剛
+        啟動)或拉不到時 fallback 回設定值。3x 無漂移時 achieved == 設定 → 行為不變。
+        """
+        configured = float(self.profile.get("sim_speed_x", 1.0) or 1.0)
+        achieved = sim_speed.get_achieved_speed()
+        return achieved if achieved > 0.1 else configured
+
+    def _current_rate_mbps(self, now_ms: int) -> float:
+        """Resolve effective rate_mbps for this tick based on pattern.
+
+        cbr        → profile.rate_mbps
+        piecewise  → schedule lookup at sim-elapsed (= wallclock_elapsed × sim_speed_x)
+        其他       → 0
+        """
+        pattern = self.profile.get("pattern")
+        if pattern == "cbr":
+            return float(self.profile.get("rate_mbps", 0) or 0)
+        if pattern == "piecewise":
+            schedule = self.profile.get("schedule") or []
+            if not schedule:
+                return 0.0
+            sim_speed_x = self._effective_sim_speed_x()  # P1 — 用實際達成,非設定值
+            elapsed_sim_sec = (now_ms - self.profile_installed_at_ms) / 1000.0 * sim_speed_x
+            if elapsed_sim_sec < float(schedule[0][0]):
+                return 0.0
+            kbps = 0.0
+            for entry in schedule:
+                if not entry:
+                    continue
+                if float(entry[0]) <= elapsed_sim_sec:
+                    kbps = float(entry[1]) if len(entry) > 1 else 0.0
+                else:
+                    break
+            return kbps / 1000.0
+        return 0.0
 
     def tick(self) -> int:
         """每 manager tick 呼一次. 回傳本 tick inject 的 byte 數 (0 = idle / 還沒到時間)."""
-        if not self.profile or self.profile.get("pattern") != "cbr":
+        if not self.profile or self.profile.get("pattern") not in ("cbr", "piecewise"):
             return 0
-        rate_mbps = float(self.profile.get("rate_mbps", 0))
+        rate_mbps = self._current_rate_mbps(_now_ms())
         if rate_mbps <= 0:
             return 0
         bearer_id = int(self.profile.get("bearer_id", 1))
@@ -90,9 +141,18 @@ class UeTrafficGen:
             logger.debug("UE[%s] clamp elapsed_ms %d → 1000", self.ue_id, elapsed_ms)
             elapsed_ms = 1000
 
+        # 2026-05-23 bugfix: rate_mbps 是 sim-time 的速率(對齊 OAI KPM 報的是 sim-time),
+        # 但 elapsed_ms 是 wall-clock 流逝;在 sim_speed_x > 1 時 sim-time 流逝 = wall × x。
+        # 若直接用 wall elapsed,inject rate 在 sim-time 上會被縮小 sim_speed_x 倍 →
+        # PRB% / avg throughput 偏低、RLC delay 偏高。乘 sim_speed_x 還原 sim-time 等效量。
+        # P1 (2026-06-01): 用「實際達成」倍速而非設定值 — 設定 10 但 DU 只跑 6.7 時,
+        # 用設定值會多灌 1.49× 造成 buffer/delay/throughput 失真。見 sim_speed.py。
+        sim_speed_x = self._effective_sim_speed_x()
+        elapsed_sim_ms = elapsed_ms * sim_speed_x
+
         # 計算 elapsed window 內 CBR 該傳的 byte 量
-        # bytes = rate_bps × elapsed_s / 8
-        bytes_to_inject = int(rate_mbps * 1e6 * elapsed_ms / 1000 / 8)
+        # bytes = rate_bps × elapsed_sim_s / 8
+        bytes_to_inject = int(rate_mbps * 1e6 * elapsed_sim_ms / 1000 / 8)
         if bytes_to_inject <= 0:
             return 0
 

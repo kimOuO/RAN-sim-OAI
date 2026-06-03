@@ -67,6 +67,24 @@ class TickController:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def reset_pm(request):
+        """清空 PM aggregator window / per-gNB counter / cell accumulator。
+        sim_orchestrator 跨 sim cleanup 呼叫,避免下次 sim 的 KPM window mean
+        把上輪累積值算進去(原本 tick_runner.start 有 reset 但只在剛重啟 driver 時觸發,
+        sim_orchestrator.stop_sim 路徑下 driver 已停,start 再起會有 race)。"""
+        try:
+            from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import (
+                get_pm_aggregator,
+            )
+            get_pm_aggregator().reset()
+            return success_response({"reset": True}, "PM aggregator reset")
+        except Exception as exc:
+            logger.exception("reset_pm failed")
+            return error_response("internal error", str(exc), http_status=500)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def read(request):
         return success_response(_status_dict(), "OK")
 
@@ -101,6 +119,7 @@ class TickController:
                 "wall_tick_ms": runner.wall_tick_ms,
                 "sim_dt_ms": runner.sim_dt_ms,
                 "sim_speed_x": runner.sim_speed_x,
+                "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
                 "report_every_n_ticks": runner.REPORT_EVERY_N_TICKS,
                 "ue_registry": list(runner._ue_registry.keys()),
                 "ue_latest": ue_latest,         # 瞬時 RSRP/SINR/neighbors
@@ -132,7 +151,15 @@ class TickController:
             tick_ms_int = int(tick_ms)
         except (TypeError, ValueError):
             return error_response("tick_ms must be int", http_status=400)
-        actual = get_tick_runner().set_tick_ms(tick_ms_int)
+        runner = get_tick_runner()
+        # optional: also set sim_dt_ms (scenarios cached mode)
+        sim_dt_ms = payload.get("sim_dt_ms")
+        if sim_dt_ms is not None:
+            try:
+                runner.set_sim_dt(int(sim_dt_ms))
+            except (TypeError, ValueError):
+                return error_response("sim_dt_ms must be int", http_status=400)
+        actual = runner.set_tick_ms(tick_ms_int)
         return success_response(_status_dict(), f"tick_ms set to {actual}")
 
     @staticmethod
@@ -240,4 +267,5 @@ def _status_dict() -> dict:
         "wall_tick_ms": runner.wall_tick_ms,
         "sim_dt_ms": runner.sim_dt_ms,
         "sim_speed_x": runner.sim_speed_x,
+        "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
     }).data

@@ -13,7 +13,7 @@ from typing import Any
 
 from django.conf import settings
 
-from main.apps.ue_lifecycle.services import cu_client, kit_client, ru_client
+from main.apps.ue_lifecycle.services import cu_client, du_client, kit_client, omniverse_client, ru_client
 from main.apps.ue_lifecycle.services.interp import interp_position
 from main.apps.ue_lifecycle.services.trajectory_store import get_store as get_traj_store
 from main.apps.ue_lifecycle.services.ue_thread import (
@@ -40,6 +40,16 @@ class UeLifecycleManager:
         self._trajectory_thread: threading.Thread | None = None
         # sim_running 由 Dashboard 透過 /Lifecycle/start 跟 /stop 控制
         self.sim_running = False
+        # SimSession uuid — sim_orchestrator 在 start_sim 時 set,signal/position
+        # history 寫入時帶這個 group key,Playback 才能依 session 撈回放。
+        self._session_uuid: str | None = None
+        # signal ingest 節流 — 每 N 個 trajectory tick 才打一次(避免每 100ms
+        # 打 Omniverse 太頻繁)。N=5 → 500ms 一次,跟 sim_dt 對齊。
+        self._tick_count_since_signal_ingest = 0
+
+    def set_session_uuid(self, session_uuid: str | None) -> None:
+        self._session_uuid = session_uuid
+        logger.info("UeLifecycleManager session_uuid=%s", session_uuid)
 
     def start(self) -> None:
         if self._poll_thread and self._poll_thread.is_alive():
@@ -137,9 +147,55 @@ class UeLifecycleManager:
             for ue_id, x, y, z in positions_for_kit:
                 kit_client.move_ue(ue_id, x, y, z)
 
+        # ── (4) Signal history ingest(每 N 個 tick 一次,寫 signal_history + UeState)
+        # Playback / KpmSummaryLine / /scenarios chart 都依賴 signal_history。
+        self._tick_count_since_signal_ingest += 1
+        if positions_for_ru and self._tick_count_since_signal_ingest >= 5:
+            self._tick_count_since_signal_ingest = 0
+            try:
+                self._ingest_signals(positions_for_kit)
+            except Exception:
+                logger.exception("signal ingest failed (non-fatal)")
+
         # 每 100 tick (~10s) log 一次 traffic 累計, 避免 spam
         if injected_total > 0 and (now_ms // 1000) % 10 == 0:
             logger.debug("traffic tick injected=%d sdu", injected_total)
+
+    def _ingest_signals(self, positions_for_kit: list[tuple[str, float, float, float]]) -> None:
+        """每隔 N tick 從 DU 拉最新 per-UE 訊號,bundle 位置一起 POST Omniverse
+        SignalIngestor.create → 寫 signal_history 表(Playback 回放用)。
+        positions_for_kit = [(ue_id, x, y, z), ...] 給訊號 attach 當前位置。
+        """
+        ue_signals = du_client.fetch_ue_signals()  # {ue_id: {rsrp_dbm, sinr_db, ...}}
+        if not ue_signals:
+            return
+        pos_map = {ue_id: (x, y, z) for ue_id, x, y, z in positions_for_kit}
+        signals_payload: list[dict] = []
+        for ue_id, sig in ue_signals.items():
+            if sig.get("rsrp_dbm") is None or sig.get("sinr_db") is None:
+                continue
+            entry: dict = {
+                "ue_name": ue_id,
+                "serving_cell": sig.get("serving_cell") or "unknown",
+                "rsrp_dbm": float(sig["rsrp_dbm"]),
+                "sinr_db": float(sig["sinr_db"]),
+            }
+            # 可選 KPM 欄
+            for k in ("throughput_dl_mbps", "throughput_ul_mbps", "mcs_dl",
+                      "prb_used_dl", "mimo_rank"):
+                if sig.get(k) is not None:
+                    entry[k] = sig[k]
+            # rsrp_map(per-cell)
+            rsrp_map = sig.get("rsrp_map") or {}
+            if rsrp_map:
+                entry["rsrp_map"] = rsrp_map
+            # 帶當前位置
+            if ue_id in pos_map:
+                x, y, z = pos_map[ue_id]
+                entry["position"] = [x, y, z]
+            signals_payload.append(entry)
+        if signals_payload:
+            omniverse_client.ingest_signals(signals_payload, session_uuid=self._session_uuid)
 
     def _sync_from_cu(self) -> None:
         sessions = cu_client.list_sessions()

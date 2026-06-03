@@ -37,6 +37,18 @@ class KpmSnapshotActor:
             logger.exception("KpmSnapshot/read failed")
             return error_response("internal error", str(exc), status=500)
 
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def reset(request: HttpRequest):
+        """清空 KPM ring buffer — sim_orchestrator 跨 sim cleanup 呼叫。"""
+        try:
+            get_ring().reset()
+            return success_response({"reset": True})
+        except Exception as exc:
+            logger.exception("KpmSnapshot/reset failed")
+            return error_response("internal error", str(exc), status=500)
+
 
 class KpmRecentActor:
     @staticmethod

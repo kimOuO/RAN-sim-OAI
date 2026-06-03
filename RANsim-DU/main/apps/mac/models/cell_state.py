@@ -7,9 +7,9 @@ class CellState(models.Model):
     cell_uuid = models.CharField(max_length=255, unique=True, db_index=True)
     cell_id = models.CharField(max_length=64, unique=True, db_index=True)
     pci = models.IntegerField()
-    total_prb = models.IntegerField(default=273)  # 100 MHz @ 30 kHz SCS
+    total_prb = models.IntegerField(default=106)  # 40 MHz @ 30 kHz SCS (對齊 OAI band78)
     freq_ghz = models.FloatField(default=3.5)
-    bw_mhz = models.FloatField(default=100.0)
+    bw_mhz = models.FloatField(default=40.0)
     served_plmn = models.CharField(max_length=16, default="00101")
     # 2026-05-16 P2.9: OAI 真實 nr_cellid (36-bit int)。null → SHA-1 hash fallback。
     nr_cellid = models.BigIntegerField(null=True, blank=True, db_index=True)

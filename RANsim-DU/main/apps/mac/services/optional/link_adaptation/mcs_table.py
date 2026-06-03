@@ -5,6 +5,12 @@
 from __future__ import annotations
 
 
+# OAI band78 DDDDDDDSUU pattern (nrofDownlinkSlots=7, special slot DL 6/14 symbols,
+# UL=2, period=5ms = 10 slots @ 30kHz SCS) → 有效 DL slot 比例 ≈ 7.43/10 = 0.743。
+# 取保守 0.72(含 PDCCH/SSB 額外占用)。對齊 OAI gnb-du.sa.band78.106prb conf。
+TDD_DL_SLOT_RATIO: float = 0.72
+
+
 _SINR_TO_MCS = [
     (-6, 0, 0.23),
     (-4, 2, 0.38),
@@ -42,9 +48,10 @@ def mcs_to_throughput_mbps(
     n_rb: int,
     n_symbols_per_slot: int = 12,
     slots_per_sec: int = 2000,
-    overhead: float = 0.85,
-) -> int:
+    overhead: float = 0.80,
+    tdd_dl_ratio: float = TDD_DL_SLOT_RATIO,
+) -> float:
     re_per_slot = n_rb * 12 * n_symbols_per_slot
     bits_per_slot = re_per_slot * bps_re
-    bits_per_sec = bits_per_slot * slots_per_sec * overhead
-    return max(0, int(bits_per_sec / 1e6))
+    bits_per_sec = bits_per_slot * slots_per_sec * overhead * tdd_dl_ratio
+    return max(0.0, bits_per_sec / 1e6)
