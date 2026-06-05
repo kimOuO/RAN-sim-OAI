@@ -1,0 +1,22 @@
+{
+  "scenario_id": "es_move2",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 600,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "ues": [
+    { "name": "es_move2_01",
+      "positions": [
+        [0,    0.0,  1.5, -55.0],
+        [150,  10.0, 1.5, -65.0],
+        [300,  0.0,  1.5, -75.0],
+        [450, -10.0, 1.5, -65.0],
+        [600,  0.0,  1.5, -55.0]
+      ]
+    }
+  ],
+  "traffic": [
+    { "ue_name": "es_move2_01", "profile": [[0, 195, 20], [200, 3000, 300], [400, 2000, 200]] }
+  ],
+  "_metadata": {"intent": "溫和好SINR軌跡(z=-55~-75小弧,不碰cell-edge)+ normal/im/es三段, 對OAI比"}
+}

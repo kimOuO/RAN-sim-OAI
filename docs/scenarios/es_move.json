@@ -1,0 +1,20 @@
+{
+  "scenario_id": "es_move",
+  "scene_id": "twocell_1gnb",
+  "duration_sec": 300,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c1",
+  "ues": [
+    { "name": "es_move_01",
+      "positions": [
+        [0,   0.0, 1.5, -60.0],
+        [150, 0.0, 1.5,  60.0],
+        [300, 0.0, 1.5, -60.0]
+      ]
+    }
+  ],
+  "traffic": [
+    { "ue_name": "es_move_01", "profile": [[0, 1500, 100]] }
+  ],
+  "_metadata": {"intent": "moving UE: z=-60(c1)→+60(c0)→-60, 掃 SINR+換手, 固定 1.5M 隔離移動效應"}
+}

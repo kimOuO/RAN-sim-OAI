@@ -29,43 +29,28 @@
       "profile": [
         [
           0,
-          0,
-          0
+          195,
+          20
         ],
         [
-          720,
-          2000,
-          200
-        ],
-        [
-          1020,
-          0,
-          0
-        ],
-        [
-          1620,
-          2000,
-          200
-        ],
-        [
-          1920,
-          0,
-          0
-        ],
-        [
-          2520,
+          900,
           1500,
           150
         ],
         [
-          2820,
-          0,
-          0
+          1800,
+          3000,
+          300
         ],
         [
-          3420,
-          2500,
-          250
+          2700,
+          2000,
+          200
+        ],
+        [
+          3300,
+          0,
+          0
         ],
         [
           3600,
@@ -76,15 +61,14 @@
     }
   ],
   "_metadata": {
-    "oai_origin": "es_traffic.sh × 多 cycle(1hr)",
-    "intent": "ES — 4 個 idle/recovery cycle,期待 xApp 多次 cap → 解封",
-    "required_topology": {
-      "min_gnbs": 1,
-      "min_cells_per_gnb": 1,
-      "min_ues": 1,
-      "rationale": "per-cell 低載 → 流量分段觸發"
-    },
-    "phases": "10:00 開始 idle,每 ~17 min 一個 recovery burst,共 4 cycle"
+    "intent": "ALL-CASE test (借 es_1hr id/cache): normal→cco→im→es→idle, 2x→30min",
+    "phases": {
+      "sim0-15m": "normal195",
+      "15-30m": "cco1500",
+      "30-45m": "im3000",
+      "45-55m": "es2000",
+      "55-60m": "idle"
+    }
   },
   "gnbs": [
     {
@@ -95,7 +79,7 @@
         0
       ],
       "frequency_ghz": 3.5,
-      "bandwidth_mhz": 100,
+      "bandwidth_mhz": 40,
       "power_dbm": 23,
       "active": true,
       "color": [

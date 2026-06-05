@@ -4,6 +4,11 @@ from __future__ import annotations
 import time
 
 from main.apps.rlc.services.optional.segmentation.segmenter import SduItem, segment, total_buffer_bytes
+from main.utils.env_loader import get_bool
+
+# 改動一 shadow:on 時才旁路收集 (arrival_sim_ms, bytes);off 時零成本
+# takeover 也要收(否則只開 takeover 不開 shadow → slot 引擎吃不到 SDU → delay KPM 歸零,code-review #1)
+_SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False) or get_bool("SLOT_ENGINE_TAKEOVER", False)
 
 
 def _now_ms() -> int:
@@ -18,6 +23,7 @@ class TmEntity:
         self._rx: list[SduItem] = []
         self._next_sdu_id = 0
         self._delay_samples_ms: list[float] = []
+        self._sdu_arrivals_shadow: list[tuple[float, int]] = []  # 改動一 shadow
         self._server_free_sim_ms: float = 0.0  # P0b subtick FIFO 伺服器游標
 
     def recv_sdu(self, n_bytes: int, enqueue_ts_ms: int | None = None,
@@ -31,12 +37,20 @@ class TmEntity:
             sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts,
             arrival_sim_ms=arrival_sim_ms,
         ))
+        if _SLOT_ENGINE_SHADOW:
+            self._sdu_arrivals_shadow.append((arrival_sim_ms, n_bytes))
         return sid
 
     def take_delay_samples(self) -> list[float]:
         samples = self._delay_samples_ms
         self._delay_samples_ms = []
         return samples
+
+    def take_sdu_arrivals(self) -> list[tuple[float, int]]:
+        """改動一 shadow:回傳本 tick 到達的 (arrival_sim_ms, bytes) 並清空。"""
+        a = self._sdu_arrivals_shadow
+        self._sdu_arrivals_shadow = []
+        return a
 
     def generate_pdu(self, budget_bytes: int, *, subtick: bool = False,
                      rate_bytes_per_sim_ms: float = 0.0, now_sim_ms: float = 0.0) -> int:

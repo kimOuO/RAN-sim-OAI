@@ -38,10 +38,29 @@ from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_a
 from main.apps.mac.services.optional.scheduler.scheduler_factory import get_scheduler
 from main.apps.rlc.services.optional.entities import factory as rlc_factory
 from main.services_logs.ran_message_log import get_ring as get_log_ring
-from main.utils.env_loader import get_int, get_str
+from main.utils.env_loader import get_bool, get_int, get_str
 
 # P0b — RLC delay 計算模式:calib(現狀,wall 量測 + /30 擬合校正) | subtick(FIFO sim-time 解析模型)
 _RLC_DELAY_SUBTICK = (get_str("RLC_DELAY_MODEL", "calib") or "calib").strip().lower() == "subtick"
+# 改動一 shadow:on 時在現役 calib 路徑「旁邊」並行跑 slot_loop(跨-tick state)、只 log 對照、不接管 KPM
+_SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False)
+# 反事實 res_op 完整修法參數(待校的現象學值):
+_SLOT_CADENCE_PERIOD = get_int("SLOT_CADENCE_PERIOD", 40)   # 改動二 baseline 排程節奏
+_SLOT_OP_PRB_FLOOR = get_int("SLOT_OP_PRB_FLOOR", 12)       # MIN_PRB 地板(低載 UE 不被餓死,= OAI 空 cell 大方給)
+# load-adaptive baseline:k0(pipeline baseline)隨 bo 從 min→max 縮放(輕載小→normal對齊,重載大→im/es對齊+burst封頂不爆)
+_SLOT_K0_MIN = get_int("SLOT_K0_MIN", 14)
+_SLOT_K0_MAX = get_int("SLOT_K0_MAX", 32)
+_SLOT_K0_BO_REF = get_int("SLOT_K0_BO_REF", 60000)
+# #2 RLC discardTimer:SDU 等超過此 sim-ms 丟棄(過載封頂延遲,對齊真機)。0=關。
+# 設遠高於已對齊的 12-22ms delay(預設 300ms 不影響正常,只封頂過載的數十秒假延遲)。
+_SLOT_DISCARD_TIMER_MS = get_int("SLOT_DISCARD_TIMER_MS", 300)
+# in-process Phase1 Step2:DU 直讀 cache 算 SINR,只 log 跟 HTTP SINR 比對(不接管),驗證一致才往下
+_DU_INPROCESS_SINR = get_bool("DU_INPROCESS_SINR", False)
+# in-process Phase1 Step3:cached mode 下 SINR 改 in-process(同 tick 直算)+ dl_tti HTTP 改非阻塞 → 解放 tick 粒度
+_DU_RU_INPROCESS = get_bool("DU_RU_INPROCESS", False)
+# slot 引擎正式接管 delay KPM(退掉 /30):on 時 RLC delay 走 slot 引擎(現役 PRB 已由 scheduler 改操作點)
+# + cadence,不再用 calib /30。配 pf_scheduler 的 SLOT_ENGINE_TAKEOVER 一起(同 flag),PRB/throughput/delay 自洽。
+_SLOT_ENGINE_TAKEOVER = get_bool("SLOT_ENGINE_TAKEOVER", False)
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -102,6 +121,10 @@ class TickRunner:
         self._achieved_speed_x: float = 0.0
         self._achv_window_start_wall: float = 0.0
         self._achv_window_start_tick: int = 0
+        # 改動一 shadow — per-UE 跨 tick 持有的 slot 引擎狀態(backlog/HARQ/slot 時鐘累積用)
+        self._slot_states: dict[str, Any] = {}
+        # Phase1 反事實 — 「若 scheduler 用操作點 MCS 配 PRB」的平行 state(預測修了會怎樣)
+        self._slot_states_op: dict[str, Any] = {}
 
     # --- public API ----------------------------------------------------------
 
@@ -222,6 +245,8 @@ class TickRunner:
 
     def unregister_ue(self, ue_id: str) -> None:
         self._ue_registry.pop(ue_id, None)
+        self._slot_states.pop(ue_id, None)  # 改動一:UE 離開時清掉 shadow 狀態,不跨 session 漏
+        self._slot_states_op.pop(ue_id, None)
 
     def start(self) -> bool:
         if self.status.is_running:
@@ -264,6 +289,8 @@ class TickRunner:
         if stale_count > 0:
             logger.info("TickRunner.start: cleared %d stale UEs from _ue_registry", stale_count)
             self._ue_registry.clear()
+        self._slot_states.clear()  # 改動一:每次 Start Sim 清乾淨 shadow 狀態(對齊 clean-scene-reset)
+        self._slot_states_op.clear()
 
         # P0a — 重置 achieved 量測視窗(每次 cold start 重新量漂移)
         with self._tick_ms_lock:
@@ -343,6 +370,8 @@ class TickRunner:
         bo_by_ue: dict[str, int] = {}
         delay_by_ue: dict[str, list[float]] = {}
         drops_by_ue: dict[str, tuple[int, int]] = {}  # AK10: per-UE (sdus, bytes) drop in this tick
+        shadow_arrivals: dict[str, list[tuple[float, int]]] = {}  # 改動一 shadow:per-UE (arrival_sim_ms, bytes)
+        takeover_delay_by_ue: dict[str, float] = {}  # takeover:per-UE slot 引擎 delay,給 last_ue_stats 顯示一致
         for (ue_id, _btype, _bid), entity in rlc_factory.all_entities():
             _bo = entity.buffer_status()
             bo_by_ue[ue_id] = bo_by_ue.get(ue_id, 0) + _bo
@@ -391,6 +420,16 @@ class TickRunner:
                         delay_by_ue.setdefault(ue_id, []).extend(samples)
             except AttributeError:
                 pass  # 舊 entity 沒有此 API — 忽略
+            # 改動一 shadow:旁路收集這 tick 到達的 SDU (arrival_sim_ms, bytes),不影響 calib 路徑
+            # ★ takeover 也要收(slot 引擎吃 arrivals 才產 delay KPM)— 否則只開 TAKEOVER 不開 SHADOW
+            #   會讓 shadow_arrivals 永遠空 → slot 引擎吃不到 SDU → delay KPM 歸零(code-review #1)。
+            if _SLOT_ENGINE_SHADOW or _SLOT_ENGINE_TAKEOVER:
+                try:
+                    arr = entity.take_sdu_arrivals()
+                    if arr:
+                        shadow_arrivals.setdefault(ue_id, []).extend(arr)
+                except AttributeError:
+                    pass
             # AK10: 收 RLC AM 因 tx buffer 滿 reject 的 SDU drop 計數（OAI 行為對齊）
             try:
                 ds, db = entity.take_drop_samples()
@@ -403,6 +442,15 @@ class TickRunner:
         # measurement 跟 scheduling 解耦 — 沒 traffic 的 UE 也要算 channel state,
         # 否則 RIC 看到的 KPM 會凍結 (rsrp/sinr 永遠是 attach 當下的值).
         ues_for_measurement = list(self._ue_registry.values())
+        # in-process Phase1 Step3:cached mode 下,SINR 改由 DU 直讀 cache 算(同 tick,免等 HTTP cqi
+        # callback 的 1-tick lag)。已驗 == RU HTTP。live mode(get_du_cache()→None)維持原 HTTP 路徑。
+        if _DU_RU_INPROCESS:
+            from main.apps.fapi_north.services.optional.channel_cache_du import sinr_for_ue
+            _now_sim = self.status.tick_count * self._sim_dt_ms
+            for ue in ues_for_measurement:
+                _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"))
+                if _ip is not None and _ip > -200:
+                    ue["sinr_db"] = _ip
         ues_with_bo = [
             self._ue_registry[u] for u in self._ue_registry if bo_by_ue.get(u, 0) > 0
         ]
@@ -566,7 +614,16 @@ class TickRunner:
             tbs_map=tbs_map,
             cell_id_map=cell_id_map,
         )
-        dispatched = RuClientBusinessService.post_dl_tti_request(encode_dl_tti(dl_msg))
+        # in-process Step3:in-process mode 下 SINR 已自算,dl_tti 只供 RU 端 KPM/viz → 改非阻塞
+        # (fire-and-forget thread),不再 gate tick loop → 解放 tick 粒度(可縮 sim_dt)。
+        if _DU_RU_INPROCESS:
+            _enc = encode_dl_tti(dl_msg)
+            threading.Thread(
+                target=RuClientBusinessService.post_dl_tti_request, args=(_enc,), daemon=True
+            ).start()
+            dispatched = True
+        else:
+            dispatched = RuClientBusinessService.post_dl_tti_request(encode_dl_tti(dl_msg))
 
         # 4) Accumulate PM (per-gNB cumulative + per-UE rolling window)
         # 跑 ues_for_measurement: 沒 traffic 的 UE 仍要 accumulate SINR/RSRP/MCS,
@@ -594,8 +651,93 @@ class TickRunner:
                 rank=ue.get("rank", 1),
             )
         # 4b) Accumulate RLC SDU delay (從 step 1 收的 samples)
-        for uid, delays in delay_by_ue.items():
-            pm.accumulate_rlc_delay(uid, delays)
+        # slot 引擎接管時不用 calib /30,改在 4b-shadow 用 slot 引擎輸出餵 PM。
+        if not _SLOT_ENGINE_TAKEOVER:
+            for uid, delays in delay_by_ue.items():
+                pm.accumulate_rlc_delay(uid, delays)
+        # 4b-shadow) slot_loop:shadow 只 log;takeover 時用 res 輸出接管 RLC delay KPM(退 /30)
+        if _SLOT_ENGINE_SHADOW or _SLOT_ENGINE_TAKEOVER:
+            import math
+            from main.apps.mac.services.optional.link_adaptation.mcs_table import TDD_DL_SLOT_RATIO
+            from main.apps.mac.services.optional.slot_engine.slot_loop import (
+                SlotEngineState, SlotParams, avg_delay_ms, simulate_sdu_delays,
+                _eff_for_mcs, _mcs_at_op_point,
+            )
+            # 每 tick 都要處理「有新到達」或「兩個 state 任一還有 backlog」的 UE,backlog UE 即使本
+            # tick 無新到達也得跑一輪排空,否則 server-free cursor 的 abs_slot 落後真實 sim-time → 負延遲。
+            shadow_uids = set(shadow_arrivals) \
+                | {u for u, s in self._slot_states.items() if s.carry_queue} \
+                | {u for u, s in self._slot_states_op.items() if s.carry_queue}
+            tick_s = self._sim_dt_ms / 1000.0
+            for uid in shadow_uids:
+                arrivals = shadow_arrivals.get(uid, [])
+                ue = self._ue_registry.get(uid)
+                if not ue:
+                    self._slot_states.pop(uid, None)
+                    self._slot_states_op.pop(uid, None)
+                    continue
+                sinr = ue.get("sinr_db", 0.0)
+                st = self._slot_states.setdefault(uid, SlotEngineState())
+                st_op = self._slot_states_op.setdefault(uid, SlotEngineState())
+                # Phase1 反事實:若 scheduler 改用操作點 MCS 算 PRB 需求,會給多少 PRB
+                op_eff = _eff_for_mcs(_mcs_at_op_point(sinr, 0.1))
+                bytes_per_prb = 144.0 * op_eff * 2000.0 * 0.80 * TDD_DL_SLOT_RATIO * tick_s / 8.0
+                bo = bo_by_ue.get(uid, 0)
+                prb_now = rb_alloc_global.get(uid, 0)
+                prb_demand = math.ceil(bo / bytes_per_prb) if bytes_per_prb > 0 else prb_now
+                prb_op = max(1, prb_demand, _SLOT_OP_PRB_FLOOR)  # 操作點 demand 套 MIN_PRB 地板
+                # load-adaptive baseline:k0 隨 bo 縮放(輕載小→normal對齊,重載大→im/es對齊,封頂→burst不爆)
+                _k0 = int(_SLOT_K0_MIN + (_SLOT_K0_MAX - _SLOT_K0_MIN) * min(1.0, bo / max(_SLOT_K0_BO_REF, 1)))
+                try:
+                    # takeover 時 res 用真實已分配 PRB(scheduler 已改操作點)+ load-adaptive k0 baseline → 接管 delay KPM
+                    res = simulate_sdu_delays(
+                        sdus=arrivals, mean_sinr_db=sinr, n_prb=prb_now,
+                        sim_dt_ms=self._sim_dt_ms, state=st,
+                        params=SlotParams(
+                            seed=self.status.tick_count,
+                            sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive k0
+                            k0_slots=(_k0 if _SLOT_ENGINE_TAKEOVER else 2),
+                            discard_timer_ms=(_SLOT_DISCARD_TIMER_MS if _SLOT_ENGINE_TAKEOVER else 0),
+                        ),
+                    )
+                    res_op = simulate_sdu_delays(  # 反事實:操作點 PRB + cadence baseline(完整修法預測)
+                        sdus=arrivals, mean_sinr_db=sinr, n_prb=prb_op,
+                        sim_dt_ms=self._sim_dt_ms, state=st_op,
+                        params=SlotParams(seed=self.status.tick_count,
+                                          sched_period_slots=_SLOT_CADENCE_PERIOD),
+                    )
+                except Exception as e:  # shadow 絕不可擋 tick
+                    logger.warning("[SLOT_SHADOW] sim failed ue=%s: %s", uid, e)
+                    continue
+                # takeover:用 slot 引擎(res)的 per-SDU sojourn 接管 RLC delay KPM(取代 /30)
+                if _SLOT_ENGINE_TAKEOVER and res.delays_ms:
+                    pm.accumulate_rlc_delay(uid, res.delays_ms)
+                    takeover_delay_by_ue[uid] = avg_delay_ms(res)
+                # Step2:in-process SINR 比對(只 log),驗證 DU 直算 == RU HTTP
+                if _DU_INPROCESS_SINR and self.status.tick_count % 20 == 0:
+                    try:
+                        from main.apps.fapi_north.services.optional.channel_cache_du import sinr_for_ue
+                        _ip = sinr_for_ue(self.status.tick_count * self._sim_dt_ms, uid, ue.get("serving_cell"))
+                        logger.info("[DU_SINR_CMP] tick=%d ue=%s http_sinr=%.2f inproc_sinr=%s",
+                                    self.status.tick_count, uid, sinr,
+                                    ("%.2f" % _ip) if _ip is not None else "None")
+                    except Exception as e:
+                        logger.warning("[DU_SINR_CMP] failed: %s", e)
+                # 節流:每 tick 都算(state 要連續),log 每 20 tick 才印,避免長跑撐爆 log。
+                if self.status.tick_count % 20 == 0:
+                    calib = delay_by_ue.get(uid, [])
+                    calib_avg = (sum(calib) / len(calib)) if calib else 0.0
+                    _bytes = actual_drained_map.get(uid, 0)
+                    _thp = (_bytes * 8 / 1e6 / (self._sim_dt_ms / 1000.0)) if self._sim_dt_ms else 0.0
+                    _prb_pct = (100.0 * prb_now / prb_per_cell) if prb_per_cell else 0.0
+                    logger.info(
+                        "[SLOT_SHADOW] tick=%d ue=%s bo=%d prb=%d prb_op=%d prb_pct=%.2f mcs=%d sinr=%.1f "
+                        "bytes=%d thp=%.3f slot_loop=%.2fms slot_loop_op=%.2fms calib=%.2fms retx=%d/%d drop=%d",
+                        self.status.tick_count, uid, bo, prb_now, prb_op, _prb_pct,
+                        mcs_map.get(uid, 0), sinr, _bytes, _thp,
+                        avg_delay_ms(res), avg_delay_ms(res_op), calib_avg,
+                        res.retx_slots, res.tx_slots, res.dropped_sdus,
+                    )
         # AK10 — accumulate RLC tx-cap drops 進 PM window，flush 時報出去
         for uid, (ds, db) in drops_by_ue.items():
             try:
@@ -708,6 +850,8 @@ class TickRunner:
             uid = ue["id"]
             delays = delay_by_ue.get(uid, [])
             avg_delay = (sum(delays) / len(delays)) if delays else 0.0
+            if _SLOT_ENGINE_TAKEOVER:  # 顯示一致:dashboard 也用接管後的 slot 引擎 delay
+                avg_delay = takeover_delay_by_ue.get(uid, avg_delay)
             bytes_drained = actual_drained_map.get(uid, 0)
             new_ue_stats[uid] = {
                 "serving_cell": ue.get("serving_cell", ""),

@@ -8,7 +8,11 @@ import time
 from dataclasses import dataclass
 
 from main.apps.rlc.services.optional.segmentation.segmenter import SduItem, segment, total_buffer_bytes
-from main.utils.env_loader import get_int
+from main.utils.env_loader import get_bool, get_int
+
+# 改動一 shadow:on 時 entity 才旁路收集每包 (arrival_sim_ms, bytes) 給 slot_loop;off 時零成本不收集
+# takeover 也要收(slot 引擎吃 arrivals 才產 delay KPM)→ 否則只開 takeover 不開 shadow delay 歸零(code-review #1)
+_SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False) or get_bool("SLOT_ENGINE_TAKEOVER", False)
 
 
 def _now_ms() -> int:
@@ -54,6 +58,7 @@ class AmEntity:
         self._status_pending = False
         self._rx: list[SduItem] = []
         self._delay_samples_ms: list[float] = []     # 累計 SDU delivery delay，take_delay_samples() 取出後清空
+        self._sdu_arrivals_shadow: list[tuple[float, int]] = []  # 改動一 shadow:(arrival_sim_ms, bytes),只在 SLOT_ENGINE_SHADOW=on 時收集
         self._server_free_sim_ms: float = 0.0        # P0b subtick 模型:FIFO 伺服器空閒時刻(sim-time),跨 tick 持有
         # AK10 — running tx buffer 估算（避免每次 recv_sdu 都 O(n) 掃 _tx_queue）
         # 跟 segment() 同步：segment 從 _tx_queue 消費 bytes 後也要扣，但 segment 不
@@ -87,6 +92,8 @@ class AmEntity:
             sdu_id=sid, bytes_remaining=n_bytes, enqueue_ts_ms=ts,
             arrival_sim_ms=arrival_sim_ms,
         ))
+        if _SLOT_ENGINE_SHADOW:
+            self._sdu_arrivals_shadow.append((arrival_sim_ms, n_bytes))
         return sid
 
     def take_drop_samples(self) -> tuple[int, int]:
@@ -107,6 +114,12 @@ class AmEntity:
         samples = self._delay_samples_ms
         self._delay_samples_ms = []
         return samples
+
+    def take_sdu_arrivals(self) -> list[tuple[float, int]]:
+        """改動一 shadow:回傳本 tick 到達的 (arrival_sim_ms, bytes) 並清空。"""
+        a = self._sdu_arrivals_shadow
+        self._sdu_arrivals_shadow = []
+        return a
 
     def generate_pdu(self, budget_bytes: int, *, subtick: bool = False,
                      rate_bytes_per_sim_ms: float = 0.0, now_sim_ms: float = 0.0) -> int:

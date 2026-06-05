@@ -20,7 +20,17 @@ from main.apps.mac.services.optional.link_adaptation.mcs_table import (
     mcs_to_throughput_mbps,
     sinr_to_mcs,
 )
+from main.utils.env_loader import get_bool, get_int
 from main.utils.logger import get_logger
+
+# slot 引擎接管:scheduler 改用「操作點 MCS」算 PRB 需求(取代樂觀 sinr_to_mcs)+ 低載地板,
+# 讓 PRB%/throughput/delay 三者用同一套真實 MCS,對齊 OAI。off 時走舊樂觀路徑。
+_SCHED_MCS_CONSISTENT = get_bool("SLOT_ENGINE_TAKEOVER", False)
+_OP_PRB_FLOOR = get_int("SLOT_OP_PRB_FLOOR", 12)
+# retx-aware demand:scheduler 算 prb_needed 時把 slot 引擎實際在用的 BLER 算進去
+# (容量 ×(1-BLER)= 真正送得出去的量),避免「以為 100% 成功」少開 PRB → backlog 積爆。
+# 對齊 OAI outer-loop link adaptation / 有效 TBS 為重傳預留資源。off 走舊樂觀路徑。
+_SCHED_RETX_AWARE = get_bool("SLOT_SCHED_RETX_AWARE", True)
 
 logger = get_logger(__name__)
 
@@ -66,7 +76,21 @@ class PfScheduler:
         prb_needed: dict[str, int] = {}
         for ue in ues_on_gnb:
             uid = ue["id"]
-            mcs, bps_re = sinr_to_mcs(ue["sinr_db"])
+            retx_eff = 1.0   # 1 = 不打折(舊行為)
+            if _SCHED_MCS_CONSISTENT:
+                # 操作點 MCS:挑首傳 BLER≤10% 的最高 MCS(跟 slot 引擎同源,真實鏈路可達)
+                from main.apps.mac.services.optional.slot_engine.slot_loop import (
+                    _eff_for_mcs, _mcs_at_op_point,
+                )
+                mcs = _mcs_at_op_point(ue["sinr_db"], 0.1)
+                bps_re = _eff_for_mcs(mcs)
+                if _SCHED_RETX_AWARE:
+                    # 用 slot 引擎同一個 BLER:期望需傳 1/(1-BLER) 次才成功 → 容量 ×(1-BLER)
+                    from main.apps.mac.services.optional.slot_engine.bler_table import bler
+                    b = bler(mcs, ue["sinr_db"])
+                    retx_eff = max(0.05, 1.0 - float(b))
+            else:
+                mcs, bps_re = sinr_to_mcs(ue["sinr_db"])
             inst_rates[uid] = mcs_to_throughput_mbps(
                 mcs=mcs, bps_re=bps_re, n_rb=n_prb_total,
             )
@@ -87,7 +111,11 @@ class PfScheduler:
                 # 常數見 mcs_table.mcs_to_throughput_mbps: slots_per_sec=2000, overhead=0.80
                 bits_per_prb_per_sec = 144.0 * bps_re * 2000.0 * 0.80 * TDD_DL_SLOT_RATIO
                 bytes_per_prb = bits_per_prb_per_sec * tick_s / 8.0
-                prb_needed[uid] = max(1, math.ceil(buf_bytes / bytes_per_prb))
+                # retx-aware:扣掉 BLER,為重傳預留 PRB(retx_eff=1 時 = 舊行為)
+                prb_needed[uid] = max(1, math.ceil(buf_bytes / (bytes_per_prb * retx_eff)))
+            # slot 引擎接管:有 buffer 的 UE 套低載地板(不被餓死,= OAI 空 cell 大方給)
+            if _SCHED_MCS_CONSISTENT and (buf_bytes or 0) > 0:
+                prb_needed[uid] = min(n_prb_total, max(prb_needed[uid], _OP_PRB_FLOOR))
 
         # ── 2. PF metric weights ──
         pf_weights: dict[str, float] = {}

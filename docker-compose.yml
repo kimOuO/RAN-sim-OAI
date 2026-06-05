@@ -137,6 +137,15 @@ services:
       # 比 OAI 14ms 大,因 DT 注入 burst + tick 粒度排空。calib 的 /30 是把這壓成虛構 14ms。
       # → subtick 單獨無法達 OAI(delay 是真實佇列非量測假象),default 維持 calib。
       RLC_DELAY_MODEL: "calib"
+      # 改動一 shadow:slot_loop 跨-tick state 在 calib 旁並行跑、只 log [SLOT_SHADOW]、不接管 KPM。
+      SLOT_ENGINE_SHADOW: "on"
+      # slot 引擎正式接管 delay:scheduler 改操作點 MCS 算 PRB(+地板) + RLC delay KPM 走 slot 引擎,退掉 /30。
+      SLOT_ENGINE_TAKEOVER: "on"
+      DU_INPROCESS_SINR: "on"
+      DU_RU_INPROCESS: "on"
+      # #2 RLC discardTimer(sim-ms):過載/爛訊號時 SDU 等超過此值丟棄,封頂延遲(對齊真機)。
+      # 預設 300 遠高於已對齊的 12-22ms,不影響正常;0=關。
+      SLOT_DISCARD_TIMER_MS: "300"
       # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
       # 不再寫死 dummy "00101"。caller 不指定時 default 走 env 衍生.
       PLMN_MCC: "208"
@@ -144,6 +153,7 @@ services:
     volumes:
       - ./RANsim-DU:/app
       - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
+      - ./Physics_sim/data/channel_cache:/data/channel_cache:ro   # in-process Phase1: DU 直讀 channel cache(免 per-tick HTTP)
     ports:
       - "8102:8000"
     depends_on:
