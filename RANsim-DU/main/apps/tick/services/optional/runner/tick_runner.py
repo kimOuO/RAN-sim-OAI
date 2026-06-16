@@ -38,7 +38,7 @@ from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_a
 from main.apps.mac.services.optional.scheduler.scheduler_factory import get_scheduler
 from main.apps.rlc.services.optional.entities import factory as rlc_factory
 from main.services_logs.ran_message_log import get_ring as get_log_ring
-from main.utils.env_loader import get_bool, get_int, get_str
+from main.utils.env_loader import get_bool, get_float, get_int, get_str
 
 # P0b — RLC delay 計算模式:calib(現狀,wall 量測 + /30 擬合校正) | subtick(FIFO sim-time 解析模型)
 _RLC_DELAY_SUBTICK = (get_str("RLC_DELAY_MODEL", "calib") or "calib").strip().lower() == "subtick"
@@ -58,6 +58,9 @@ _SLOT_K0_ARR_REF = get_int("SLOT_K0_ARR_REF", 20000)  # 到達流量(bytes/tick)
 # #2 RLC discardTimer:SDU 等超過此 sim-ms 丟棄(過載封頂延遲,對齊真機)。0=關。
 # 設遠高於已對齊的 12-22ms delay(預設 300ms 不影響正常,只封頂過載的數十秒假延遲)。
 _SLOT_DISCARD_TIMER_MS = get_int("SLOT_DISCARD_TIMER_MS", 300)
+# TCP ACK 上行模型:DL(TCP 下載)每 1 byte → ~此比例的上行 ACK bytes。
+# 從 OAI rfsim 同流量擬合 UL=0.0239×DL+ping(DL-UL 相關 0.99)。0=關(純 ping UL)。
+_UL_ACK_RATIO = get_float("UL_ACK_RATIO", 0.024)
 
 
 def set_discard_timer_ms(ms: int) -> None:
@@ -693,6 +696,10 @@ class TickRunner:
         for ue in ues_for_measurement:
             uid = ue["id"]
             actual_dl = actual_drained_map.get(uid, 0)
+            # TCP ACK 上行:DL 是 TCP 下載時,UE 回上行 ACK ≈ DL bytes × ratio
+            # (對齊 OAI rxpdu_bytes:DL-UL 相關 0.99)。加進 UL backlog 跟 ping 一起 drain。
+            if actual_dl > 0 and _UL_ACK_RATIO > 0:
+                ul_buffer.report(uid, int(actual_dl * _UL_ACK_RATIO))
             # UL:一個 PRB 本 tick 在 UL 時隙能載的 bytes → 滿 PRB 容量 → drain backlog
             _mcs_ul = max(0, mcs_map.get(uid, 9) - 2)
             _, _bps_re_ul = sinr_to_mcs(ue["sinr_db"])
