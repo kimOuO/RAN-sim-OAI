@@ -242,3 +242,20 @@ class RuController:
             })
         logger.info("set_channel_mode: %s", info)
         return success_response(info, f"channel mode set to {mode}", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def set_inter_freq(request):
+        """runtime 設 RU live SINR 的 inter_freq(劇本 start 套用,免 RU 專用 env)。
+        Body: {"inter_freq": bool}。True = 各 cell 不同頻不互擾,live SINR 跳過他 cell 干擾累加
+        (對齊 DU cached);讓 CCO 等劇本的 inter_freq 也接到 live SINR 路徑。"""
+        try:
+            payload = _parse_body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        enabled = bool(payload.get("inter_freq", False))
+        from main.apps.fapi_south.services.optional.dl_tti_pipeline import set_inter_freq
+        set_inter_freq(enabled)
+        logger.info("set_inter_freq: %s", enabled)
+        return success_response({"inter_freq": enabled}, "inter_freq applied", 200)

@@ -16,7 +16,7 @@ const PRESETS: Array<{
   id: string;
   label: string;
   desc: string;
-  evaluator: (pm: DuPmSnapshot) => TriggerEval;
+  evaluator: (pm: DuPmSnapshot, cfg?: Record<string, number>) => TriggerEval;
   requires: { min_gnbs: number; min_cells_per_gnb: number; min_ues: number };
 }> = [
   { id: 'im_fast',  label: 'IM',  desc: 'PRB 滿 + channel 弱 → xApp 下 PRB quota cap',
@@ -128,7 +128,7 @@ export default function RunsPage() {
   };
 
   const getPreset = (sid: string) => PRESETS.find(p => p.id === sid);
-  const trigEval = (pm && running) ? getPreset(running.scenarioId)?.evaluator(pm) : null;
+  const trigEval = (pm && running) ? getPreset(running.scenarioId)?.evaluator(pm, driver?.trigger_config) : null;
   const driverPct = driver ? (driver.sim_tick_idx / Math.max(1, driver.total_ticks) * 100) : 0;
 
   return (

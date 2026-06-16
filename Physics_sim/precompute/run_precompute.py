@@ -131,6 +131,43 @@ def run(scenario_id: str) -> int:
     # 2. 確保 Sionna engine 啟動(讀 scene_config.json)
     print("[precompute] loading Sionna scene...")
     SionnaBusinessService.reload_scene_config()
+
+    # 2b. per-scenario 幾何/天線覆寫 —— 讓劇本的 gnbs + antenna_pattern 真正進 physics。
+    #     reload_scene_config 只讀全域 scene_config,劇本的天線(iso/tr38901)、cell
+    #     azimuth、gNB 位置原本都被忽略。用 apply_override(ran_only)只換 gNB/天線、
+    #     保留場景 mesh,讓 antenna_pattern + azimuth_deg 可 per-scenario 控制。
+    sc_gnbs = raw.get("gnbs")
+    sc_antenna = raw.get("antenna_pattern")
+    sc_buildings = raw.get("buildings") or []
+    if sc_gnbs or sc_antenna:
+        # geometry_source 用「劇本的 buildings」建 mesh(空 list = 只有地面 = 自由空間)。
+        # 原本一律吃全域 umi_3sector.xml(6 棟樓)→ 劇本說無建築卻在都市場景裡算 channel,
+        # 造成 cell 被樓遮蔽/翻轉/多徑 variance。改成劇本場景幾何才忠於劇本 + 對齊 OAI AWGN。
+        override: dict = {
+            "scene_id": raw.get("scene_id") or scenario_id,
+            "override_mode": "full",  # 換 mesh(geometry)+ gNB + 天線
+            "geometry_source": {
+                "type": "buildings_json",
+                "buildings": sc_buildings,
+                "ground": raw.get("ground"),  # None → builder 用預設地面
+            },
+        }
+        if sc_gnbs:
+            override["gnbs"] = sc_gnbs
+        if sc_antenna:
+            override["scene_antenna_config"] = {"gnb_antenna_pattern": sc_antenna}
+        try:
+            SionnaBusinessService.apply_override(override)
+            print(
+                f"[precompute] scenario override applied: "
+                f"gnbs={len(sc_gnbs or [])} buildings={len(sc_buildings)} "
+                f"antenna_pattern={sc_antenna or '(scene default)'}"
+            )
+        except Exception as e:
+            print(
+                f"[precompute] WARN scenario override failed, fall back to scene_config: {e}",
+                file=sys.stderr,
+            )
     print("[precompute] Sionna ready")
 
     # 3. 預備儲存結構 — gnb_cell_names 在第一個 tick 後才知道,先空著

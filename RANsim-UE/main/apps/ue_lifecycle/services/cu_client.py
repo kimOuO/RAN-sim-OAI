@@ -152,3 +152,19 @@ def force_serving_cell(ue_id: str, target_cell: str) -> bool:
     except requests.RequestException as exc:
         logger.warning("force_serving_cell HTTP failed: %s: %s", ue_id, exc)
         return False
+
+
+def set_a3(enabled: bool) -> bool:
+    """設 CU A3 自動換手開關(Mobility/A3Controller/set)。
+    CCO 等「RC 手動換到較弱 cell」的劇本要關掉 A3,否則 A3 看訊號把 UE 彈回強 cell。
+    """
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Mobility/A3Controller/set"
+    try:
+        r = requests.post(url, json={"enabled": bool(enabled)}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            logger.warning("set_a3 enabled=%s non-OK %s: %s", enabled, r.status_code, r.text[:200])
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("set_a3 HTTP failed: %s", exc)
+        return False

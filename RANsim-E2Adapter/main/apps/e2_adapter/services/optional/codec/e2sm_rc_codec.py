@@ -304,13 +304,29 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
                     for child in (item.get("fields") or {}).values():
                         _walk_for_target_cgi(child)
 
-        if 1 in params:
-            _walk_for_target_cgi(params[1])
+        # Target Primary Cell ID 依 spec 在 ranParameter-ID=1 的 Structure{PLMN, NRCellId}，
+        # 但有些 RIC 放別的編號/格式。先用 structure-based walk 掃所有 ranP。
+        for _pv in params.values():
+            _walk_for_target_cgi(_pv)
+
+        # Fallback: 實測本場 rc-probe 把 Target Cell 包成單一 valueOctS(ranP id=3)=
+        # [1B tag]+PLMN(3B)+NRCellIdentity(36-bit, 5B 左對齊)。取末 8 bytes 當 NR-CGI 解。
+        if not (plmn_hex and nr_cell_id_int):
+            for _pv in params.values():
+                if isinstance(_pv, dict) and _pv.get("_type") == "valueOctS":
+                    h = _pv.get("value") or ""
+                    if isinstance(h, str) and len(h) >= 16:   # >= 8 bytes
+                        cgi = bytes.fromhex(h)[-8:]            # 末 8 bytes = NR-CGI
+                        plmn_hex = plmn_hex or cgi[0:3].hex()
+                        nr_cell_id_int = nr_cell_id_int or (int.from_bytes(cgi[3:8], "big") >> 4)
+                        break
 
         if plmn_hex:
             target_cgi["plmn_hex"] = plmn_hex
         if nr_cell_id_int:
             target_cgi["nr_cell_id"] = nr_cell_id_int
+        logger.info("HO control decode: ranP ids=%s -> plmn=%s nr_cell_id=%s",
+                    sorted(params.keys()), plmn_hex or "-", nr_cell_id_int or "-")
 
         base["action"] = "control_handover"
         base["control_message"] = {"target_cgi": target_cgi}

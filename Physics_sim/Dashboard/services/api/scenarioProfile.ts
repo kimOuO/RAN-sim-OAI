@@ -9,6 +9,20 @@ export interface RawScenario {
   ues: Array<{ name: string; positions: number[][] }>;
   traffic: Array<{ ue_name: string; profile: number[][] }>;
   default_serving_cell?: string;
+  // 劇本實際的 gNB / cell 幾何（地圖與 Cell card 用真實位置，不再 hardcode）
+  gnbs?: Array<{
+    name: string;
+    position?: number[];
+    frequency_ghz?: number;
+    bandwidth_mhz?: number;
+    power_dbm?: number;
+    cells?: Array<{
+      pci?: number;
+      cell_id: string;
+      azimuth_deg?: number;
+      position?: number[];
+    }>;
+  }>;
 }
 
 function piecewiseConstant(profile: number[][], t: number, col: number): number {

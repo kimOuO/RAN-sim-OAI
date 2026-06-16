@@ -35,6 +35,20 @@ export const uploadScenario = async (scenarioJson: unknown): Promise<ScenarioRow
   return r.data?.data;
 };
 
+/**
+ * 把劇本拓樸寫進 Omniverse 場景表(Gnb/Ue/Building)並推 3D。
+ * ★ 會覆蓋目前場景表 —— Scene Editor「選劇本即套用」用,讓 Scene Layout 反映劇本。
+ */
+export const applyScenarioToScene = async (
+  scenarioId: string
+): Promise<{ gnbs: number; ues: number; buildings: number; kit_pushed: boolean }> => {
+  const r = await omniverseApiClient.post(
+    '/api/v0.1/RAN/Scenario/ScenarioController/apply_to_scene',
+    { scenario_id: scenarioId }
+  );
+  return r.data?.data;
+};
+
 export const deleteScenario = async (scenarioId: string): Promise<void> => {
   await omniverseApiClient.post('/api/v0.1/RAN/Scenario/ScenarioController/delete', { scenario_id: scenarioId });
 };

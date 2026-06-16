@@ -15,6 +15,7 @@ import { initScene } from '@/services/api/scene';
 import { computeCoverage, type CoverageResponse } from '@/services/api/coverage';
 import { updateTrafficProfile, type TrafficProfile } from '@/services/api/ueProfile';
 import { setSimSpeed, getStatus } from '@/services/api/simLoop';
+import { listScenarios, applyScenarioToScene, type ScenarioRow } from '@/services/api/scenario';
 import type { SceneAntennaConfig } from '@/types';
 
 // 2026-05-23 實測 cached mode sustained 上限 ~7-8x(DU tick body wall ~63ms 為底限),
@@ -69,6 +70,44 @@ export default function SceneEditor() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // ── 劇本套用到場景:選劇本即把劇本拓樸寫進場景表 + 推 3D,讓 Scene Layout 反映劇本 ──
+  const [scenarios, setScenarios] = useState<ScenarioRow[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState<string>('');
+  const [applyingScenario, setApplyingScenario] = useState(false);
+  const [scenarioMsg, setScenarioMsg] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await listScenarios();
+        if (!cancelled) setScenarios(rows);
+      } catch (e) {
+        console.warn('listScenarios failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleApplyScenario = async (scenarioId: string) => {
+    setSelectedScenario(scenarioId);
+    if (!scenarioId) return;
+    setApplyingScenario(true);
+    setScenarioMsg('');
+    try {
+      const r = await applyScenarioToScene(scenarioId);
+      await draw.refreshScene();   // 重讀場景表刷新 Scene Layout
+      setScenarioMsg(
+        `✓ 已套用:${r.gnbs} gNB / ${r.ues} UE / ${r.buildings} 建築` +
+        (r.kit_pushed ? ' · 3D 已同步' : ' · 3D 推送失敗(場景表已更新)')
+      );
+    } catch (e: any) {
+      console.error('applyScenarioToScene failed:', e);
+      setScenarioMsg(`✗ 套用失敗:${e?.message || e}`);
+    } finally {
+      setApplyingScenario(false);
+    }
+  };
 
   const handleSimSpeedChange = async (tickMs: number) => {
     setSimSpeedTickMs(tickMs);
@@ -243,6 +282,49 @@ export default function SceneEditor() {
         <h2 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 20px 0' }}>
           Scene Editor
         </h2>
+
+        {/* SCENARIO — 選劇本即把劇本拓樸套進場景(Scene Layout + 3D 反映劇本) */}
+        <div style={{ marginBottom: '32px' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#9ca3af', marginBottom: '12px' }}>
+            SCENARIO SCENE
+          </h3>
+          <select
+            value={selectedScenario}
+            onChange={(e) => handleApplyScenario(e.target.value)}
+            disabled={applyingScenario || simRunning || coverageLoading}
+            style={{
+              width: '100%', padding: '10px 12px', background: '#111827',
+              color: '#e5e7eb', border: '1px solid #374151', borderRadius: '6px',
+              fontSize: '13px',
+              cursor: (applyingScenario || simRunning || coverageLoading) ? 'not-allowed' : 'pointer',
+              opacity: (applyingScenario || simRunning || coverageLoading) ? 0.5 : 1,
+            }}
+          >
+            <option value="">— 選劇本套用場景 —</option>
+            {scenarios.map((s) => (
+              <option key={s.scenario_id} value={s.scenario_id}>
+                {s.scenario_id} ({s.ue_count} UE)
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px', lineHeight: 1.4 }}>
+            {applyingScenario
+              ? '套用中…'
+              : scenarioMsg || '選劇本會以該劇本的 gNB/cell/UE/建築覆蓋目前場景並同步 3D。'}
+          </div>
+          <button
+            onClick={() => draw.refreshScene()}
+            style={{
+              marginTop: '8px', width: '100%', padding: '8px 12px',
+              background: 'transparent', color: '#9ca3af',
+              border: '1px solid #374151', borderRadius: '6px',
+              fontSize: '12px', cursor: 'pointer',
+            }}
+            title="從 DB 重新讀取場景(若從 /scenarios 套了劇本但這裡沒自動更新時手動刷新)"
+          >
+            🔄 Reload scene from DB
+          </button>
+        </div>
 
         {/* Create 按鈕組 */}
         <div style={{ marginBottom: '32px' }}>

@@ -61,12 +61,11 @@ class GroundWriteSerializer(serializers.Serializer):
 class GeometrySourceWriteSerializer(serializers.Serializer):
     """現在唯一支援：buildings_json（建築 box 列表）。"""
     type = serializers.ChoiceField(choices=GEOMETRY_SOURCE_TYPES)
-    buildings = BuildingWriteSerializer(many=True)
+    buildings = BuildingWriteSerializer(many=True, allow_empty=True)  # 空=平地/自由空間(mitsuba_builder 只建 ground)
     ground = GroundWriteSerializer(required=False, allow_null=True)
 
     def validate_buildings(self, value):
-        if len(value) == 0:
-            raise serializers.ValidationError("buildings[] 至少要有 1 棟（否則不需要 override geometry）")
+        # 允許空 buildings(開闊場景=只有地面);CCO/OAI 對照劇本就是自由空間。
         if len(value) > 500:
             raise serializers.ValidationError("buildings[] 上限 500 棟（效能考量）")
         return value
@@ -98,6 +97,9 @@ class PushSceneRequestSerializer(serializers.Serializer):
     geometry_source = GeometrySourceWriteSerializer(required=False, allow_null=True)
     gnbs = GnbWriteSerializer(many=True, required=False, allow_null=True)
     ues = UeWriteSerializer(many=True, required=False, allow_null=True)
+    # per-scenario 天線(讓 live mode 也吃劇本 antenna_pattern)。DictField 寬鬆通過 →
+    # apply_override 讀 payload["scene_antenna_config"]["gnb_antenna_pattern"]。
+    scene_antenna_config = serializers.DictField(required=False, allow_null=True)
     ttl_seconds = serializers.IntegerField(
         required=False, allow_null=True, default=None, min_value=1, max_value=86400,
         help_text="可選；多少秒後自動回預設（安全網）",

@@ -21,7 +21,7 @@ import { stopFastRun } from '@/services/api/scenario';
 import { SimTimeChart } from '@/components/SimTimeChart';
 import { useScenarioContext } from '@/components/ScenarioProvider';
 
-const EVALUATORS: Record<string, (pm: DuPmSnapshot) => TriggerEval> = {
+const EVALUATORS: Record<string, (pm: DuPmSnapshot, cfg?: Record<string, number>) => TriggerEval> = {
   im: evaluateIm, cco: evaluateCco, es: evaluateEs,
   im_fast: evaluateIm, cco_fast: evaluateCco, es_fast: evaluateEs,
   im_1hr: evaluateIm, cco_1hr: evaluateCco, es_1hr: evaluateEs,
@@ -65,7 +65,7 @@ export function ActiveSessionLens({ sessionStartedAtMs: _sessionStartedAtMs }: {
   const scenarioStart = '10:00:00';  // TODO: 從 metadata 拉
   const simHMS = addSecToHMS(scenarioStart, driver.elapsed_sim_sec);
   const evalFn = EVALUATORS[driver.scenario_id ?? ''];
-  const trigEval = (evalFn && pm) ? evalFn(pm) : null;
+  const trigEval = (evalFn && pm) ? evalFn(pm, driver?.trigger_config) : null;
   const simNowSec = Math.round(driver.elapsed_sim_sec);
 
   // chart series 配置

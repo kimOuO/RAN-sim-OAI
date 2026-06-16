@@ -11,6 +11,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import {
   fetchDriverStatus, fetchDuPm, fetchControlActions, fetchHandovers,
+  fetchActiveSessionUuid,
   type DuPmSnapshot, type ScenarioDriverStatus, type ControlActionRow,
   type HandoverEventRow,
 } from '@/services/api/scenarioMonitor';
@@ -60,8 +61,10 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
         // session 開始:從 elapsed_wall_sec 推算真正起跑時刻
         const elapsedMs = (d?.elapsed_wall_sec ?? 0) * 1000;
         setSessionStartedAtMs(Date.now() - elapsedMs);
-        // 產 sessionUuid(跟 dashboard onRun 的格式對齊)
-        setSessionUuid(`runs_${d?.scenario_id ?? 'unknown'}_${Date.now()}`);
+        // 用後端真實 running SimSession 的 uuid(HO/control 都綁這個);對不到才退回佔位
+        const realUuid = await fetchActiveSessionUuid(d?.scenario_id);
+        if (cancelled) return;
+        setSessionUuid(realUuid || `runs_${d?.scenario_id ?? 'unknown'}_${Date.now()}`);
         // 重置 history,避免上一輪混進來
         setHistory([]);
         setActions([]);

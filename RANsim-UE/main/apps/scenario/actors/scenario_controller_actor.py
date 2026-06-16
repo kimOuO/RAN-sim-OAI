@@ -72,4 +72,4 @@ class ScenarioController:
         drv = scenario_driver.get_driver()
         if drv is None:
             return _ok({"running": False}, "No driver loaded")
-        return _ok(drv.state, "OK")
+        return _ok(drv.live_state(), "OK")

@@ -22,6 +22,35 @@ MODE_FILE = CACHE_DIR / ".mode"
 # SINR 計算常數(對齊 RU dl_tti_pipeline:同 env)
 _TX_POWER_DBM = float(os.environ.get("RU_TX_POWER_DBM", "23.0"))
 _NOISE_FLOOR_DBM = float(os.environ.get("RU_NOISE_FLOOR_DBM", "-98.0"))
+# inter-frequency 模式:不同頻 cell 互不干擾。本模型用「所有 cell 不同頻」近似
+# (CCO 兩 cell 各一頻段成立)→ SINR = serving / noise(不計 cross-cell 干擾)。
+# off(預設)= 原 co-channel(把所有 cell 當同頻互擾)。CCO inter-freq 換手 demo 用。
+_INTER_FREQ = os.environ.get("DU_INTER_FREQ", "off").strip().lower() in ("on", "true", "1")
+
+
+def set_inter_freq(enabled: bool) -> None:
+    """runtime 切 inter-freq(劇本 start 時套用,免 DU 專用 env)。"""
+    global _INTER_FREQ
+    _INTER_FREQ = bool(enabled)
+
+
+def set_tx_power_dbm(dbm: float) -> None:
+    """runtime 設 TX power(劇本 start 時套用)。"""
+    global _TX_POWER_DBM
+    _TX_POWER_DBM = float(dbm)
+
+
+def get_inter_freq() -> bool:
+    """目前生效的 inter-freq 設定(供 runtime phys getter / 前端觀測)。"""
+    return bool(_INTER_FREQ)
+
+
+def get_tx_power_dbm() -> float:
+    return float(_TX_POWER_DBM)
+
+
+def get_noise_floor_dbm() -> float:
+    return float(_NOISE_FLOOR_DBM)
 
 
 class DuChannelCache:
@@ -110,9 +139,13 @@ def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None) ->
         return float("-inf")
     tx_mw = 10.0 ** (_TX_POWER_DBM / 10.0)
     serving_mw = tx_mw * serving_pg
-    interference_mw = sum(
-        tx_mw * pg for tx, pg in path_gain_dict.items() if tx != serving_tx and pg > 0
-    )
+    # inter-freq:不同頻不互擾 → 干擾項歸零(只剩雜訊);co-channel:加總其他 cell。
+    if _INTER_FREQ:
+        interference_mw = 0.0
+    else:
+        interference_mw = sum(
+            tx_mw * pg for tx, pg in path_gain_dict.items() if tx != serving_tx and pg > 0
+        )
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     sinr_lin = serving_mw / (interference_mw + noise_mw)
     return 10.0 * math.log10(sinr_lin) if sinr_lin > 0 else float("-inf")

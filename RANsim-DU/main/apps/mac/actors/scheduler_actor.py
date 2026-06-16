@@ -37,6 +37,69 @@ class MacSchedulerController:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def get_runtime_phys(request):
+        """回傳目前生效的 per-scenario 物理旋鈕現值 + 與預設的差異。
+        前端「Sim Runtime Knobs」面板用,讓使用者看到「非 xApp」的 DU 調整
+        (劇本/手動套的 tx_power / inter_freq / discard / rlc_delay)是否影響 KPM。"""
+        from main.apps.fapi_north.services.optional.channel_cache_du import (
+            get_inter_freq, get_tx_power_dbm, get_noise_floor_dbm,
+        )
+        from main.apps.tick.services.optional.runner.tick_runner import (
+            get_discard_timer_ms, get_rlc_delay_model, get_slot_engine_takeover,
+        )
+        # 預設值(set_runtime_phys 缺欄位時的還原值 / 模組 env 預設)
+        defaults = {
+            "inter_freq": False, "discard_timer_ms": 300,
+            "tx_power_dbm": 23.0, "rlc_delay_model": "calib",
+        }
+        current = {
+            "inter_freq": get_inter_freq(),
+            "discard_timer_ms": get_discard_timer_ms(),
+            "tx_power_dbm": get_tx_power_dbm(),
+            "rlc_delay_model": get_rlc_delay_model(),
+            "noise_floor_dbm": get_noise_floor_dbm(),
+            "slot_engine_takeover": get_slot_engine_takeover(),
+        }
+        adjusted = [k for k, dv in defaults.items() if current.get(k) != dv]
+        return success_response(
+            {**current, "defaults": defaults, "adjusted": adjusted},
+            "runtime phys current",
+        )
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def set_runtime_phys(request):
+        """劇本 start 時套用的 per-scenario 物理參數(免 DU 專用 env):
+        body: {"inter_freq": bool, "discard_timer_ms": int, "tx_power_dbm": float}
+        缺欄位 → 還原預設(co-channel / 300ms / 23dBm)讓上一場 CCO 設定不殘留。"""
+        try:
+            p = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("Invalid JSON", str(e), http_status=400)
+        from main.apps.fapi_north.services.optional.channel_cache_du import (
+            set_inter_freq, set_tx_power_dbm,
+        )
+        from main.apps.tick.services.optional.runner.tick_runner import (
+            set_discard_timer_ms, set_rlc_delay_model,
+        )
+        inter = bool(p.get("inter_freq", False))
+        disc = int(p.get("discard_timer_ms", 300))
+        txp = float(p.get("tx_power_dbm", 23.0))
+        rlc_mode = str(p.get("rlc_delay_model", "calib"))
+        set_inter_freq(inter)
+        set_discard_timer_ms(disc)
+        set_tx_power_dbm(txp)
+        set_rlc_delay_model(rlc_mode)
+        logger.info("set_runtime_phys: inter_freq=%s discard_ms=%s tx_power=%s rlc_delay_model=%s",
+                    inter, disc, txp, rlc_mode)
+        return success_response(
+            {"inter_freq": inter, "discard_timer_ms": disc, "tx_power_dbm": txp,
+             "rlc_delay_model": rlc_mode}, "runtime phys applied")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def set_prb_quota(request):
         """Set per-cell PRB quota.
 

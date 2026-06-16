@@ -18,16 +18,33 @@ const SIM_ACTION_LABEL: Record<string, { label: string; color: string }> = {
   control_slice_level_prb_quota: { label: 'PRB quota', color: '#06b6d4' },
 };
 
-function intentMode(simAction: string, style: number): string {
-  if (style === 2) return 'IM/ES';
-  if (style === 3) return 'CCO/ES';
-  return '?';
+// E2SM-RC style → 控制「類型」+ 該類型涵蓋的多種 xApp 意圖。
+// ★ style 號 ≠ 單一意圖:同一個 control style 被多種意圖劇本共用,不該硬鎖成一種。
+//   - style 2(Radio Resource Allocation Control / PRB)→ IM、CCO、ES 都會下
+//   - style 3(Connected Mode Mobility Control / Handover)→ CCO、ES、普通 HO 都會下
+//   真正是哪種意圖由 xApp 邏輯決定,RC 訊息本身不帶,sim 只看得到 control 類型。
+const RC_STYLE_INFO: Record<number, { type: string; intents: string }> = {
+  2: { type: 'PRB/RRM', intents: 'IM·CCO·ES' },
+  3: { type: 'Mobility/HO', intents: 'CCO·ES·HO' },
+};
+
+function rcStyleInfo(style: number): { type: string; intents: string } {
+  return RC_STYLE_INFO[style] || { type: `style${style}`, intents: '?' };
 }
 
 export function IntentControlAudit() {
   const { ops } = useControlOps();
-  const { quotas } = usePrbQuotas();
+  const { quotas, simRunning } = usePrbQuotas();
   const { aggregates } = useCellStatus();
+
+  // 劇本沒在跑 → Control Ops 是上一場留下的 → 標「已清除」(除非是剛下的 <10s,
+  // 避免 driver.running 邊緣翻轉時誤標剛到的 control)。最多顯示 5 筆。
+  const RECENT_MS = 10000;
+  const now = Date.now();
+  const visibleOps = ops.slice(0, 5).map(op => ({
+    op,
+    stale: !simRunning && (now - op.recv_ts_ms > RECENT_MS),
+  }));
 
   const cellByName = useMemo(() => {
     const m = new Map<string, typeof aggregates[number]>();
@@ -39,10 +56,14 @@ export function IntentControlAudit() {
     <section style={{ marginBottom: 24 }}>
       <h2 style={{
         margin: 0, color: C_TEXT, fontSize: 14, fontWeight: 600,
-        marginBottom: 12,
+        marginBottom: 4,
       }}>
         🎯 Intent-Driven Control Audit （xApp 指令端到端）
       </h2>
+      <div style={{ color: C_MUTED, fontSize: 11, marginBottom: 12 }}>
+        涵蓋多種意圖劇本:CCO（容量受限換手）· IM（干擾管理）· ES（節能）· 一般 Handover。
+        欄位顯示 RC 控制「類型」,同一類型可由多種意圖下達（非單一）。
+      </div>
 
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12,
@@ -84,6 +105,9 @@ export function IntentControlAudit() {
         }}>
           <div style={{ fontSize: 12, color: C_TEXT, fontWeight: 600, marginBottom: 8 }}>
             Recent xApp Control Ops
+            <span style={{ color: C_MUTED, fontWeight: 400, fontSize: 10, marginLeft: 6 }}>
+              (最近 5 筆)
+            </span>
           </div>
           {ops.length === 0 ? (
             <div style={{ color: C_MUTED, fontSize: 11 }}>
@@ -94,6 +118,7 @@ export function IntentControlAudit() {
               <thead>
                 <tr style={{ borderBottom: `1px solid ${C_BORDER}`, color: C_MUTED }}>
                   <th style={{ textAlign: 'left', padding: 4 }}>t</th>
+                  <th style={{ textAlign: 'left', padding: 4 }}>src</th>
                   <th style={{ textAlign: 'left', padding: 4 }}>style/action</th>
                   <th style={{ textAlign: 'left', padding: 4 }}>action</th>
                   <th style={{ textAlign: 'left', padding: 4 }}>UE</th>
@@ -102,8 +127,8 @@ export function IntentControlAudit() {
                 </tr>
               </thead>
               <tbody>
-                {ops.map((op, i) => (
-                  <OpRow key={i} op={op} />
+                {visibleOps.map(({ op, stale }, i) => (
+                  <OpRow key={i} op={op} stale={stale} />
                 ))}
               </tbody>
             </table>
@@ -185,37 +210,65 @@ export function IntentControlAudit() {
 
 
 function PrbRow({ q }: { q: PrbQuota }) {
-  const isE2 = (q.set_by || '').toUpperCase().includes('E2');
-  const setByColor = isE2 ? '#a855f7' : (q.set_by ? C_WARN : C_MUTED);
+  const sb = (q.set_by || '').toUpperCase();
+  const isE2 = sb.includes('E2') || sb === 'XAPP';        // 真 xApp / E2 即時下發
+  const isScenario = sb === 'SCENARIO';                   // 劇本套的容量限制(非 xApp)
+  const setByColor = q.stale ? C_MUTED
+    : isScenario ? '#06b6d4'
+    : isE2 ? '#a855f7'
+    : (q.set_by ? C_WARN : C_MUTED);
+  const setByLabel = isScenario ? '劇本' : (q.set_by || '—');
   return (
-    <tr style={{ borderBottom: '1px solid #1f2937' }}>
+    <tr style={{ borderBottom: '1px solid #1f2937', opacity: q.stale ? 0.55 : 1 }}>
       <td style={{ padding: 4, color: C_TEXT, fontFamily: 'monospace' }}>
         {q.cell_id}
       </td>
-      <td style={{ padding: 4, color: C_TEXT, textAlign: 'right', fontFamily: 'monospace' }}>
+      <td style={{
+        padding: 4, color: C_TEXT, textAlign: 'right', fontFamily: 'monospace',
+        textDecoration: q.stale ? 'line-through' : 'none',
+      }}>
         {q.min_prb}/{q.max_prb}/{q.dedicated_prb}
       </td>
-      <td style={{ padding: 4, color: setByColor, fontWeight: 600 }}>
-        {q.set_by || '—'}
+      <td style={{ padding: 4, fontWeight: 600 }}>
+        <span style={{ color: setByColor }}>{setByLabel}</span>
+        {q.stale && (
+          <span style={{ color: C_MUTED, fontSize: 9, marginLeft: 4 }}
+                title="無 sim 在跑 — 這是上一場留下的殘留,已邏輯清掉,下次 Start Sim 會實際移除">
+            · 已清掉(殘留)
+          </span>
+        )}
       </td>
     </tr>
   );
 }
 
-function OpRow({ op }: { op: ControlOp }) {
+function OpRow({ op, stale }: { op: ControlOp; stale?: boolean }) {
   const meta = SIM_ACTION_LABEL[op.sim_action] || { label: op.sim_action, color: C_TEXT };
-  const oc = op.outcome === 'ok' ? C_OK
+  const rc = rcStyleInfo(op.style);
+  const oc = stale ? C_MUTED
+    : op.outcome === 'ok' ? C_OK
     : op.outcome === 'pending' ? C_WARN
     : C_FAIL;
+  // Control Ops 走 E2 control plane(control_req_recv)= RIC/xApp 即時下發。
+  // 劇本的限制(cell_quota)是直接打 DU API、不經 E2,所以不會出現在這 → 此處一律 xApp。
   return (
-    <tr style={{ borderBottom: '1px solid #1f2937' }}>
+    <tr style={{ borderBottom: '1px solid #1f2937', opacity: stale ? 0.55 : 1 }}>
       <td style={{ padding: 4, color: C_MUTED, fontFamily: 'monospace' }}>
         {new Date(op.recv_ts_ms).toLocaleTimeString('en-GB', { hour12: false })}
       </td>
-      <td style={{ padding: 4, color: C_TEXT, fontFamily: 'monospace' }}>
+      <td style={{ padding: 4, color: '#a855f7', fontWeight: 600 }}>
+        xApp
+      </td>
+      <td style={{
+        padding: 4, color: C_TEXT, fontFamily: 'monospace',
+        textDecoration: stale ? 'line-through' : 'none',
+      }}>
         s{op.style}/a{op.action}
-        <span style={{ color: C_MUTED, marginLeft: 4 }}>
-          {intentMode(op.sim_action, op.style)}
+        <span style={{ color: C_TEXT, marginLeft: 4 }}>
+          {rc.type}
+        </span>
+        <span style={{ color: C_MUTED, marginLeft: 4, fontSize: 9 }} title="此 control 類型可由這些意圖劇本下達(CCO/IM/ES/HO),非單一">
+          {rc.intents}
         </span>
       </td>
       <td style={{ padding: 4, color: meta.color, fontWeight: 600 }}>
@@ -229,6 +282,12 @@ function OpRow({ op }: { op: ControlOp }) {
       </td>
       <td style={{ padding: 4, color: oc, fontWeight: 600 }}>
         {op.outcome}
+        {stale && (
+          <span style={{ color: C_MUTED, fontSize: 9, marginLeft: 4 }}
+                title="劇本已結束 — 這是上一場留下的 control 紀錄,已清除">
+            · 已清除
+          </span>
+        )}
       </td>
     </tr>
   );

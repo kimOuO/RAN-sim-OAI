@@ -15,6 +15,9 @@ urlpatterns = [
     path("MacCellController/enable", MacCellController.enable, name="mac_cell_enable"),
     path("MacUeStateController/read", MacUeStateController.read, name="mac_ue_read"),
     path("MacHarqController/read", MacHarqController.read, name="mac_harq_read"),
+    # per-scenario 物理參數(inter-freq / discard / tx_power)— 劇本 start 套用,免 DU 專用 env
+    path("MacScheduler/set_runtime_phys", MacSchedulerController.set_runtime_phys, name="mac_sched_set_phys"),
+    path("MacScheduler/get_runtime_phys", MacSchedulerController.get_runtime_phys, name="mac_sched_get_phys"),
     # PRB quota — for xApp E2 control style 2 / action 6
     path("MacScheduler/set_prb_quota", MacSchedulerController.set_prb_quota, name="mac_sched_set_quota"),
     path("MacScheduler/clear_prb_quota", MacSchedulerController.clear_prb_quota, name="mac_sched_clear_quota"),

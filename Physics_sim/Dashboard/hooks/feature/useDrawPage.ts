@@ -18,6 +18,16 @@ function toXZ(v: any): [number, number, number] {
   return [v?.x ?? 0, v?.y ?? 0, v?.z ?? 0];
 }
 
+// 場景身分簽章 — 只看「有哪些 gNB/UE/建築」(排序後名字),不看座標。
+// 換劇本 → 名字集合變 → 簽章變;同場景內拖 waypoint / 位置更新 → 簽章不變。
+function sceneSig(layout: SceneLayout | null): string {
+  if (!layout) return '';
+  const names = (arr?: any[]) => (arr || []).map(x => x?.name).filter(Boolean).sort();
+  return JSON.stringify({
+    g: names(layout.gnbs), u: names(layout.ues), b: names(layout.buildings),
+  });
+}
+
 export function useDrawPage(opts?: { simRunning?: boolean }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -27,6 +37,10 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
   // simRunning 透過 ref 給 polling closure 用,避免每次 simRunning 變 dep 都重起 interval
   const simRunningRef = useRef<boolean>(false);
   simRunningRef.current = !!opts?.simRunning;
+
+  // 場景「身分」簽章 = 排序後的 gNB/UE/建築名字集合。用來偵測 DB 場景是否真的換了
+  // (例如從 /scenarios 套了別的劇本),而不是被同場景的位置更新誤判。
+  const sceneSigRef = useRef<string>('');
   // 每個 UE 的 traffic profile (per-UE state, key = ue.name)
   const [trafficProfiles, setTrafficProfiles] = useState<Record<string, TrafficProfile>>({});
   const [loading, setLoading] = useState(true);
@@ -43,6 +57,7 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
       const layout = await omniverseApi.getSceneLayout();
       console.log('[useDrawPage] Got layout:', layout);
       setSceneConfig(layout);
+      sceneSigRef.current = sceneSig(layout);
 
       // 正規化 UE：加入預設 color、waypoints
       const normalizedUes: UE[] = (layout.ues || []).map((ue: any) => ({
@@ -127,6 +142,34 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
     }, 2000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  // 自動偵測 DB 場景「換了」就重讀 — 修「從 /scenarios 套劇本後 editor 場景沒換」。
+  // ★ 不綁 simRunning:安全閥是「只有名字集合(sceneSig)變了才 refresh」。跑 sim
+  //   中途不會換場景 → 不會誤洗 UE 位置;但若前端 simRunning 卡住,場景仍能正常切換。
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const layout = await omniverseApi.getSceneLayout();
+        if (cancelled) return;
+        if (sceneSig(layout) !== sceneSigRef.current) {
+          console.log('[useDrawPage] DB 場景身分變更 → 自動 refreshScene');
+          await refreshScene();
+        }
+      } catch { /* 拉失敗忽略 */ }
+    };
+    const id = setInterval(check, 3000);
+    // 分頁切回 / 視窗 focus 立即檢查一次(從別頁套了劇本回來不用等 3s)
+    const onFocus = () => check();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshScene]);
 
 
   const handleAddWaypoint = useCallback(

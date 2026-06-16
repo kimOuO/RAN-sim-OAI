@@ -20,7 +20,7 @@ from main.apps.fapi_south.services.optional.channel_cache_loader import (
 from main.apps.physics_client.services.optional import physics_http
 from main.apps.physics_client.services.optional.channel_cache import default_cache, quantize_position
 from main.apps.physics_client.services.optional.payload_builder import build_path_solver_request
-from main.utils.env_loader import get_float
+from main.utils.env_loader import get_bool, get_float
 from main.utils.logger import get_logger
 
 
@@ -50,6 +50,42 @@ _SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=0
 # 需求(例如想額外模擬 multipath fading)拉一點點。
 _SINR_INTERFERENCE_PENALTY_DB = get_float("RU_SINR_INTERFERENCE_PENALTY_DB", default=0.0)
 """額外 SINR fade margin。預設 0(真實 interference 已從多 cell path_gain 算)."""
+
+# inter-frequency:True = 各 cell 不同頻不互擾 → SINR 只算訊號/噪聲(不累加他 cell 干擾)。
+# 對齊 DU channel_cache_du 的 _INTER_FREQ;live mode 也要吃劇本 inter_freq(否則 cell 邊界
+# co-channel 把 SINR 算崩,跟 cached 差 ~20dB)。
+#
+# ★ 用「共享檔」不用 process 全域變數:RU 跑 gunicorn --workers 2,Python 全域變數每個
+#   worker 各一份。set_inter_freq 的 HTTP POST 只命中 1 個 worker,但算 SINR 的請求可能落到
+#   另一個 worker → flag 沒生效(這是 live inter_freq 失效、跟 cached 差 16dB 的 root cause)。
+#   仿 channel_cache_loader 的 .mode 檔:寫檔讓所有 worker 共讀。
+import os as _os
+from pathlib import Path as _Path
+_INTER_FREQ_FILE = _Path(_os.environ.get("RU_CACHE_DIR", "/data/channel_cache")) / ".inter_freq"
+_inter_freq_cache: dict = {"mtime": None, "val": get_bool("RU_INTER_FREQ", default=False)}
+
+
+def _read_inter_freq() -> bool:
+    """讀共享檔(mtime 快取,免每次 disk read)。檔不存在 → env 預設。所有 worker 共讀同一份。"""
+    try:
+        mt = _INTER_FREQ_FILE.stat().st_mtime
+        if _inter_freq_cache["mtime"] != mt:
+            _inter_freq_cache["val"] = _INTER_FREQ_FILE.read_text().strip().lower() in ("on", "true", "1")
+            _inter_freq_cache["mtime"] = mt
+        return _inter_freq_cache["val"]
+    except FileNotFoundError:
+        return get_bool("RU_INTER_FREQ", default=False)
+    except Exception:
+        return _inter_freq_cache["val"]
+
+
+def set_inter_freq(enabled: bool) -> None:
+    """runtime 設 inter_freq → 寫共享檔(所有 worker 共讀,解 multi-worker 隔離)。"""
+    try:
+        _INTER_FREQ_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _INTER_FREQ_FILE.write_text("on" if enabled else "off")
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("set_inter_freq write file failed: %s", _e)
 
 
 def _compute_sinr_db_with_real_interference(
@@ -98,12 +134,13 @@ def _compute_sinr_db_with_real_interference(
     serving_mw = _rx_mw(serving_pg, _power_for_tx(serving_key))
 
     interference_mw = 0.0
-    for tx_name, pg in path_gain_dict.items():
-        if tx_name == serving_key:
-            continue
-        if not isinstance(pg, (int, float)) or pg <= 0:
-            continue
-        interference_mw += _rx_mw(pg, _power_for_tx(tx_name))
+    if not _read_inter_freq():  # inter_freq=True(共享檔)→ 各 cell 不同頻不互擾,跳過他 cell 干擾累加
+        for tx_name, pg in path_gain_dict.items():
+            if tx_name == serving_key:
+                continue
+            if not isinstance(pg, (int, float)) or pg <= 0:
+                continue
+            interference_mw += _rx_mw(pg, _power_for_tx(tx_name))
 
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     denom = interference_mw + noise_mw

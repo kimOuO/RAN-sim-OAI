@@ -93,12 +93,30 @@ class ScenarioSpec:
     # "iso" / "dipole" / "tr38901" 是 Sionna 內建可用 patterns。
     # 注意:這是 scenario-level 全局設定,sionna scene.tx_array 不支援 per-cell pattern。
     antenna_pattern: str | None = None
+    # Optional 劇本自帶 per-cell PRB quota,start() 時自動套用(= xApp E2 Control Style2/Action6)。
+    # [{"cell_id": str, "max_prb": int(0-100)}, ...]。CCO 容量受限 demo 用(c0 設 20%)。
+    cell_quotas: list[dict] = None  # type: ignore[assignment]
+    # per-scenario 物理參數(劇本 start 套用,免 DU 專用 env)。缺省 = 一般 co-channel 預設。
+    inter_freq: bool = False          # True = 不同頻不互擾(CCO 用)
+    discard_timer_ms: int = 300       # 0 = 關(CCO 讓 delay 真實爬);一般 300
+    tx_power_dbm: float = 23.0         # CCO 邊界要好 SINR 時拉高(如 33)
+    # A3 自動換手開關。None = 不覆寫(用 CU env HO_A3_ENABLED,預設 off)。
+    # CCO 等「RC 手動換到較弱 cell」的 demo 要 False,否則 A3 看訊號把人彈回強 cell。
+    a3_enabled: bool | None = None
+    # RLC delay 模式:'calib'(÷30 對齊 OAI 低 delay)| 'subtick'(誠實佇列延遲)。
+    # CCO 要 subtick 壅塞 delay 才爬得過 500ms 門檻;OAI 對照劇本用 calib。
+    rlc_delay_model: str = "calib"
+    # 劇本 _metadata.trigger_config:dashboard 觸發門檻的單一來源(改劇本→前端自動跟)。
+    # 不解讀內容,原樣透傳給前端 evaluator(key 對齊前端 TRIGGER_THRESHOLDS)。
+    trigger_config: dict | None = None
 
     def __post_init__(self):
         if self.gnbs is None:
             self.gnbs = []
         if self.buildings is None:
             self.buildings = []
+        if self.cell_quotas is None:
+            self.cell_quotas = []
 
     @property
     def total_ticks(self) -> int:
@@ -191,6 +209,17 @@ def fetch(scenario_id: str) -> ScenarioSpec:
         # precompute_status 來自 Scenario model 本體欄位(不在 raw_json 裡)
         precompute_status=str(data.get("precompute_status") or "pending"),
         antenna_pattern=antenna_pattern,
+        cell_quotas=[
+            {"cell_id": str(q["cell_id"]), "max_prb": int(q.get("max_prb", 100)),
+             "min_prb": int(q.get("min_prb", 0))}
+            for q in (raw.get("cell_quotas") or []) if q.get("cell_id")
+        ],
+        inter_freq=bool(raw.get("inter_freq", False)),
+        discard_timer_ms=int(raw.get("discard_timer_ms", 300)),
+        tx_power_dbm=float(raw.get("tx_power_dbm", 23.0)),
+        a3_enabled=(None if raw.get("a3_enabled") is None else bool(raw.get("a3_enabled"))),
+        rlc_delay_model=str(raw.get("rlc_delay_model") or "calib"),
+        trigger_config=((raw.get("_metadata") or {}).get("trigger_config") or None),
     )
 
 

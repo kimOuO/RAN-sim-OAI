@@ -15,7 +15,7 @@ import logging
 from dataclasses import dataclass, field
 
 from main.apps.cu_cp.services.common.timestamp_service import TimestampService
-from main.utils.env_loader import get_float, get_int
+from main.utils.env_loader import get_bool, get_float, get_int
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class A3Config:
 
 # Module-level singleton config (per Django process). Default from env, override via HTTP.
 _CONFIG: A3Config = A3Config(
-    enabled=True,
+    enabled=get_bool("HO_A3_ENABLED", default=False),  # 預設關:CCO 等 RC 手動換手不被 A3 彈回;要自動 A3 設 HO_A3_ENABLED=on 或劇本 a3_enabled
     offset_db=get_float("HO_A3_OFFSET_DB", default=A3_OFFSET_DEFAULT),
     hys_db=get_float("HO_A3_HYSTERESIS_DB", default=A3_HYS_DEFAULT),
     ttt_ms=get_int("HO_TTT_MS", default=TTT_DEFAULT),

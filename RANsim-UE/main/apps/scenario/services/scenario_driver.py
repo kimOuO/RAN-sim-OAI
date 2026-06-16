@@ -23,7 +23,7 @@ from main.apps.scenario.services.scenario_loader import (
 )
 from main.apps.scenario.services.scene_apply import SceneApplyService
 from main.apps.scenario.services.ue_attach import UeAttachService
-from main.apps.ue_lifecycle.services import du_client, omniverse_client, ru_client
+from main.apps.ue_lifecycle.services import cu_client, du_client, omniverse_client, physics_client, ru_client
 from main.apps.ue_lifecycle.services.trajectory_store import get_store as get_traj_store
 
 
@@ -58,6 +58,38 @@ class ScenarioDriver:
             "scene_apply_errors": [],
             "attach_failed": [],
         }
+
+    def live_state(self) -> dict[str, Any]:
+        """state + live 計算的進度欄位（前端 ScenarioController/status 用）。
+
+        driver 已不自跑 tick loop，進度從 started_at_ms + sim_speed_x + scenario
+        推算：elapsed_wall ×speed = elapsed_sim ÷tick_ms = sim_tick_idx。
+        前端 ScenarioProvider / ActiveSessionLens 依賴 total_ticks / sim_tick_idx /
+        elapsed_sim_sec / elapsed_wall_sec，缺了會一路 NaN。
+        """
+        st = dict(self.state)
+        started = self.state.get("started_at_ms")
+        speed = float(self.state.get("sim_speed_x") or 1.0)
+        total = int(self.scenario.total_ticks)
+        tick_ms = max(1, int(self.scenario.tick_ms))
+        if self.state.get("running") and started:
+            elapsed_wall_sec = max(0.0, (int(time.time() * 1000) - int(started)) / 1000.0)
+        else:
+            elapsed_wall_sec = 0.0
+        elapsed_sim_sec = elapsed_wall_sec * speed
+        sim_tick_idx = min(total, int(elapsed_sim_sec * 1000 / tick_ms)) if total else 0
+        st.update({
+            "total_ticks": total,
+            "sim_tick_idx": sim_tick_idx,
+            "elapsed_wall_sec": round(elapsed_wall_sec, 2),
+            "elapsed_sim_sec": round(elapsed_sim_sec, 2),
+            # driver 不再跑 tick loop；push/inject 計數已移至 UeLifecycleManager，暫以 0 佔位
+            "position_push_count": 0,
+            "inject_call_count": 0,
+            # 劇本定義的 dashboard 觸發門檻(前端 evaluator 用,改劇本就生效)
+            "trigger_config": self.scenario.trigger_config or {},
+        })
+        return st
 
     def start(self) -> bool:
         if self.state["running"]:
@@ -156,6 +188,9 @@ class ScenarioDriver:
                     "scenario %s RU set_channel_mode=live (precompute_status=%s)",
                     self.scenario.scenario_id, self.scenario.precompute_status,
                 )
+                # live mode:把劇本場景推給跑著的 Physics(否則 live 用靜態 scene_config,
+                # 劇本 gnbs/buildings/antenna 進不去)。cached 不用(npz 已 scenario-driven)。
+                self._push_scene_to_physics()
         except Exception as e:  # noqa: BLE001
             logger.warning("set_channel_mode failed (continuing with whatever RU is in): %s", e)
 
@@ -169,6 +204,47 @@ class ScenarioDriver:
         # Step 2 — Setup: 確保 CU 有 traffic_profile 對應的 UE session,RLC entity 建好。
         # (Dashboard Start Sim 通常會做這事;driver 直接被叫時自己保險一次。)
         self._setup_rlc_entities()
+
+        # Step 2a2 — per-scenario 物理參數(inter-freq / discard / tx_power)→ 啟動套用。
+        # 一律套(用劇本值或預設)→ 上一場 CCO 設定不殘留,其他劇本自動回 co-channel/300/23。
+        try:
+            ok = du_client.set_runtime_phys(
+                inter_freq=self.scenario.inter_freq,
+                discard_timer_ms=self.scenario.discard_timer_ms,
+                tx_power_dbm=self.scenario.tx_power_dbm,
+                rlc_delay_model=self.scenario.rlc_delay_model,
+            )
+            logger.info("scenario %s set_runtime_phys inter_freq=%s discard=%s tx=%s rlc_delay=%s: ok=%s",
+                        self.scenario.scenario_id, self.scenario.inter_freq,
+                        self.scenario.discard_timer_ms, self.scenario.tx_power_dbm,
+                        self.scenario.rlc_delay_model, ok)
+            # inter_freq 也送 RU → live SINR 路徑也吃劇本 inter_freq(否則 live cell 邊界
+            # co-channel 把 SINR 算崩,跟 cached 差 ~20dB)。cached 走 DU 那條已有。
+            ru_ok = ru_client.set_inter_freq(self.scenario.inter_freq)
+            logger.info("scenario %s RU set_inter_freq=%s: ok=%s",
+                        self.scenario.scenario_id, self.scenario.inter_freq, ru_ok)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("set_runtime_phys failed: %s", e)
+
+        # Step 2b — 劇本自帶 cell_quotas → 啟動自動套用 PRB quota(= xApp E2 Control Style2/Action6)。
+        # CCO 容量受限 demo:c0 設 20% → 流量拉高即觸發。cell 必須先存在(上面 attach 後)。
+        for q in (self.scenario.cell_quotas or []):
+            try:
+                ok = du_client.set_prb_quota(q["cell_id"], q["max_prb"], min_prb=q.get("min_prb", 0))
+                logger.info("scenario %s set PRB quota cell=%s max_prb=%s: ok=%s",
+                            self.scenario.scenario_id, q["cell_id"], q["max_prb"], ok)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("set_prb_quota failed for %s: %s", q.get("cell_id"), e)
+
+        # Step 2c — A3 自動換手開關 → 啟動套用(always-send 防上一場殘留)。
+        # 劇本 a3_enabled None = 用預設關(CCO 等 RC 手動換手不被 A3 彈回);劇本要自動 A3 設 true。
+        a3_on = bool(self.scenario.a3_enabled) if self.scenario.a3_enabled is not None else False
+        try:
+            ok = cu_client.set_a3(a3_on)
+            logger.info("scenario %s set A3 enabled=%s: ok=%s",
+                        self.scenario.scenario_id, a3_on, ok)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("set_a3 failed: %s", e)
 
         # Step 3 — 推軌跡 waypoints 到 trajectory_store(UeLifecycleManager 接管 tick)
         self._push_waypoints_to_store()
@@ -217,6 +293,35 @@ class ScenarioDriver:
             "scenario %s: pushed waypoints for %d UEs to trajectory_store",
             self.scenario.scenario_id, len(self.scenario.ues),
         )
+
+    def _push_scene_to_physics(self):
+        """live mode 用:把劇本 gnbs/buildings/antenna 推給跑著的 Physics live 引擎。
+        cached 不呼(npz 已由 run_precompute 的 apply_override 用劇本幾何建好)。"""
+        try:
+            gnb_dicts = [{
+                "name": g.name,
+                "position": list(g.position),
+                "frequency_ghz": g.frequency_ghz,
+                "power_dbm": g.power_dbm,
+                "bandwidth_mhz": g.bandwidth_mhz,
+                "cells": [{
+                    "pci": c.pci, "cell_id": c.cell_id,
+                    "position": list(c.position) if c.position else None,
+                    "azimuth_deg": c.azimuth_deg,
+                } for c in (g.cells or [])],
+            } for g in (self.scenario.gnbs or [])]
+            bld_dicts = [{
+                "name": b.name, "position": list(b.position),
+                "size": list(b.size) if b.size else [10, 10, 10],
+            } for b in (self.scenario.buildings or [])]
+            ok = physics_client.push_scene(
+                scene_id=self.scenario.scene_id, gnbs=gnb_dicts,
+                buildings=bld_dicts, antenna_pattern=self.scenario.antenna_pattern,
+            )
+            logger.info("scenario %s push_scene to Physics(live): ok=%s",
+                        self.scenario.scenario_id, ok)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("push_scene_to_physics failed (live 仍用靜態 scene_config): %s", e)
 
     def _apply_scene_to_backend(self):
         """把劇本拓樸推進 RU/DU/CU 並清掉上一場留下的 stale row。

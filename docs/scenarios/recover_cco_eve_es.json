@@ -1,0 +1,52 @@
+{
+  "scenario_id": "recover_cco_eve_es",
+  "scene_id": "twocell_separated",
+  "antenna_pattern": "iso",
+  "duration_sec": 2800,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "_metadata": {
+    "intent": "補救 full_day_24hr @2x 遺失的 CCO/EVE/ES 三相位 RIC 視窗 KPM,忠實複製 pattern",
+    "phases": {
+      "EVE": "sim 0-700: 5kbps baseline (OAI 4.7)",
+      "ES":  "sim 700-2500: 2M burst 60s-on/390s-off x4 cycles, duty 13% -> windowed ~266 (OAI 275)",
+      "CCO": "sim 2500-2800: 1.5M x120s single burst (量 burst-active KPM; 8kbps 是單burst稀釋3h的traffic-平均, 非radio指標)"
+    }
+  },
+  "ues": [
+    { "name": "day_ue", "positions": [ [0, 0.0, 1.5, 100.0], [2800, 0.0, 1.5, 100.0] ] }
+  ],
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "active": true,
+      "position": [0, 30, 0],
+      "power_dbm": 23,
+      "bandwidth_mhz": 40,
+      "frequency_ghz": 3.5,
+      "cells": [
+        { "pci": 0, "cell_id": "gnbDT_c0", "position": [0, 30, 0], "azimuth_deg": 0 },
+        { "pci": 1, "cell_id": "gnbDT_c1", "position": [300, 30, 0], "azimuth_deg": 0 }
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "day_ue",
+      "profile": [
+        [0, 5, 4],
+        [700, 2000, 200],
+        [760, 0, 0],
+        [1150, 2000, 200],
+        [1210, 0, 0],
+        [1600, 2000, 200],
+        [1660, 0, 0],
+        [2050, 2000, 200],
+        [2110, 0, 0],
+        [2500, 1500, 100],
+        [2620, 0, 0],
+        [2800, 0, 0]
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listScenarios, readScenario, uploadScenario, deleteScenario,
-  triggerPrecompute, forceRuLiveMode,
+  triggerPrecompute, forceRuLiveMode, applyScenarioToScene,
   type ScenarioRow,
 } from '@/services/api/scenario';
 import {
@@ -28,7 +28,7 @@ interface PresetMeta {
   id: string;
   label: string;
   desc: string;
-  evaluator: (pm: DuPmSnapshot) => TriggerEval;
+  evaluator: (pm: DuPmSnapshot, cfg?: Record<string, number>) => TriggerEval;
   requires: { min_gnbs: number; min_cells_per_gnb: number; min_ues: number };
 }
 
@@ -55,6 +55,33 @@ const SCENE_LAYOUTS: Record<string, Array<{
       power_dbm: 23, freq_ghz: 3.5, bandwidth_mhz: 40, total_prb: 106, gnb_id: 'gnbDT' },
   ],
 };
+
+type CellLayout = {
+  cell_id: string; x: number; y: number; z: number;
+  azimuth_deg: number; pci: number;
+  power_dbm: number; freq_ghz: number; bandwidth_mhz: number; total_prb: number;
+  gnb_id: string;
+};
+
+// 地圖 / Cell card 的 cell 幾何來源:優先用劇本實際 gnbs[].cells[](真實位置/azimuth),
+// 沒有才退回 hardcoded SCENE_LAYOUTS。修「c0/c1 疊同一點看不到」的根因。
+function deriveCellLayout(scn: RawScenario | null): CellLayout[] {
+  if (!scn) return [];
+  const out: CellLayout[] = [];
+  for (const g of scn.gnbs ?? []) {
+    for (const c of g.cells ?? []) {
+      const p = c.position ?? g.position ?? [0, 0, 0];
+      out.push({
+        cell_id: c.cell_id,
+        x: p[0] ?? 0, y: p[1] ?? 0, z: p[2] ?? 0,
+        azimuth_deg: c.azimuth_deg ?? 0, pci: c.pci ?? 0,
+        power_dbm: g.power_dbm ?? 23, freq_ghz: g.frequency_ghz ?? 0,
+        bandwidth_mhz: g.bandwidth_mhz ?? 0, total_prb: 106, gnb_id: g.name,
+      });
+    }
+  }
+  return out.length ? out : (SCENE_LAYOUTS[scn.scene_id] ?? []);
+}
 
 interface RunningState {
   scenarioId: string;
@@ -337,6 +364,10 @@ export default function ScenariosPage() {
       const raw: RawScenario = sc?.raw_json || sc;
       setActiveScenario(raw);
       setHistory([]);
+      // 把劇本拓樸寫進 Omniverse 場景表 → Scene Editor 的 Scene Layout / 3D 反映此劇本。
+      // (start 流程原本只 readScenario 不寫場景表,所以「開劇本」後 editor 看不到對應場景)
+      try { await applyScenarioToScene(s.scenario_id); }
+      catch (e) { console.warn('applyScenarioToScene failed (場景未映射,不影響 sim):', e); }
       // Stage 統一架構:走 SimController.start(source=scenario),它內部建 SimSession +
       // 廣播 speed 給 DU/CU + 反向 sync scenario → DB + UE attach + lifecycle start。
       const res = await startUnifiedSim({
@@ -402,7 +433,7 @@ export default function ScenariosPage() {
     if (lower.startsWith('es_')) return PRESETS.find(p => p.id === 'es_fast');
     return undefined;
   };
-  const trigEval = (pm && running) ? getPreset(running.scenarioId)?.evaluator(pm) : null;
+  const trigEval = (pm && running) ? getPreset(running.scenarioId)?.evaluator(pm, driver?.trigger_config) : null;
   const driverPct = driver?.sim_tick_idx && driver?.total_ticks
     ? (driver.sim_tick_idx / Math.max(1, driver.total_ticks)) * 100
     : 0;
@@ -461,7 +492,7 @@ export default function ScenariosPage() {
 
   // ScenarioMap data
   const mapUes   = activeScenario?.ues.map(u => ({ name: u.name, positions: u.positions })) ?? [];
-  const mapCells = (activeScenario && SCENE_LAYOUTS[activeScenario.scene_id]) || [];
+  const mapCells = deriveCellLayout(activeScenario);
 
   // ── render ─────────────────────────────────────────
   return (
@@ -696,8 +727,7 @@ export default function ScenariosPage() {
             }}>
               {allCellIds.map((cid) => {
                 const cur = pm?.last_cell_stats?.[cid];
-                const cfg = (activeScenario && SCENE_LAYOUTS[activeScenario.scene_id] || [])
-                  .find(c => c.cell_id === cid);
+                const cfg = mapCells.find(c => c.cell_id === cid);
                 const dlAgg = cur?.dl_aggregate_mbps_this_tick ?? 0;
                 const isActive = cur?.is_active ?? true;
                 const isExpanded = expandedCells.has(cid);
@@ -881,7 +911,7 @@ export default function ScenariosPage() {
                   </span>
                 );
               }
-              const evalRes = preset.evaluator(pm);
+              const evalRes = preset.evaluator(pm, driver?.trigger_config);
               return (
                 <>
                   <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>

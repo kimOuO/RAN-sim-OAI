@@ -1,0 +1,40 @@
+{
+  "scenario_id": "recover_cco_full3h",
+  "scene_id": "twocell_separated",
+  "antenna_pattern": "iso",
+  "duration_sec": 10800,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "_metadata": {
+    "intent": "重現 full_day_24hr CCO 相位完整 3 小時窗 (sim 50400-61200): 單一 1.5M x60s burst 稀釋於 10800s -> 窗均 8.33 kbps (OAI 8.0)",
+    "burst": "1500 kbps x 60s @ sim 5400-5460, 其餘全 idle"
+  },
+  "ues": [
+    { "name": "day_ue", "positions": [ [0, 0.0, 1.5, 100.0], [10800, 0.0, 1.5, 100.0] ] }
+  ],
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "active": true,
+      "position": [0, 30, 0],
+      "power_dbm": 23,
+      "bandwidth_mhz": 40,
+      "frequency_ghz": 3.5,
+      "cells": [
+        { "pci": 0, "cell_id": "gnbDT_c0", "position": [0, 30, 0], "azimuth_deg": 0 },
+        { "pci": 1, "cell_id": "gnbDT_c1", "position": [300, 30, 0], "azimuth_deg": 0 }
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "day_ue",
+      "profile": [
+        [0, 0, 0],
+        [300, 1500, 100],
+        [360, 0, 0],
+        [10800, 0, 0]
+      ]
+    }
+  ]
+}

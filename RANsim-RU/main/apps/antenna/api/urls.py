@@ -11,4 +11,5 @@ urlpatterns = [
     path("RuController/update_cells",   RuController.update_cells,   name="ru_update_cells"),
     path("RuController/update_ues",     RuController.update_ues,     name="ru_update_ues"),
     path("RuController/set_channel_mode", RuController.set_channel_mode, name="ru_set_channel_mode"),
+    path("RuController/set_inter_freq",   RuController.set_inter_freq,   name="ru_set_inter_freq"),
 ]

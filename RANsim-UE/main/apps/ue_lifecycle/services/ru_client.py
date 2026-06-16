@@ -40,6 +40,22 @@ def set_channel_mode(mode: str, scenario_id: str = "") -> bool:
         return False
 
 
+def set_inter_freq(enabled: bool) -> bool:
+    """POST RU /Config/RuController/set_inter_freq — 讓 live SINR 也吃劇本 inter_freq。
+    True = 各 cell 不同頻不互擾,live SINR 跳過他 cell 干擾(對齊 DU cached);
+    否則 cell 邊界 co-channel 把 live SINR 算崩(跟 cached 差 ~20dB)。"""
+    url = f"{settings.SIM_RU_URL.rstrip('/')}/api/v0.1/RU/Config/RuController/set_inter_freq"
+    try:
+        r = _session.post(url, json={"inter_freq": bool(enabled)}, timeout=5.0)
+        if not r.ok:
+            logger.warning("set_inter_freq non-OK %s: %s", r.status_code, r.text[:200])
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("set_inter_freq HTTP failed: %s", exc)
+        return False
+
+
 def update_cells(cells: list[dict[str, Any]]) -> bool:
     """POST RU /Config/RuController/update_cells — 全量替換 RU cell 拓樸(exclude-delete)。
 

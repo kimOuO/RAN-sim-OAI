@@ -900,17 +900,31 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     # ── Negative case 3: ranParameter-ID 不認得 / missing ──────
     required_ids = _REQUIRED_RAN_PARAMS.get((style, action), set())
     present_ids = set(params.keys())
-    missing = required_ids - present_ids
-    extra = present_ids - required_ids
-    if missing or extra:
-        _send_control_failure(
-            sock, ric_req_id, ran_func_id,
-            cause=("ricRequest", "control-message-invalid"),
-            call_process_id=call_proc_bytes,
-            style=style, action=action,
-            reason=f"ranP missing={sorted(missing)} extra={sorted(extra)}",
-        )
-        return
+    # HO (3,1): Target Primary Cell ID 的抽取是 structure-based（在任一 ranP 裡找 CGI），
+    # 不同 RIC 會把 Target Cell 放在 spec id=1 以外的編號（實測 rc-probe 用 id=3）。
+    # 故 (3,1) 只要求至少一個 ranP，實際編號交給 to_sim_control_payload 解析。
+    if (style, action) == (3, 1):
+        if not present_ids:
+            _send_control_failure(
+                sock, ric_req_id, ran_func_id,
+                cause=("ricRequest", "control-message-invalid"),
+                call_process_id=call_proc_bytes,
+                style=style, action=action,
+                reason="ranP empty — no Target Primary Cell ID",
+            )
+            return
+    else:
+        missing = required_ids - present_ids
+        extra = present_ids - required_ids
+        if missing or extra:
+            _send_control_failure(
+                sock, ric_req_id, ran_func_id,
+                cause=("ricRequest", "control-message-invalid"),
+                call_process_id=call_proc_bytes,
+                style=style, action=action,
+                reason=f"ranP missing={sorted(missing)} extra={sorted(extra)}",
+            )
+            return
 
     # 給 decoder hint：sim 的 ranName 當 control_header.node（PRB quota 不指定 cell_id 時用）
     try:

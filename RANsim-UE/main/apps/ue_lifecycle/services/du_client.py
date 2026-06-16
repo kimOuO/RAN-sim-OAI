@@ -39,6 +39,36 @@ def tick_stop() -> bool:
         return False
 
 
+def set_runtime_phys(*, inter_freq: bool, discard_timer_ms: int, tx_power_dbm: float,
+                     rlc_delay_model: str = "calib") -> bool:
+    """POST DU /MAC/MacScheduler/set_runtime_phys — 劇本 start 套用 per-scenario 物理參數
+    (inter-freq / discard / tx_power / rlc_delay_model),免 DU 專用 env;
+    缺省 = 還原預設(co-channel/300/23/calib)。CCO 用 rlc_delay_model=subtick 讓壅塞 delay 真實爬。"""
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/MAC/MacScheduler/set_runtime_phys"
+    try:
+        r = _session.post(url, json={
+            "inter_freq": bool(inter_freq), "discard_timer_ms": int(discard_timer_ms),
+            "tx_power_dbm": float(tx_power_dbm), "rlc_delay_model": str(rlc_delay_model),
+        }, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException as exc:
+        logger.warning("DU set_runtime_phys failed: %s", exc)
+        return False
+
+
+def set_prb_quota(cell_id: str, max_prb: int, *, min_prb: int = 0) -> bool:
+    """POST DU /MAC/MacScheduler/set_prb_quota — 劇本自帶 cell_quotas 時啟動自動套用。
+    ★ set_by="scenario":這是「劇本」套的容量受限,**不是** xApp(E2)即時下發,
+      前端 PRB Quota 表才能把劇本/手動/xApp 三種來源分開(否則預設 'xApp' 會混淆)。"""
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/MAC/MacScheduler/set_prb_quota"
+    try:
+        r = _session.post(url, json={"cell_id": cell_id, "min_prb": min_prb, "max_prb": max_prb, "set_by": "scenario"}, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException as exc:
+        logger.warning("DU set_prb_quota cell=%s failed: %s", cell_id, exc)
+        return False
+
+
 def inject_sdu(
     ue_id: str, sdu_bytes: int, *, bearer_type: str = "DRB", bearer_id: int = 1,
 ) -> str:
