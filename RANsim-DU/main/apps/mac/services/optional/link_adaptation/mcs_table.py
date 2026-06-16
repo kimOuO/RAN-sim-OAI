@@ -10,6 +10,10 @@ from __future__ import annotations
 # 取保守 0.72(含 PDCCH/SSB 額外占用)。對齊 OAI gnb-du.sa.band78.106prb conf。
 TDD_DL_SLOT_RATIO: float = 0.72
 
+# UL 時隙比:nrofUplinkSlots=2 + special slot 4/14 UL 符號 → 2.29/10 = 0.229。
+# 取 0.22(含 PUCCH/PRACH 額外占用)。OAI band78 DDDDDDDSUU。UL 用獨立時隙,跟 DL 不搶。
+TDD_UL_SLOT_RATIO: float = 0.22
+
 
 _SINR_TO_MCS = [
     (-6, 0, 0.23),

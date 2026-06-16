@@ -390,8 +390,13 @@ class ScenarioDriver:
         for tf in self.scenario.traffic:
             if tf.ue_name != ue_name:
                 continue
+            # 保留第 3 欄 ul_kbps(最小可用 UL 用);沒給就 0。格式 [t, dl_kbps, ul_kbps]。
             schedule = [
-                [float(p[0]), float(p[1]) if len(p) > 1 else 0.0]
+                [
+                    float(p[0]),
+                    float(p[1]) if len(p) > 1 else 0.0,
+                    float(p[2]) if len(p) > 2 else 0.0,
+                ]
                 for p in tf.profile
             ]
             return {

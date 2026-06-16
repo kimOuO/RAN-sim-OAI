@@ -116,6 +116,31 @@ class UeTrafficGen:
             return kbps / 1000.0
         return 0.0
 
+    def _current_ul_rate_mbps(self, now_ms: int) -> float:
+        """最小可用 UL:讀 piecewise schedule 第 3 欄 ul_kbps([t, dl_kbps, ul_kbps])。
+        沒第 3 欄 → 0(向後相容只給 DL 的舊劇本)。cbr 用 profile['ul_rate_mbps']。"""
+        pattern = self.profile.get("pattern")
+        if pattern == "cbr":
+            return float(self.profile.get("ul_rate_mbps", 0) or 0)
+        if pattern == "piecewise":
+            schedule = self.profile.get("schedule") or []
+            if not schedule:
+                return 0.0
+            sim_speed_x = self._effective_sim_speed_x()
+            elapsed_sim_sec = (now_ms - self.profile_installed_at_ms) / 1000.0 * sim_speed_x
+            if elapsed_sim_sec < float(schedule[0][0]):
+                return 0.0
+            kbps = 0.0
+            for entry in schedule:
+                if not entry:
+                    continue
+                if float(entry[0]) <= elapsed_sim_sec:
+                    kbps = float(entry[2]) if len(entry) > 2 else 0.0
+                else:
+                    break
+            return kbps / 1000.0
+        return 0.0
+
     def tick(self) -> int:
         """每 manager tick 呼一次. 回傳本 tick inject 的 byte 數 (0 = idle / 還沒到時間)."""
         if not self.profile or self.profile.get("pattern") not in ("cbr", "piecewise"):
@@ -149,6 +174,16 @@ class UeTrafficGen:
         # 用設定值會多灌 1.49× 造成 buffer/delay/throughput 失真。見 sim_speed.py。
         sim_speed_x = self._effective_sim_speed_x()
         elapsed_sim_ms = elapsed_ms * sim_speed_x
+
+        # 最小可用 UL:同窗算 UL 需求 bytes 推給 DU(DU 用 UL 時隙容量 drain → 真 ThpUl/PrbUl/VolUL)
+        ul_rate_mbps = self._current_ul_rate_mbps(now)
+        if ul_rate_mbps > 0:
+            ul_bytes = int(ul_rate_mbps * 1e6 * elapsed_sim_ms / 1000 / 8)
+            if ul_bytes > 0:
+                try:
+                    du_client.report_ul_traffic(self.ue_id, ul_bytes)
+                except Exception:  # noqa: BLE001 — UL 報失敗不擋 DL inject
+                    pass
 
         # 計算 elapsed window 內 CBR 該傳的 byte 量
         # bytes = rate_bps × elapsed_sim_s / 8

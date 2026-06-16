@@ -116,6 +116,26 @@ class RlcDataController:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def report_ul_traffic(request):
+        """最小可用 UL:UE traffic_gen 每 tick 報本窗 UL 需求 bytes,累進 UL backlog。
+        tick_runner 之後用 UL 時隙容量 drain → 真 ul_bytes / prb_ul(取代 DL÷5 代理)。
+        Body: {ue_id, ul_bytes}
+        """
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("Invalid JSON", str(e), http_status=400)
+        ue_id = payload.get("ue_id")
+        ul_bytes = int(payload.get("ul_bytes") or 0)
+        if not ue_id:
+            return error_response("ue_id required", http_status=400)
+        from main.apps.mac.services.optional.ul_buffer import ul_buffer
+        pend = ul_buffer.report(ue_id, ul_bytes)
+        return success_response({"ue_id": ue_id, "ul_pending": pend}, "UL reported")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def read_buffer_status(request):
         out = []
         for (ue, btype, bid), ent in entity_factory.all_entities():

@@ -210,6 +210,21 @@ def inject_sdu_batch(
         return "fail"
 
 
+def report_ul_traffic(ue_id: str, ul_bytes: int) -> bool:
+    """POST DU /RLC/RlcDataController/report_ul_traffic — 報本 tick UL 需求 bytes。
+    最小可用 UL:DU 累進 UL backlog,tick_runner 用 UL 時隙容量 drain → 真 ThpUl/PrbUl/VolUL。
+    """
+    if ul_bytes <= 0:
+        return True
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/RLC/RlcDataController/report_ul_traffic"
+    try:
+        r = _session.post(url, json={"ue_id": ue_id, "ul_bytes": int(ul_bytes)}, timeout=_TIMEOUT_SEC)
+        return bool(r.ok)
+    except requests.RequestException as exc:
+        logger.warning("report_ul_traffic HTTP failed: %s", exc)
+        return False
+
+
 def fetch_ue_signals() -> dict[str, dict[str, Any]]:
     """POST DU /Tick/TickController/dump_pm → 抽 per-UE 即時訊號(UeLifecycleManager
     每 N tick 拉一次,跟位置一起寫進 signal_history)。

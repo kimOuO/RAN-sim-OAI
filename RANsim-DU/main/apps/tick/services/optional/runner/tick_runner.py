@@ -335,6 +335,12 @@ class TickRunner:
                 logger.info("TickRunner.start: cleared %d stale PRB quota(s) from previous session", _qn)
         except Exception:
             logger.exception("prb_quota.clear_all() failed; continuing")
+        # clean-scene-reset: 清 UL backlog,避免跨 session UL 流量漏到下次劇本
+        try:
+            from main.apps.mac.services.optional.ul_buffer import ul_buffer as _ulb
+            _ulb.clear()
+        except Exception:
+            logger.exception("ul_buffer.clear() failed; continuing")
 
         # P0a — 重置 achieved 量測視窗(每次 cold start 重新量漂移)
         with self._tick_ms_lock:
@@ -677,20 +683,35 @@ class TickRunner:
         # 對齊 OAI: stats counter 統計 mac_rlc_data_req return 的 actual_pdu_bytes,
         # 不是 nr_compute_tbs() 的理論 capacity. 這樣不同 traffic rate 才會在 KPM 反映出來.
         pm = get_pm_aggregator()
+        # 最小可用 UL:用 UL 時隙容量(獨立於 DL,不搶 PRB)drain UL backlog →
+        # 真 ul_bytes / prb_ul,取代舊的 DL÷5 代理。OAI 無 UL delay 故不做 delay。
+        from main.apps.mac.services.optional.ul_buffer import ul_buffer
+        from main.apps.mac.services.optional.link_adaptation.mcs_table import (
+            TDD_UL_SLOT_RATIO as _UL_RATIO,
+        )
+        _ul_tick_s = self._sim_dt_ms / 1000.0
         for ue in ues_for_measurement:
             uid = ue["id"]
             actual_dl = actual_drained_map.get(uid, 0)
+            # UL:一個 PRB 本 tick 在 UL 時隙能載的 bytes → 滿 PRB 容量 → drain backlog
+            _mcs_ul = max(0, mcs_map.get(uid, 9) - 2)
+            _, _bps_re_ul = sinr_to_mcs(ue["sinr_db"])
+            _ul_bytes_per_prb = mcs_to_throughput_mbps(
+                mcs=_mcs_ul, bps_re=_bps_re_ul, n_rb=1, tdd_dl_ratio=_UL_RATIO,
+            ) * 1e6 * _ul_tick_s / 8.0
+            _ul_cap = int(_ul_bytes_per_prb * prb_per_cell)
+            _ul_drained, _prb_ul = ul_buffer.drain(uid, _ul_cap, _ul_bytes_per_prb)
             pm.accumulate_ue(
                 gnb_name=ue["serving_cell"],
                 ue_id=uid,
                 mcs_dl=mcs_map.get(uid, 9),
-                mcs_ul=max(0, mcs_map.get(uid, 9) - 2),
+                mcs_ul=_mcs_ul,
                 sinr_db=ue["sinr_db"],
                 rsrp_dbm=ue["rsrp_dbm"],
                 prb_dl=rb_alloc_global.get(uid, 0),
-                prb_ul=rb_alloc_global.get(uid, 0) // 5,
+                prb_ul=_prb_ul,
                 dl_bytes=actual_dl,
-                ul_bytes=actual_dl // 5,
+                ul_bytes=_ul_drained,
                 qos_5qi=ue["qos_5qi"],
                 rank=ue.get("rank", 1),
             )

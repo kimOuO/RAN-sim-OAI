@@ -18,4 +18,9 @@ urlpatterns = [
         RlcDataController.read_buffer_status,
         name="rlc_data_buffer_status",
     ),
+    path(
+        "RlcDataController/report_ul_traffic",
+        RlcDataController.report_ul_traffic,
+        name="rlc_data_report_ul",
+    ),
 ]
