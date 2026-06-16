@@ -701,6 +701,8 @@ class TickRunner:
             ) * 1e6 * _ul_tick_s / 8.0
             _ul_cap = int(_ul_bytes_per_prb * prb_per_cell)
             _ul_drained, _prb_ul = ul_buffer.drain(uid, _ul_cap, _ul_bytes_per_prb)
+            # cell-level UL PRB(補 prb_pct_ul 缺口):把 per-UE UL PRB 累進該 cell
+            pm.accumulate_cell_ul(ue["serving_cell"], _prb_ul)
             pm.accumulate_ue(
                 gnb_name=ue["serving_cell"],
                 ue_id=uid,
@@ -900,7 +902,7 @@ class TickRunner:
                 cell_report = GnbDuCellMeasurementReport(
                     cell_id=cell_id,
                     prb_pct_dl=cw["prb_pct_dl"],
-                    prb_pct_ul=0.0,
+                    prb_pct_ul=cw.get("prb_pct_ul", 0.0),
                     tick_count=cw["tick_count"],
                     window_seconds=window_s,
                 )

@@ -163,15 +163,17 @@ class _CellWindowAccumulator:
     這是 cell-level 累計, **不從 per-UE sum 來**, 避開 UE 樣本數不齊造成的 > 100% 假象.
     """
     tick_count: int = 0           # window 內該 cell 真實 tick 次數 (含沒 UE 的 tick)
-    prb_used_sum: int = 0         # window 內該 cell 累計 PRB usage (每 tick 0..n_prb_total)
+    prb_used_sum: int = 0         # window 內該 cell 累計 DL PRB usage (每 tick 0..n_prb_total)
+    prb_used_ul_sum: int = 0      # window 內該 cell 累計 UL PRB usage(UL 獨立時隙)
     # 3GPP TS 28.552 RRU.PrbTotDl 分母 = cell 物理 PRB 容量,**不受 PRB quota 影響**。
     # caller (tick_runner) 必須傳未 cap 前的 prb_per_cell;傳 capped 值會讓 xApp
     # 一下 max_prb=3 RC 立刻看到 PRB%=100%,違反 28.552 語意。
     n_prb_total_sum: int = 0      # window 內每 tick 物理 PRB capacity 累計
 
-    def add_tick(self, prb_used: int, n_prb_total: int) -> None:
+    def add_tick(self, prb_used: int, n_prb_total: int, prb_used_ul: int = 0) -> None:
         self.tick_count += 1
         self.prb_used_sum += int(prb_used)
+        self.prb_used_ul_sum += int(prb_used_ul)
         self.n_prb_total_sum += int(n_prb_total)
 
     def flush(self) -> dict[str, Any]:
@@ -186,14 +188,17 @@ class _CellWindowAccumulator:
         capacity = max(self.n_prb_total_sum, 1)
         prb_pct_raw = self.prb_used_sum / capacity * 100.0
         prb_pct = prb_pct_raw * PRB_OAI_CALIB
+        prb_pct_ul = (self.prb_used_ul_sum / capacity * 100.0) * PRB_OAI_CALIB
         report = {
             "tick_count": self.tick_count,
             "prb_used_sum": self.prb_used_sum,
             "prb_pct_dl": min(100.0, max(0.0, prb_pct)),  # clamp 防意外 round-off + calib overshoot
             "prb_pct_dl_raw": min(100.0, max(0.0, prb_pct_raw)),  # debug 用,未校正值
+            "prb_pct_ul": min(100.0, max(0.0, prb_pct_ul)),  # UL cell-level PRB(獨立時隙)
         }
         self.tick_count = 0
         self.prb_used_sum = 0
+        self.prb_used_ul_sum = 0
         self.n_prb_total_sum = 0
         return report
 
@@ -215,16 +220,27 @@ class PmAggregatorService:
 
     # AL2 — cell-level PRB accumulation (對齊 OAI prb_used_dl 語意)
     def accumulate_cell_tick(
-        self, cell_id: str, prb_used: int, n_prb_total: int,
+        self, cell_id: str, prb_used: int, n_prb_total: int, prb_used_ul: int = 0,
     ) -> None:
-        """每 tick 每 cell 呼一次, 不管該 tick 有沒有 UE."""
+        """每 tick 每 cell 呼一次, 不管該 tick 有沒有 UE。prb_used_ul = 該 cell 本 tick UL PRB。"""
         if not cell_id:
             return
         acc = self._cell_window.get(cell_id)
         if acc is None:
             acc = _CellWindowAccumulator()
             self._cell_window[cell_id] = acc
-        acc.add_tick(prb_used, n_prb_total)
+        acc.add_tick(prb_used, n_prb_total, prb_used_ul)
+
+    def accumulate_cell_ul(self, cell_id: str, prb_ul: int) -> None:
+        """per-UE 累加該 cell 本 tick 的 UL PRB(在 accumulate_cell_tick 之後、per-UE 迴圈裡呼)。
+        只加 prb_used_ul_sum,不動 tick_count / n_prb_total(那些 DL 那輪已計)。"""
+        if not cell_id or prb_ul <= 0:
+            return
+        acc = self._cell_window.get(cell_id)
+        if acc is None:
+            acc = _CellWindowAccumulator()
+            self._cell_window[cell_id] = acc
+        acc.prb_used_ul_sum += int(prb_ul)
 
     def flush_cell_report(self, cell_id: str) -> dict[str, Any] | None:
         """flush 該 cell window — 沒資料回 None."""
