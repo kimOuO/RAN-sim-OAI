@@ -47,13 +47,46 @@ _SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False)
 # 反事實 res_op 完整修法參數(待校的現象學值):
 _SLOT_CADENCE_PERIOD = get_int("SLOT_CADENCE_PERIOD", 40)   # 改動二 baseline 排程節奏
 _SLOT_OP_PRB_FLOOR = get_int("SLOT_OP_PRB_FLOOR", 12)       # MIN_PRB 地板(低載 UE 不被餓死,= OAI 空 cell 大方給)
-# load-adaptive baseline:k0(pipeline baseline)隨 bo 從 min→max 縮放(輕載小→normal對齊,重載大→im/es對齊+burst封頂不爆)
-_SLOT_K0_MIN = get_int("SLOT_K0_MIN", 14)
-_SLOT_K0_MAX = get_int("SLOT_K0_MAX", 32)
-_SLOT_K0_BO_REF = get_int("SLOT_K0_BO_REF", 60000)
+# load-adaptive baseline:k0(pipeline baseline)隨「本 tick 到達流量」從 min→max 縮放。
+# 2026-06-10 修:load 信號從 bo(buffer 占用)改成 arrival_bytes(到達流量)——
+#   bo 在 normal-1(195k)/normal-2(16k)都因快排空而≈0,分不開;arrival_bytes 才能分辨。
+#   K0_MIN 降到 3(=1.5ms 地板,讓低載相位掉得下去對齊 OAI normal-2 1.5/cco 0.74),
+#   K0_MAX 提到 44(=22ms,對齊 es 21.8 高載)。
+_SLOT_K0_MIN = get_int("SLOT_K0_MIN", 3)
+_SLOT_K0_MAX = get_int("SLOT_K0_MAX", 44)
+_SLOT_K0_ARR_REF = get_int("SLOT_K0_ARR_REF", 20000)  # 到達流量(bytes/tick)在此飽和到 K0_MAX
 # #2 RLC discardTimer:SDU 等超過此 sim-ms 丟棄(過載封頂延遲,對齊真機)。0=關。
 # 設遠高於已對齊的 12-22ms delay(預設 300ms 不影響正常,只封頂過載的數十秒假延遲)。
 _SLOT_DISCARD_TIMER_MS = get_int("SLOT_DISCARD_TIMER_MS", 300)
+
+
+def set_discard_timer_ms(ms: int) -> None:
+    """runtime 設 discard timer(劇本 start 時套用,免 DU 專用 env)。0=關(CCO 讓 delay 真實爬)。"""
+    global _SLOT_DISCARD_TIMER_MS
+    _SLOT_DISCARD_TIMER_MS = int(ms)
+
+
+def set_rlc_delay_model(mode: str) -> None:
+    """runtime 切 RLC delay 模式(劇本 start 套用,免 env 重啟)。
+    'subtick' = 誠實 FIFO sim-time 排隊延遲(壅塞時真實爬,CCO 觸發要);
+    'calib'   = wall + ÷30 擬合對齊 OAI 低 delay(壅塞被壓平,normal 對照用)。"""
+    global _RLC_DELAY_SUBTICK
+    _RLC_DELAY_SUBTICK = (str(mode or "calib").strip().lower() == "subtick")
+
+
+def get_discard_timer_ms() -> int:
+    """目前生效的 discard timer(供 runtime phys getter / 前端觀測)。"""
+    return int(_SLOT_DISCARD_TIMER_MS)
+
+
+def get_rlc_delay_model() -> str:
+    return "subtick" if _RLC_DELAY_SUBTICK else "calib"
+
+
+def get_slot_engine_takeover() -> bool:
+    return bool(_SLOT_ENGINE_TAKEOVER)
+
+
 # in-process Phase1 Step2:DU 直讀 cache 算 SINR,只 log 跟 HTTP SINR 比對(不接管),驗證一致才往下
 _DU_INPROCESS_SINR = get_bool("DU_INPROCESS_SINR", False)
 # in-process Phase1 Step3:cached mode 下 SINR 改 in-process(同 tick 直算)+ dl_tti HTTP 改非阻塞 → 解放 tick 粒度
@@ -291,6 +324,17 @@ class TickRunner:
             self._ue_registry.clear()
         self._slot_states.clear()  # 改動一:每次 Start Sim 清乾淨 shadow 狀態(對齊 clean-scene-reset)
         self._slot_states_op.clear()
+        # clean-scene-reset: 清 PRB quota store。quota 是跨 run 存活的 singleton,只有 xApp
+        # 主動 clear 才會消;若不在這裡清,上一輪 xApp/劇本設的 cap(如 ES xApp 的 3%)會
+        # 洩漏到下一個沒自帶 quota 的劇本,整輪卡在錯誤 PRB 上限。scenario_driver.start()
+        # 之後會重套本劇本自帶的 cell_quotas,所以對有定義 quota 的劇本是 no-op。
+        try:
+            from main.apps.mac.services.optional.scheduler.prb_quota import get_store as _get_quota_store
+            _qn = _get_quota_store().clear_all()
+            if _qn > 0:
+                logger.info("TickRunner.start: cleared %d stale PRB quota(s) from previous session", _qn)
+        except Exception:
+            logger.exception("prb_quota.clear_all() failed; continuing")
 
         # P0a — 重置 achieved 量測視窗(每次 cold start 重新量漂移)
         with self._tick_ms_lock:
@@ -686,8 +730,10 @@ class TickRunner:
                 prb_now = rb_alloc_global.get(uid, 0)
                 prb_demand = math.ceil(bo / bytes_per_prb) if bytes_per_prb > 0 else prb_now
                 prb_op = max(1, prb_demand, _SLOT_OP_PRB_FLOOR)  # 操作點 demand 套 MIN_PRB 地板
-                # load-adaptive baseline:k0 隨 bo 縮放(輕載小→normal對齊,重載大→im/es對齊,封頂→burst不爆)
-                _k0 = int(_SLOT_K0_MIN + (_SLOT_K0_MAX - _SLOT_K0_MIN) * min(1.0, bo / max(_SLOT_K0_BO_REF, 1)))
+                # load-adaptive baseline:k0 隨「本 tick 到達流量」縮放(低載→1.5ms地板,重載→22ms;
+                # 用 arrival_bytes 而非 bo,才能分辨 normal-1 195k vs normal-2 16k——兩者 bo 都≈0)
+                _arrival_bytes = sum(b for (_a, b) in arrivals)
+                _k0 = int(_SLOT_K0_MIN + (_SLOT_K0_MAX - _SLOT_K0_MIN) * min(1.0, _arrival_bytes / max(_SLOT_K0_ARR_REF, 1)))
                 try:
                     # takeover 時 res 用真實已分配 PRB(scheduler 已改操作點)+ load-adaptive k0 baseline → 接管 delay KPM
                     res = simulate_sdu_delays(

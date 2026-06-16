@@ -4,14 +4,14 @@ OAI ref:
   - openair2/E2AP/RAN_FUNCTION/O-RAN/ran_func_kpm.c::fill_kpm_ind_msg_frm_3()
   - openair2/E2AP/RAN_FUNCTION/O-RAN/ran_func_kpm_subs.c (metrics 定義)
 
-OAI 支援的 KPM metric names（對齊 3GPP TS 28.552）：
-  - DRB.PdcpSduVolumeDL / UL    — PDCP SDU bytes
-  - DRB.UEThpDl / UL             — throughput Mbps
-  - DRB.RlcSduDelayDl            — RLC delay (我們沒有，回 None)
-  - RRU.PrbTotDl / UL            — PRB utilization %
+送到 RIC 的 KPM metric names + wire 單位（RIC 端按此單位原樣寫入 InfluxDB,全 INTEGER）：
+  - DRB.PdcpSduVolumeDL / UL    — kbit
+  - DRB.UEThpDl / UL             — bps
+  - DRB.RlcSduDelayDl            — μs
+  - RRU.PrbTotDl / UL            — PPM (1% = 10000 ppm)
 擴展（非 OAI 標準但 5G 常用）：
-  - RSRP                         — dBm
-  - SINR                         — dB
+  - RSRP                         — dBm (38.133 mapping)
+  - SINR                         — dB  (38.133 mapping)
 """
 from __future__ import annotations
 
@@ -40,40 +40,44 @@ def _cell_prb_pct(serving_cell: str, field: str = "prb_pct_dl") -> float:
 
 
 # OAI 標準 metric → 取值 lambda。
-# 單位對齊 3GPP TS 28.552 / xApp 期望（DRB.UEThpDl 是 kbps，不是 Mbps）。
+# 送到 RIC 的 wire 單位(RIC 端按此單位原樣寫入 InfluxDB,不再縮放),全部 INTEGER:
+#   DRB.PdcpSduVolumeDL/UL = kbit   DRB.RlcSduDelayDl = μs(us)
+#   DRB.UEThpDl/UL         = bps    RRU.PrbTotDl/UL   = PPM
+# 命門:downstream codec(_value_to_kpm_uint)只 int(round(v)) 不縮放,故此處就把值
+# 換算到目標單位再轉 INT。先換到「細單位」再 round,避免在粗單位下捨入掉精度。
 METRIC_EXTRACTORS = {
-    # 1 Mbps = 1000 kbps
+    # DRB.UEThpDl/UL — bps。DU 給 Mbps,×1e6 → bps。
     "DRB.UEThpDl": lambda last_meas, ue: (
-        ((last_meas.throughput_dl_mbps if last_meas else 0.0) * 1000.0), "kbps",
+        int(round((last_meas.throughput_dl_mbps if last_meas else 0.0) * 1_000_000)), "bps",
     ),
     "DRB.UEThpUl": lambda last_meas, ue: (
-        ((getattr(last_meas, "throughput_ul_mbps", 0.0) if last_meas else 0.0) * 1000.0), "kbps",
+        int(round((getattr(last_meas, "throughput_ul_mbps", 0.0) if last_meas else 0.0) * 1_000_000)), "bps",
     ),
+    # DRB.PdcpSduVolumeDL/UL — kbit。DU PM aggregator 累計 bytes,×8/1000 → kbit。
     "DRB.PdcpSduVolumeDL": lambda last_meas, ue: (
-        # 真累計 bytes — DU PM aggregator 從 RLC SDU bytes 累計（PDCP layer proxy）
-        # MeasurementLog.pdcp_sdu_volume_dl 是該 measurement window 內累計
-        getattr(last_meas, "pdcp_sdu_volume_dl", 0) if last_meas else 0,
-        "bytes",
+        int(round((getattr(last_meas, "pdcp_sdu_volume_dl", 0) if last_meas else 0) * 8 / 1000.0)),
+        "kbit",
     ),
     "DRB.PdcpSduVolumeUL": lambda last_meas, ue: (
-        getattr(last_meas, "pdcp_sdu_volume_ul", 0) if last_meas else 0,
-        "bytes",
+        int(round((getattr(last_meas, "pdcp_sdu_volume_ul", 0) if last_meas else 0) * 8 / 1000.0)),
+        "kbit",
     ),
-    # AL2 — RRU.PrbTotDl 是 cell-level metric (3GPP TS 28.552), 不從 per-UE sum.
-    # 查該 UE serving_cell 最新 CellMeasurementLog (DU pm_aggregator cell-level 累計).
+    # RRU.PrbTotDl/UL — PPM。cell-level prb_pct(0~100),×10000 → ppm(1% = 10000 ppm)。
+    # cell-level metric (3GPP TS 28.552),不從 per-UE sum;查 serving_cell 最新 CellMeasurementLog。
     "RRU.PrbTotDl": lambda last_meas, ue: (
-        _cell_prb_pct(getattr(ue, "serving_cell", "") or "", "prb_pct_dl"),
-        "%",
+        int(round(_cell_prb_pct(getattr(ue, "serving_cell", "") or "", "prb_pct_dl") * 10000)),
+        "ppm",
     ),
     "RRU.PrbTotUl": lambda last_meas, ue: (
-        _cell_prb_pct(getattr(ue, "serving_cell", "") or "", "prb_pct_ul"),
-        "%",
+        int(round(_cell_prb_pct(getattr(ue, "serving_cell", "") or "", "prb_pct_ul") * 10000)),
+        "ppm",
     ),
     "RSRP": lambda last_meas, ue: (last_meas.rsrp_dbm if last_meas else None, "dBm"),
     "SINR": lambda last_meas, ue: (last_meas.sinr_db if last_meas else None, "dB"),
+    # DRB.RlcSduDelayDl — μs。內部 rlc_sdu_delay_dl_ms(ms),×1000 → μs。
     "DRB.RlcSduDelayDl": lambda last_meas, ue: (
-        getattr(last_meas, "rlc_sdu_delay_dl_ms", 0.0) if last_meas else 0.0,
-        "ms",
+        int(round((getattr(last_meas, "rlc_sdu_delay_dl_ms", 0.0) if last_meas else 0.0) * 1000)),
+        "us",
     ),
 }
 

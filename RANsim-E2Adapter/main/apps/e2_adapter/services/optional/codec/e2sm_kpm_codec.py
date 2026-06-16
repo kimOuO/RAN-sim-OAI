@@ -232,13 +232,13 @@ def decode_kpm_indication_message(data: bytes) -> dict[str, Any]:
 
 # OAI O-RAN compliant 標準 9 個 metric names（對應 sim 端 kpm_indication.py）：
 _SIM_SUPPORTED_METRICS = [
-    "DRB.UEThpDl",       # kbps
-    "DRB.UEThpUl",       # kbps
-    "DRB.PdcpSduVolumeDL",   # bytes
-    "DRB.PdcpSduVolumeUL",   # bytes
-    "DRB.RlcSduDelayDl",     # ms
-    "RRU.PrbTotDl",          # %
-    "RRU.PrbTotUl",          # %
+    "DRB.UEThpDl",       # bps   (INTEGER)
+    "DRB.UEThpUl",       # bps   (INTEGER)
+    "DRB.PdcpSduVolumeDL",   # kbit  (INTEGER)
+    "DRB.PdcpSduVolumeUL",   # kbit  (INTEGER)
+    "DRB.RlcSduDelayDl",     # μs    (INTEGER)
+    "RRU.PrbTotDl",          # PPM   (INTEGER)
+    "RRU.PrbTotUl",          # PPM   (INTEGER)
     "RSRP",                  # dBm (sim 擴展)
     "SINR",                  # dB  (sim 擴展)
 ]

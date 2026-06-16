@@ -4,6 +4,7 @@ OAI ref: openair2/F1AP/f1ap_cu_task.c (F1AP_CU_task at L110-239).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 from django.db import transaction
@@ -32,7 +33,7 @@ from main.apps.cu_cp.services.optional.mobility.a3_handover_calculation import (
     A3HandoverCalculation, get_ue_state,
 )
 from main.apps.cu_cp.services.optional.ngap.ngap_handler import NgapHandler
-from main.utils.env_loader import default_served_plmn
+from main.utils.env_loader import default_served_plmn, get_bool, get_str
 from main.apps.cu_cp.services.optional.rrc.message_handler import (
     RrcMessageHandler, RrcMessageType,
 )
@@ -41,6 +42,28 @@ from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
 logger = get_logger(__name__)
+
+
+def _resolve_ue_base(ue_id: str) -> int:
+    """UE 的 base id(rrc_ue_id = ran_ue_ngap_id = base，amf_ue_ngap_id = base + 1）。
+
+    三種模式(env 控制),讓 amf/f1ap 能對齊 xApp 表上「🔒固定」的值:
+      1. UE_ID_FIXED_MAP 有列此 ue_id → 用指定固定值。
+         格式 "ue_id:base,ue_id:base"，例 "cco_ue_01:1056001737"(→ amf 1056001738)。
+      2. UE_ID_RANDOM=1 → Python hash(per-process 隨機、非決定性，舊行為，測試用)。
+      3. 預設 → SHA-1(ue_id)(跨重啟決定性穩定，與 cell nr_cellid 同套路)。
+    """
+    fixed_map = get_str("UE_ID_FIXED_MAP", "cco_ue_01:1056001737") or ""
+    for pair in fixed_map.split(","):
+        name, sep, val = pair.partition(":")
+        if sep and name.strip() == ue_id:
+            try:
+                return int(val.strip()) % (2 ** 31)
+            except ValueError:
+                break
+    if get_bool("UE_ID_RANDOM", False):
+        return abs(hash(ue_id)) % (2 ** 31)
+    return int.from_bytes(hashlib.sha1(ue_id.encode("utf-8")).digest()[:4], "big") % (2 ** 31)
 
 
 class F1ApRouterActor:
@@ -207,9 +230,9 @@ class F1ApRouterActor:
         ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
         if ue is None:
             # 沒真 AMF — 但 xApp / E2 介面要求 amf_ue_ngap_id 唯一可識別。
-            # 用 hash(ue_id) 衍生三個 ID（rrc / ran / amf）— deterministic，相同 UE ID
-            # 重 attach 也拿到同一組 ID。
-            base = abs(hash(ue_id)) % (2 ** 31)
+            # base 由 _resolve_ue_base() 決定:UE_ID_FIXED_MAP(鎖表值)→ UE_ID_RANDOM(隨機)
+            # → 預設 SHA-1(決定性穩定)。見該函式註解 + memory ue_id_hash_nondeterminism。
+            base = _resolve_ue_base(ue_id)
             ue = SqlDbBusinessService.create_entity(UeContext, {
                 "ue_uuid": ue_uuid,
                 "ue_id": ue_id,

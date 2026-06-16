@@ -54,6 +54,13 @@ class _PrbQuotaStore:
         with self._lock:
             self._quotas.pop(cell_id, None)
 
+    def clear_all(self) -> int:
+        """清空所有 cell 的 quota。Start Sim 用,避免上一輪 xApp 設的 cap 洩漏到本次劇本。"""
+        with self._lock:
+            n = len(self._quotas)
+            self._quotas.clear()
+            return n
+
     def get(self, cell_id: str) -> PrbQuota | None:
         with self._lock:
             return self._quotas.get(cell_id)
