@@ -9,7 +9,9 @@ from __future__ import annotations
 import math
 import os
 import threading
+import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -128,6 +130,32 @@ def cell_id_to_tx(cell_id: str) -> str:
     return cell_id
 
 
+# tx_name → (freq_ghz, bw_mhz),從 CellState 建,2s 快取(SINR 每 tick 呼叫,免每次打 DB)。
+_FREQ_MAP_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
+
+
+def _cell_freq_map() -> dict[str, tuple[float, float]]:
+    now = time.time()
+    if now - _FREQ_MAP_CACHE["ts"] > 2.0:
+        try:
+            from main.apps.mac.models.cell_state import CellState
+            m: dict[str, tuple[float, float]] = {}
+            for c in CellState.objects.values("cell_id", "freq_ghz", "bw_mhz"):
+                m[cell_id_to_tx(c["cell_id"])] = (float(c["freq_ghz"]), float(c["bw_mhz"]))
+            _FREQ_MAP_CACHE["map"] = m
+            _FREQ_MAP_CACHE["ts"] = now
+        except Exception:
+            pass  # DB 沒 ready 等狀況:回上次快取(或空),compute_sinr_db 會 fallback co-channel
+    return _FREQ_MAP_CACHE["map"]
+
+
+def _freq_overlaps(a: tuple[float, float], b: tuple[float, float]) -> bool:
+    """兩 cell 頻段是否重疊(會互擾)。a/b = (freq_ghz, bw_mhz)。
+    |Δf| (MHz) < (BWa + BWb)/2 → 重疊。e.g. 3.45 vs 3.65 = 200MHz > 40 → 不重疊。"""
+    df_mhz = abs(a[0] - b[0]) * 1000.0
+    return df_mhz < (a[1] + b[1]) / 2.0
+
+
 def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None) -> float:
     """對齊 RU _compute_sinr_db_with_real_interference:
     SINR = serving_rx / (Σ其他cell_rx + noise),rx_mw = TX_mW × path_gain_linear。
@@ -139,13 +167,23 @@ def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None) ->
         return float("-inf")
     tx_mw = 10.0 ** (_TX_POWER_DBM / 10.0)
     serving_mw = tx_mw * serving_pg
-    # inter-freq:不同頻不互擾 → 干擾項歸零(只剩雜訊);co-channel:加總其他 cell。
+    # 干擾模型:
+    #   inter_freq 旗標 True → 強制不互擾(舊劇本相容)。
+    #   否則(co-channel)→ 用「頻率重疊」判斷:只有頻段和 serving 重疊的鄰 cell 才算干擾。
+    #     對齊 OAI 1-gNB-2-DU 異頻(c0=3.45/c1=3.65 差 200MHz 不重疊 → 自然不互擾,免旗標);
+    #     同頻劇本(全 3.5)所有 cell 都重疊 → 行為與舊版相同(零破壞)。
     if _INTER_FREQ:
         interference_mw = 0.0
     else:
-        interference_mw = sum(
-            tx_mw * pg for tx, pg in path_gain_dict.items() if tx != serving_tx and pg > 0
-        )
+        fmap = _cell_freq_map()
+        sf = fmap.get(serving_tx)
+        interference_mw = 0.0
+        for tx, pg in path_gain_dict.items():
+            if tx == serving_tx or pg <= 0:
+                continue
+            if sf is not None and tx in fmap and not _freq_overlaps(sf, fmap[tx]):
+                continue  # 頻段不重疊 → 不互擾
+            interference_mw += tx_mw * pg
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     sinr_lin = serving_mw / (interference_mw + noise_mw)
     return 10.0 * math.log10(sinr_lin) if sinr_lin > 0 else float("-inf")

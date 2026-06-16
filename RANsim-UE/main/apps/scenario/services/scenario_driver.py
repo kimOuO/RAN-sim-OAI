@@ -107,6 +107,10 @@ class ScenarioDriver:
                     "cell_id": c.cell_id,
                     "pci": c.pci,
                     "azimuth_deg": c.azimuth_deg,
+                    # per-cell 頻率/頻寬覆寫,寫進 GnbConfig.cells JSON(無 schema migration)。
+                    # None 就不放 → 下游 fallback 到 gNB 的 frequency_ghz。
+                    "frequency_ghz": (c.frequency_ghz if c.frequency_ghz is not None else g.frequency_ghz),
+                    "bandwidth_mhz": (c.bandwidth_mhz if c.bandwidth_mhz is not None else g.bandwidth_mhz),
                 }
                 if c.position is not None:
                     cell_entry["position"] = [c.position[0], c.position[1], c.position[2]]
@@ -341,21 +345,24 @@ class ScenarioDriver:
             for i, c in enumerate(g.cells):
                 cell_id = c.cell_id or f"{g.name}_c{i}"
                 cell_pos = c.position if c.position else g.position
+                # per-cell 頻率/頻寬覆寫(對齊 OAI 1-gNB-2-DU 異頻);None 就 fallback gNB 值
+                cell_freq = c.frequency_ghz if c.frequency_ghz is not None else g.frequency_ghz
+                cell_bw = c.bandwidth_mhz if c.bandwidth_mhz is not None else g.bandwidth_mhz
                 ru_cells.append({
                     "name": cell_id,
                     "pci": c.pci,
                     "azimuth_deg": c.azimuth_deg,
                     "position": [cell_pos[0], cell_pos[1], cell_pos[2]],
-                    "frequency_ghz": g.frequency_ghz,
-                    "bandwidth_mhz": g.bandwidth_mhz,
+                    "frequency_ghz": cell_freq,
+                    "bandwidth_mhz": cell_bw,
                     "gnb_id": g.name,
                     "power_dbm": g.power_dbm,
                 })
                 du_cells.append({
                     "cell_id": cell_id,
                     "pci": c.pci,
-                    "freq_ghz": g.frequency_ghz,
-                    "bw_mhz": g.bandwidth_mhz,
+                    "freq_ghz": cell_freq,
+                    "bw_mhz": cell_bw,
                     "gnb_id": g.name,
                 })
 

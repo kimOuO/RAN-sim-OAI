@@ -76,21 +76,24 @@ def _load_live_db() -> dict[str, Any]:
         for i, c in enumerate(cells):
             cell_id = str(c.get("cell_id") or f"{gnb_name}_c{i}")
             cpos = c.get("position") or gnb_pos
+            # per-cell 頻率/頻寬覆寫(對齊 OAI 1-gNB-2-DU 異頻);沒給就 fallback gNB 值。
+            cell_freq = float(c.get("frequency_ghz") or freq)
+            cell_bw = float(c.get("bandwidth_mhz") or bw)
             ru_cells.append({
                 "name": cell_id,
                 "pci": int(c.get("pci") or 0),
                 "azimuth_deg": float(c.get("azimuth_deg") or 0.0),
                 "position": [float(cpos[0]), float(cpos[1]), float(cpos[2])],
-                "frequency_ghz": freq,
-                "bandwidth_mhz": bw,
+                "frequency_ghz": cell_freq,
+                "bandwidth_mhz": cell_bw,
                 "gnb_id": gnb_name,
                 "power_dbm": power,
             })
             du_cells.append({
                 "cell_id": cell_id,
                 "pci": int(c.get("pci") or 0),
-                "freq_ghz": freq,
-                "bw_mhz": bw,
+                "freq_ghz": cell_freq,
+                "bw_mhz": cell_bw,
                 "gnb_id": gnb_name,
             })
 

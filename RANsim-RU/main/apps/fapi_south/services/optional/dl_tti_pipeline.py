@@ -96,6 +96,7 @@ def _compute_sinr_db_with_real_interference(
     tx_to_cell: dict[str, str],
     gnb_to_cell: dict[str, str],
     cell_to_power: dict[str, float],
+    cell_to_freq: dict | None = None,
 ) -> float:
     """從 path_gain_dict 算真實 SINR(含真正 inter-cell interference)。
 
@@ -133,12 +134,29 @@ def _compute_sinr_db_with_real_interference(
 
     serving_mw = _rx_mw(serving_pg, _power_for_tx(serving_key))
 
+    # serving cell 的頻段(用於 co-channel 頻率重疊判斷)
+    _fmap = cell_to_freq or {}
+    _serv_cell = tx_to_cell.get(serving_key) or gnb_to_cell.get(serving_key)
+    _serv_freq = _fmap.get(_serv_cell) if _serv_cell else None
+
+    def _overlaps(tx_name: str) -> bool:
+        """鄰 cell 頻段是否和 serving 重疊(重疊才互擾)。未知頻率 → 保守當重疊。"""
+        if _serv_freq is None:
+            return True
+        cid = tx_to_cell.get(tx_name) or gnb_to_cell.get(tx_name)
+        fo = _fmap.get(cid) if cid else None
+        if fo is None:
+            return True
+        return abs(_serv_freq[0] - fo[0]) * 1000.0 < (_serv_freq[1] + fo[1]) / 2.0
+
     interference_mw = 0.0
-    if not _read_inter_freq():  # inter_freq=True(共享檔)→ 各 cell 不同頻不互擾,跳過他 cell 干擾累加
+    if not _read_inter_freq():  # inter_freq=True(共享檔)→ 強制不互擾(舊劇本相容)
         for tx_name, pg in path_gain_dict.items():
             if tx_name == serving_key:
                 continue
             if not isinstance(pg, (int, float)) or pg <= 0:
+                continue
+            if not _overlaps(tx_name):   # co-channel 但頻段不重疊(異頻)→ 不互擾
                 continue
             interference_mw += _rx_mw(pg, _power_for_tx(tx_name))
 
@@ -210,6 +228,16 @@ def _build_cell_to_power_map() -> dict[str, float]:
     try:
         from main.apps.antenna.models.cell import Cell
         return {c.name: float(c.power_dbm) for c in Cell.objects.all()}
+    except Exception:
+        return {}
+
+
+def _build_cell_to_freq_map() -> dict:
+    """cell.name → (frequency_ghz, bandwidth_mhz)。用於 co-channel 的頻率重疊干擾判斷
+    (對齊 OAI 1-gNB-2-DU 異頻:頻段不重疊的鄰 cell 不互擾,免 inter_freq 旗標)。"""
+    try:
+        from main.apps.antenna.models.cell import Cell
+        return {c.name: (float(c.frequency_ghz), float(c.bandwidth_mhz)) for c in Cell.objects.all()}
     except Exception:
         return {}
 
@@ -374,6 +402,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     # AK8: 每 cell 的 TX 功率 — Dashboard 透過 update_cells 推進來，這裡用來算 RSRP，
     # 一次撈起來給整個 batch 用，不在 inner loop 打 DB。
     cell_to_power = _build_cell_to_power_map()   # cell.name → power_dbm
+    cell_to_freq = _build_cell_to_freq_map()     # cell.name → (freq_ghz, bw_mhz),頻率重疊干擾用
 
     out: list[CqiIndication] = []
     for pdu in req.pdus:
@@ -458,6 +487,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             tx_to_cell=tx_to_cell,
             gnb_to_cell=gnb_to_cell,
             cell_to_power=cell_to_power,
+            cell_to_freq=cell_to_freq,
         )
         # 額外保留的 env penalty(0 default),想模擬 multipath fade margin 才動
         if sinr_db != -float("inf"):

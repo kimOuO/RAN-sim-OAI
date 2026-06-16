@@ -34,6 +34,10 @@ class CellScenarioRow:
     pci: int = 0
     azimuth_deg: float = 0.0   # 0 = 正北,90 = 正東
     position: tuple[float, float, float] | None = None
+    # per-cell 頻率覆寫(None = 繼承所屬 gNB 的 frequency_ghz)。
+    # 對齊 OAI「1 gNB + 2 DU 異頻」(pci0=3.45 / pci1=3.65);有給時干擾改走頻率重疊判斷。
+    frequency_ghz: float | None = None
+    bandwidth_mhz: float | None = None
 
 
 @dataclass
@@ -163,6 +167,8 @@ def fetch(scenario_id: str) -> ScenarioSpec:
                 pci=int(c.get("pci") or 0),
                 azimuth_deg=float(c.get("azimuth_deg") or 0.0),
                 position=cell_pos,
+                frequency_ghz=(float(c["frequency_ghz"]) if c.get("frequency_ghz") is not None else None),
+                bandwidth_mhz=(float(c["bandwidth_mhz"]) if c.get("bandwidth_mhz") is not None else None),
             ))
         gnbs.append(GnbScenarioRow(
             name=str(g["name"]),

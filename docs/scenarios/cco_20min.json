@@ -8,7 +8,11 @@
   "gnbs": [
     {
       "name": "gnbDT",
-      "position": [0, 30, 0],
+      "position": [
+        0,
+        30,
+        0
+      ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
       "power_dbm": 3.0,
@@ -18,13 +22,25 @@
           "pci": 0,
           "cell_id": "gnbDT_c0",
           "azimuth_deg": 0,
-          "position": [0, 30, 0]
+          "position": [
+            0,
+            30,
+            0
+          ],
+          "frequency_ghz": 3.45072,
+          "bandwidth_mhz": 40.0
         },
         {
           "pci": 1,
           "cell_id": "gnbDT_c1",
           "azimuth_deg": 0,
-          "position": [300, 30, 0]
+          "position": [
+            300,
+            30,
+            0
+          ],
+          "frequency_ghz": 3.64944,
+          "bandwidth_mhz": 40.0
         }
       ]
     }
@@ -33,8 +49,18 @@
     {
       "name": "cco_ue_01",
       "positions": [
-        [0, 125.0, 1.5, 100.0],
-        [1200, 125.0, 1.5, 100.0]
+        [
+          0,
+          125.0,
+          1.5,
+          100.0
+        ],
+        [
+          1200,
+          125.0,
+          1.5,
+          100.0
+        ]
       ]
     }
   ],
@@ -42,20 +68,37 @@
     {
       "ue_name": "cco_ue_01",
       "profile": [
-        [0, 195, 20],
-        [300, 15000, 1500]
+        [
+          0,
+          195,
+          20
+        ],
+        [
+          300,
+          15000,
+          1500
+        ]
       ]
     }
   ],
   "_metadata": {
     "intent": "CCO 忠於原定義:1 gNB(gnbDT)+ 2 cell(c0@(0,30,0)/c1@(300,30,0)),UE(125,100)交界。inter_freq 兩 cell 不互擾,iso 天線。power_dbm=tx_power_dbm=3(兩欄一致,cached/live 同功率)。c0 quota10% 容量受限觸發→RC HO 到 c1(106PRB)回升。",
     "trigger_thresholds": "DRB.PdcpSduVolumeDL≥2500kbit, DRB.RlcSduDelayDl≥500ms, RRU.PrbTotDl≥6%(三者 AND)",
-    "trigger_config": { "intent": "cco", "pdcpKbitMin": 2500, "rlcUsMin": 500000, "prbPpmMin": 60000 }
+    "trigger_config": {
+      "intent": "cco",
+      "pdcpKbitMin": 2500,
+      "rlcUsMin": 500000,
+      "prbPpmMin": 60000
+    },
+    "inter_freq_note": "真異頻:c0=3.45072GHz / c1=3.64944GHz(對齊 OAI 1-gNB-2-DU)。inter_freq=false,干擾由頻率重疊判斷自然產生(差200MHz>40MHz→不重疊→不互擾),不再靠旗標。npz path_gain 已含 FSPL 頻率差(~0.49dB)。"
   },
   "cell_quotas": [
-    { "cell_id": "gnbDT_c0", "max_prb": 10 }
+    {
+      "cell_id": "gnbDT_c0",
+      "max_prb": 10
+    }
   ],
-  "inter_freq": true,
+  "inter_freq": false,
   "discard_timer_ms": 2000,
   "tx_power_dbm": 3.0,
   "rlc_delay_model": "subtick"
