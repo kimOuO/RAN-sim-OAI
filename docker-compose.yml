@@ -146,6 +146,9 @@ services:
       # #2 RLC discardTimer(sim-ms):過載/爛訊號時 SDU 等超過此值丟棄,封頂延遲(對齊真機)。
       # 預設 300 遠高於已對齊的 12-22ms,不影響正常;0=關。
       SLOT_DISCARD_TIMER_MS: "300"
+      # 低載 UE 的最小 DL PRB 分配地板(模仿 OAI PF min_rbSize)。對齊 OAI rfsim
+      # 同流量 PrbTotDl≈9.1%:106×(10/106)=9.4%。原預設 12(=11.3%,對舊 10.67% 基準)。
+      SLOT_OP_PRB_FLOOR: "10"
       # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
       # 不再寫死 dummy "00101"。caller 不指定時 default 走 env 衍生.
       PLMN_MCC: "208"
