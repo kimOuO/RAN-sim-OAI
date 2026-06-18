@@ -58,9 +58,16 @@ _SLOT_K0_ARR_REF = get_int("SLOT_K0_ARR_REF", 20000)  # 到達流量(bytes/tick)
 # #2 RLC discardTimer:SDU 等超過此 sim-ms 丟棄(過載封頂延遲,對齊真機)。0=關。
 # 設遠高於已對齊的 12-22ms delay(預設 300ms 不影響正常,只封頂過載的數十秒假延遲)。
 _SLOT_DISCARD_TIMER_MS = get_int("SLOT_DISCARD_TIMER_MS", 300)
-# TCP ACK 上行模型:DL(TCP 下載)每 1 byte → ~此比例的上行 ACK bytes。
-# 從 OAI rfsim 同流量擬合 UL=0.0239×DL+ping(DL-UL 相關 0.99)。0=關(純 ping UL)。
-_UL_ACK_RATIO = get_float("UL_ACK_RATIO", 0.024)
+# TCP ACK 上行模型。兩種:
+#   "linear"(舊,向後相容):UL_ACK = DL_bytes × UL_ACK_RATIO。0.024 是對「被污染」舊資料擬合,
+#       且線性 → 高載過度放大 UL(實測 1M DT 高估 ~1.9×)。
+#   "delayed_ack"(物理):TCP delayed-ACK,每 2 個 DL 封包回 1 個 ~ACK_SIZE bytes 的 ACK。
+#       UL_ACK = (DL_bytes / MSS / 2) × ACK_SIZE → 等效比例 = ACK_SIZE/(2×MSS) ≈ 0.017(對齊乾淨 OAI 1M ratio 0.0167)。
+#       封包數導向 → 自然不過度放大,且高載 ACK 合併行為更接近真實。
+_UL_ACK_MODEL = (get_str("UL_ACK_MODEL", "linear") or "linear").strip().lower()
+_UL_ACK_RATIO = get_float("UL_ACK_RATIO", 0.024)        # linear 模式用
+_UL_ACK_MSS = get_int("UL_ACK_MSS", 1448)               # delayed_ack:DL TCP segment 大小(bytes)
+_UL_ACK_SIZE = get_int("UL_ACK_SIZE", 50)               # delayed_ack:一個 ACK 封包大小(TCP/IP header)
 
 
 def set_discard_timer_ms(ms: int) -> None:
@@ -696,10 +703,17 @@ class TickRunner:
         for ue in ues_for_measurement:
             uid = ue["id"]
             actual_dl = actual_drained_map.get(uid, 0)
-            # TCP ACK 上行:DL 是 TCP 下載時,UE 回上行 ACK ≈ DL bytes × ratio
-            # (對齊 OAI rxpdu_bytes:DL-UL 相關 0.99)。加進 UL backlog 跟 ping 一起 drain。
-            if actual_dl > 0 and _UL_ACK_RATIO > 0:
-                ul_buffer.report(uid, int(actual_dl * _UL_ACK_RATIO))
+            # TCP ACK 上行:DL 是 TCP 下載時,UE 回上行 ACK。加進 UL backlog 跟 ping 一起 drain。
+            if actual_dl > 0:
+                if _UL_ACK_MODEL == "delayed_ack" and _UL_ACK_MSS > 0:
+                    # 物理:每 2 個 DL segment 回 1 個 ACK(delayed-ACK)→ 不隨 DL 線性過度放大
+                    _ack_bytes = int((actual_dl / _UL_ACK_MSS / 2.0) * _UL_ACK_SIZE)
+                elif _UL_ACK_RATIO > 0:
+                    _ack_bytes = int(actual_dl * _UL_ACK_RATIO)   # linear(向後相容)
+                else:
+                    _ack_bytes = 0
+                if _ack_bytes > 0:
+                    ul_buffer.report(uid, _ack_bytes)
             # UL:一個 PRB 本 tick 在 UL 時隙能載的 bytes → 滿 PRB 容量 → drain backlog
             _mcs_ul = max(0, mcs_map.get(uid, 9) - 2)
             _, _bps_re_ul = sinr_to_mcs(ue["sinr_db"])

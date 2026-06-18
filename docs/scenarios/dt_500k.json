@@ -1,0 +1,86 @@
+{
+  "scenario_id": "dt_500k",
+  "scene_id": "kpm_compare",
+  "duration_sec": 600,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "antenna_pattern": "iso",
+  "inter_freq": false,
+  "discard_timer_ms": 300,
+  "tx_power_dbm": 3.0,
+  "rlc_delay_model": "subtick",
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 3.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 0,
+          "cell_id": "gnbDT_c0",
+          "azimuth_deg": 0,
+          "position": [
+            0,
+            30,
+            0
+          ],
+          "frequency_ghz": 3.45072,
+          "bandwidth_mhz": 40.0
+        },
+        {
+          "pci": 1,
+          "cell_id": "gnbDT_c1",
+          "azimuth_deg": 0,
+          "position": [
+            300,
+            30,
+            0
+          ],
+          "frequency_ghz": 3.64944,
+          "bandwidth_mhz": 40.0
+        }
+      ]
+    }
+  ],
+  "ues": [
+    {
+      "name": "cco_ue_01",
+      "positions": [
+        [
+          0,
+          0,
+          1.5,
+          100
+        ],
+        [
+          600,
+          0,
+          1.5,
+          100
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "cco_ue_01",
+      "profile": [
+        [
+          0,
+          500,
+          2
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "intent": "c0 load 補點 500k (DL 500 kbps, UL ping 2)。serving c0 乾淨 30dB。對齊 OAI ue_traffic_sweep.sh 500k."
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "scenario_id": "dt_idle",
+  "scene_id": "kpm_compare",
+  "duration_sec": 600,
+  "tick_ms": 500,
+  "default_serving_cell": "gnbDT_c0",
+  "antenna_pattern": "iso",
+  "inter_freq": false,
+  "discard_timer_ms": 300,
+  "tx_power_dbm": 3.0,
+  "rlc_delay_model": "subtick",
+  "gnbs": [
+    {
+      "name": "gnbDT",
+      "position": [
+        0,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 3.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 0,
+          "cell_id": "gnbDT_c0",
+          "azimuth_deg": 0,
+          "position": [
+            0,
+            30,
+            0
+          ],
+          "frequency_ghz": 3.45072,
+          "bandwidth_mhz": 40.0
+        },
+        {
+          "pci": 1,
+          "cell_id": "gnbDT_c1",
+          "azimuth_deg": 0,
+          "position": [
+            300,
+            30,
+            0
+          ],
+          "frequency_ghz": 3.64944,
+          "bandwidth_mhz": 40.0
+        }
+      ]
+    }
+  ],
+  "ues": [
+    {
+      "name": "cco_ue_01",
+      "positions": [
+        [
+          0,
+          0,
+          1.5,
+          100
+        ],
+        [
+          600,
+          0,
+          1.5,
+          100
+        ]
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "ue_name": "cco_ue_01",
+      "profile": [
+        [
+          0,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "_metadata": {
+    "intent": "DT load 掃描 1M 點;由 kpm_compare 複製,僅改 DL 200→1000 kbps、UL 2→10。對照 OAI 乾淨 1M(OAI_dataset/kpm1M.log: delay 1.17ms / ThpDl 1.04M / PrbDl 2.5%)。通道/幾何不變(scene_id=kpm_compare 沿用同乾淨 SINR)。",
+    "oai_clean_baseline_1m": "delay_mean 1.17ms / VolDL 1036kbit / ThpDl ~1.04Mbps / PrbDl 2.5% / delay0 74%"
+  }
+}

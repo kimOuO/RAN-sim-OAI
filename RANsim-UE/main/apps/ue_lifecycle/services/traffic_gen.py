@@ -46,6 +46,21 @@ def _batch_mode_enabled() -> bool:
     return val in ("on", "true", "1", "yes")
 
 
+def _burst_bytes() -> int:
+    """讀 env TRAFFIC_BURST_BYTES — bursty 投遞調變的 burst 大小(= 一個 TCP flight/cwnd).
+
+    0 / 未設 → 關(平滑 CBR,向後相容)。
+    >0 → 開:每 tick 該注的 byte 先累積進 pending,湊滿 burst_bytes 才一次放出(= 一個 burst),
+         否則該 tick 注 0。低載→多 tick 才湊滿→高 idle+偶爆;高載→每 tick 都超過→連續流。
+         平均速率不變(只改投遞時序),thp/vol 不受影響;讓 DT 物理上產生 OAI 那種雙峰 delay。
+    建議 ~65536(64KB,≈ 一個 TCP flight);對齊 OAI idle_ratio 可調。
+    """
+    try:
+        return max(0, int(os.environ.get("TRAFFIC_BURST_BYTES") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -61,6 +76,7 @@ class UeTrafficGen:
         self.injected_call_count = 0   # 對 DU /RLC/inject_sdu 呼叫總次數
         self.injected_bytes = 0        # 累計注入 byte 數
         self.last_resync_at_ms = 0     # AL3 — 上次因 no_entity 觸發 re-sync 的時間
+        self.pending_bytes = 0         # bursty 投遞調變:累積未放出的 byte(湊滿 burst_bytes 才放)
 
     # 向後相容: monitor 用 injected_sdu_count 名稱
     @property
@@ -195,6 +211,21 @@ class UeTrafficGen:
         max_per_tick = 10 * 1024 * 1024  # 10 MB
         if bytes_to_inject > max_per_tick:
             bytes_to_inject = max_per_tick
+
+        # === bursty 投遞調變(物理層,opt-in via TRAFFIC_BURST_BYTES;0=關=平滑 CBR)===
+        # 把該 tick 的平滑量先累積進 pending,湊滿一個 burst(=TCP flight)才一次放出,否則注 0。
+        # 平均速率不變(只改投遞時序);讓 DT 物理上產生 OAI 那種「多數為 0 + 偶爆」雙峰 delay。
+        # 低載→pending 漲慢→多 tick 才湊滿→高 idle;高載→每 tick 都超過→連續流(自動隨 load)。
+        burst_bytes = _burst_bytes()
+        if burst_bytes > 0:
+            self.pending_bytes += bytes_to_inject
+            self.last_inject_at_ms = now   # 每 tick 推進時鐘;byte 暫存 pending,不靠 elapsed 累積
+            if self.pending_bytes < burst_bytes:
+                return 0                   # 還沒湊滿一個 burst → 這 tick idle(注 0)
+            bytes_to_inject = self.pending_bytes   # 放出整桶 = 一個 burst
+            self.pending_bytes = 0
+            if bytes_to_inject > max_per_tick:
+                bytes_to_inject = max_per_tick
 
         if _batch_mode_enabled():
             # AL: batch mode — 拆 packet, per-packet ts_offset_us 線性散布, 對齊 OAI inject.

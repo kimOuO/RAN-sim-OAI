@@ -22,6 +22,10 @@ from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
 from main.apps.cu_cp.models.measurement_log import MeasurementLog
 from main.apps.cu_cp.models.ue_context import UeContext
 
+# per-UE measurement 超過此秒數沒更新 → 視為 idle,traffic metric 報 0(對齊 OAI idle)。
+# 門檻取 5s:active 時 measurement_report 約 1~2.5s 一筆,idle 則數分鐘無更新,可乾淨區分。
+_IDLE_STALE_SEC = 5.0
+
 
 def _cell_prb_pct(serving_cell: str, field: str = "prb_pct_dl") -> float:
     """AL2 — 取該 cell 最近一筆 CellMeasurementLog.prb_pct_{dl,ul}.
@@ -120,6 +124,20 @@ def build_indication(subscription: dict[str, Any]) -> dict[str, Any] | None:
             .order_by("-recorded_at")
             .first()
         )
+        # IDLE 偵測 — per-UE measurement 在 idle(無 traffic)時不再更新:DU 的 tick
+        # _ue_registry 在靜止+零流量下會被清空 → 不送 per-UE measurement_report →
+        # last_meas 凍結在「最後一筆 active 值」。原樣報出會讓 RIC 看到「假流量」
+        # (例:idle 卻持續報 ~0.9Mbps / delay 3.6ms)。對齊 OAI(idle KPM 全 0):
+        # last_meas 過舊就把 traffic 類 metric 就地歸零(不寫回 DB),保留 RSRP/SINR
+        # (UE 位置固定,鏈路仍有效);PRB 走 cell-level CellMeasurementLog 不受影響。
+        if last_meas is not None:
+            age_sec = time.time() - last_meas.recorded_at.timestamp()
+            if age_sec > _IDLE_STALE_SEC:
+                last_meas.throughput_dl_mbps = 0.0
+                last_meas.throughput_ul_mbps = 0.0
+                last_meas.pdcp_sdu_volume_dl = 0
+                last_meas.pdcp_sdu_volume_ul = 0
+                last_meas.rlc_sdu_delay_dl_ms = 0.0
         meas_data = []
         for m in metrics:
             extractor = METRIC_EXTRACTORS.get(m)

@@ -146,9 +146,18 @@ services:
       # #2 RLC discardTimer(sim-ms):過載/爛訊號時 SDU 等超過此值丟棄,封頂延遲(對齊真機)。
       # 預設 300 遠高於已對齊的 12-22ms,不影響正常;0=關。
       SLOT_DISCARD_TIMER_MS: "300"
-      # 低載 UE 的最小 DL PRB 分配地板(模仿 OAI PF min_rbSize)。對齊 OAI rfsim
-      # 同流量 PrbTotDl≈9.1%:106×(10/106)=9.4%。原預設 12(=11.3%,對舊 10.67% 基準)。
-      SLOT_OP_PRB_FLOOR: "10"
+      # 低載 UE 的最小 DL PRB 分配地板(模仿 OAI PF min_rbSize)。
+      # 2026-06-17 清 fudge:原 10(=9.43%)是對「被污染的舊 OAI 200K(PrbDl 9.1%)」調的;
+      # 乾淨 OAI 是 2.5~7.4% 隨 load 動 → 降到 2(物理最小 grant),讓 demand 主導。原值 10。
+      SLOT_OP_PRB_FLOOR: "2"
+      # k0 = SDU 到達後可被排程前的 pipeline 等待(slot 數;×0.5ms)。
+      # 2026-06-17 清 fudge:原 load-adaptive 3→44(=22ms)是對污染的 es 21.8ms 調的,
+      # 害 delay 平釘 ~23ms。乾淨 OAI 是 1~4ms。釘成物理值 2(=1ms PDCCH→PDSCH),
+      # 讓 load 相關性由佇列排隊物理自然產生。原值 MIN=3/MAX=44。
+      SLOT_K0_MIN: "2"
+      SLOT_K0_MAX: "2"
+      # UL ACK 改物理 delayed-ACK(修高載 UL 過度放大);linear=舊 0.024 線性。
+      UL_ACK_MODEL: "delayed_ack"
       # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
       # 不再寫死 dummy "00101"。caller 不指定時 default 走 env 衍生.
       PLMN_MCC: "208"
@@ -382,6 +391,10 @@ services:
       # AL: batch inject 模式 — on = per-packet enqueue_ts (對齊 OAI),
       # off = 舊巨型 SDU (向後相容). 初期 default off, RIC team ready 後切 on.
       INJECT_BATCH_MODE: "on"
+      # bursty 投遞調變(物理層):每 tick 平滑量先累積,湊滿此 byte 數才一次放出一個 burst。
+      # 0=關(平滑 CBR)。>0 讓 DT 物理上產生 OAI 那種雙峰 delay(低載高 idle+偶爆,自動隨 load)。
+      # ~65536(64KB)≈ 一個 TCP flight;對齊 OAI idle_ratio 可調。平均速率不變。
+      TRAFFIC_BURST_BYTES: "131072"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
