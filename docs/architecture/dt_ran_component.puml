@@ -1,0 +1,104 @@
+' ============================================================================
+'  DT RAN 架構 — 元件圖(平台 → 系統 → 模組 → 模組作用/↔OAI)
+'  對應文件:docs/architecture/dt_ran_architecture.md
+'  規格:整個 DT(先不含 Omniverse);系統與「系統」同級;
+'        跨系統不畫線,線只留在系統內部模組相依。
+'  渲染:貼到 https://www.plantuml.com/plantuml,或 VS Code PlantUML 外掛。
+' ============================================================================
+@startuml DT_RAN_Component
+title DT RAN 架構 — 平台 / 系統 / 模組 / 模組作用↔OAI(不含 Omniverse)
+
+skinparam componentStyle rectangle
+skinparam wrapWidth 230
+skinparam defaultTextAlignment left
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #555555
+skinparam component {
+  BackgroundColor #F4F8FF
+  BorderColor #4A72B0
+}
+skinparam package {
+  BackgroundColor #FBFBFB
+  BorderColor #333333
+}
+
+package "平台:XAPP_DT — 分裂式 5G NR RAN 數位孿生(讓 xApp 先在 DT 驗證 HO/PRB 決策再上實體 RAN)" as PLATFORM {
+
+  ' ---------------- 系統:DU ----------------
+  package "系統 RANsim-DU :8102\n目的:★模擬真實來源★ 每 tick 的 MAC/RLC/PF 排程/PM 心跳" as DU {
+    component "**tick**\n作用:slot 時鐘(SFN/slot)、sim/wall 解耦、PM window、RLC delay 模型(calib ÷30 / subtick)\n↔OAI:gNB_scheduler_* 主迴圈" as du_tick
+    component "**mac**\n作用:PF 排程(2-pass / retx-aware)、HARQ、link adaptation(CQI→MCS)、PRB quota\n↔OAI:NR_MAC_gNB scheduler" as du_mac
+    component "**rlc**\n作用:AM/UM/TM entity、SDU→PDU 分段、retx、BO、SDU delay、discardTimer\n↔OAI:nr_rlc_entity.c" as du_rlc
+    component "**phy_high**\n作用:MCS→調變階數、layer mapping、BLER 查表、TBS/吞吐\n↔OAI:LAYER1/NR_TRANSPORT" as du_phy
+    component "**f1ap_du**\n作用:F1Setup、UE context CRUD、DL/UL RRC 轉送、measurement_report 匯集\n↔OAI:f1ap_du_task.c" as du_f1
+    component "**fapi_north**\n作用:DL/UL TTI 組裝、CQI→MCS 回饋、CRC→HARQ、in-process SINR(讀 cache)\n↔OAI:nFAPI DL/UL TTI" as du_fapi
+
+    du_tick --> du_mac : 驅動
+    du_mac --> du_rlc : BO / drain
+    du_mac --> du_phy : MCS/TBS
+    du_mac --> du_fapi : TTI / CQI
+    du_f1 --> du_mac
+    du_f1 --> du_rlc
+  }
+
+  ' ---------------- 系統:CU ----------------
+  package "系統 RANsim-CU :8101\n目的:gNB-CU — RRC/F1AP/NGAP/E2 訊令 + A3 HO 決策 + KPM 匯集" as CU {
+    component "**cu_cp**\n作用:RRC 狀態機、A3 HO 評估、F1AP/NGAP/E2 訊令、UE context、KPM 匯集\n↔OAI:rrc_gNB.c、f1ap_cu_*、ngap_gNB.c" as cu_cp
+    component "**cu_up**\n作用:PDCP/SDAP/GTP-U 使用者面、E1AP bearer、DRB\n↔OAI:PDCP_v10.1.0、SDAP" as cu_up
+    cu_cp --> cu_up : E1AP
+  }
+
+  ' ---------------- 系統:RU ----------------
+  package "系統 RANsim-RU :8103\n目的:O-RU — 天線/Beamform/SINR 估計/channel cache" as RU {
+    component "**fapi_south**\n作用:DL/UL TTI pipeline、真實多cell干擾、SINR→CQI/CRC、live/cached、inter_freq\n↔OAI:nr_ru_procedures.c::ru_thread()" as ru_fapi
+    component "**beamforming**\n作用:38.211 Type I codebook、PMI、precoder(W)、SINR/rank/CQI 估計\n↔OAI:nr_modulation.c、nr_feptx_prec" as ru_bf
+    component "**antenna**\n作用:天線陣列/cell/UE 位置 DB + RuController 配置 API\n↔OAI:PHY/MODULATION/antenna.c" as ru_ant
+    component "**physics_client**\n作用:組 PathSolverRequest 打 Physics + L2 cache(同位置不重打)\n↔OAI:gNB RU→物理引擎" as ru_pc
+    component "**phy_low**\n作用:RU state(SFN/slot/numerology/FFT/CP)、OFDM 描述\n↔OAI:nr_ru_timing.c、ofdm.c" as ru_phy
+
+    ru_fapi --> ru_bf
+    ru_fapi --> ru_ant
+    ru_fapi --> ru_pc
+  }
+
+  ' ---------------- 系統:UE ----------------
+  package "系統 RANsim-UE :8105\n目的:UE 群 — 位置/流量/量測(由 DU tick 驅動,不自 tick)" as UE {
+    component "**scenario**\n作用:載劇本 JSON、套場景幾何、切 channel mode、bulk attach、進度 live_state\n↔OAI:測試框架(gNB boot + UE attach)" as ue_scn
+    component "**ue_lifecycle**\n作用:per-UE 執行緒、poll CU 差異、trajectory 內插(~100ms)、推位置、traffic gen、量測輪詢\n↔OAI:NAS/RRC + 38.331 A3 量測" as ue_lc
+    ue_scn --> ue_lc
+  }
+
+  ' ---------------- 系統:E2Adapter ----------------
+  package "系統 RANsim-E2Adapter :8201(host net)\n目的:gNB E2 termination — HTTP↔ASN.1/SCTP,拉 KPM / 落地 RC" as E2A {
+    component "**sctp_link**\n作用:SCTP 常駐 daemon、E2 Setup 握手、per-sub indication 執行緒、Reset debounce\n↔OAI:CU→RIC e2term SCTP(PPID=70)" as e2_sctp
+    component "**codec**\n作用:E2AP、E2SM-KPM Format3、E2SM-RC、Subscription 的 APER 編解碼(pycrate)\n↔OAI:E2AP/E2SM-KPM/E2SM-RC 規範" as e2_codec
+    component "**sim_bridge**\n作用:HTTP 打 sim CU,拉 indication / 落地 control\n↔OAI:—" as e2_bridge
+    component "**event_log**\n作用:KPM ring(per UE×metric,60/30s stale)、事件 ring\n↔OAI:—" as e2_log
+
+    e2_sctp --> e2_codec
+    e2_sctp --> e2_bridge
+    e2_sctp --> e2_log
+    e2_bridge --> e2_codec
+  }
+
+  ' ---------------- 系統:Physics ----------------
+  package "系統 Physics :8104\n目的:Sionna RT 光追物理層(GPU)— 取代 RF/channel 模型 + coverage" as PHY {
+    component "**ran_signal (actors)**\n作用:PathSolver / Coverage / Precompute / Config / Health REST 端點\n↔OAI:RF/channel 存取層" as phy_act
+    component "**sionna_operations**\n作用:Sionna 引擎 singleton、載 Mitsuba、compute_paths、compute_coverage_map\n↔OAI:RF hardware/channel 模擬" as phy_ops
+    component "**ran_calculation**\n作用:sionna_engine、coverage_solver、scene/mitsuba builder、頻率驗證\n↔OAI:通道模型" as phy_calc
+    component "**precompute**\n作用:離線算 (tick,ue,cell) path_gain → .npz 供 cached 查表\n↔OAI:「錄好 path_gain 回放」" as phy_pre
+
+    phy_act --> phy_ops
+    phy_ops --> phy_calc
+    phy_pre --> phy_ops
+  }
+}
+
+legend right
+  一列 = 一個系統(Django 服務);框內 = 模組(app / 功能子模組)。
+  每個模組標「作用 + ↔OAI 對應」。
+  **跨系統不畫線**;線只表系統內部模組相依。
+  Omniverse / Dashboard 先不含(見部署圖)。
+endlegend
+@enduml

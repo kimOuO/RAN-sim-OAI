@@ -1,0 +1,63 @@
+' ============================================================================
+'  DT RAN 部署圖 — 容器 / 埠 / 網路
+'  對應文件:docs/architecture/dt_ran_architecture.md
+'  重點:E2Adapter 走 host network、CU-UP 內嵌 CU 容器;Omniverse 依規格省略。
+'  渲染:貼到 https://www.plantuml.com/plantuml,或 VS Code PlantUML 外掛。
+' ============================================================================
+@startuml DT_RAN_Deployment
+title DT RAN 部署 — 容器 / 埠 / 網路(E2Adapter host-net、CU-UP 內嵌;Omniverse 省略)
+
+skinparam shadowing false
+skinparam node {
+  BackgroundColor #F4F8FF
+  BorderColor #4A72B0
+}
+skinparam database {
+  BackgroundColor #FFF7E6
+  BorderColor #B0872B
+}
+
+cloud "外部 RIC\n10.3.0.71:36422" as RIC
+
+node "Host network" as HOST {
+  node "ransim-e2adapter :8201\n(host net,避免 SCTP heartbeat ABORT)" as E2A
+}
+
+node "docker bridge net" as BRIDGE {
+  node "ransim-cu :8101" as CU {
+    artifact "cu_cp" as CUCP
+    artifact "cu_up(內嵌同容器)" as CUUP
+  }
+  node "ransim-du :8102\n★模擬真實來源★" as DU
+  node "ransim-ru :8103" as RU
+  node "ransim-ue :8105" as UE
+  node "ransim-physics :8104\n(GPU)" as PHY
+  node "ransim-dashboard :3010\n(Next.js 前端)" as DASH
+  database "ransim-postgres :5433\ncu_db / du_db / ru_db / physics_db" as PG
+}
+
+' --- 傳輸連線(部署層才畫跨服務線) ---
+RIC <--> E2A : SCTP PPID=70\n(E2AP ASN.1)
+E2A --> CU : HTTP 拉 KPM / 落地 RC
+CU --> DU : F1AP HTTP
+DU --> RU : FAPI dl_tti / cqi
+RU --> PHY : PathSolver HTTP\n(cache miss 才打,TTL 0.5s)
+UE --> RU : 位置 batch(~100ms)
+UE --> DU : SDU 注入
+UE --> CU : poll UE 清單(5s)
+DASH --> CU
+DASH --> DU
+DASH --> RU
+DASH --> E2A
+DASH --> PHY
+
+CU --> PG
+DU --> PG
+RU --> PG
+PHY --> PG
+
+note bottom of DASH
+  Omniverse backend :8001 / Kit :8080 依規格「先不含」而省略;
+  實際上 Dashboard 也會打 Omniverse 存場景/歷史。
+end note
+@enduml
