@@ -1,6 +1,16 @@
 // Phase B B.6 — Scenario API client (Omniverse + Physics + RU + UE + DU orchestration).
+import axios from 'axios';
 import { duClient, physicsClient, ruClient, ueClient } from '@/services/clients/httpClient';
 import { omniverseApiClient } from '@/services/api/omniverse';
+import { SCENARIO_STORE_API_URL } from '@/config';
+
+// 劇本/場景倉庫 client:預設打 Omniverse(SCENARIO_STORE_API_URL fallback),
+// 設 NEXT_PUBLIC_SCENARIO_STORE_URL=http://<server>:8104 即改打 Physics store(脫離 Omniverse)。
+// 端點路徑與回應形狀跟 Omniverse 完全相同。
+const scenarioStoreClient = axios.create({
+  baseURL: SCENARIO_STORE_API_URL,
+  headers: { 'Content-Type': 'application/json' },
+});
 
 export interface ScenarioRow {
   scenario_id: string;
@@ -18,12 +28,12 @@ export interface ScenarioRow {
 }
 
 export const listScenarios = async (): Promise<ScenarioRow[]> => {
-  const r = await omniverseApiClient.post('/api/v0.1/RAN/Scenario/ScenarioController/list', {});
+  const r = await scenarioStoreClient.post('/api/v0.1/RAN/Scenario/ScenarioController/list', {});
   return r.data?.data?.scenarios ?? [];
 };
 
 export const readScenario = async (scenarioId: string): Promise<any> => {
-  const r = await omniverseApiClient.post(
+  const r = await scenarioStoreClient.post(
     '/api/v0.1/RAN/Scenario/ScenarioController/read',
     { scenario_id: scenarioId },
   );
@@ -31,7 +41,7 @@ export const readScenario = async (scenarioId: string): Promise<any> => {
 };
 
 export const uploadScenario = async (scenarioJson: unknown): Promise<ScenarioRow> => {
-  const r = await omniverseApiClient.post('/api/v0.1/RAN/Scenario/ScenarioController/upload', scenarioJson);
+  const r = await scenarioStoreClient.post('/api/v0.1/RAN/Scenario/ScenarioController/upload', scenarioJson);
   return r.data?.data;
 };
 
@@ -42,7 +52,7 @@ export const uploadScenario = async (scenarioJson: unknown): Promise<ScenarioRow
 export const applyScenarioToScene = async (
   scenarioId: string
 ): Promise<{ gnbs: number; ues: number; buildings: number; kit_pushed: boolean }> => {
-  const r = await omniverseApiClient.post(
+  const r = await scenarioStoreClient.post(
     '/api/v0.1/RAN/Scenario/ScenarioController/apply_to_scene',
     { scenario_id: scenarioId }
   );
@@ -50,12 +60,12 @@ export const applyScenarioToScene = async (
 };
 
 export const deleteScenario = async (scenarioId: string): Promise<void> => {
-  await omniverseApiClient.post('/api/v0.1/RAN/Scenario/ScenarioController/delete', { scenario_id: scenarioId });
+  await scenarioStoreClient.post('/api/v0.1/RAN/Scenario/ScenarioController/delete', { scenario_id: scenarioId });
 };
 
 // Trigger precompute — 兩步:Omniverse 標 pending,Physics 真正 spawn subprocess。
 export const triggerPrecompute = async (scenarioId: string): Promise<void> => {
-  await omniverseApiClient.post('/api/v0.1/RAN/Scenario/ScenarioController/precompute', { scenario_id: scenarioId });
+  await scenarioStoreClient.post('/api/v0.1/RAN/Scenario/ScenarioController/precompute', { scenario_id: scenarioId });
   await physicsClient.post('/api/v0.1/Physics/Precompute/run', { scenario_id: scenarioId });
 };
 

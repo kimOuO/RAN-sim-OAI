@@ -41,13 +41,16 @@ from main.apps.ran_signal.services.business.sionna_operations import (  # noqa: 
 
 
 OMNIVERSE_URL = os.environ.get("OMNIVERSE_URL", "http://omniver_backend:8000")
+# 劇本來源:預設 Omniverse;設 SCENARIO_STORE_URL(如 Physics 自己 http://localhost:8000)
+# 即可脫離 Omniverse 讀劇本 + 回寫 precompute 狀態。端點形狀相同。
+SCENARIO_STORE_URL = os.environ.get("SCENARIO_STORE_URL") or OMNIVERSE_URL
 CACHE_DIR = Path("/app/data/channel_cache")
 PROGRESS_UPDATE_EVERY = 50  # tick
 
 
 def _fetch_scenario(scenario_id: str) -> dict:
     r = requests.post(
-        f"{OMNIVERSE_URL}/api/v0.1/RAN/Scenario/ScenarioController/read",
+        f"{SCENARIO_STORE_URL}/api/v0.1/RAN/Scenario/ScenarioController/read",
         json={"scenario_id": scenario_id},
         timeout=10,
     )
@@ -63,7 +66,7 @@ def _patch_status(scenario_id: str, **fields):
     payload = {"scenario_id": scenario_id, **fields}
     try:
         r = requests.post(
-            f"{OMNIVERSE_URL}/api/v0.1/RAN/Scenario/ScenarioController/update_status",
+            f"{SCENARIO_STORE_URL}/api/v0.1/RAN/Scenario/ScenarioController/update_status",
             json=payload,
             timeout=5,
         )

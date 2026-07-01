@@ -44,6 +44,8 @@ services:
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
+      KPM_CALIB_ENABLE: "on"   # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
+      KPM_CALIB_URL: "http://kpm-calib:8200/calibrate"
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: cu_db
@@ -141,6 +143,7 @@ services:
       SLOT_ENGINE_SHADOW: "on"
       # slot 引擎正式接管 delay:scheduler 改操作點 MCS 算 PRB(+地板) + RLC delay KPM 走 slot 引擎,退掉 /30。
       SLOT_ENGINE_TAKEOVER: "on"
+      SLOT_OAI_DELAY_SCOPE: "on"   # DRB.RlcSduDelayDl 對齊 OAI scope(到達→首次服務,扣K0)→ delay==0% 貼 OAI
       DU_INPROCESS_SINR: "on"
       DU_RU_INPROCESS: "on"
       # #2 RLC discardTimer(sim-ms):過載/爛訊號時 SDU 等超過此值丟棄,封頂延遲(對齊真機)。
@@ -246,6 +249,8 @@ services:
       dockerfile: Dockerfile
     image: ransim-physics:platform
     container_name: ransim-physics
+    # scenario_store 需要 physics_db;啟動先 migrate 再跑 daphne(ran_signal 計算路徑不碰 DB)
+    command: sh -c "python3 manage.py migrate --noinput && daphne main.asgi:application -b 0.0.0.0 -p 8000"
     environment:
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
@@ -404,6 +409,17 @@ services:
     depends_on:
       cu:
         condition: service_started
+    networks:
+      - ransim-net
+
+  kpm-calib:
+    image: kpm-calib:latest
+    container_name: kpm-calib
+    restart: unless-stopped
+    volumes:
+      - /home/mitlab/KPM_fix/ML_model/poc:/app:ro   # 掛 models + code(重訓後 restart 即更新)
+    ports:
+      - "8200:8200"
     networks:
       - ransim-net
 

@@ -9,6 +9,9 @@ import requests
 
 
 OMNIVERSE_URL = os.environ.get("OMNIVERSE_URL", "http://host.docker.internal:8001")
+# 劇本/場景來源切換:預設沿用 Omniverse;設 SCENARIO_STORE_URL(如 Physics :8104)
+# 即可讓 sim 脫離 Omniverse。端點與回應形狀相同,只換 base URL。
+SCENARIO_STORE_URL = os.environ.get("SCENARIO_STORE_URL") or OMNIVERSE_URL
 
 
 @dataclass
@@ -128,9 +131,9 @@ class ScenarioSpec:
 
 
 def fetch(scenario_id: str) -> ScenarioSpec:
-    """從 Omniverse Scenario API 抓 raw_json,parse 成 ScenarioSpec。"""
+    """從劇本來源(SCENARIO_STORE_URL,預設 Omniverse)抓 raw_json,parse 成 ScenarioSpec。"""
     r = requests.post(
-        f"{OMNIVERSE_URL}/api/v0.1/RAN/Scenario/ScenarioController/read",
+        f"{SCENARIO_STORE_URL}/api/v0.1/RAN/Scenario/ScenarioController/read",
         json={"scenario_id": scenario_id},
         timeout=10,
     )

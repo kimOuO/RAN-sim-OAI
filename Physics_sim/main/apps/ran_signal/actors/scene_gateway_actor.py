@@ -22,6 +22,10 @@ from main.utils.response import error_response, success_response
 
 logger = get_logger(__name__)
 OMNIVERSE_BACKEND_URL = get_str("OMNIVERSE_BACKEND_URL", "http://localhost:8001")
+# 場景幾何來源(gNB/UE/建築 readers):預設沿用 Omniverse;設 SCENARIO_STORE_URL
+# (如 Physics 自己 http://localhost:8000)即可脫離 Omniverse。端點形狀相同。
+# SimSession/SceneIngestor 仍走 Omniverse(選配遙測,掛掉時 graceful skip)。
+SCENARIO_STORE_URL = get_str("SCENARIO_STORE_URL", "") or OMNIVERSE_BACKEND_URL
 
 
 class SceneGatewayActor:
@@ -68,7 +72,7 @@ class SceneGatewayActor:
             try:
                 logger.info("DB-mode: fetching buildings from Omniver-RAN")
                 resp = requests.post(
-                    f"{OMNIVERSE_BACKEND_URL}/api/v0.1/RAN/Scene/BuildingController/read",
+                    f"{SCENARIO_STORE_URL}/api/v0.1/RAN/Scene/BuildingController/read",
                     json={},
                     timeout=5,
                 )
@@ -103,7 +107,7 @@ class SceneGatewayActor:
             try:
                 logger.info("DB-mode: fetching gNBs from Omniver-RAN")
                 resp = requests.post(
-                    f"{OMNIVERSE_BACKEND_URL}/api/v0.1/RAN/GNB/GNBReader/read",
+                    f"{SCENARIO_STORE_URL}/api/v0.1/RAN/GNB/GNBReader/read",
                     json={},
                     timeout=5,
                 )
@@ -127,7 +131,7 @@ class SceneGatewayActor:
             try:
                 logger.info("DB-mode: fetching UEs from Omniver-RAN")
                 resp = requests.post(
-                    f"{OMNIVERSE_BACKEND_URL}/api/v0.1/RAN/UE/UEReader/read",
+                    f"{SCENARIO_STORE_URL}/api/v0.1/RAN/UE/UEReader/read",
                     json={},
                     timeout=5,
                 )

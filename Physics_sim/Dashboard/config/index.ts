@@ -45,6 +45,13 @@ export const API_BASE_URL = getRuntimeConfig()?.apiBaseUrl
   || (process.env.NEXT_PUBLIC_API_BASE_URL ? resolveHost(process.env.NEXT_PUBLIC_API_BASE_URL) : PHYSICS_BASE_URL);
 export const OMNIVERSE_API_URL = getRuntimeConfig()?.omniverseUrl
   || resolveHost(process.env.NEXT_PUBLIC_OMNIVERSE_URL || 'http://localhost:8001');
+// 劇本/場景倉庫來源:預設 = Omniverse;設 NEXT_PUBLIC_SCENARIO_STORE_URL(如 Physics :8104)
+// 即可讓 Dashboard 的劇本 CRUD 改打 physics_db store(脫離 Omniverse)。端點形狀相同。
+export const SCENARIO_STORE_API_URL =
+  (getRuntimeConfig() as any)?.scenarioStoreUrl
+  || (process.env.NEXT_PUBLIC_SCENARIO_STORE_URL
+        ? resolveHost(process.env.NEXT_PUBLIC_SCENARIO_STORE_URL)
+        : OMNIVERSE_API_URL);
 export const VNC_URL = getRuntimeConfig()?.vncUrl
   || resolveHost(process.env.NEXT_PUBLIC_VNC_URL || 'http://localhost:6080/vnc.html');
 
