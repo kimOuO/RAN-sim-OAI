@@ -104,6 +104,9 @@ _DU_RU_INPROCESS = get_bool("DU_RU_INPROCESS", False)
 # slot 引擎正式接管 delay KPM(退掉 /30):on 時 RLC delay 走 slot 引擎(現役 PRB 已由 scheduler 改操作點)
 # + cadence,不再用 calib /30。配 pf_scheduler 的 SLOT_ENGINE_TAKEOVER 一起(同 flag),PRB/throughput/delay 自洽。
 _SLOT_ENGINE_TAKEOVER = get_bool("SLOT_ENGINE_TAKEOVER", False)
+# SLOT_OAI_DELAY_SCOPE:DRB.RlcSduDelayDl 量測範圍對齊 OAI(到達→首次被服務,扣 K0,不含傳輸)。
+# 預設 off=舊 completion scope;on=OAI scope(同-tick 排空記 0 → delay==0% 往 OAI 靠)。
+_SLOT_OAI_DELAY_SCOPE = get_bool("SLOT_OAI_DELAY_SCOPE", False)
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -788,6 +791,7 @@ class TickRunner:
                             sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive k0
                             k0_slots=(_k0 if _SLOT_ENGINE_TAKEOVER else 2),
                             discard_timer_ms=(_SLOT_DISCARD_TIMER_MS if _SLOT_ENGINE_TAKEOVER else 0),
+                            oai_delay_scope=_SLOT_OAI_DELAY_SCOPE,
                         ),
                     )
                     res_op = simulate_sdu_delays(  # 反事實:操作點 PRB + cadence baseline(完整修法預測)

@@ -74,6 +74,11 @@ class SlotParams:
     sched_period_slots: int = 1  # 改動二 cadence:此 UE 每幾 slot 才有一次排程機會(1=每 DL slot,>1=稀疏)
     discard_timer_ms: float = 0.0  # #2 RLC discardTimer:SDU 等超過此 sim-ms 就丟棄(0=關=無窮,對齊 3GPP discardTimer)
     seed: int | None = None    # 重現用
+    # oai_delay_scope:對齊 OAI 的 DRB.RlcSduDelayDl 量測範圍。
+    #   False(預設)= 到達→最後 byte 傳完(completion,含 K0 + 傳輸時間)= 舊行為。
+    #   True = 到達→「首次被服務(出列開始傳)」且扣掉 K0(= OAI waited_time:RLC 排隊,不含 K0/傳輸)。
+    #   OAI 源碼 nr_rlc_entity_am.c:1762 waited_time=MAC取走時刻−到達;K0 在 serialize 之後不算。
+    oai_delay_scope: bool = False
 
 
 @dataclass
@@ -81,6 +86,7 @@ class _Sdu:
     sid: int
     arrival_abs_slot: int          # 絕對 slot(跨 tick 不歸零),改動一用
     bytes_remaining: int
+    served: bool = False           # oai_delay_scope:是否已記過「首次被服務」delay(每 SDU 只記一次)
 
 
 @dataclass
@@ -219,12 +225,18 @@ def simulate_sdu_delays(
         idx = 0
         while idx < len(queue) and drained < tbs:
             sdu = queue[idx]
+            # oai_delay_scope:SDU「首次被服務(這 slot 開始傳)」就記 delay = 排隊等待(扣 K0),
+            # 對齊 OAI waited_time(到達→MAC取走,不含 K0/傳輸)。每 SDU 只記一次。
+            if p.oai_delay_scope and not sdu.served:
+                sdu.served = True
+                res.delays_ms.append(max(0.0, (s - sdu.arrival_abs_slot - p.k0_slots) * p.slot_ms))
             take = min(sdu.bytes_remaining, tbs - drained)
             sdu.bytes_remaining -= take
             drained += take
             if sdu.bytes_remaining == 0:
-                # SDU 最後一 byte 被傳出 → 記 sojourn(對齊 OAI waited_time)
-                res.delays_ms.append((s - sdu.arrival_abs_slot) * p.slot_ms)
+                # 預設(completion scope):最後一 byte 傳出才記 sojourn(含 K0 + 傳輸)
+                if not p.oai_delay_scope:
+                    res.delays_ms.append((s - sdu.arrival_abs_slot) * p.slot_ms)
                 queue.pop(idx)
             else:
                 idx += 1

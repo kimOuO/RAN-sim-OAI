@@ -15,7 +15,10 @@ OAI ref:
 """
 from __future__ import annotations
 
+import json
+import os
 import time
+import urllib.request
 from typing import Any
 
 from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
@@ -41,6 +44,73 @@ def _cell_prb_pct(serving_cell: str, field: str = "prb_pct_dl") -> float:
         .first()
     )
     return float(getattr(last, field, 0.0)) if last else 0.0
+
+
+# ── KPM 校正 hook(夾在 indication 產出 → e2adapter 之間;env gate,預設關)──
+# KPM_CALIB_ENABLE=on 時,把 raw KPM + context 送 kpm-calib 服務,用 calibrated 值取代。
+# 失敗/逾時/OOD 一律保留 raw(絕不擋 KPM 流)。
+_KPM_CALIB_ENABLE = (os.environ.get("KPM_CALIB_ENABLE") or "off").strip().lower() in ("on", "1", "true")
+_KPM_CALIB_URL = os.environ.get("KPM_CALIB_URL", "http://kpm-calib:8200/calibrate")
+_KPM_CALIB_HEALTH = _KPM_CALIB_URL.rsplit("/", 1)[0] + "/health"
+# reachability 快取:env on 後,實際 toggle 走 kpm-calib 容器 up/down(免重啟 CU、不掉 E2 sub)。
+# down 時用快取快速回退 raw,不每筆 timeout。
+_CALIB_CACHE = {"ts": 0.0, "ok": False}
+
+
+def _calib_reachable() -> bool:
+    now = time.time()
+    if now - _CALIB_CACHE["ts"] < 5.0:
+        return _CALIB_CACHE["ok"]
+    ok = False
+    try:
+        with urllib.request.urlopen(_KPM_CALIB_HEALTH, timeout=0.2) as r:
+            ok = json.loads(r.read().decode()).get("ok", False)
+    except Exception:  # noqa: BLE001
+        ok = False
+    _CALIB_CACHE["ts"] = now
+    _CALIB_CACHE["ok"] = ok
+    return ok
+_NAME2WIRE = {
+    "DRB.UEThpDl": "thp_dl_bps", "DRB.UEThpUl": "thp_ul_bps",
+    "DRB.PdcpSduVolumeDL": "vol_dl_kbit", "DRB.PdcpSduVolumeUL": "vol_ul_kbit",
+    "DRB.RlcSduDelayDl": "delay_dl_us",
+    "RRU.PrbTotDl": "prb_dl_ppm", "RRU.PrbTotUl": "prb_ul_ppm",
+}
+
+
+def _apply_calibration(meas_data: list, last_meas, ue, serving_cell: str) -> None:
+    """把 meas_data 的值就地換成 kpm-calib 校正後的值(in-place);任何失敗都保留 raw。"""
+    if not _KPM_CALIB_ENABLE or last_meas is None:
+        return
+    if not _calib_reachable():   # kpm-calib 容器 down → 快速回退 raw(toggle 機制)
+        return
+    try:
+        payload = {
+            "ue_id": ue.ue_id,
+            "thp_dl_mbps": float(getattr(last_meas, "throughput_dl_mbps", 0.0) or 0.0),
+            "thp_ul_mbps": float(getattr(last_meas, "throughput_ul_mbps", 0.0) or 0.0),
+            "vol_dl_bytes": float(getattr(last_meas, "pdcp_sdu_volume_dl", 0) or 0),
+            "vol_ul_bytes": float(getattr(last_meas, "pdcp_sdu_volume_ul", 0) or 0),
+            "delay_dl_ms": float(getattr(last_meas, "rlc_sdu_delay_dl_ms", 0.0) or 0.0),
+            "prb_dl_pct": _cell_prb_pct(serving_cell, "prb_pct_dl"),
+            "prb_ul_pct": _cell_prb_pct(serving_cell, "prb_pct_ul"),
+            "sinr_db": float(getattr(last_meas, "sinr_db", 0.0) or 0.0),
+            "rsrp_dbm": float(getattr(last_meas, "rsrp_dbm", 0.0) or 0.0),
+        }
+        req = urllib.request.Request(
+            _KPM_CALIB_URL, data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=0.5) as r:
+            res = json.loads(r.read().decode())
+        if not res.get("ok"):
+            return
+        cal = res.get("calibrated", {})
+        for md in meas_data:
+            wk = _NAME2WIRE.get(md["name"])
+            if wk and wk in cal:
+                md["value"] = cal[wk]
+    except Exception:  # noqa: BLE001 — 校正失敗絕不擋 KPM,保留 raw
+        return
 
 
 # OAI 標準 metric → 取值 lambda。
@@ -160,6 +230,9 @@ def build_indication(subscription: dict[str, Any]) -> dict[str, Any] | None:
             if serving_cell else None
         )
         nr_cell_id = to_nr_cellid(serving_cell, explicit=explicit) if serving_cell else 0
+
+        # KPM 校正 hook(env gate);把 meas_data 換成校正值,失敗保留 raw
+        _apply_calibration(meas_data, last_meas, ue, serving_cell)
 
         ue_lst.append({
             "ue_id": ue.ue_id,

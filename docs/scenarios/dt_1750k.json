@@ -1,5 +1,5 @@
 {
-  "scenario_id": "dt_1m",
+  "scenario_id": "dt_1750k",
   "scene_id": "kpm_compare",
   "duration_sec": 600,
   "tick_ms": 500,
@@ -74,14 +74,13 @@
       "profile": [
         [
           0,
-          1000,
+          1750,
           2
         ]
       ]
     }
   ],
   "_metadata": {
-    "intent": "DT load 掃描 1M 點;由 kpm_compare 複製,僅改 DL 200→1000 kbps、UL 2→10。對照 OAI 乾淨 1M(OAI_dataset/kpm1M.log: delay 1.17ms / ThpDl 1.04M / PrbDl 2.5%)。通道/幾何不變(scene_id=kpm_compare 沿用同乾淨 SINR)。",
-    "oai_clean_baseline_1m": "delay_mean 1.17ms / VolDL 1036kbit / ThpDl ~1.04Mbps / PrbDl 2.5% / delay0 74%"
+    "intent": "驗證用中間 load 1750kbps(訓練未見);cell0+cell1 各6分鐘對 OAI"
   }
 }

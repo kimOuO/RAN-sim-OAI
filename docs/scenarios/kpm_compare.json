@@ -5,7 +5,7 @@
   "tick_ms": 500,
   "default_serving_cell": "gnbDT_c0",
   "antenna_pattern": "iso",
-  "inter_freq": false,
+  "inter_freq": true,
   "discard_timer_ms": 300,
   "tx_power_dbm": 3.0,
   "rlc_delay_model": "subtick",
