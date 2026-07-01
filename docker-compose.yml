@@ -22,7 +22,7 @@ services:
       POSTGRES_DB: ransim_root
     volumes:
       - ransim-pgdata:/var/lib/postgresql/data
-      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./deploy/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5433:5432"   # 5432 已被 omniver_postgres 佔用，host 用 5433；container 內部仍 5432
     healthcheck:
@@ -272,7 +272,7 @@ services:
     volumes:
       - ./Physics_sim:/app
       - ./Physics_sim/scenes:/app/scenes:ro
-      - ./scene_config.json:/mnt/srcin/scene_config.json:ro   # 平台共享 scene
+      - ./deploy/scene_config.json:/mnt/srcin/scene_config.json:ro   # 平台共享 scene
     ports:
       - "8104:8000"
     depends_on:
