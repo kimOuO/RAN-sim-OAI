@@ -136,6 +136,26 @@ class E2ControlActor:
 
         ric_req_id = body.get("ric_req_id") or {}
         ran_func_id = body.get("ran_function_id")
+
+        # ── E2SM-CCC cell 開關:adapter 送 {sim_action:control_cell_onoff, cells:[{cell_id, action}]}──
+        # 不走 RC 的 (style, action);逐 cell 套用既有 _handle_cell_on_off(硬開關)。
+        # 兩階段節能(toBeEnergySaving→趕人→isEnergySaving)為後續增強。
+        if body.get("sim_action") == "control_cell_onoff" or body.get("cells"):
+            applied, failed = [], []
+            for c in body.get("cells") or []:
+                cid = c.get("cell_id")
+                act = c.get("action")  # "enable" | "disable"
+                if not cid or act not in ("enable", "disable"):
+                    failed.append({"cell": cid, "reason": "bad cell_id/action"})
+                    continue
+                _handle_cell_on_off(cid, {"action": act}, ric_req_id)  # 側效:DU 開關 + push_control_action
+                applied.append({"cell_id": cid, "action": act})
+            return success_response(
+                {"ric_req_id": ric_req_id, "service_model": "CCC",
+                 "applied": applied, "failed": failed},
+                "CCC cell control acknowledged",
+            )
+
         header = body.get("control_header") or {}
         message = body.get("control_message") or {}
 

@@ -838,6 +838,47 @@ def _send_control_failure(sock, ric_req_id: dict, ran_func_id: int,
                 len(pdu), cause[0], cause[1], reason)
 
 
+def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
+    """E2SM-CCC RIC Control(cell 開關)→ 解 JSON → POST sim CU → ACK。"""
+    from main.apps.e2_adapter.services.optional.codec import e2sm_ccc_codec, e2sm_rc_codec
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+
+    try:
+        decoded = e2sm_ccc_codec.decode_ric_control_request(raw_pdu)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("decode CCC control failed")
+        event_ring.record_control_failure(f"ccc decode error: {exc!r}")
+        return
+
+    ric_req_id = decoded.get("ric_req_id", {})
+    payload = e2sm_ccc_codec.to_sim_control_payload(decoded)
+    if not payload:
+        _send_control_failure(
+            sock, ric_req_id, e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
+            cause=("ricRequest", "control-message-invalid"),
+            reason="CCC control has no actionable cell state change",
+        )
+        return
+
+    for c in payload["cells"]:
+        event_ring.record_control_req_recv(
+            style=2, action=0, sim_action=f"control_cell_{c['action']}", ueid={},
+        )
+    logger.info("CCC control → sim CU: %s", payload["cells"])
+    sim_http_client.call_control_request(payload)
+
+    try:
+        ack = e2sm_rc_codec.encode_ric_control_ack(
+            ric_req_id=ric_req_id, ran_function_id=e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
+        )
+        _send_sctp(sock, ack)
+        event_ring.record_control_ack_sent(
+            style=2, action=0, sim_action="control_cell_onoff", pdu_size=len(ack), outcome="ok",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("encode/send CCC control ACK failed")
+
+
 def _handle_control_req(sock, raw_pdu: bytes) -> None:
     """Decode RIC_CONTROL_REQ → POST sim CU /Control/request → encode ACK/FAILURE → SCTP send.
 
@@ -871,6 +912,12 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     ueid = decoded.get("ueid", {})
     ric_req_id = decoded.get("ric_req_id", {})
     ran_func_id = decoded.get("ran_function_id", 0)
+
+    # ── E2SM-CCC(cell 開關)走獨立路徑,不套 RC 的 style/action 檢查 ──
+    from main.apps.e2_adapter.services.optional.codec import e2sm_ccc_codec as _ccc
+    if ran_func_id == _ccc.CCC_RAN_FUNCTION_ID:
+        _handle_ccc_control_req(sock, raw_pdu)
+        return
     call_proc_id_hex = decoded.get("call_process_id", "")
     call_proc_bytes = bytes.fromhex(call_proc_id_hex) if call_proc_id_hex else b""
     params = decoded.get("ran_params", {}) or {}

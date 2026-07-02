@@ -361,6 +361,9 @@ services:
       # 給 RIC（會跟 RIC 自己的 docker0=172.17.0.1 碰撞，HEARTBEAT 自迴觸發 ABORT）
       SCTP_BIND_IP: "10.3.0.217"
       E2_ADAPTER_LINK_ENABLED: "1"   # P2.8 階段：嘗試開 SCTP loop（目前 stub）
+      # E2SM-CCC(cell 開關/節能)廣播開關。off=不進 E2 Setup(保護 KPM/RC 註冊);
+      # RIC/xApp 就緒後改 "on" 並重啟 e2adapter,CCC ran_function(id=4) 才會廣播。
+      E2SM_CCC_ENABLE: "on"
       ASN1_SCHEMA_DIR: /app/asn1
       ADAPTER_HTTP_PORT: "8201"     # 0.0.0.0:8201 — 8000 被 Omniverse debugpy 佔用
     volumes:

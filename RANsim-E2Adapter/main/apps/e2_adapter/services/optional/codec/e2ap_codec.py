@@ -262,7 +262,11 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
     # Each item: RANfunction_ItemIEs containing { id=8, criticality, value=RANfunction-Item }
     # xApp 對 RANfunctionDefinition 多採 strict decode；stub 0x00000000 會 fail。
     # 對 KPM (id=2) / RC (id=3) 都編真實 RANfunction-Description.
-    from main.apps.e2_adapter.services.optional.codec import e2sm_kpm_codec, e2sm_rc_codec
+    import os
+    from main.apps.e2_adapter.services.optional.codec import (
+        e2sm_kpm_codec, e2sm_rc_codec, e2sm_ccc_codec,
+    )
+    _ccc_enabled = (os.environ.get("E2SM_CCC_ENABLE") or "off").strip().lower() in ("on", "1", "true")
 
     ran_func_items = []
     for rf in node_id_payload["ran_functions"]:
@@ -278,6 +282,17 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
                 rfd_bytes = e2sm_rc_codec.encode_rc_ran_function_description()
             except Exception:
                 logger.exception("RC RANfunction-Description encode failed; using empty stub")
+                rfd_bytes = b""
+        elif sm == "CCC":
+            # gate:預設關 → 完全不廣播 CCC(不進 E2 Setup),保護 KPM/RC 註冊不受影響
+            if not _ccc_enabled:
+                logger.info("E2SM-CCC advertisement disabled (E2SM_CCC_ENABLE off); skipping ran_function id=%s",
+                            rf.get("ran_function_id"))
+                continue
+            try:
+                rfd_bytes = e2sm_ccc_codec.encode_ccc_ran_function_description()
+            except Exception:
+                logger.exception("CCC RANfunction-Description encode failed; using empty stub")
                 rfd_bytes = b""
         else:
             logger.warning("Unknown service_model %r for ranFunction id=%s",
