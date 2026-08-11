@@ -32,6 +32,8 @@ _DEFAULT_KPM_OID = "1.3.6.1.4.1.53148.1.2.2.2"  # E2SM-KPM v2.0.03
 _DEFAULT_RC_OID = "1.3.6.1.4.1.53148.1.1.2.3"   # E2SM-RC  v01.03
 _DEFAULT_RAN_FUNC_ID_CCC = 4
 _DEFAULT_CCC_OID = "1.3.6.1.4.1.53148.1.1.2.4"  # E2SM-CCC (cell on/off / energy saving)
+_DEFAULT_RAN_FUNC_ID_ANR = 6
+_DEFAULT_ANR_OID = "1.3.6.1.4.1.53148.1.1.2.6"  # E2SM-ANR (gNB SON trigger, 自定)
 # 2026-05-16: TAC / SST env shells — 接口存在但邏輯未實作。
 # 對齊 OAI tracking_area_code=0xa000、snssaiList.sst=1。
 _DEFAULT_TAC = 0xa000
@@ -151,6 +153,24 @@ def read_global_e2_node_id() -> dict:
                 "ran_function_revision": 1,
                 "service_model": "CCC",
                 "version": "v04.00",
+            },
+            {
+                # E2SM-ANR(gNB SON 觸發,自定)。adapter 端由 E2SM_ANR_ENABLE gate 是否廣播;
+                # 預設關 → 不進 E2 Setup,不影響 KPM/RC 對 RIC 註冊。
+                "ran_function_id": _DEFAULT_RAN_FUNC_ID_ANR,
+                "ran_function_oid": _DEFAULT_ANR_OID,
+                "ran_function_revision": 1,
+                "service_model": "ANR",
+                "version": "v01.00",
+            },
+            {
+                # E2SM-DTFULLKPM(vendor)— E2_data_example.md 全格式 JSON indication。
+                # adapter 端由 E2SM_FULLKPM_ENABLE gate 是否廣播(預設 on)。
+                "ran_function_id": 5,
+                "ran_function_oid": "1.3.6.1.4.1.53148.1.1.2.100",
+                "ran_function_revision": 1,
+                "service_model": "FULLKPM",
+                "version": "v01.00",
             },
         ],
         "components": _read_du_components(),

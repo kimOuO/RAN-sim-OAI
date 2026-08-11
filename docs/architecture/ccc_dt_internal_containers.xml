@@ -1,0 +1,144 @@
+<mxGraphModel dx="1578" dy="838" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontStyle=1" value="CCC (E2SM-CCC 節能) DT 平台內部 · 容器級運作流程" vertex="1">
+      <mxGeometry height="40" width="1560" x="40" y="20" as="geometry" />
+    </mxCell>
+
+    <!-- Legend -->
+    <mxCell id="legend-down" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#2E7D32;fontStyle=1" value="━━ 下行 control (RIC→DT):SCTP → HTTP(F1AP)" vertex="1">
+      <mxGeometry height="18" width="420" x="1180" y="70" as="geometry" />
+    </mxCell>
+    <mxCell id="legend-up" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#E65100;fontStyle=1" value="━━ 上行 ACK (DT→RIC):HTTP 200 → SCTP" vertex="1">
+      <mxGeometry height="18" width="420" x="1180" y="90" as="geometry" />
+    </mxCell>
+    <mxCell id="legend-db" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#5D4037" value="┈┈ 狀態存取 (Django ORM → postgres)" vertex="1">
+      <mxGeometry height="18" width="420" x="1180" y="110" as="geometry" />
+    </mxCell>
+    <mxCell id="legend-fx" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#b85450" value="┈┈ 下游物理效果 (非控制路徑 → 反映到 KPM)" vertex="1">
+      <mxGeometry height="18" width="420" x="1180" y="130" as="geometry" />
+    </mxCell>
+
+    <!-- ============ RIC platform (compact) ============ -->
+    <mxCell id="ric-box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=6" value="RIC Platform (10.3.0.71)  — 另一平台,詳見 RIC 側圖" vertex="1">
+      <mxGeometry height="620" width="360" x="40" y="170" as="geometry" />
+    </mxCell>
+    <mxCell id="rcprobe" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0050ef;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ricxapp-rc-probe&lt;/b&gt;&lt;br/&gt;&lt;i&gt;控制觸發 xApp&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;• 編 E2AP + CCC JSON&lt;br/&gt;• RMR send mtype=12040&lt;br/&gt;• 帶 ranFunctionId=4 / ricRequestID" vertex="1">
+      <mxGeometry height="120" width="300" x="70" y="210" as="geometry" />
+    </mxCell>
+    <mxCell id="e2term" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#00838f;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ricplt-e2term-alpha&lt;/b&gt;&lt;br/&gt;&lt;i&gt;SCTP 閘門 (RIC 側)&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;• RMR :38000 ↔ SCTP :36422&lt;br/&gt;• 透明轉送 E2AP,不解 E2SM&lt;br/&gt;• 反向:標 mtype 12041(ACK)/12042(FAIL)" vertex="1">
+      <mxGeometry height="130" width="300" x="70" y="380" as="geometry" />
+    </mxCell>
+    <mxCell id="ric-note" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontColor=#5D4037" value="mtype: 12040=CONTROL_REQ · 12041=ACK · 12042=FAILURE&#xa;meid = gnb_208_095_000e00 · OID 1.3.6.1.4.1.53148.1.1.2.4" vertex="1">
+      <mxGeometry height="40" width="330" x="60" y="540" as="geometry" />
+    </mxCell>
+
+    <!-- ============ DT platform (expanded, container-level) ============ -->
+    <mxCell id="dt-box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff6ec;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=6" value="DT Platform (sim host 10.3.0.217)  — docker compose · 每個框 = 一個容器" vertex="1">
+      <mxGeometry height="740" width="1140" x="450" y="170" as="geometry" />
+    </mxCell>
+
+    <!-- e2adapter -->
+    <mxCell id="c-adapter" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f57c00;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;fontStyle=0" value="&lt;b&gt;ransim-e2adapter&lt;/b&gt;  (host net · SCTP :36421)&lt;br/&gt;&lt;i&gt;E2 termination / CCC codec&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;• SCTP 收 RIC_CONTROL_REQUEST&lt;br/&gt;• pycrate 解 E2AP 外層 → 取 OCTET STRING&lt;br/&gt;• json.loads CCC header+message&lt;br/&gt;• ran_func_id==4 → _handle_ccc_control_req&lt;br/&gt;• to_sim_control_payload → {cell_id,action,staged}&lt;br/&gt;• 反向:編 E2AP ACK,原封回拷 ricRequestID" vertex="1">
+      <mxGeometry height="200" width="330" x="480" y="210" as="geometry" />
+    </mxCell>
+
+    <!-- CU -->
+    <mxCell id="c-cu" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e65100;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ransim-cu&lt;/b&gt;  (:8101)&lt;br/&gt;&lt;i&gt;編排大腦 · ES 兩階段狀態機 / RRC / HO&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;e2_control_actor.request() → _cell_energy_saving()&lt;br/&gt;staged=true(節能):&lt;br/&gt; ①_CELL_ES_STATE[c]=toBeEnergySaving (行程記憶體)&lt;br/&gt; ②_pick_offload_target → 鄰 cell&lt;br/&gt; ③每個 CONNECTED UE 做 _handle_handover&lt;br/&gt; ④remaining==0 → post_cell_disable → isEnergySaving&lt;br/&gt;staged=false(硬開關):_handle_cell_on_off 即時&lt;br/&gt;push_control_action() 記錄觀測" vertex="1">
+      <mxGeometry height="230" width="360" x="870" y="210" as="geometry" />
+    </mxCell>
+
+    <!-- DU -->
+    <mxCell id="c-du" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ransim-du&lt;/b&gt;  (:8102)&lt;br/&gt;&lt;i&gt;執行層 · F1AP / MAC 排程 / tick 心跳&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;• F1ApRouter 收 ue_context_modification&lt;br/&gt;  → UE 掛載 cell 改到鄰 cell&lt;br/&gt;• 收 cell_disable → MAC 停止排程該 cell&lt;br/&gt;  (RF off);cell_enable → 恢復排程&lt;br/&gt;• 下一 tick 起:該 cell PRB=0" vertex="1">
+      <mxGeometry height="200" width="310" x="1270" y="210" as="geometry" />
+    </mxCell>
+
+    <!-- postgres -->
+    <mxCell id="c-pg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#5D4037;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;dashed=1" value="&lt;b&gt;ransim-postgres&lt;/b&gt;  (:5433)&lt;br/&gt;&lt;i&gt;狀態存放&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;CU 經 Django ORM 讀寫:&lt;br/&gt;• UeContext.serving_cell (HO 後更新)&lt;br/&gt;• CellConfig.is_active&lt;br/&gt;• HandoverEvent (HO 歷史)&lt;br/&gt;註:_CELL_ES_STATE 不在此,是 CU 行程記憶體" vertex="1">
+      <mxGeometry height="160" width="360" x="870" y="480" as="geometry" />
+    </mxCell>
+
+    <!-- RU -->
+    <mxCell id="c-ru" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdecec;strokeColor=#b85450;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;dashed=1" value="&lt;b&gt;ransim-ru&lt;/b&gt;  (:8103)&lt;br/&gt;&lt;i&gt;PHY-low / beamforming (下游效果)&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;cell 關後不再對該 cell 產 RF;&lt;br/&gt;UE 改由鄰 cell 服務" vertex="1">
+      <mxGeometry height="120" width="310" x="1270" y="480" as="geometry" />
+    </mxCell>
+
+    <!-- physics -->
+    <mxCell id="c-phys" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdecec;strokeColor=#b85450;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;dashed=1" value="&lt;b&gt;ransim-physics&lt;/b&gt;  (:8104)&lt;br/&gt;&lt;i&gt;通道 / Sionna (下游效果)&lt;/i&gt;&lt;br/&gt;依新 serving cell 幾何重算 SINR/通道" vertex="1">
+      <mxGeometry height="100" width="310" x="1270" y="640" as="geometry" />
+    </mxCell>
+
+    <!-- UE -->
+    <mxCell id="c-ue" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdecec;strokeColor=#b85450;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;dashed=1" value="&lt;b&gt;ransim-ue&lt;/b&gt;  (:8105)&lt;br/&gt;&lt;i&gt;UE 流量 / 移動 (下游效果)&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;UE 依 serving cell 產生流量;&lt;br/&gt;HO 後流量走鄰 cell" vertex="1">
+      <mxGeometry height="130" width="330" x="480" y="480" as="geometry" />
+    </mxCell>
+
+    <!-- kpm-calib note -->
+    <mxCell id="c-kpm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9e9e9e;fontSize=10;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;dashed=1" value="&lt;b&gt;kpm-calib&lt;/b&gt; — 只在 KPM 上報路徑上校正,&lt;b&gt;不在 CCC control 路徑&lt;/b&gt;。CCC 動作的效果(UE 移動 / cell PRB 起落)是透過既有 KPM Indication 流回 RIC,才被 xApp/InfluxDB 看見。" vertex="1">
+      <mxGeometry height="60" width="1100" x="480" y="820" as="geometry" />
+    </mxCell>
+
+    <!-- ================= edges ================= -->
+    <!-- RIC internal: rc-probe -> e2term -->
+    <mxCell id="e-rc-e2t" edge="1" parent="1" source="rcprobe" target="e2term" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2E7D32;strokeWidth=2;endArrow=classic;fontSize=9;fontColor=#2E7D32">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-rc-e2t-l" connectable="0" parent="e-rc-e2t" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#2E7D32;fillColor=#ffffff" value="RMR 12040" vertex="1"><mxGeometry relative="1" x="-0.1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- e2term -> adapter (cross platform SCTP) -->
+    <mxCell id="e-e2t-ad" edge="1" parent="1" source="e2term" target="c-adapter" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2E7D32;strokeWidth=3;endArrow=classic">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-e2t-ad-l" connectable="0" parent="e-e2t-ad" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#2E7D32;fillColor=#ffffff" value="③ SCTP DATA&#xa;PPID=0x46 (E2AP)&#xa;procedureCode=4" vertex="1"><mxGeometry relative="1" x="-0.1" y="-1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- adapter -> CU (HTTP down) -->
+    <mxCell id="e-ad-cu" edge="1" parent="1" source="c-adapter" target="c-cu" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2E7D32;strokeWidth=2;endArrow=classic;exitX=1;exitY=0.3;entryX=0;entryY=0.3">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-ad-cu-l" connectable="0" parent="e-ad-cu" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#2E7D32;fillColor=#ffffff" value="HTTP POST&#xa;/CU/E2/Control/request&#xa;{cell_id,action,staged}" vertex="1"><mxGeometry relative="1" y="-1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- CU -> DU (F1AP) -->
+    <mxCell id="e-cu-du" edge="1" parent="1" source="c-cu" target="c-du" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2E7D32;strokeWidth=2;endArrow=classic;exitX=1;exitY=0.35;entryX=0;entryY=0.35">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-cu-du-l" connectable="0" parent="e-cu-du" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#2E7D32;fillColor=#ffffff" value="F1AP HTTP&#xa;ue_context_modification (趕人)&#xa;+ post_cell_disable (關 RF)" vertex="1"><mxGeometry relative="1" y="-1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- CU <-> postgres -->
+    <mxCell id="e-cu-pg" edge="1" parent="1" source="c-cu" target="c-pg" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#5D4037;strokeWidth=1;dashed=1;endArrow=classicThin;startArrow=classicThin">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-cu-pg-l" connectable="0" parent="e-cu-pg" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#5D4037;fillColor=#ffffff" value="ORM 讀寫&#xa;serving_cell / is_active / HandoverEvent" vertex="1"><mxGeometry relative="1" x="0.1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- DU -> RU (effect) -->
+    <mxCell id="e-du-ru" edge="1" parent="1" source="c-du" target="c-ru" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=1;dashed=1;endArrow=open">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-ru-phys" edge="1" parent="1" source="c-ru" target="c-phys" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=1;dashed=1;endArrow=open">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-du-ue" edge="1" parent="1" source="c-du" target="c-ue" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=1;dashed=1;endArrow=open;exitX=0;exitY=0.8;entryX=1;entryY=0.4">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-du-ue-l" connectable="0" parent="e-du-ue" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#b85450;fillColor=#ffffff" value="UE 改掛鄰 cell" vertex="1"><mxGeometry relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- ACK up: CU -> adapter -->
+    <mxCell id="e-cu-ad-up" edge="1" parent="1" source="c-cu" target="c-adapter" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#E65100;strokeWidth=2;endArrow=classic;exitX=0;exitY=0.75;entryX=1;entryY=0.75">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-cu-ad-up-l" connectable="0" parent="e-cu-ad-up" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#E65100;fillColor=#ffffff" value="HTTP 200&#xa;{control_outcome}" vertex="1"><mxGeometry relative="1" y="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- ACK up: adapter -> e2term -->
+    <mxCell id="e-ad-e2t-up" edge="1" parent="1" source="c-adapter" target="e2term" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#E65100;strokeWidth=3;endArrow=classic;exitX=0;exitY=0.75;entryX=1;entryY=0.85">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e-ad-e2t-up-l" connectable="0" parent="e-ad-e2t-up" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#E65100;fillColor=#ffffff" value="④ SCTP DATA (return)&#xa;E2AP successfulOutcome&#xa;→ e2term 標 mtype=12041&#xa;ricRequestID 原封回拷" vertex="1"><mxGeometry relative="1" x="-0.1" y="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- sync note -->
+    <mxCell id="sync-note" parent="1" style="text;html=1;align=left;fontSize=11;fontColor=#E65100;fontStyle=2" value="★ 同步:CU 把「趕人 + 關 cell」整條做完才 return → ACK 一旦回,代表 RAN 兩階段已執行完畢" vertex="1">
+      <mxGeometry height="20" width="900" x="450" y="920" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>

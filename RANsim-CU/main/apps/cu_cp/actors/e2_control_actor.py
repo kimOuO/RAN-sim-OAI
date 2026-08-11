@@ -148,8 +148,13 @@ class E2ControlActor:
                 if not cid or act not in ("enable", "disable"):
                     failed.append({"cell": cid, "reason": "bad cell_id/action"})
                     continue
-                _handle_cell_on_off(cid, {"action": act}, ric_req_id)  # 側效:DU 開關 + push_control_action
-                applied.append({"cell_id": cid, "action": act})
+                if c.get("staged"):
+                    # 節能兩階段:toBeEnergySaving→趕人→isEnergySaving(或開回)
+                    applied.append(_cell_energy_saving(cid, act, ric_req_id))
+                else:
+                    # 硬開關(administrativeState LOCKED/UNLOCKED):即時
+                    _handle_cell_on_off(cid, {"action": act}, ric_req_id)
+                    applied.append({"cell_id": cid, "action": act, "mode": "hard"})
             return success_response(
                 {"ric_req_id": ric_req_id, "service_model": "CCC",
                  "applied": applied, "failed": failed},
@@ -190,9 +195,20 @@ class E2ControlActor:
                 return error_response("cell_id required for style=2 action=7 (cell on/off)", status=400)
             return _handle_cell_on_off(cell_id, message, ric_req_id)
 
-        return error_response(
-            f"unsupported (control_style={style}, control_action_id={action_id})",
-            status=400,
+        return _es_unsupported_response(style, action_id)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def cell_es_state(request: HttpRequest):
+        """回傳各 cell 的 energySavingState — 給 E2Adapter CCC Indication producer 輪詢。"""
+        return success_response(get_cell_es_state(), "cell ES state")
+
+
+def _es_unsupported_response(style, action_id):
+    return error_response(
+        f"unsupported (control_style={style}, control_action_id={action_id})",
+        status=400,
         )
 
 
@@ -532,3 +548,76 @@ def _handle_cell_on_off(
         },
         "control acknowledged",
     )
+
+
+# ── E2SM-CCC 節能兩階段狀態機(toBeEnergySaving → 趕人(HO) → isEnergySaving)──
+# CU 負責編排:HO 是 CU/RRC 職責;cell RF 開關經 F1AP 給 DU 執行。
+_CELL_ES_STATE: dict[str, str] = {}   # cell_id → isNotEnergySaving | toBeEnergySaving | isEnergySaving
+
+
+def get_cell_es_state(cell_id: str | None = None):
+    """給 adapter CCC Indication producer 輪詢用。"""
+    if cell_id:
+        return _CELL_ES_STATE.get(cell_id, "isNotEnergySaving")
+    return dict(_CELL_ES_STATE)
+
+
+def _pick_offload_target(es_cell_id: str) -> str | None:
+    """趕人目標:其它 cell(排除本 cell + 正在節能的 cell)。2-cell DT = 同站另一 cell。
+    (RSRP-best 精選為 TODO;先用第一個可用鄰 cell。)"""
+    for cid in CellConfig.objects.exclude(cell_id=es_cell_id).values_list("cell_id", flat=True):
+        if _CELL_ES_STATE.get(cid, "isNotEnergySaving") == "isNotEnergySaving":
+            return cid
+    return None
+
+
+def _cell_energy_saving(cell_id: str, action: str, ric_req_id: dict) -> dict:
+    """action='disable' → toBeEnergySaving(趕人後關);'enable' → toBeNotEnergySaving(開回)。"""
+    if action == "enable":
+        DuClientBusinessService.post_cell_enable(cell_id)
+        _CELL_ES_STATE[cell_id] = "isNotEnergySaving"
+        push_control_action(
+            control_style=2, control_action_id=7, action_label="CELL_ES_EXIT",
+            ric_req_id=ric_req_id, cell_id=cell_id,
+            payload_json={"energySavingState": "isNotEnergySaving"},
+            outcome="isNotEnergySaving", action_ts=TimestampService.now().isoformat(),
+        )
+        logger.info("ES: cell %s → isNotEnergySaving (enabled)", cell_id)
+        return {"cell_id": cell_id, "energySavingState": "isNotEnergySaving"}
+
+    # disable → toBeEnergySaving:先趕人,清空才關
+    _CELL_ES_STATE[cell_id] = "toBeEnergySaving"
+    target = _pick_offload_target(cell_id)
+    ues = list(UeContext.objects.filter(serving_cell=cell_id, rrc_state="CONNECTED"))
+    offloaded, failed = [], []
+    for ue in ues:
+        if not target:
+            failed.append(ue.ue_id)
+            continue
+        try:
+            _handle_handover(ue.ue_id, {"target_cell": target}, ric_req_id, ue_src="es")
+            offloaded.append({"ue": ue.ue_id, "target": target})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ES offload HO failed ue=%s: %s", ue.ue_id, e)
+            failed.append(ue.ue_id)
+
+    remaining = UeContext.objects.filter(serving_cell=cell_id, rrc_state="CONNECTED").count()
+    if remaining == 0:
+        DuClientBusinessService.post_cell_disable(cell_id)
+        _CELL_ES_STATE[cell_id] = "isEnergySaving"
+        state = "isEnergySaving"
+        logger.info("ES: cell %s cleared (%d UE offloaded) → isEnergySaving (disabled)",
+                    cell_id, len(offloaded))
+    else:
+        state = "toBeEnergySaving"
+        logger.info("ES: cell %s still has %d UE → stay toBeEnergySaving (not disabled yet)",
+                    cell_id, remaining)
+    push_control_action(
+        control_style=2, control_action_id=7, action_label="CELL_ES_ENTER",
+        ric_req_id=ric_req_id, cell_id=cell_id,
+        payload_json={"energySavingState": state, "offloaded": offloaded,
+                      "target_cell": target, "remaining": remaining},
+        outcome=state, action_ts=TimestampService.now().isoformat(),
+    )
+    return {"cell_id": cell_id, "energySavingState": state,
+            "offloaded": offloaded, "failed": failed, "remaining": remaining}

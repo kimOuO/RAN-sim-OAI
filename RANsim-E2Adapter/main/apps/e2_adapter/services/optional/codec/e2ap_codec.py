@@ -264,9 +264,10 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
     # 對 KPM (id=2) / RC (id=3) 都編真實 RANfunction-Description.
     import os
     from main.apps.e2_adapter.services.optional.codec import (
-        e2sm_kpm_codec, e2sm_rc_codec, e2sm_ccc_codec,
+        e2sm_kpm_codec, e2sm_rc_codec, e2sm_ccc_codec, e2sm_anr_codec,
     )
     _ccc_enabled = (os.environ.get("E2SM_CCC_ENABLE") or "off").strip().lower() in ("on", "1", "true")
+    _anr_enabled = (os.environ.get("E2SM_ANR_ENABLE") or "off").strip().lower() in ("on", "1", "true")
 
     ran_func_items = []
     for rf in node_id_payload["ran_functions"]:
@@ -293,6 +294,30 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
                 rfd_bytes = e2sm_ccc_codec.encode_ccc_ran_function_description()
             except Exception:
                 logger.exception("CCC RANfunction-Description encode failed; using empty stub")
+                rfd_bytes = b""
+        elif sm == "ANR":
+            # gate:預設關 → 完全不廣播 ANR(不進 E2 Setup),保護既有 KPM/RC/CCC 註冊
+            if not _anr_enabled:
+                logger.info("E2SM-ANR advertisement disabled (E2SM_ANR_ENABLE off); skipping ran_function id=%s",
+                            rf.get("ran_function_id"))
+                continue
+            try:
+                rfd_bytes = e2sm_anr_codec.encode_anr_ran_function_description()
+            except Exception:
+                logger.exception("ANR RANfunction-Description encode failed; using empty stub")
+                rfd_bytes = b""
+        elif sm == "FULLKPM":
+            # E2SM-DTFULLKPM(vendor,JSON payload)— 預設 on;關掉 = 不進 E2 Setup
+            _fullkpm_enabled = (os.environ.get("E2SM_FULLKPM_ENABLE") or "on").strip().lower() in ("on", "1", "true")
+            if not _fullkpm_enabled:
+                logger.info("E2SM-FULLKPM advertisement disabled; skipping ran_function id=%s",
+                            rf.get("ran_function_id"))
+                continue
+            try:
+                from main.apps.e2_adapter.services.optional.codec import e2sm_fullkpm_codec
+                rfd_bytes = e2sm_fullkpm_codec.encode_fullkpm_ran_function_description()
+            except Exception:
+                logger.exception("FULLKPM RANfunction-Description encode failed; using empty stub")
                 rfd_bytes = b""
         else:
             logger.warning("Unknown service_model %r for ranFunction id=%s",

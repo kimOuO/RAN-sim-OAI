@@ -18,7 +18,10 @@ fi
 
 echo "=== 2. iptables 阻 SCTP 出站到 docker/k8s 內網 ==="
 # 多次跑這 script 不會重複加 rule（先 -D delete，失敗 ignore）
-for cidr in 172.17.0.0/16 10.0.0.0/24 10.244.0.0/16 10.96.0.0/12; do
+# 2026-08-07:172.17/16 擴成 172.16/12 — RIC 重部署後 bridge 挪到 172.18.0.1,
+# 我們本機也有同名 bridge,HB 走 lo 繞回自己觸發 OOTB ABORT self-kill(pcap 實錘)。
+# 一次涵蓋所有 RFC1918 Docker/K8s 可能網段。
+for cidr in 172.16.0.0/12 192.168.0.0/16 10.0.0.0/24 10.244.0.0/16 10.96.0.0/12; do
   iptables -D OUTPUT -p sctp -d "$cidr" -j DROP 2>/dev/null || true
   iptables -A OUTPUT -p sctp -d "$cidr" -j DROP
   echo "  iptables OUTPUT DROP sctp -d $cidr"

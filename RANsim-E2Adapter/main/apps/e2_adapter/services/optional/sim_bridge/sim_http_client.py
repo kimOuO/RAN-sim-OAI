@@ -134,6 +134,14 @@ def list_subscriptions() -> list[dict[str, Any]]:
     return data.get("subscriptions") or []
 
 
+def fetch_full_kpm() -> dict[str, Any] | None:
+    """POST /CU/E2/E2FullReporter/read → 完整 E2_data_example.md 格式 snapshot。
+
+    E2SM-DTFULLKPM(ran_func 5)indication producer 用。
+    """
+    return _post_sim("/api/v0.1/CU/E2/E2FullReporter/read", {})
+
+
 def poll_indication(subscription_id: str) -> dict[str, Any] | None:
     """POST /CU/E2/Indication/poll → returns {indications: [...], count}."""
     return _post_sim("/api/v0.1/CU/E2/Indication/poll",
@@ -148,3 +156,11 @@ def call_control_request(payload: dict[str, Any]) -> dict[str, Any] | None:
       {action: "prb_quota", min_prb, max_prb, dedicated_prb, ...}
     """
     return _post_sim("/api/v0.1/CU/E2/Control/request", payload)
+
+
+def call_anr_control(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """POST /CU/E2/Anr/control — adapter → sim CU forward E2SM-ANR SON trigger.
+
+    payload: {sim_action:'anr_son_trigger', request:{requestType, sourceCellId, ...}}
+    """
+    return _post_sim("/api/v0.1/CU/E2/Anr/control", payload)

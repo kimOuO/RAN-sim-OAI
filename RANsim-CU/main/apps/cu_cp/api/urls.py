@@ -2,9 +2,12 @@
 from django.urls import path
 
 from main.apps.cu_cp.actors.e2_control_actor import E2ControlActor
+from main.apps.cu_cp.actors.e2_full_reporter_actor import E2FullReporterActor
 from main.apps.cu_cp.actors.e2_kpm_reporter_actor import E2KpmReporterActor
 from main.apps.cu_cp.actors.e2_kpm_speed_actor import E2KpmSpeedActor
 from main.apps.cu_cp.actors.e2_node_id_actor import E2NodeIdActor
+from main.apps.cu_cp.actors.anr_control_actor import AnrControlActor
+from main.apps.cu_cp.actors.anr_query_actor import AnrQueryActor
 from main.apps.cu_cp.actors.e2_subscription_actor import E2IndicationActor, E2SubscriptionActor
 from main.apps.cu_cp.actors.f1ap_router_actor import F1ApRouterActor
 from main.apps.cu_cp.actors.log_actor import LogActor
@@ -34,13 +37,20 @@ urlpatterns = [
     # ── E2 介面（對齊 OAI E2AP / E2-SM-KPM / E2-SM-RC）─────────────────
     # 舊的：簡單 polling snapshot（保留向後相容）
     path("E2/E2KpmReporter/read", E2KpmReporterActor.read, name="e2_kpm_read"),
+    # 完整版:欄位架構 1:1 對齊 docs/E2_data_example.md(e2/ue_status/pm/bbu_status)
+    path("E2/E2FullReporter/read", E2FullReporterActor.read, name="e2_full_kpm_read"),
     # 新的：xApp 訂閱 / poll indication / 下 control（對齊 OAI 三段式 RIC 流程）
     path("E2/Subscription/create", E2SubscriptionActor.create, name="e2_sub_create"),  # ↔ OAI RIC Subscription Request
     path("E2/Subscription/delete", E2SubscriptionActor.delete, name="e2_sub_delete"),  # ↔ OAI RIC Subscription Delete Request
     path("E2/Subscription/list",   E2SubscriptionActor.list,   name="e2_sub_list"),    # adapter 重啟恢復用
     path("E2/Indication/poll", E2IndicationActor.poll, name="e2_ind_poll"),            # ↔ OAI RIC Indication (polling 取代 SCTP push)
     path("E2/Control/request", E2ControlActor.request, name="e2_ctrl_request"),        # ↔ OAI RIC Control Request
+    path("E2/CellEsState/read", E2ControlActor.cell_es_state, name="e2_cell_es_state"), # cell energySavingState(給 CCC indication producer)
     path("E2/E2NodeId/read", E2NodeIdActor.read, name="e2_node_id_read"),              # ↔ globalE2node-ID for E2 adapter
+    # ── ANR / E2 Node Information（E2SM-ANR M0：鄰區關係表觀測）─────────────
+    path("E2/NodeInfo/read", AnrQueryActor.node_info, name="e2_nodeinfo_read"),        # ↔ RC_E2NODEINFO_QUERY(§9.3.38)
+    path("E2/Anr/reseed", AnrQueryActor.reseed, name="e2_anr_reseed"),                 # 手動重種 NRT + CGI
+    path("E2/Anr/control", AnrControlActor.control, name="e2_anr_control"),            # ↔ SONTRIG_ANR_ADD/REMOVE/FLAG
     # KPM sim-speed knob — Dashboard 切 DU tick 速度時同步通知,讓 indication producer
     # 用 sim-time 為單位算 report_period_ms,不是 wall-clock。
     path("E2/KpmSpeed/set",  E2KpmSpeedActor.set,  name="e2_kpm_speed_set"),

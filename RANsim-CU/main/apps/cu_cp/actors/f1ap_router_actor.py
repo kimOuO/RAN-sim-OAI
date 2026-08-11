@@ -134,6 +134,14 @@ class F1ApRouterActor:
             logger.info("F1 Setup cleared %d stale cells from DU#%s", deleted, gnb_du_id)
 
         logger.info("F1 Setup accepted: DU#%s with %d cell(s)", gnb_du_id, len(cells))
+
+        # E2SM-ANR M0：cell 就緒後(重)建 intra-gNB 鄰區關係 + CGI 解析(冪等)。
+        try:
+            from main.apps.cu_cp.services.business.anr_seeder import seed_from_cells
+            seed_from_cells()
+        except Exception:  # noqa: BLE001 — 種子失敗不應擋 F1 Setup
+            logger.exception("ANR seed on F1 Setup failed")
+
         resp = F1apHandler.build_f1_setup_response(transaction_id=gnb_du_id, accepted=True)
         return success_response(resp, "F1 Setup accepted", status=200)
 

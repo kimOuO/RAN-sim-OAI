@@ -32,47 +32,49 @@ CCC_RIC_STYLE_TYPE = 2  # Cell Configuration and Control
 
 
 # ── cell 開關語意:從 newValuesOfAttributes 判斷 on/off ─────────────
-def _action_from_attrs(struct_name: str, new_vals: dict[str, Any]) -> str | None:
-    """回傳 'off' / 'on' / None(無法判定)。支援兩種標準屬性:
-       - NRCellDU.administrativeState:LOCKED=off / UNLOCKED=on(3GPP,主路徑)
-       - NRCellDU.cellState:INACTIVE=off / ACTIVE=on
-       - O-CESManagementFunction.energySavingControl:toBeEnergySaving=off / toBeNotEnergySaving=on
+def _action_from_attrs(struct_name: str, new_vals: dict[str, Any]) -> tuple[str | None, bool]:
+    """回傳 (action, staged)。action='off'/'on'/None;staged=True 代表走節能兩階段
+       (toBeEnergySaving→趕人→isEnergySaving),False 代表硬開關(即時)。
+       - O-CESManagementFunction.energySavingControl:toBeEnergySaving=off / toBeNotEnergySaving=on → staged
+       - energySavingState:isEnergySaving=off / isNotEnergySaving=on → staged
+       - NRCellDU.administrativeState:LOCKED=off / UNLOCKED=on → hard(3GPP,直接開關)
+       - NRCellDU.cellState:INACTIVE=off / ACTIVE=on → hard
     """
     def norm(v: Any) -> str:
         return str(v).strip().lower()
-
-    admin = new_vals.get("administrativeState")
-    if admin is not None:
-        n = norm(admin)
-        if n == "locked":
-            return "off"
-        if n == "unlocked":
-            return "on"
-
-    cstate = new_vals.get("cellState")
-    if cstate is not None:
-        n = norm(cstate)
-        if n == "inactive":
-            return "off"
-        if n == "active":
-            return "on"
 
     esc = new_vals.get("energySavingControl")
     if esc is not None:
         n = norm(esc)
         if n == "tobeenergysaving":
-            return "off"
+            return "off", True
         if n == "tobenotenergysaving":
-            return "on"
+            return "on", True
 
     ess = new_vals.get("energySavingState")
     if ess is not None:
         n = norm(ess)
         if n == "isenergysaving":
-            return "off"
+            return "off", True
         if n == "isnotenergysaving":
-            return "on"
-    return None
+            return "on", True
+
+    admin = new_vals.get("administrativeState")
+    if admin is not None:
+        n = norm(admin)
+        if n == "locked":
+            return "off", False
+        if n == "unlocked":
+            return "on", False
+
+    cstate = new_vals.get("cellState")
+    if cstate is not None:
+        n = norm(cstate)
+        if n == "inactive":
+            return "off", False
+        if n == "active":
+            return "on", False
+    return None, False
 
 
 def _cell_id_from_global(cgi: dict[str, Any]) -> str:
@@ -151,9 +153,9 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
             for cs in cell.get("listOfConfigurationStructures", []) or []:
                 sname = cs.get("ranConfigurationStructureName", "")
                 new_vals = cs.get("newValuesOfAttributes", {}) or {}
-                action = _action_from_attrs(sname, new_vals)
+                action, staged = _action_from_attrs(sname, new_vals)
                 cells.append({
-                    "cell_id": cid, "action": action,
+                    "cell_id": cid, "action": action, "staged": staged,
                     "struct": sname, "new_vals": new_vals,
                 })
     except Exception as exc:  # noqa: BLE001
@@ -179,7 +181,11 @@ def to_sim_control_payload(ccc_decoded: dict[str, Any]) -> dict[str, Any] | None
         act = c.get("action")
         if act not in ("on", "off"):
             continue
-        cells.append({"cell_id": c["cell_id"], "action": "enable" if act == "on" else "disable"})
+        cells.append({
+            "cell_id": c["cell_id"],
+            "action": "enable" if act == "on" else "disable",
+            "staged": bool(c.get("staged", False)),  # True=節能兩階段;False=硬開關
+        })
     if not cells:
         return None
     return {
@@ -222,6 +228,38 @@ def encode_ccc_ran_function_description() -> bytes:
     return json.dumps(rfd, separators=(",", ":")).encode("utf-8")
 
 
+# ── CCC RIC Indication(回報 cell 狀態變化給 xApp;E2AP 外層複用 encode_ric_indication)──
+def encode_ccc_indication_header() -> bytes:
+    return json.dumps(
+        {"indicationHeaderFormat": {"ricStyleType": CCC_RIC_STYLE_TYPE}},
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def encode_ccc_indication_message(cell_id: str, energy_saving_state: str,
+                                  plmn: dict | None = None) -> bytes:
+    """回報某 cell 的 energySavingState(isNotEnergySaving/toBeEnergySaving/isEnergySaving)。"""
+    cgi: dict[str, Any] = {"nRCellIdentity": cell_id}
+    if plmn:
+        cgi["plmnIdentity"] = plmn
+    msg = {
+        "indicationMessageFormat": {
+            "listOfCellsReported": [
+                {
+                    "cellGlobalId": cgi,
+                    "listOfConfigurationStructuresReported": [
+                        {
+                            "ranConfigurationStructureName": "O-CESManagementFunction",
+                            "valuesOfAttributes": {"energySavingState": energy_saving_state},
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    return json.dumps(msg, separators=(",", ":")).encode("utf-8")
+
+
 # ── self-test:驗證 JSON 內層 decode 邏輯(不含 E2AP 外層 ASN.1)──
 def selftest_ccc_decode() -> dict[str, Any]:
     """建一組 CCC header/message JSON,直接測 on/off 判定邏輯。"""
@@ -240,9 +278,9 @@ def selftest_ccc_decode() -> dict[str, Any]:
     for cell in msg["controlMessageFormat"]["listOfCellsControlled"]:
         cid = _cell_id_from_global(cell["cellGlobalId"])
         for cs in cell["listOfConfigurationStructures"]:
-            cells.append({"cell_id": cid,
-                          "action": _action_from_attrs(cs["ranConfigurationStructureName"],
-                                                        cs["newValuesOfAttributes"])})
+            act, staged = _action_from_attrs(cs["ranConfigurationStructureName"],
+                                             cs["newValuesOfAttributes"])
+            cells.append({"cell_id": cid, "action": act, "staged": staged})
     payload = to_sim_control_payload({"ric_req_id": {}, "ran_function_id": CCC_RAN_FUNCTION_ID,
                                       "cells": cells})
     rfd_ok = len(encode_ccc_ran_function_description()) > 0

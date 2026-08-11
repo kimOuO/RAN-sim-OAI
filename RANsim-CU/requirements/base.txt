@@ -9,3 +9,5 @@ channels==4.1.0
 daphne==4.1.2
 # ran-sim-protocol is installed at runtime by shell/entrypoint.sh
 # from the volume mount /tmp/ran-sim-protocol
+psutil>=5.9          # BBU telemetry (bbu_status cpu/mem/temp)
+pynvml>=11.5         # BBU telemetry GPU power (soft import)

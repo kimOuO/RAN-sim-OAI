@@ -53,6 +53,8 @@ services:
       DB_PASSWORD: ransim
       HTTP_DU_HOST: du
       HTTP_DU_PORT: 8000
+      HTTP_UE_HOST: ue    # FullKpmReporter 撈 UE 即時位置(Status/read)
+      HTTP_UE_PORT: 8000
       HTTP_CUUP_HOST: ""    # 空 = integrated mode（cu_up 在同 process）
       LOG_DIR: /app/logs
       # globalE2node-ID — e2-adapter 透過 /CU/E2/E2NodeId/read 拿
@@ -261,6 +263,7 @@ services:
       DB_USER: ransim
       DB_PASSWORD: ransim
       LOG_DIR: /app/logs
+      ENABLE_FAST_FADING: "false"   # 關 fast-fading:靜態通道(實驗:平滑 DT 是否好訓練)
       MITSUBA_SCENE_PATH: /app/scenes/umi_3sector.xml
       # Sionna RT 用 Mitsuba/OptiX 做 ray tracing；driver 預設只 expose
       # compute+utility，需加 graphics 才會掛 liboptix
@@ -273,6 +276,9 @@ services:
       - ./Physics_sim:/app
       - ./Physics_sim/scenes:/app/scenes:ro
       - ./deploy/scene_config.json:/mnt/srcin/scene_config.json:ro   # 平台共享 scene
+      # OSM 地圖產出(USD/Mitsuba/footprints)—— 同路徑掛載,讓 Physics 能以
+      # 與 backend/Kit 相同的絕對路徑載入地圖的 Mitsuba 場景(geometry_source=mitsuba_xml_path)
+      - /home/mitlab/XAPP_DT/Omnivers_platform/assets/maps:/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps:ro
     ports:
       - "8104:8000"
     depends_on:
@@ -364,6 +370,8 @@ services:
       # E2SM-CCC(cell 開關/節能)廣播開關。off=不進 E2 Setup(保護 KPM/RC 註冊);
       # RIC/xApp 就緒後改 "on" 並重啟 e2adapter,CCC ran_function(id=4) 才會廣播。
       E2SM_CCC_ENABLE: "on"
+      E2SM_ANR_ENABLE: "on"       # ran_func 6:E2SM-ANR gNB SON 觸發(ADD/REMOVE/FLAG)
+      E2SM_FULLKPM_ENABLE: "on"   # ran_func 5:E2_data_example.md 全格式 JSON indication
       ASN1_SCHEMA_DIR: /app/asn1
       ADAPTER_HTTP_PORT: "8201"     # 0.0.0.0:8201 — 8000 被 Omniverse debugpy 佔用
     volumes:

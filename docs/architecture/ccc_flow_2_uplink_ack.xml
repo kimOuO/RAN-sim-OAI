@@ -1,0 +1,99 @@
+<mxGraphModel dx="1894" dy="1005" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1000" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontStyle=1;fontColor=#E65100" value="② CCC 上行 · ACK 回送 (DT → RIC) · 容器/Pod 級詳圖" vertex="1">
+      <mxGeometry height="40" width="1820" x="40" y="20" as="geometry" />
+    </mxCell>
+
+    <!-- Legend -->
+    <mxCell id="lg-up" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#E65100;fontStyle=1" value="━━ 上行 ACK:HTTP 200 → SCTP → RMR" vertex="1">
+      <mxGeometry height="18" width="480" x="1300" y="66" as="geometry" />
+    </mxCell>
+    <mxCell id="lg-look" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#5D4037" value="┈┈ rtmgr 路由查詢 (查表,非資料流)" vertex="1">
+      <mxGeometry height="18" width="480" x="1300" y="86" as="geometry" />
+    </mxCell>
+    <mxCell id="lg-quirk" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontColor=#c62828" value="┈┈ ⚠ ACK 被 mobiflow 搶收 (OSC RIC 路由行為)" vertex="1">
+      <mxGeometry height="18" width="480" x="1300" y="106" as="geometry" />
+    </mxCell>
+
+    <!-- caller -->
+    <mxCell id="caller" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;verticalAlign=middle;fontColor=#999999" value="外部觸發者&#xa;(上行不涉及)" vertex="1">
+      <mxGeometry height="55" width="220" x="60" y="70" as="geometry" />
+    </mxCell>
+
+    <!-- ===== RIC platform ===== -->
+    <mxCell id="ric-box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=6" value="RIC Platform (10.3.0.71 / K8s smo-master)" vertex="1">
+      <mxGeometry height="760" width="1000" x="40" y="150" as="geometry" />
+    </mxCell>
+    <mxCell id="rcprobe" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0050ef;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ricxapp-rc-probe&lt;/b&gt;&lt;br/&gt;&lt;i&gt;控制觸發 xApp (原發起者)&lt;/i&gt;&lt;br/&gt;image: rc-probe:0.0.3-mit-ccc-trace&lt;br/&gt;&lt;br/&gt;• 理論上該收 ACK 對回原命令&lt;br/&gt;• 實測:OSC RIC 未實作回原發起者" vertex="1">
+      <mxGeometry height="155" width="250" x="70" y="210" as="geometry" />
+    </mxCell>
+    <mxCell id="rtmgr" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#7b1fa2;dashed=1;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;deployment-ricplt-rtmgr&lt;/b&gt;&lt;br/&gt;&lt;i&gt;RMR 路由分揀&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;查 mtype=12041 route&lt;br/&gt;因 KPM sub 讓 rtmgr auto-add&lt;br/&gt;subId=23 route → 指向 mobiflow" vertex="1">
+      <mxGeometry height="185" width="280" x="70" y="430" as="geometry" />
+    </mxCell>
+    <mxCell id="mobiflow" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c62828;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ricxapp-mobiflow-auditor&lt;/b&gt;&lt;br/&gt;&lt;i&gt;KPM 收集 xApp&lt;/i&gt;&lt;br/&gt;image: mobiflow-auditor:0.0.7-mit&lt;br/&gt;&lt;br/&gt;⚠ 跟 CCC control 無關,但因 KPM sub&lt;br/&gt;讓 rtmgr auto-add subId=23 route&lt;br/&gt;→ 意外收到 CCC ACK (12041)&lt;br/&gt;→ 只 log 到 default_handler" vertex="1">
+      <mxGeometry height="165" width="250" x="400" y="210" as="geometry" />
+    </mxCell>
+    <mxCell id="otherpods" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9e9e9e;fontSize=10;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;dashed=1" value="其他 platform pod (未在 CCC control path 上)&lt;br/&gt;• e2mgr:E2 Setup 階段寫 R-NIB (ranFunctionId=4)&lt;br/&gt;• submgr:CCC control 為 one-shot,不涉及 subscription&lt;br/&gt;• dbaas:SDL (R-NIB 資料庫) · appmgr:xApp lifecycle" vertex="1">
+      <mxGeometry height="110" width="550" x="400" y="430" as="geometry" />
+    </mxCell>
+    <mxCell id="e2term" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#00838f;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;deployment-ricplt-e2term-alpha&lt;/b&gt;&lt;br/&gt;&lt;i&gt;SCTP 閘門 (hostNetwork)&lt;/i&gt;&lt;br/&gt;image: ric-plt-e2:6.0.8&lt;br/&gt;&lt;br/&gt;• SCTP :36422 收 DT 回來的 E2AP&lt;br/&gt;• decode E2AP outcome → 標 mtype&lt;br/&gt;  successfulOutcome→12041 / unsuccessful→12042&lt;br/&gt;• RMR 依 route 轉發" vertex="1">
+      <mxGeometry height="165" width="270" x="690" y="210" as="geometry" />
+    </mxCell>
+    <mxCell id="mtyperef" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9e9e9e;fontSize=10;align=left;spacingLeft=8;spacingTop=6;verticalAlign=top" value="&lt;b&gt;mtype 對照&lt;/b&gt;&lt;br/&gt;12040 = RIC_CONTROL_REQUEST (RIC→DT)&lt;br/&gt;12041 = RIC_CONTROL_ACKNOWLEDGE (DT→RIC) ← 本圖&lt;br/&gt;12042 = RIC_CONTROL_FAILURE (DT→RIC)&lt;br/&gt;&lt;br/&gt;&lt;b&gt;CCC 專用&lt;/b&gt; · ranFunctionId=4 · OID 1.3.6.1.4.1.53148.1.1.2.4" vertex="1">
+      <mxGeometry height="120" width="420" x="70" y="660" as="geometry" />
+    </mxCell>
+    <mxCell id="ack-note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=none;fontSize=10;align=left;fontColor=#E65100" value="&lt;b&gt;上行 payload&lt;/b&gt;&#xa;⑥ HTTP:CU → adapter 回 200 {success, control_outcome:&quot;CELL_DISABLED&quot;}&#xa;⑦ SCTP DATA (return):E2AP successfulOutcome procedureCode=4&#xa;   → e2term 標 mtype=12041 (ACK);失敗則 unsuccessfulOutcome → 12042&#xa;★ RICrequestID {requestor_id, instance_id} 原封回拷,用來對回原命令" vertex="1">
+      <mxGeometry height="90" width="440" x="520" y="670" as="geometry" />
+    </mxCell>
+
+    <!-- ===== DT platform ===== -->
+    <mxCell id="dt-box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff6ec;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=6" value="DT Platform (sim host 10.3.0.217) — docker compose · 每框 = 一個容器" vertex="1">
+      <mxGeometry height="760" width="800" x="1080" y="150" as="geometry" />
+    </mxCell>
+    <mxCell id="c-adapter" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f57c00;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ransim-e2adapter&lt;/b&gt; (host net · SCTP :36421)&lt;br/&gt;&lt;i&gt;E2 termination / CCC codec&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;反向 (ACK):&lt;br/&gt;• 收 CU HTTP 200 result&lt;br/&gt;• e2sm_rc_codec.encode_ric_control_ack&lt;br/&gt;  ran_function_id=4, 帶回 ricRequestID&lt;br/&gt;• 編 E2AP successfulOutcome (procCode=4)&lt;br/&gt;• _send_sctp → 同一條 SCTP association&lt;br/&gt;• 失敗才印 log;成功靜默" vertex="1">
+      <mxGeometry height="185" width="300" x="1110" y="210" as="geometry" />
+    </mxCell>
+    <mxCell id="c-cu" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e65100;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4" value="&lt;b&gt;ransim-cu&lt;/b&gt; (:8101)&lt;br/&gt;&lt;i&gt;編排大腦 · 兩階段做完才回&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;• 趕人(HO)+ 關 cell 全部完成後&lt;br/&gt;• return HTTP 200&lt;br/&gt;  {success, cell_id, control_outcome:CELL_DISABLED,&lt;br/&gt;   du_response}&lt;br/&gt;&lt;br/&gt;★ 同步:ACK 一旦回 = RAN 已執行完畢&lt;br/&gt;  (不是收到就先回)" vertex="1">
+      <mxGeometry height="235" width="300" x="1110" y="420" as="geometry" />
+    </mxCell>
+    <mxCell id="c-du" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;fontColor=#999999" value="&lt;b&gt;ransim-du&lt;/b&gt; (:8102)&lt;br/&gt;&lt;i&gt;執行層 (上行不主動回訊)&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;下行時已回 CU F1AP 結果 (du_response),&lt;br/&gt;被 CU 併進 HTTP 200 帶回;上行本身不發訊。" vertex="1">
+      <mxGeometry height="185" width="390" x="1450" y="210" as="geometry" />
+    </mxCell>
+    <mxCell id="c-pg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#5D4037;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;dashed=1;fontColor=#999999" value="&lt;b&gt;ransim-postgres&lt;/b&gt; (:5433)&lt;br/&gt;&lt;i&gt;狀態存放 (上行不涉及)&lt;/i&gt;&lt;br/&gt;狀態已於下行寫入;ACK 不再讀寫 DB。" vertex="1">
+      <mxGeometry height="150" width="390" x="1450" y="420" as="geometry" />
+    </mxCell>
+    <mxCell id="c-fx" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdecec;strokeColor=#b85450;fontSize=10;verticalAlign=top;align=left;spacingLeft=6;spacingTop=4;dashed=1;fontColor=#999999" value="&lt;b&gt;ransim-ru / physics / ue&lt;/b&gt; (下游效果)&lt;br/&gt;&lt;i&gt;上行 ACK 不涉及這些容器&lt;/i&gt;&lt;br/&gt;CCC 動作的物理效果 (UE 移動 / cell PRB 起落) 另循 KPM Indication 流回 RIC。" vertex="1">
+      <mxGeometry height="120" width="390" x="1450" y="595" as="geometry" />
+    </mxCell>
+
+    <!-- ===== UP edges ===== -->
+    <!-- CU -> adapter -->
+    <mxCell id="e-cu-ad" edge="1" parent="1" source="c-cu" target="c-adapter" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#E65100;strokeWidth=2;endArrow=classic;exitX=0.75;exitY=0;entryX=0.75;entryY=1">
+      <mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e-cu-ad-l" connectable="0" parent="e-cu-ad" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#E65100;fillColor=#ffffff" value="⑥ HTTP 200&#xa;{control_outcome:CELL_DISABLED}" vertex="1"><mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- adapter -> e2term (cross platform SCTP) -->
+    <mxCell id="e-ad-e2t" edge="1" parent="1" source="c-adapter" target="e2term" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#E65100;strokeWidth=3;endArrow=classic;exitX=0;exitY=0.5;entryX=1;entryY=0.5">
+      <mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e-ad-e2t-l" connectable="0" parent="e-ad-e2t" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#E65100;fillColor=#ffffff" value="⑦ SCTP DATA (return)&#xa;E2AP successfulOutcome&#xa;→ e2term 標 mtype=12041&#xa;ricRequestID 原封回拷" vertex="1"><mxGeometry relative="1" y="-1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- e2term -> rtmgr lookup -->
+    <mxCell id="e-e2t-rtmgr" edge="1" parent="1" source="e2term" target="rtmgr" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#5D4037;strokeWidth=1;dashed=1;endArrow=classicThin;endFill=0">
+      <mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e-e2t-rtmgr-l" connectable="0" parent="e-e2t-rtmgr" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#5D4037;fillColor=#ffffff" value="查 12041 route" vertex="1"><mxGeometry relative="1" x="0.1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- e2term -> mobiflow (actual) -->
+    <mxCell id="e-e2t-mobi" edge="1" parent="1" source="e2term" target="mobiflow" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#E65100;strokeWidth=3;endArrow=classic">
+      <mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e-e2t-mobi-l" connectable="0" parent="e-e2t-mobi" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#E65100;fillColor=#ffffff" value="⑧ RMR mtype=12041&#xa;(實測:大多數 ACK 走這條)&#xa;因 subId=23 auto-add route" vertex="1"><mxGeometry relative="1" x="0.1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+    <!-- e2term -> rcprobe (theoretical) -->
+    <mxCell id="e-e2t-rc" edge="1" parent="1" source="e2term" target="rcprobe" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#E65100;strokeWidth=1;dashed=1;endArrow=classicThin;endFill=0">
+      <mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e-e2t-rc-l" connectable="0" parent="e-e2t-rc" style="edgeLabel;html=1;resizable=0;fontSize=9;fontColor=#E65100;fontStyle=2;fillColor=#ffffff" value="⑧′ RMR 12041&#xa;(理論上該回原發起者 rc-probe,&#xa;但 OSC RIC 沒實作)" vertex="1"><mxGeometry relative="1" y="-1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
+
+  </root>
+</mxGraphModel>

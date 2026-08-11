@@ -70,7 +70,13 @@ class BbuTelemetryService:
                 "cpu": 0.0, "cpu_power": 0.0, "cpu_temp": 0.0,
                 "load_average": 0.0, "mem": 0.0, "tot_power": 0.0,
             }
+        # cpu_percent(interval=None) 量的是「距上次呼叫」的區間;一個 snapshot 內
+        # 只能量一次然後共用 — 連續呼叫第二次區間趨近 0 恆回 0.0(bbu 全 0 實踩)。
+        # 首次呼叫(基線未建立)也回 0 → 補一次 0.1s 阻塞量測。
         cpu = psutil.cpu_percent(interval=None)
+        if cpu <= 0.0:
+            cpu = psutil.cpu_percent(interval=0.1)
+        cpu_power = cpu / 100.0 * 65.0  # assume 65 W TDP
         mem = psutil.virtual_memory().percent
         try:
             load1, _, _ = psutil.getloadavg()
@@ -78,11 +84,11 @@ class BbuTelemetryService:
             load1 = 0.0
         return {
             "cpu": round(cpu, 2),
-            "cpu_power": round(_read_cpu_power_estimate(), 2),
+            "cpu_power": round(cpu_power, 2),
             "cpu_temp": round(_read_cpu_temp(), 2),
             "load_average": round(load1, 2),
             "mem": round(mem, 2),
-            "tot_power": round(_read_cpu_power_estimate() + _read_gpu_power(), 2),
+            "tot_power": round(cpu_power + _read_gpu_power(), 2),
         }
 
     @staticmethod

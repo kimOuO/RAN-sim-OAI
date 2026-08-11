@@ -82,6 +82,25 @@ def set_a3_config(*, enabled: bool | None = None, offset_db: float | None = None
     return _CONFIG
 
 
+def _ho_blocklisted_targets(serving_cell: str) -> set[str]:
+    """回傳 serving_cell 目前被 ANR 封鎖(ho_blocklist=True)的鄰區 target 集合。
+    env ANR_ENFORCE_HO_BLOCKLIST=off 可停用(rollback);DB 出錯不擋換手。"""
+    if not serving_cell:
+        return set()
+    if not get_bool("ANR_ENFORCE_HO_BLOCKLIST", default=True):
+        return set()
+    try:
+        from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+        return set(
+            NrCellRelation.objects.filter(
+                source_cell_id=serving_cell, ho_blocklist=True,
+            ).values_list("target_cgi", flat=True)
+        )
+    except Exception:  # noqa: BLE001 — DB 問題不應擋換手決策
+        logger.exception("ANR ho_blocklist lookup failed for %s", serving_cell)
+        return set()
+
+
 class A3HandoverCalculation:
     def __init__(self) -> None:
         # Read from runtime config store (which defaults from env).
@@ -110,8 +129,17 @@ class A3HandoverCalculation:
         ue_state.serving_cell = serving_cell
         verdict = A3Verdict(triggered=False)
 
+        # E2SM-ANR M4(A 級行為):xApp 用 SONTRIG_ANR_FLAG_REQUEST 封鎖的鄰區關係
+        # (ho_blocklist=True)→ A3 換手決策直接略過該目標(封而不刪,止血)。
+        blocked = _ho_blocklisted_targets(serving_cell)
+
         for nb_cell, nb_rsrp in neighbors:
             if nb_cell == serving_cell:
+                continue
+            if nb_cell in blocked:
+                logger.info("A3 skip blocklisted target ue serving=%s nb=%s (ANR ho_blocklist)",
+                            serving_cell, nb_cell)
+                ue_state.pending.pop(nb_cell, None)
                 continue
             condition_met = (nb_rsrp - self.hys_db) > (serving_rsrp + self.offset_db)
             pending = ue_state.pending.get(nb_cell)

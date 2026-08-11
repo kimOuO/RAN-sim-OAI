@@ -465,6 +465,13 @@ def _handle_sub_req(sock, sub_req_value: dict) -> None:
     event_trig_bytes = sub_details.get("ricEventTriggerDefinition", b"")
     actions = sub_details.get("ricAction-ToBeSetup-List", [])
 
+    # ── E2SM-DTFULLKPM(func 5)獨立路徑:不經 sim CU sub registry,
+    #    producer 直接每 period 拉 /E2/E2FullReporter/read 全量 JSON 上 wire ──
+    from main.apps.e2_adapter.services.optional.codec import e2sm_fullkpm_codec as _fullkpm
+    if ran_func_id == _fullkpm.FULLKPM_RAN_FUNCTION_ID:
+        _handle_fullkpm_sub_req(sock, ric_req_id, ran_func_id, event_trig_bytes, actions)
+        return
+
     # Decode period from KPM event trigger Format1
     rt_codec = e2_subscription_codec
     period_ms = rt_codec._decode_event_trigger_period(event_trig_bytes)
@@ -548,8 +555,133 @@ def _handle_sub_req(sock, sub_req_value: dict) -> None:
     _start_producer(sock, sub_id, ric_req_id, ran_func_id, admitted_ids[0], period_ms)
 
 
+def _handle_fullkpm_sub_req(sock, ric_req_id: dict, ran_func_id: int,
+                             event_trig_bytes: bytes, actions: list) -> None:
+    """E2SM-DTFULLKPM SUB_REQ:回 SUB_RESP + 啟動全量 JSON indication producer。
+
+    event trigger 嘗試以 KPM Format1 解 period,解不出來 fallback 1000ms
+    (xApp 端不需要特別編 trigger 也能訂)。
+    """
+    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec
+
+    try:
+        period_ms = e2_subscription_codec._decode_event_trigger_period(event_trig_bytes)
+        if not period_ms or period_ms <= 0:
+            period_ms = 1000
+    except Exception:
+        period_ms = 1000
+
+    action_id = 0
+    if actions:
+        try:
+            action_id = actions[0]["value"][1].get("ricActionID", 0)
+        except Exception:
+            action_id = 0
+
+    sub_id = f"fullkpm-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}"
+    logger.info("FULLKPM SUB_REQ → sub_id=%s period=%dms", sub_id, period_ms)
+    event_ring.record_sub_req_recv(
+        sub_id=sub_id, ric_req_id=ric_req_id, ran_func_id=ran_func_id,
+        metrics=["DTFULLKPM-JSON"], period_ms=period_ms,
+    )
+
+    try:
+        resp_bytes = e2_subscription_codec.encode_ric_subscription_response(
+            ric_req_id=ric_req_id, ran_function_id=ran_func_id,
+            admitted_action_ids=[action_id],
+        )
+    except Exception:
+        logger.exception("encode FULLKPM SUB_RESP failed")
+        return
+    if not _send_sctp(sock, resp_bytes):
+        logger.error("SCTP send FULLKPM SUB_RESP failed")
+        return
+    logger.info("FULLKPM SUB_RESP sent (%d bytes)", len(resp_bytes))
+    event_ring.record_sub_resp_sent(sub_id=sub_id, admitted_action_ids=[action_id],
+                                     pdu_size=len(resp_bytes))
+    _start_producer(sock, sub_id, ric_req_id, ran_func_id, action_id, period_ms,
+                    producer="fullkpm")
+
+
+def _fullkpm_producer_loop(sock, meta: dict) -> None:
+    """FULLKPM producer:每 period 拉 CU 全量 snapshot → JSON indication → SCTP。"""
+    import time as _time
+
+    from main.apps.e2_adapter.models.connection_state import get_registry
+    from main.apps.e2_adapter.services.business.memory_state_operations import (
+        MemoryStateBusinessService,
+    )
+    from main.apps.e2_adapter.services.optional.codec import (
+        e2_subscription_codec, e2sm_fullkpm_codec,
+    )
+    from main.apps.e2_adapter.services.optional.sctp_link import sim_speed
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+
+    registry = get_registry()
+    sub_id = meta["sub_id"]
+    base_period_sec = meta["period_ms"] / 1000.0
+    logger.info("FULLKPM producer LIFECYCLE.start sub_id=%s base_period=%.1fs", sub_id, base_period_sec)
+
+    sent_count = 0
+    fail_count = 0
+    while not meta["stop"].is_set():
+        speed = sim_speed.get_speed()
+        period_sec = max(0.2, base_period_sec / max(speed, 0.1))
+        t0 = _time.monotonic()
+        try:
+            data = sim_http_client.fetch_full_kpm()
+        except Exception:
+            logger.exception("fetch_full_kpm exception")
+            data = None
+        if data:
+            try:
+                # zlib+分塊:e2term SCTP recv buffer 8KB,每個 PDU 必須壓在其下
+                meta["sn"] = (meta["sn"] + 1) & 0xFFFF
+                payloads = e2sm_fullkpm_codec.build_indication_payloads(data, meta["sn"])
+                ok_all = True
+                total_pdu = 0
+                for hdr_bytes, msg_bytes in payloads:
+                    pdu = e2_subscription_codec.encode_ric_indication(
+                        ric_req_id=meta["ric_req_id"],
+                        ran_function_id=meta["ran_func_id"],
+                        action_id=meta["action_id"],
+                        indication_sn=meta["sn"],
+                        indication_header=hdr_bytes,
+                        indication_message=msg_bytes,
+                        indication_type="report",
+                    )
+                    total_pdu += len(pdu)
+                    if not _send_sctp(sock, pdu):
+                        ok_all = False
+                        break
+                if ok_all:
+                    MemoryStateBusinessService.update_state(
+                        registry,
+                        pdu_sent_count=registry.get_connection().pdu_sent_count + len(payloads),
+                    )
+                    sent_count += 1
+                    fail_count = 0
+                    if sent_count <= 3 or sent_count % 30 == 0:
+                        logger.info(
+                            "FULLKPM_INDICATION sent sub=%s sn=%d parts=%d %dB-total (total=%d)",
+                            sub_id, meta["sn"], len(payloads), total_pdu, sent_count)
+                    event_ring.record_indication_sent(
+                        sub_id=sub_id, sn=meta["sn"],
+                        ue_count=len(data.get("ue_status", [])), pdu_size=total_pdu)
+                else:
+                    fail_count += 1
+                    if fail_count >= 3:
+                        logger.warning("FULLKPM producer stopping — SCTP send failed x%d", fail_count)
+                        break
+            except Exception:
+                logger.exception("FULLKPM indication encode/send failed")
+        # 扣掉本輪耗時,對齊 period 節奏
+        meta["stop"].wait(max(0.05, period_sec - (_time.monotonic() - t0)))
+    logger.info("FULLKPM producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent_count)
+
+
 def _start_producer(sock, sub_id: str, ric_req_id: dict, ran_func_id: int,
-                     action_id: int, period_ms: int) -> None:
+                     action_id: int, period_ms: int, producer: str = "kpm") -> None:
     """Common helper：啟動一個 indication producer thread + 註冊到 _ACTIVE_SUBS。"""
     sub_signature = f"{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}-{ran_func_id}"
     with _SUBS_LOCK:
@@ -569,7 +701,8 @@ def _start_producer(sock, sub_id: str, ric_req_id: dict, ran_func_id: int,
             "_sub_signature": sub_signature,   # for self-cleanup on SubNotFoundError
         }
         t = threading.Thread(
-            target=_indication_producer_loop,
+            target=(_fullkpm_producer_loop if producer == "fullkpm"
+                    else _indication_producer_loop),
             args=(sock, meta),
             daemon=True,
         )
@@ -879,6 +1012,47 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
         logger.exception("encode/send CCC control ACK failed")
 
 
+def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
+    """E2SM-ANR RIC Control(SON 觸發 ADD/REMOVE/FLAG)→ 解 JSON → POST sim CU → ACK。"""
+    from main.apps.e2_adapter.services.optional.codec import e2sm_anr_codec, e2sm_rc_codec
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+
+    try:
+        decoded = e2sm_anr_codec.decode_ric_control_request(raw_pdu)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("decode ANR control failed")
+        event_ring.record_control_failure(f"anr decode error: {exc!r}")
+        return
+
+    ric_req_id = decoded.get("ric_req_id", {})
+    payload = e2sm_anr_codec.to_sim_control_payload(decoded)
+    if not payload:
+        _send_control_failure(
+            sock, ric_req_id, e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
+            cause=("ricRequest", "control-message-invalid"),
+            reason="ANR control has no valid SON trigger request",
+        )
+        return
+
+    req = payload["request"]
+    event_ring.record_control_req_recv(
+        style=1, action=0, sim_action=f"anr_{req.get('requestType', '').lower()}", ueid={},
+    )
+    logger.info("ANR control → sim CU: %s", req)
+    sim_http_client.call_anr_control(payload)
+
+    try:
+        ack = e2sm_rc_codec.encode_ric_control_ack(
+            ric_req_id=ric_req_id, ran_function_id=e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
+        )
+        _send_sctp(sock, ack)
+        event_ring.record_control_ack_sent(
+            style=1, action=0, sim_action="anr_son_trigger", pdu_size=len(ack), outcome="ok",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("encode/send ANR control ACK failed")
+
+
 def _handle_control_req(sock, raw_pdu: bytes) -> None:
     """Decode RIC_CONTROL_REQ → POST sim CU /Control/request → encode ACK/FAILURE → SCTP send.
 
@@ -917,6 +1091,12 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     from main.apps.e2_adapter.services.optional.codec import e2sm_ccc_codec as _ccc
     if ran_func_id == _ccc.CCC_RAN_FUNCTION_ID:
         _handle_ccc_control_req(sock, raw_pdu)
+        return
+
+    # ── E2SM-ANR(SON 觸發 ADD/REMOVE/FLAG)走獨立路徑 ──
+    from main.apps.e2_adapter.services.optional.codec import e2sm_anr_codec as _anr
+    if ran_func_id == _anr.ANR_RAN_FUNCTION_ID:
+        _handle_anr_control_req(sock, raw_pdu)
         return
     call_proc_id_hex = decoded.get("call_process_id", "")
     call_proc_bytes = bytes.fromhex(call_proc_id_hex) if call_proc_id_hex else b""

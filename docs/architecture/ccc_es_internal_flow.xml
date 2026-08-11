@@ -1,0 +1,121 @@
+<mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- ===== Title ===== -->
+    <mxCell id="title" value="E2SM-CCC 節能(ES)在 DT 平台內部運作流程 — control 下行 + ACK 上行" style="text;html=1;fontSize=16;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="40" y="20" width="1000" height="30" as="geometry" />
+    </mxCell>
+
+    <!-- ===== Lane headers (Pods) ===== -->
+    <mxCell id="h_ric" value="RIC 平台&#10;(Near-RT RIC / xApp)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="40" y="70" width="180" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="h_ad" value="ransim-e2adapter&#10;(host net · SCTP :36421)&#10;E2 termination + CCC codec" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="330" y="70" width="200" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="h_cu" value="ransim-cu (:8101)&#10;編排大腦 · ES 兩階段狀態機&#10;RRC / HO 決策" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="650" y="70" width="200" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="h_du" value="ransim-du (:8102)&#10;執行層 · F1AP&#10;cell RF 開關 / MAC 排程" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="970" y="70" width="200" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="h_dn" value="(下游) ru / physics / ue&#10;RF·通道重算 / UE 流量&#10;→ 反映到 KPM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;dashed=1;" vertex="1" parent="1">
+      <mxGeometry x="1230" y="70" width="140" height="56" as="geometry" />
+    </mxCell>
+
+    <!-- ===== Lifelines ===== -->
+    <mxCell id="ll_ric" style="endArrow=none;dashed=1;strokeColor=#666666;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="130" y="126" as="sourcePoint" /><mxPoint x="130" y="900" as="targetPoint" /></mxGeometry>
+    </mxCell>
+    <mxCell id="ll_ad" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="430" y="126" as="sourcePoint" /><mxPoint x="430" y="900" as="targetPoint" /></mxGeometry>
+    </mxCell>
+    <mxCell id="ll_cu" style="endArrow=none;dashed=1;strokeColor=#82b366;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="750" y="126" as="sourcePoint" /><mxPoint x="750" y="900" as="targetPoint" /></mxGeometry>
+    </mxCell>
+    <mxCell id="ll_du" style="endArrow=none;dashed=1;strokeColor=#d79b00;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1070" y="126" as="sourcePoint" /><mxPoint x="1070" y="900" as="targetPoint" /></mxGeometry>
+    </mxCell>
+    <mxCell id="ll_dn" style="endArrow=none;dashed=1;strokeColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1300" y="126" as="sourcePoint" /><mxPoint x="1300" y="900" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- ===== DOWNLINK phase band ===== -->
+    <mxCell id="band_dn" value="⬇ 下行 control(RIC → DT)" style="text;html=1;align=left;fontStyle=2;fontColor=#334455;" vertex="1" parent="1">
+      <mxGeometry x="40" y="140" width="300" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- 1: RIC -> adapter (SCTP) -->
+    <mxCell id="m1" value="① RIC_CONTROL_REQUEST&#10;SCTP · procCode=4 · ran_func_id=4" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="130" y="175" as="sourcePoint" /><mxPoint x="430" y="175" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- 2: adapter self decode -->
+    <mxCell id="m2" value="② decode_ric_control_request()&#10;E2AP 外層 APER 解 → 取 OCTET STRING&#10;→ json.loads(header+message)&#10;→ {cell_id:&quot;gnbDT_c0&quot;, action:&quot;disable&quot;, staged:true}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="330" y="195" width="300" height="70" as="geometry" />
+    </mxCell>
+
+    <!-- 3: adapter -> CU HTTP -->
+    <mxCell id="m3" value="③ HTTP POST&#10;/api/v0.1/CU/E2/Control/request" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="430" y="300" as="sourcePoint" /><mxPoint x="750" y="300" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- 4: CU self phase1 -->
+    <mxCell id="m4" value="④ e2_control_actor.request() → _cell_energy_saving()&#10;【第一階段·趕人】_CELL_ES_STATE[c0]=toBeEnergySaving&#10;target=_pick_offload_target(c0) → gnbDT_c1&#10;for UeContext(serving_cell=c0, CONNECTED): _handle_handover(→c1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="560" y="330" width="380" height="72" as="geometry" />
+    </mxCell>
+
+    <!-- 5: CU -> DU F1AP UE ctx mod -->
+    <mxCell id="m5" value="⑤ F1AP UE Context Modification&#10;HTTP POST /DU/.../F1ApRouter/ue_context_modification&#10;(UE cco_ue_01: serving_cell c0 → c1)" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="750" y="430" as="sourcePoint" /><mxPoint x="1070" y="430" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- 6: CU self phase2 -->
+    <mxCell id="m6" value="⑥【第二階段·關 cell】remaining=UeContext(c0,CONNECTED).count()&#10;if remaining==0: DuClientBusinessService.post_cell_disable(c0)&#10;_CELL_ES_STATE[c0]=isEnergySaving · push_control_action()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="560" y="450" width="380" height="60" as="geometry" />
+    </mxCell>
+
+    <!-- 7: CU -> DU cell disable -->
+    <mxCell id="m7" value="⑦ post_cell_disable(gnbDT_c0)&#10;→ DU MAC 停止排程 c0 · RF off" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="750" y="540" as="sourcePoint" /><mxPoint x="1070" y="540" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- 8: DU -> downstream effect -->
+    <mxCell id="m8" value="⑧ 下一 tick 起:c0 PRB=0、UE 在 c1 被排程&#10;→ ru/physics 重算 c1 RF → KPM 反映" style="endArrow=open;html=1;dashed=1;strokeColor=#b85450;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1070" y="575" as="sourcePoint" /><mxPoint x="1300" y="575" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- ===== UPLINK phase band ===== -->
+    <mxCell id="band_up" value="⬆ 上行 ACK(DT → RIC)· 同步:CU 兩階段做完才回,故 ACK=已執行完畢" style="text;html=1;align=left;fontStyle=2;fontColor=#334455;" vertex="1" parent="1">
+      <mxGeometry x="40" y="610" width="700" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- 9: CU -> adapter return HTTP 200 -->
+    <mxCell id="m9" value="⑨ HTTP 200 {success, control_outcome:&quot;CELL_DISABLED&quot;}" style="endArrow=block;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="750" y="650" as="sourcePoint" /><mxPoint x="430" y="650" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- 10: adapter self encode ack -->
+    <mxCell id="m10" value="⑩ e2sm_rc_codec.encode_ric_control_ack(&#10;    ric_req_id={requestor_id, instance_id},  ← 原封帶回&#10;    ran_function_id=4)&#10;→ E2AP RIC_CONTROL_ACKNOWLEDGE (procCode=4, successfulOutcome)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="330" y="680" width="330" height="72" as="geometry" />
+    </mxCell>
+
+    <!-- 11: adapter -> RIC SCTP ack -->
+    <mxCell id="m11" value="⑪ _send_sctp(ack) · 同一條 SCTP association&#10;(成功不印 log;失敗才印 &quot;SCTP send RIC_CONTROL_ACK failed&quot;)" style="endArrow=block;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="430" y="790" as="sourcePoint" /><mxPoint x="130" y="790" as="targetPoint" /></mxGeometry>
+    </mxCell>
+
+    <!-- 12: RIC self correlate -->
+    <mxCell id="m12" value="⑫ RIC 用 ric_req_id&#10;{requestor_id, instance_id}&#10;對回原 Control Request → 標記完成" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="40" y="810" width="260" height="60" as="geometry" />
+    </mxCell>
+
+    <!-- staged note -->
+    <mxCell id="note_staged" value="註:staged=true(節能)走上圖兩階段;staged=false(administrativeState LOCKED/UNLOCKED 硬開關)則 CU 走 _handle_cell_on_off()，跳過趕人，直接 DU 開關 cell。" style="text;html=1;align=left;fontSize=11;fontColor=#555555;fillColor=#fffde7;strokeColor=#e0d000;rounded=1;whiteSpace=wrap;" vertex="1" parent="1">
+      <mxGeometry x="700" y="800" width="470" height="50" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>
