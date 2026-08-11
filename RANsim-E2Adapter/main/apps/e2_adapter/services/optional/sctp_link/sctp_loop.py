@@ -1038,19 +1038,29 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
     event_ring.record_control_req_recv(
         style=1, action=0, sim_action=f"anr_{req.get('requestType', '').lower()}", ueid={},
     )
-    logger.info("ANR control → sim CU: %s", req)
-    sim_http_client.call_anr_control(payload)
+    logger.info("ANR control → sim CU: %s ric_req_id=%s", req, ric_req_id)
+
+    # CU 落地失敗不應讓 ACK 靜默消失 —— 包起來,失敗照樣回 ACK(ACK 是傳輸層確認)。
+    try:
+        sim_http_client.call_anr_control(payload)
+    except Exception:  # noqa: BLE001
+        logger.exception("ANR call_anr_control failed (still ACK) ric_req_id=%s", ric_req_id)
 
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
             ric_req_id=ric_req_id, ran_function_id=e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
         )
-        _send_sctp(sock, ack)
-        event_ring.record_control_ack_sent(
-            style=1, action=0, sim_action="anr_son_trigger", pdu_size=len(ack), outcome="ok",
-        )
+        sent = _send_sctp(sock, ack)
+        if sent:
+            logger.info("ANR RIC_CONTROL_ACK sent (%d bytes) ric_req_id=%s", len(ack), ric_req_id)
+            event_ring.record_control_ack_sent(
+                style=1, action=0, sim_action="anr_son_trigger", pdu_size=len(ack), outcome="ok",
+            )
+        else:
+            logger.error("ANR RIC_CONTROL_ACK _send_sctp returned False ric_req_id=%s", ric_req_id)
+            event_ring.record_control_failure("anr sctp send ack failed", style=1, action=0)
     except Exception:  # noqa: BLE001
-        logger.exception("encode/send ANR control ACK failed")
+        logger.exception("encode/send ANR control ACK failed ric_req_id=%s", ric_req_id)
 
 
 def _handle_control_req(sock, raw_pdu: bytes) -> None:
