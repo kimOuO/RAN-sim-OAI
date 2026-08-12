@@ -1169,7 +1169,8 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
     outcome_bytes = b""
     try:
         resp = sim_http_client.call_anr_control(payload)
-        co = (resp or {}).get("data") if isinstance(resp, dict) else None
+        # _post_sim 已解包,resp 本身即 outcome dict {requestType,result,version,detail,...}
+        co = resp if isinstance(resp, dict) and resp.get("result") else None
         if co:
             outcome_bytes = _json.dumps(co, separators=(",", ":")).encode("utf-8")
             logger.info("ANR control outcome → %s %s→%s result=%s",
