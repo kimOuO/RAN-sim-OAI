@@ -1,0 +1,70 @@
+{
+  "$schema": "scenario.schema.v1",
+  "_doc": [
+    "ANR PCI confusion 測試劇本 — P0-4(2026-08-11)",
+    "兩個相距 600m 的 gNB 各有一個 cell 刻意撞 PCI=7(真網路 PCI 只有 1008 個,",
+    "大網必然重用;規劃失誤時相鄰重用 = confusion)。中央第三個 gNB 的 UE 兩邊",
+    "都量得到 PCI 7 → xApp 對 (pci=7) 做 CGI 解析會得到兩個 NCGI → 判定 confusion,",
+    "不得逕行 ANR ADD(ANR情境_v8 第 5 題路徑)。",
+    "驗收:POST /CU/E2/Anr/cgi_resolve {pci:7} → results 兩鍵、confusion=true。"
+  ],
+  "scenario_id": "anr_pci_confusion",
+  "scene_id": "anr_pci_confusion",
+  "duration_sec": 300,
+  "tick_ms": 500,
+  "default_serving_cell": "mid_c0",
+  "gnbs": [
+    {
+      "name": "west",
+      "position": [-600, 30, 0],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 30.0,
+      "active": true,
+      "cells": [
+        { "pci": 7, "cell_id": "west_c7", "azimuth_deg": 90 }
+      ]
+    },
+    {
+      "name": "mid",
+      "position": [0, 30, 0],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 30.0,
+      "active": true,
+      "cells": [
+        { "pci": 0, "cell_id": "mid_c0", "azimuth_deg": 0 }
+      ]
+    },
+    {
+      "name": "east",
+      "position": [600, 30, 0],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 30.0,
+      "active": true,
+      "cells": [
+        { "pci": 7, "cell_id": "east_c7", "azimuth_deg": 270 }
+      ]
+    }
+  ],
+  "ues": [
+    {
+      "name": "conf_ue",
+      "positions": [
+        [0, -80, 1.5, 0],
+        [150, 80, 1.5, 0],
+        [300, -80, 1.5, 0]
+      ]
+    }
+  ],
+  "traffic": [
+    { "ue_name": "conf_ue", "profile": [[0, 2000, 300]] }
+  ],
+  "buildings": [],
+  "_metadata": {
+    "intent": "P0-4:PCI confusion 場景 — 同 PCI 兩 cell,CGI 解析回多結果",
+    "expected_kpm": { "meas_aggregate": "PCI 7 的樣本混合兩個實體 cell 的 RSRP" },
+    "xapp_expected_action": "cgi_resolve(pci=7) → confusion=true → 不做 ANR ADD,改走第 5 題 confusion 處置"
+  }
+}
