@@ -472,6 +472,12 @@ def _handle_sub_req(sock, sub_req_value: dict) -> None:
         _handle_fullkpm_sub_req(sock, ric_req_id, ran_func_id, event_trig_bytes, actions)
         return
 
+    # ── E2SM-ANR(func 6)indication:同 FULLKPM 模式,producer 拉 /CU/E2/Anr/indication ──
+    from main.apps.e2_adapter.services.optional.codec import e2sm_anr_codec as _anr
+    if ran_func_id == _anr.ANR_RAN_FUNCTION_ID:
+        _handle_anr_sub_req(sock, ric_req_id, ran_func_id, event_trig_bytes, actions)
+        return
+
     # Decode period from KPM event trigger Format1
     rt_codec = e2_subscription_codec
     period_ms = rt_codec._decode_event_trigger_period(event_trig_bytes)
@@ -603,6 +609,118 @@ def _handle_fullkpm_sub_req(sock, ric_req_id: dict, ran_func_id: int,
                     producer="fullkpm")
 
 
+def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
+                        event_trig_bytes: bytes, actions: list) -> None:
+    """E2SM-ANR(func 6)SUB_REQ:回 SUB_RESP + 啟動 ANR indication producer。"""
+    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec
+
+    try:
+        period_ms = e2_subscription_codec._decode_event_trigger_period(event_trig_bytes)
+        if not period_ms or period_ms <= 0:
+            period_ms = 1000
+    except Exception:
+        period_ms = 1000
+    action_id = 0
+    if actions:
+        try:
+            action_id = actions[0]["value"][1].get("ricActionID", 0)
+        except Exception:
+            action_id = 0
+
+    sub_id = f"anr-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}"
+    logger.info("ANR SUB_REQ → sub_id=%s period=%dms", sub_id, period_ms)
+    event_ring.record_sub_req_recv(
+        sub_id=sub_id, ric_req_id=ric_req_id, ran_func_id=ran_func_id,
+        metrics=["DT-ANR-JSON"], period_ms=period_ms,
+    )
+    try:
+        resp_bytes = e2_subscription_codec.encode_ric_subscription_response(
+            ric_req_id=ric_req_id, ran_function_id=ran_func_id,
+            admitted_action_ids=[action_id],
+        )
+    except Exception:
+        logger.exception("encode ANR SUB_RESP failed")
+        return
+    if not _send_sctp(sock, resp_bytes):
+        logger.error("SCTP send ANR SUB_RESP failed")
+        return
+    logger.info("ANR SUB_RESP sent (%d bytes)", len(resp_bytes))
+    event_ring.record_sub_resp_sent(sub_id=sub_id, admitted_action_ids=[action_id],
+                                     pdu_size=len(resp_bytes))
+    _start_producer(sock, sub_id, ric_req_id, ran_func_id, action_id, period_ms,
+                    producer="anr")
+
+
+def _anr_producer_loop(sock, meta: dict) -> None:
+    """ANR producer:每 period 拉 /CU/E2/Anr/indication → zlib JSON indication → SCTP。"""
+    import time as _time
+
+    from main.apps.e2_adapter.models.connection_state import get_registry
+    from main.apps.e2_adapter.services.business.memory_state_operations import (
+        MemoryStateBusinessService,
+    )
+    from main.apps.e2_adapter.services.optional.codec import (
+        e2_subscription_codec, e2sm_anr_codec,
+    )
+    from main.apps.e2_adapter.services.optional.sctp_link import sim_speed
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+
+    registry = get_registry()
+    sub_id = meta["sub_id"]
+    base_period_sec = meta["period_ms"] / 1000.0
+    logger.info("ANR producer LIFECYCLE.start sub_id=%s base_period=%.1fs", sub_id, base_period_sec)
+
+    sent_count = 0
+    fail_count = 0
+    while not meta["stop"].is_set():
+        speed = sim_speed.get_speed()
+        period_sec = max(0.2, base_period_sec / max(speed, 0.1))
+        t0 = _time.monotonic()
+        try:
+            data = sim_http_client.fetch_anr_indication()
+        except Exception:
+            logger.exception("fetch_anr_indication exception")
+            data = None
+        if data:
+            try:
+                meta["sn"] = (meta["sn"] + 1) & 0xFFFF
+                payloads = e2sm_anr_codec.build_indication_payloads(data, meta["sn"])
+                ok_all = True
+                total_pdu = 0
+                for hdr_bytes, msg_bytes in payloads:
+                    pdu = e2_subscription_codec.encode_ric_indication(
+                        ric_req_id=meta["ric_req_id"], ran_function_id=meta["ran_func_id"],
+                        action_id=meta["action_id"], indication_sn=meta["sn"],
+                        indication_header=hdr_bytes, indication_message=msg_bytes,
+                        indication_type="report",
+                    )
+                    total_pdu += len(pdu)
+                    if not _send_sctp(sock, pdu):
+                        ok_all = False
+                        break
+                if ok_all:
+                    MemoryStateBusinessService.update_state(
+                        registry,
+                        pdu_sent_count=registry.get_connection().pdu_sent_count + len(payloads),
+                    )
+                    sent_count += 1
+                    fail_count = 0
+                    if sent_count <= 3 or sent_count % 30 == 0:
+                        logger.info("ANR_INDICATION sent sub=%s sn=%d parts=%d %dB (total=%d)",
+                                    sub_id, meta["sn"], len(payloads), total_pdu, sent_count)
+                    event_ring.record_indication_sent(
+                        sub_id=sub_id, sn=meta["sn"], pdu_size=total_pdu)
+                else:
+                    fail_count += 1
+                    if fail_count >= 3:
+                        logger.warning("ANR producer stopping — SCTP send failed x%d", fail_count)
+                        break
+            except Exception:
+                logger.exception("ANR indication encode/send failed")
+        meta["stop"].wait(max(0.05, period_sec - (_time.monotonic() - t0)))
+    logger.info("ANR producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent_count)
+
+
 def _fullkpm_producer_loop(sock, meta: dict) -> None:
     """FULLKPM producer:每 period 拉 CU 全量 snapshot → JSON indication → SCTP。"""
     import time as _time
@@ -700,9 +818,12 @@ def _start_producer(sock, sub_id: str, ric_req_id: dict, ran_func_id: int,
             "stop": stop_evt,
             "_sub_signature": sub_signature,   # for self-cleanup on SubNotFoundError
         }
+        _PRODUCERS = {
+            "fullkpm": _fullkpm_producer_loop,
+            "anr": _anr_producer_loop,
+        }
         t = threading.Thread(
-            target=(_fullkpm_producer_loop if producer == "fullkpm"
-                    else _indication_producer_loop),
+            target=_PRODUCERS.get(producer, _indication_producer_loop),
             args=(sock, meta),
             daemon=True,
         )
@@ -920,11 +1041,12 @@ def _send_e2_reset(sock, reason: str, cause_misc: str = "om-intervention") -> bo
 # ── RIC_CONTROL_REQ handler (P2.8.6) ──────────────────────────
 
 # Supported (style, action) combos that map to a sim CU action
-_SUPPORTED_RC_STYLES = {(2, 6), (3, 1)}
+_SUPPORTED_RC_STYLES = {(2, 6), (3, 1), (9, 1)}
 # Required RANParameter IDs per (style, action). Missing → control-message-invalid.
 _REQUIRED_RAN_PARAMS: dict[tuple[int, int], set[int]] = {
     (2, 6): {1, 2, 3},   # min, max, dedicated PRB ratio
     (3, 1): {1},         # target primary cell ID
+    (9, 1): {1},         # ReportCGI: ranP[1]=PCI（[2]=ARFCN,[3]=RAT 選配,故走 lenient）
 }
 # Sim CU's hardcoded RC ran_function_id (must match rc-probe expectation)
 _RC_RAN_FUNCTION_ID = 3
@@ -1041,14 +1163,25 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
     logger.info("ANR control → sim CU: %s ric_req_id=%s", req, ric_req_id)
 
     # CU 落地失敗不應讓 ACK 靜默消失 —— 包起來,失敗照樣回 ACK(ACK 是傳輸層確認)。
+    # 把 CU 回的 outcome(REMOVED / REJECTED_PROTECTED / ADDED / FLAGGED …)塞進 ACK 的
+    # RICcontrolOutcome(IE id=32,JSON),讓 xApp 從 ACK 即時分辨結果(對齊 ReportCGI)。
+    import json as _json
+    outcome_bytes = b""
     try:
-        sim_http_client.call_anr_control(payload)
+        resp = sim_http_client.call_anr_control(payload)
+        co = (resp or {}).get("data") if isinstance(resp, dict) else None
+        if co:
+            outcome_bytes = _json.dumps(co, separators=(",", ":")).encode("utf-8")
+            logger.info("ANR control outcome → %s %s→%s result=%s",
+                        co.get("requestType"), co.get("sourceCellId"),
+                        co.get("targetCgi"), co.get("result"))
     except Exception:  # noqa: BLE001
         logger.exception("ANR call_anr_control failed (still ACK) ric_req_id=%s", ric_req_id)
 
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
             ric_req_id=ric_req_id, ran_function_id=e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
+            outcome_bytes=outcome_bytes,
         )
         sent = _send_sctp(sock, ack)
         if sent:
@@ -1140,14 +1273,15 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     # HO (3,1): Target Primary Cell ID 的抽取是 structure-based（在任一 ranP 裡找 CGI），
     # 不同 RIC 會把 Target Cell 放在 spec id=1 以外的編號（實測 rc-probe 用 id=3）。
     # 故 (3,1) 只要求至少一個 ranP，實際編號交給 to_sim_control_payload 解析。
-    if (style, action) == (3, 1):
+    if (style, action) in ((3, 1), (9, 1)):
+        # (3,1) HO 與 (9,1) ReportCGI:ranP 編號因 RIC 而異,只要求非空,實際抽取交 to_sim_control_payload。
         if not present_ids:
             _send_control_failure(
                 sock, ric_req_id, ran_func_id,
                 cause=("ricRequest", "control-message-invalid"),
                 call_process_id=call_proc_bytes,
                 style=style, action=action,
-                reason="ranP empty — no Target Primary Cell ID",
+                reason="ranP empty",
             )
             return
     else:
@@ -1198,12 +1332,21 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
         logger.warning("sim CU /Control/request returned None for style=%d action=%d",
                        style, action)
 
+    # ReportCGI(Style 9/Action 1):把 sim 解出的 CGI 塞進 RIC Control Acknowledge 的 outcome。
+    outcome_bytes = b""
+    if style == 9 and action == 1 and isinstance(sim_resp, dict):
+        import json as _json
+        co = sim_resp.get("control_outcome", sim_resp)
+        outcome_bytes = _json.dumps(co, separators=(",", ":")).encode("utf-8")
+        logger.info("ReportCGI outcome → pci=%s cgi=%s", co.get("physicalCellId"), co.get("cgi"))
+
     # Step: encode + send RIC_CONTROL_ACK
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
             ric_req_id=ric_req_id,
             ran_function_id=ran_func_id,
             call_process_id=call_proc_bytes,
+            outcome_bytes=outcome_bytes,
         )
     except Exception:
         logger.exception("encode RIC_CONTROL_ACK failed")

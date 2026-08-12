@@ -24,6 +24,15 @@ logger = get_logger(__name__)
 
 def _relation_to_ie(r: NrCellRelation) -> dict:
     """NrCellRelation → E2SM-RC §9.3.38 neighbourCellRelation IE(+卷面延伸)。"""
+    # Case#4 過期關係:給 xApp「年齡」信號(now − created_at 秒)。
+    # 過期判定 = relationAgeSec 大 + 該關係累計 HO att=0(perNeighbourRelation)→ REMOVE。
+    age_sec = None
+    if r.created_at is not None:
+        try:
+            from django.utils import timezone
+            age_sec = max(0.0, (timezone.now() - r.created_at).total_seconds())
+        except Exception:
+            age_sec = None
     return {
         "sourceCellNcgi": r.source_cell_id,
         "targetCellGlobalId": r.target_cgi,
@@ -38,6 +47,7 @@ def _relation_to_ie(r: NrCellRelation) -> dict:
         "xnX2Established": r.xn_x2_established,
         "hoValidated": r.ho_validated,
         "version": r.version,
+        "relationAgeSec": age_sec,
         # 旗標(封而不刪)
         "flags": {
             "hoBlocklist": r.ho_blocklist,
@@ -86,9 +96,23 @@ class AnrQueryActor:
             rel_qs = rel_qs.filter(source_cell_id=cell_id)
         relations = [_relation_to_ie(r) for r in rel_qs]
 
+        # P0-5(2026-08-11):9.3.38 補全 — 頻率關係 + 關係變更審計
+        from main.apps.cu_cp.models.nr_relation_change_event import NrRelationChangeEvent
+        from main.apps.cu_cp.services.business.anr_kpm import freq_relations
+        change_qs = NrRelationChangeEvent.objects.all()
+        if cell_id:
+            change_qs = change_qs.filter(source_cell_id=cell_id)
+        change_events = [
+            {"action": e.action, "targetCellGlobalId": e.target_cgi,
+             "by": e.by, "at": e.at.isoformat(), "detail": e.detail}
+            for e in change_qs[:100]
+        ]
+
         return success_response({
             "servingCells": serving,
             "neighbourCellRelations": relations,
+            "frequencyRelations": freq_relations(),
+            "relationChangeEvents": change_events,
         }, "ok")
 
     @staticmethod
@@ -98,3 +122,121 @@ class AnrQueryActor:
         """手動(重)種子 NRT + CGI 解析。"""
         stats = seed_from_cells()
         return success_response(stats, "ANR seeded")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def indication(request):
+        """ANR indication 一包(給 ran_func 6 producer 拉)—— 卷面全部觀測資料塊。
+        Body 可選 {cell_id, window_min}。含 timestamp_ms 給 indication header。
+        """
+        import time
+        from main.apps.cu_cp.models.nr_relation_change_event import NrRelationChangeEvent
+        from main.apps.cu_cp.services.business.anr_kpm import (
+            freq_relations, ho_kpm, meas_aggregate, rlf_kpm,
+        )
+        from main.apps.cu_cp.services.business.mro import mro_kpm
+        cell_id, window_min = None, 10.0
+        if request.body:
+            try:
+                b = json.loads(request.body) or {}
+                cell_id = b.get("cell_id")
+                window_min = float(b.get("window_min") or 10.0)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        if not NrCellRelation.objects.exists():
+            seed_from_cells()
+        cells_qs = CellConfig.objects.filter(is_active=True)
+        if cell_id:
+            cells_qs = cells_qs.filter(cell_id=cell_id)
+        serving = [{"ncgi": c.cell_id, "physicalCellId": c.pci,
+                    "arfcn": nr_arfcn_from_ghz(c.frequency_ghz),
+                    "radioAccessTechnology": "NR"} for c in cells_qs]
+        rel_qs = NrCellRelation.objects.all()
+        change_qs = NrRelationChangeEvent.objects.all()
+        if cell_id:
+            rel_qs = rel_qs.filter(source_cell_id=cell_id)
+            change_qs = change_qs.filter(source_cell_id=cell_id)
+        return success_response({
+            "timestamp_ms": int(time.time() * 1000),
+            "e2NodeInformation": {
+                "servingCells": serving,
+                "frequencyRelations": freq_relations(),
+                "neighbourCellRelations": [_relation_to_ie(r) for r in rel_qs],
+                "relationChangeEvents": [
+                    {"action": e.action, "targetCellGlobalId": e.target_cgi,
+                     "by": e.by, "at": e.at.isoformat(), "detail": e.detail}
+                    for e in change_qs[:50]],
+            },
+            "kpmIndication": ho_kpm(window_min),
+            "rlfKpm": rlf_kpm(window_min),
+            "mroKpm": mro_kpm(window_min),
+            "e2MessageCopyAggregate": meas_aggregate(window_min),
+        }, "ok")
+
+    # ── P0-2/3/4(2026-08-11):ANR KPM 查詢層 ─────────────────────
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def kpm(request):
+        """HO 速率/成功比(cell 級 + perNeighbourRelation)。Body 可選 {window_min}。"""
+        from main.apps.cu_cp.services.business.anr_kpm import ho_kpm
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            body = {}
+        return success_response(ho_kpm(float(body.get("window_min") or 10.0)), "ok")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def mro_kpm(request):
+        """MRO 歸因速率 HO.IntraSys.{TooEarly,TooLate,ToWrongCell}Rate(P2-1)。Body 可選 {window_min}。"""
+        from main.apps.cu_cp.services.business.mro import mro_kpm
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            body = {}
+        return success_response(mro_kpm(float(body.get("window_min") or 10.0)), "ok")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def rlf_kpm(request):
+        """RLF/重建速率 + reestablishmentInboundByPreviousPci(P1-3)。Body 可選 {window_min}。"""
+        from main.apps.cu_cp.services.business.anr_kpm import rlf_kpm
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            body = {}
+        return success_response(rlf_kpm(float(body.get("window_min") or 10.0)), "ok")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def meas_aggregate(request):
+        """量測報告聚合(依 reported PCI 的 RSRP 統計)。Body 可選 {window_min}。"""
+        from main.apps.cu_cp.services.business.anr_kpm import meas_aggregate
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            body = {}
+        return success_response(meas_aggregate(float(body.get("window_min") or 10.0)), "ok")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def cgi_resolve(request):
+        """PCI(+arfcn)→ NCGI 解析(同 PCI 多 cell = confusion)。Body {pci, arfcn?, attempts?}。"""
+        from main.apps.cu_cp.services.business.anr_kpm import cgi_resolve
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("invalid JSON", str(e), status=400)
+        if body.get("pci") is None:
+            return error_response("pci required", status=400)
+        return success_response(
+            cgi_resolve(int(body["pci"]),
+                        int(body["arfcn"]) if body.get("arfcn") is not None else None,
+                        int(body.get("attempts") or 3)), "ok")
