@@ -110,6 +110,10 @@ class ScenarioSpec:
     # A3 自動換手開關。None = 不覆寫(用 CU env HO_A3_ENABLED,預設 off)。
     # CCO 等「RC 手動換到較弱 cell」的 demo 要 False,否則 A3 看訊號把人彈回強 cell。
     a3_enabled: bool | None = None
+    # A3 門檻(None = 用 CU env 預設 offset5+hys6=11dB)。ANR 缺漏鄰區 demo 用 offset2+hys1。
+    a3_offset_db: float | None = None
+    a3_hys_db: float | None = None
+    a3_ttt_ms: int | None = None
     # RLC delay 模式:'calib'(÷30 對齊 OAI 低 delay)| 'subtick'(誠實佇列延遲)。
     # CCO 要 subtick 壅塞 delay 才爬得過 500ms 門檻;OAI 對照劇本用 calib。
     rlc_delay_model: str = "calib"
@@ -144,8 +148,10 @@ def fetch(scenario_id: str) -> ScenarioSpec:
     data = body["data"]
     raw = data.get("raw_json") or {}
 
+    _dur = float(raw.get("duration_sec") or 0.0)
     ues = [
-        UeScenarioRow(name=str(u["name"]), positions=list(u.get("positions") or []))
+        UeScenarioRow(name=str(u["name"]),
+                      positions=_normalize_positions(list(u.get("positions") or []), _dur))
         for u in raw.get("ues") or []
     ]
     traffic = [
@@ -227,9 +233,32 @@ def fetch(scenario_id: str) -> ScenarioSpec:
         discard_timer_ms=int(raw.get("discard_timer_ms", 300)),
         tx_power_dbm=float(raw.get("tx_power_dbm", 23.0)),
         a3_enabled=(None if raw.get("a3_enabled") is None else bool(raw.get("a3_enabled"))),
+        a3_offset_db=(None if raw.get("a3_offset_db") is None else float(raw["a3_offset_db"])),
+        a3_hys_db=(None if raw.get("a3_hys_db") is None else float(raw["a3_hys_db"])),
+        a3_ttt_ms=(None if raw.get("a3_ttt_ms") is None else int(raw["a3_ttt_ms"])),
         rlc_delay_model=str(raw.get("rlc_delay_model") or "calib"),
         trigger_config=((raw.get("_metadata") or {}).get("trigger_config") or None),
     )
+
+
+def _normalize_positions(positions: list[list[float]], duration_sec: float) -> list[list[float]]:
+    """劇本 UE positions 容錯 → 統一成 `[[t, x, y, z], ...]`。
+
+    - 4 值 `[t,x,y,z]`(das_test 格式）→ 原樣。
+    - 3 值 `[x,y,z]`（Omniverse/editor/ANR 劇本格式,無時間軸)→ 依 `duration_sec`
+      平均補時間軸:第一點 t=0、最後點 t=duration_sec,UE 在整個劇本時長內走完 waypoints。
+      duration 未設時退回「每段 1 秒」。單一 waypoint → t=0(靜止)。
+    """
+    if not positions:
+        return positions
+    if len(positions[0]) >= 4:
+        return positions
+    n = len(positions)
+    if n == 1:
+        return [[0.0, float(positions[0][0]), float(positions[0][1]), float(positions[0][2])]]
+    dur = duration_sec if (duration_sec and duration_sec > 0) else float(n - 1)
+    return [[round(dur * i / (n - 1), 3), float(p[0]), float(p[1]), float(p[2])]
+            for i, p in enumerate(positions)]
 
 
 def interpolate_position(positions: list[list[float]], t_sec: float) -> tuple[float, float, float]:
