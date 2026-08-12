@@ -70,6 +70,17 @@ def execute_f1_handover(
         fail_cause = "CellNotAvailable"
     elif target_rsrp is not None and float(target_rsrp) < _RA_MIN_RSRP:
         fail_cause = "RandomAccessProblem"
+    # ANR 第10題 過期對應(stale PCI mapping):relation 存的 target_pci 與 cell 實際 pci 不符
+    #   → 依組態(舊 PCI)尋找目標而不獲 → CellNotAvailable。同站換 PCI 後未更新關係即此症。
+    #   xApp 處置=先刪後建(REMOVE 舊 + ADD 新 pci)。env ANR_STALE_PCI_CHECK=off 可停用。
+    if not fail_cause and tgt is not None and _gs("ANR_STALE_PCI_CHECK", "on") != "off":
+        from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _R
+        rel = _R.objects.filter(source_cell_id=source_cell, target_cgi=target_cell).first()
+        if (rel is not None and rel.target_pci is not None
+                and tgt.pci is not None and int(rel.target_pci) != int(tgt.pci)):
+            fail_cause = "CellNotAvailable"
+            logger.info("HO stale-PCI: rel %s→%s target_pci=%s ≠ cell.pci=%s → CellNotAvailable",
+                        source_cell, target_cell, rel.target_pci, tgt.pci)
     # ANR Case#2 有害鄰區注入:指定 target cell 的 HO 一律失敗(模擬「訊號看似 OK
     # 但接入失敗」的有害鄰居 —— sim 的 RSRP 模型做不出,靠此旗標忠實重現第7題)。
     # env HO_FORCE_FAIL_TARGET="nbr_c0" 或 "cell_a,cell_b";cause 由 HO_FORCE_FAIL_CAUSE 定(預設 RandomAccessProblem)。
