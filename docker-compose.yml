@@ -45,6 +45,7 @@ services:
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
       KPM_CALIB_ENABLE: "on"   # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
+      HO_FORCE_FAIL_TARGET: "nbr_c0"   # Case#2 有害鄰區:HO 到 nbr_c0 一律失敗(注入,忠實重現第7題)
       KPM_CALIB_URL: "http://kpm-calib:8200/calibrate"
       DB_HOST: postgres
       DB_PORT: 5432

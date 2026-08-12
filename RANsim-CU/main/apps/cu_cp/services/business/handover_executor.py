@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 
 def execute_f1_handover(
     *, ue_id: str, target_cell: str, trigger: str = "MANUAL",
+    target_rsrp: float | None = None,
 ) -> dict[str, Any] | None:
     """Run F1-based handover for ue_id → target_cell.
 
@@ -56,6 +57,40 @@ def execute_f1_handover(
 
     now = TimestampService.now()
     ho_uuid = UUIDService.random_uuid()
+
+    # P2-2(2026-08-12):HO 失敗原因判定(依平台真實狀態,不合成)。
+    #   CellNotAvailable    — target cell is_active=false(CCC cell off)
+    #   RandomAccessProblem — target RSRP < 接入門檻(caller 有帶量測時才判)
+    from main.apps.cu_cp.models.cell_config import CellConfig as _CC
+    from main.utils.env_loader import get_float as _gf, get_str as _gs
+    _RA_MIN_RSRP = _gf("HO_RA_MIN_RSRP_DBM", -115.0)
+    fail_cause = ""
+    tgt = _CC.objects.filter(cell_id=target_cell).first()
+    if tgt is not None and not tgt.is_active:
+        fail_cause = "CellNotAvailable"
+    elif target_rsrp is not None and float(target_rsrp) < _RA_MIN_RSRP:
+        fail_cause = "RandomAccessProblem"
+    # ANR Case#2 有害鄰區注入:指定 target cell 的 HO 一律失敗(模擬「訊號看似 OK
+    # 但接入失敗」的有害鄰居 —— sim 的 RSRP 模型做不出,靠此旗標忠實重現第7題)。
+    # env HO_FORCE_FAIL_TARGET="nbr_c0" 或 "cell_a,cell_b";cause 由 HO_FORCE_FAIL_CAUSE 定(預設 RandomAccessProblem)。
+    if not fail_cause:
+        _force = {t.strip() for t in (_gs("HO_FORCE_FAIL_TARGET", "") or "").split(",") if t.strip()}
+        if target_cell in _force:
+            fail_cause = _gs("HO_FORCE_FAIL_CAUSE", "RandomAccessProblem") or "RandomAccessProblem"
+
+    if fail_cause:
+        SqlDbBusinessService.create_entity(HandoverEvent, {
+            "ho_uuid": ho_uuid, "ue_id": ue_id,
+            "source_cell": source_cell, "target_cell": target_cell,
+            "trigger": trigger, "status": "FAIL", "failure_cause": fail_cause,
+            "started_at": now, "completed_at": now,
+        })
+        logger.warning("F1 Handover FAILED [%s]: UE %s %s → %s cause=%s",
+                       trigger, ue_id, source_cell, target_cell, fail_cause)
+        # 失敗不改 serving_cell(UE 留原 cell,後續可能觸發 RLF)
+        return {"ho_uuid": ho_uuid, "ue_id": ue_id, "source_cell": source_cell,
+                "target_cell": target_cell, "failed": True, "failure_cause": fail_cause}
+
     SqlDbBusinessService.create_entity(HandoverEvent, {
         "ho_uuid": ho_uuid,
         "ue_id": ue_id,
