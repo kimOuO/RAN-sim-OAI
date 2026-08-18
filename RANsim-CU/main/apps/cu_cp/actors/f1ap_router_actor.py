@@ -44,6 +44,24 @@ from main.utils.response import error_response, success_response
 logger = get_logger(__name__)
 
 
+def _bump_estab_counter(cell_id: str, *, att: int = 0, succ: int = 0) -> None:
+    """2026-08-12:per-cell RRC 建立真累計(只加不減;HO 不經此路徑,語意正確)。"""
+    if not cell_id:
+        return
+    try:
+        from django.db.models import F
+        from main.apps.cu_cp.models.rrc_estab_counter import RrcEstabCounter
+        obj, created = RrcEstabCounter.objects.get_or_create(
+            cell_id=cell_id, defaults={"att": att, "succ": succ,
+                                       "updated_at": TimestampService.now()})
+        if not created:
+            RrcEstabCounter.objects.filter(cell_id=cell_id).update(
+                att=F("att") + att, succ=F("succ") + succ,
+                updated_at=TimestampService.now())
+    except Exception:
+        logger.exception("bump estab counter failed for %s", cell_id)
+
+
 def _resolve_ue_base(ue_id: str) -> int:
     """UE 的 base id(rrc_ue_id = ran_ue_ngap_id = base，amf_ue_ngap_id = base + 1）。
 
@@ -204,6 +222,17 @@ class F1ApRouterActor:
             "DU Config Update DU#%s: add=%d modify=%d delete=%d",
             gnb_du_id, len(to_add), len(to_modify), deleted,
         )
+
+        # 2026-08-12:換場景(cell 增刪改)後重種 intra-gNB 關係 + 清 stale。
+        # NRT gating(ANR_REQUIRE_NRT)靠 NrCellRelation 放行換手 —— 換場景不 reseed
+        # 會讓新 cell 沒關係、A3 換手被擋 + 殘留舊 cell 關係污染 xApp。冪等,失敗不擋。
+        if to_add or to_delete or to_modify:
+            try:
+                from main.apps.cu_cp.services.business.anr_seeder import seed_from_cells
+                seed_from_cells()
+            except Exception:
+                logger.exception("ANR reseed on DU Config Update failed")
+
         return success_response(
             {"accepted": True, "transaction_id": body.get("transaction_id", 0)},
             "config update accepted",
@@ -312,6 +341,16 @@ class F1ApRouterActor:
         if ue is None:
             return error_response(f"unknown UE {ue_id}", status=404)
 
+        # 量測回報門檻(對齊 TS 38.331 reportConfig):真實 UE 只回報達門檻的鄰區,
+        # 不是把所有 cell 照報。沒有門檻時「深邊緣稀疏樣本」情境(卷面第3題)做不出來 ——
+        # 每台 UE 都會回報每個 cell,樣本永遠不稀疏。
+        # env `MEAS_REPORT_MIN_RSRP_DBM`(預設 -110 = 幾乎不濾,保留既有情境行為)。
+        from main.utils.env_loader import get_float as _gf2
+        _rep_min = _gf2("MEAS_REPORT_MIN_RSRP_DBM", -110.0)
+        _nbrs = [n for n in (d.get("neighbor_cells") or [])
+                 if n.get("rsrp_dbm") is None or float(n["rsrp_dbm"]) >= _rep_min]
+        d["neighbor_cells"] = _nbrs
+
         SqlDbBusinessService.create_entity(MeasurementLog, {
             "meas_uuid": UUIDService.random_uuid(),
             "ue_id": ue_id,
@@ -324,6 +363,7 @@ class F1ApRouterActor:
             "mimo_rank": d["mimo_rank"],
             "pdcp_sdu_volume_dl": d.get("pdcp_sdu_volume_dl", 0),
             "pdcp_sdu_volume_ul": d.get("pdcp_sdu_volume_ul", 0),
+            "qos_5qi": d.get("qos_5qi", 9),
             "rlc_sdu_delay_dl_ms": d.get("rlc_sdu_delay_dl_ms", 0.0),
             "neighbor_cells_json": d["neighbor_cells"],
             "recorded_at": now,
@@ -342,8 +382,11 @@ class F1ApRouterActor:
             )
             if verdict.triggered and verdict.target_cell:
                 from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+                # P2-2:帶 target RSRP → 讓 RandomAccessProblem 失敗原因可判
+                _tgt_rsrp = next((r for c, r in neighbors if c == verdict.target_cell), None)
                 ho = execute_f1_handover(
                     ue_id=ue_id, target_cell=verdict.target_cell, trigger="A3_TTT",
+                    target_rsrp=_tgt_rsrp,
                 )
                 if ho:
                     logger.info(
@@ -395,6 +438,26 @@ class F1ApRouterActor:
             logger.info("A3 HO fired: UE %s %s → %s", ue_id, source_cell, target_cell)
 
         return success_response(ho_payload, "measurement processed")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def rlf_report(request: HttpRequest):
+        """P1-1/2:DU 通報 RLF → 落 RlfEvent + 驅動重建決策。
+
+        Body: {ue_id, serving_cell, serving_pci, sinr_at_rlf, t310_ms, reason,
+               strongest_cell, strongest_rsrp}
+        """
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("invalid JSON", str(exc), status=400)
+        if not body.get("ue_id"):
+            return error_response("ue_id required", status=400)
+        from main.apps.cu_cp.services.business.reestablishment import handle_rlf
+        outcome = handle_rlf(body)
+        logger.info("RLF handled: %s", outcome)
+        return success_response(outcome, "rlf processed")
 
     @staticmethod
     @csrf_exempt

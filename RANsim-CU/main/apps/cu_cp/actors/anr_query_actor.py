@@ -29,6 +29,22 @@ def _anr_intra_enabled() -> bool:
     return get_bool("ANR_INTRA_ENABLED", default=True)
 
 
+
+def _nrt_capacity(cell_id: str | None = None) -> dict:
+    """NRT 容量(卷面 nrtCapacity)。used = 該 cell(或全網)已用關係條目數。
+
+    第3題用它證明「容量非阻斷因素」(與第9題容量修剪互為鑑別);
+    第9題超限時 ADD 會被拒(見 anr_control_actor)。
+    env `ANR_NRT_CAPACITY`(預設 32)。
+    """
+    from main.utils.env_loader import get_int
+    limit = get_int("ANR_NRT_CAPACITY", 32)
+    qs = NrCellRelation.objects.all()
+    if cell_id:
+        qs = qs.filter(source_cell_id=cell_id)
+    return {"limit": limit, "used": qs.count()}
+
+
 def _relation_to_ie(r: NrCellRelation) -> dict:
     """NrCellRelation → E2SM-RC §9.3.38 neighbourCellRelation IE(+卷面延伸)。"""
     # Case#4 過期關係:給 xApp「年齡」信號(now − created_at 秒)。
@@ -118,6 +134,7 @@ class AnrQueryActor:
         return success_response({
             "servingCells": serving,
             "anrIntraEnabled": _anr_intra_enabled(),
+            "nrtCapacity": _nrt_capacity(cell_id),
             "neighbourCellRelations": relations,
             "frequencyRelations": freq_relations(),
             "relationChangeEvents": change_events,
@@ -171,6 +188,7 @@ class AnrQueryActor:
                 "servingCells": serving,
                 "frequencyRelations": freq_relations(),
                 "anrIntraEnabled": _anr_intra_enabled(),
+                "nrtCapacity": _nrt_capacity(cell_id),
                 "neighbourCellRelations": [_relation_to_ie(r) for r in rel_qs],
                 "relationChangeEvents": [
                     {"action": e.action, "targetCellGlobalId": e.target_cgi,
