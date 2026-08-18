@@ -4,7 +4,7 @@
 > 分兩類:**控制類(不用訂閱,直接送)** 與 **訂閱類(要先訂閱)**。
 > 節點:PLMN 208/95,gNB `gnbDT`(meid `gnb_208_095_000e00`)。E2 Setup `accepted=[2,3,4,5,6]`。
 
-最後更新:2026-08-12
+最後更新:2026-08-18
 
 ---
 
@@ -84,6 +84,8 @@ Control Message:`{"controlMessageFormat":{"sonTriggerRequest":{ … }}}`
 {"requestType":"FLAG","sourceCellId":"src_c0","targetCgi":"nbr_c0","flag":"hoBlocklist","op":"set"}
 ```
 - `flag` ∈ `hoBlocklist`/`noRemove`/`xnBlocklist`;`op` ∈ `set`/`clear`。
+- **⚠️ 反向關係不要自己寫**(卷面紅線)—— ADD 落地約 2 秒後,gNB 會經 Xn 自動建反向,
+  `relationChangeEvents` 標 `by="gnb-xn"`(你們的是 `by="xapp"`,分得出來)。
 - 效果:改 `NrCellRelation` + `version+1`;`hoBlocklist` 會讓 A3 換手略過該目標。
 - **回應在 RIC Control Acknowledge 的 `RICcontrolOutcome`（IE id=32）= JSON**(ADD/REMOVE/FLAG 都帶):
 ```json
@@ -118,6 +120,21 @@ Control Message:`{"controlMessageFormat":{"sonTriggerRequest":{ … }}}`
 | `RC_MSGCOPY_SUBSCRIBE_MEAS` | `e2MessageCopyAggregate` | RSRP 分位數(P50/P90/std) |
 | `RC_MSGCOPY_SUBSCRIBE_REESTAB` | `rlfKpm` | RLF.DetectedRate / DropRate / ReEstabInbound + reestablishmentInboundByPreviousPci |
 | `RC_MSGCOPY_SUBSCRIBE_MOBILITY` | `mroKpm` | HO.IntraSys.TooEarly/TooLate/ToWrongCellRate |
+
+### B3-1. func6 indication 的新觀測欄位(2026-08-18)
+
+| 欄位 | 位置 | 你們拿來做什麼 |
+|---|---|---|
+| `anrIntraEnabled` | `e2NodeInformation` | **前置檢查**。false = ANR 自動建立功能停用 → 只得 SMO_NOTIFY,不得自動 ADD(硬送會回 `REJECTED_ANR_DISABLED`)|
+| `nrtCapacity` `{limit,used}` | `e2NodeInformation` | `used==limit` = NRT 滿載。配合 `ADD_REJECTED` 事件 → 判定阻斷點在容量(非偵測失效)|
+| `sourceCellNcgi` / `bySourceCell` | `e2MessageCopyAggregate` 每列 | **決定 ADD/REMOVE 的 `sourceCellId`**。請讀欄位、不要寫死 —— UE 移動時受害 cell 會變 |
+| `relationChangeEvents[].reason` | `e2NodeInformation` | `action=ADD_REJECTED` 時帶 `NRT_CAPACITY_REACHED` |
+
+**行為面變更(會影響你們讀到的資料)**:
+- **量測回報門檻**:sim 原本把所有 cell 照報,現在只回報達門檻的鄰區(對齊 38.331 reportConfig)。
+  → 某些 PCI 的樣本會變稀疏或消失,這是刻意的。
+- **`cellBarred`**:被標記的 cell **仍會被量測回報,但 UE 不會駐留**(重建落點排除)。
+  ⚠️ 範圍:管閒置態選網/重建;**連線態換手不歸它管** —— 關係一旦建立,UE 換進去是正常的(修復成功)。
 
 > **稀有事件注意**:RLF / MRO / HO 失敗是**偶發**事件,`rlfKpm`/`mroKpm` 是**滑動窗速率**(預設 10 min)。事件發生後超過窗就歸零 —— 這是正常滑動窗行為(對齊卷面 300s 窗)。xApp 要在事件發生後及時取樣 + 自算 baseline;用 CU HTTP 查也可帶 `{"window_min": N}` 放大窗涵蓋歷史事件。
 >

@@ -4,7 +4,7 @@
     > 任何 E2 命令的新增 / 修改 / 移除,都必須同步更新本文件。
     > 對接細節另見:[`e2sm_ccc_cell_control.md`](./e2sm_ccc_cell_control.md)(CCC 格式)、[`e2sm_fullkpm.md`](./e2sm_fullkpm.md)(FULLKPM 欄位)、[`rc_observation_api.md`](./rc_observation_api.md)(RC 觀測 API)。
 
-    最後更新:2026-08-11
+    最後更新:2026-08-18
 
     ---
 
@@ -108,6 +108,7 @@
     |---|---|---|
     | `POST /CU/E2/NodeInfo/read {cell_id?}` | `RC_E2NODEINFO_QUERY` | 回 §9.3.38 neighbourCellRelations（+卷面延伸、flags、version）|
     | `POST /CU/E2/Anr/reseed` | —（內部）| 從 CellConfig 重種 NRT + CGI 解析 |
+    | `POST /CU/E2/Anr/set_barred {cell_id, barred}` | —（劇本佈署用）| TS 38.331 **cellBarred**:cell 仍被量測回報,但 UE 不得駐留(RRC 重建落點排除)|
 
     **SON 觸發控制（M1 廣播 + M2 命令完成）：** E2 Setup `accepted=[2,3,4,6,5]`（含 6）。
     xApp 送 RIC Control（ran_func=6，JSON `controlMessageFormat.sonTriggerRequest`）→ adapter 解碼 → `POST /CU/E2/Anr/control`：
@@ -118,9 +119,33 @@
     | `FLAG` | sourceCellId, targetCgi, flag∈{hoBlocklist,noRemove,xnBlocklist}, op∈{set,clear} | 設/清旗標，version+1 | `SONTRIG_ANR_FLAG_REQUEST` |
 
     - 受控物件：`NrCellRelation`、`CgiResolution`；種子：F1 Setup 後自動建 intra-gNB 鄰區（冪等）。
-    - **ADD/REMOVE/FLAG 三種都回 `RICcontrolOutcome`(id=32)= JSON** `{requestType,sourceCellId,targetCgi,result,version,detail}`；`result` ∈ `ADDED`/`REMOVED`/`FLAGGED`/`REJECTED_PROTECTED`/`NOT_FOUND`/`UNSUPPORTED`。xApp 可從 ACK 即時分辨結果(不必等 indication)。
+    - **ADD/REMOVE/FLAG 三種都回 `RICcontrolOutcome`(id=32)= JSON** `{requestType,sourceCellId,targetCgi,result,version,detail}`；`result` ∈ `ADDED`/`UPDATED`/`REMOVED`/`FLAG_SET`/`FLAG_CLEAR`/`REJECTED_PROTECTED`/`REJECTED_ANR_DISABLED`/`ADD_REJECTED`/`NOT_FOUND`/`UNSUPPORTED`。xApp 可從 ACK 即時分辨結果(不必等 indication)。
     - confirm 慣用式：以 `version` 變化 / 條目出現消失判定（xApp 輪詢 NodeInfo/read）。
     - `NodeInfo/read` 的 neighbourCellRelation IE 帶 **`relationAgeSec`**(now−created_at,過期關係判齡用)。
+
+    **2026-08-18 新增觀測欄位(ANR 驗測 campaign 逼出來的,對所有題目通用):**
+
+    | 欄位 | 位置 | 用途 |
+    |---|---|---|
+    | `anrIntraEnabled` | `e2NodeInformation` | ANR 自動建立功能之部署組態。**false 時 ADD 回 `REJECTED_ANR_DISABLED` 且不寫 NRT**(REMOVE/FLAG 不受限);xApp 須先做此前置檢查,停用時只得 SMO_NOTIFY。env `ANR_INTRA_ENABLED`(預設 true)|
+    | `nrtCapacity` = `{limit, used}` | `e2NodeInformation` | NRT 每 cell 容量。**滿載時新增條目回 `ADD_REJECTED` / `detail=NRT_CAPACITY_REACHED` 且不寫 NRT**;既有條目「更新」不受限。env `ANR_NRT_CAPACITY`(預設 32,卷面第9題假設值 8)|
+    | `sourceCellNcgi` / `bySourceCell` | `e2MessageCopyAggregate` 每列 | **來源歸屬**:回報該 PCI 的 UE 當下 serving cell。鄰區關係是 per source cell,少了它 xApp 無從決定 ADD 的 `sourceCellId`。`bySourceCell` 給多來源時分別建關係 |
+    | `reason` | `relationChangeEvents` | `action=ADD_REJECTED` 時帶 `NRT_CAPACITY_REACHED`(卷面事件格式)|
+
+    **行為面新增:**
+
+    - **量測回報門檻**(對齊 TS 38.331 `reportConfig`):sim 原本把**所有 cell 照報**(不真實),
+      現在只回報 RSRP ≥ 門檻的鄰區。env `MEAS_REPORT_MIN_RSRP_DBM`(預設 -110 ≈ 不濾)。
+      無此門檻則「深邊緣稀疏樣本」情境做不出來 —— 每台 UE 都會回報每個 cell。
+    - **`cellBarred`**(TS 38.331,`CellConfig.is_barred`):RRC 重建改選 **suitable cell** ——
+      DU 送的最強 cell 若 barred/inactive,CU 用該 UE 最近量測的鄰區清單依 RSRP 挑第一個合格者。
+      ANR 情境需要「量得到但不收 UE」的鄰居,否則它必然把 UE 吸走、情境瓦解。
+      ⚠️ 範圍:`cellBarred` 管**閒置態選網/重建**;**連線態換手**歸 `isHoAllowed`/`hoBlocklist` 管 ——
+      關係一旦建立,UE 換入 barred cell 是正常行為(即修復成功的表現)。
+    - **Xn 反向關係自動建立**(TS 38.300 §15.3.3.2 步驟 4c):ADD 落地後由 gNB 自行經 Xn 建反向關係,
+      延遲 `ANR_XN_SETUP_DELAY_SEC`(預設 2.0s,不阻塞 Control ACK),兩邊標 `xnX2Established=true`。
+      審計歸屬用 `by="gnb-xn"`(非 `xapp`),讓 xApp 分辨得出那筆不是自己做的。
+      **卷面紅線:xApp 禁止替對端寫反向關係。**
 
     **M4（A 級行為）已完成並驗證：** A3 換手決策 `evaluate()` 讀 `ho_blocklist`（env `ANR_ENFORCE_HO_BLOCKLIST` 可停用）→ 被封鎖的鄰區直接略過。決定性測試:未封鎖→HO 觸發;FLAG set→不觸發;clear→恢復。→ 真實「封鎖止血」行為。
 
@@ -166,3 +191,6 @@
 | 2026-08-12 | A3 補 NRT gating(`ANR_REQUIRE_NRT`,target 需 NrCellRelation)+ 換場景自動 reseed(du_config_update)+ seeder 清 stale;閉環實測缺漏 RLF3.33/HO0→ADD 後 RLF0/HO3.33 | §5b + A3 |
     | 2026-08-12 | RC **Style 9/Action1 ReportCGI**(PCI+ARFCN→CGI 走 E2):adapter 解碼 + CU `_handle_reportcgi`(cgi_resolve)+ CGI 回 control-ACK outcome(id=32);sim 端驗證 pci→cgi | §4 RC |
     | 2026-08-12 | ANR 驗測 4 情境全閉環(#1 缺漏 ADD／#2 有害 FLAG hoBlocklist＋HO force-fail 注入／#3 撞號 REPORTCGI confusion／#4 過期 REMOVE)。**ANR ADD/REMOVE/FLAG ACK 補 RICcontrolOutcome(id=32)**(對齊 ReportCGI,修 22-byte 裸 ACK 落差);neighbourCellRelation 加 `relationAgeSec` | §5b ANR |
+    | 2026-08-18 | ANR 驗測 campaign 續(第2/3/4/9題):新增觀測欄位 **`anrIntraEnabled`**(停用時 ADD 回 `REJECTED_ANR_DISABLED`)、**`nrtCapacity{limit,used}`**(滿載回 `ADD_REJECTED`/`NRT_CAPACITY_REACHED`)、**`sourceCellNcgi`/`bySourceCell`**(量測聚合來源歸屬)、`relationChangeEvents.reason` | §5b |
+    | 2026-08-18 | 行為面:**量測回報門檻** `MEAS_REPORT_MIN_RSRP_DBM`(38.331 reportConfig,原本所有 cell 照報)、**`cellBarred`** `CellConfig.is_barred`(38.331,重建改選 suitable cell,端點 `/CU/E2/Anr/set_barred`)、**Xn 反向關係自動建立**(38.300 步驟4c,延遲 `ANR_XN_SETUP_DELAY_SEC`,審計 `by="gnb-xn"`) | §5b |
+    | 2026-08-18 | A3 預設由 11dB/3000ms 調為 **3dB/300ms** — 原值在 ANR 劇本不換手,先前為逼出換手用的 1.5dB/80ms 必然乒乓、污染各題排除表的「MRO 平坦」條件(TooEarly 4.0→1.6/min,HO 仍正常) | compose / A3 |
