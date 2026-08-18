@@ -89,5 +89,40 @@ RIC 端看到的症狀是 **`rowsScanned=0`、所有觀測塊全空**。
 **「量測聚合比對 serving 落差命中 MARGIN_HO → 持續 3 窗 → 排除 MRO/MLB/誘餌 →
 前置檢查 anrIntraEnabled → REPORTCGI → ADD → 換手恢復」整條由真的 RIC xApp 自動跑通。**
 
-第2題達成。API 涵蓋:`REPORTCGI` + `ADD` + `anrIntraEnabled` 前置檢查。
-停用分支(`ANR_INTRA_ENABLED=false` → 只 SMO_NOTIFY 不 ADD)測試中。
+第2題達成。API 涵蓋:`REPORTCGI` + `ADD` + `anrIntraEnabled` 前置檢查(啟用/停用兩分支皆驗)。
+
+---
+
+## 8. 停用分支驗證(`ANR_INTRA_ENABLED=false`)
+
+卷面前置檢查要求:ANR 自動建立功能停用時,xApp **只得通報管理面,不得自動寫入 NRT**
+(停用 ≠ 禁止改 NRT —— REMOVE / FLAG 不受限)。
+
+**測試設定**(2026-08-18 08:17:44 起,觀察 12 分鐘):
+```
+ANR_INTRA_ENABLED = false          → func6 / node_info 的 anrIntraEnabled = False
+NRT 基準:s25_c0<->n37_c0 only,n35 相關關係 = 0(雙向清,含孤兒反向)
+changeEvents / HO / RLF = 0,量測流正常(gap 仍命中 MARGIN_HO)
+```
+
+**結果**:
+| 觀察項 | 結果 | 意義 |
+|---|---|---|
+| `n35` 相關關係 | **0**(全程) | NRT 未被寫入 ✅ |
+| `relationChangeEvents` | **無** | 完全沒有 ADD 動作 ✅ |
+| **CU 端擋下 ADD 次數** | **0** | **guard 自己在前置檢查就停手** ✅ |
+
+最後一項是關鍵:`REJECTED_ANR_DISABLED` 一次都沒觸發,代表 xApp **真的讀了
+`anrIntraEnabled=false` 並自我克制**,而不是靠 sim 的雙保險擋下來。
+sim 側的拒絕機制是防呆,正確行為是 guard 根本不送 —— 實測即為此。
+
+驗畢後 env 已切回 `ANR_INTRA_ENABLED=true`(並依 §6 規則連帶重啟劇本)。
+
+---
+
+## 9. 本題產出的可重用資產
+
+1. **`anrIntraEnabled` 前置檢查機制**(sim):欄位 + 真實阻擋 + env 開關 —— 之後
+   任何需要「部署組態 gate」的題目都可沿用。
+2. **排除表「具名失敗原因」規則**(§5):所有 case 的排除表都適用。
+3. **CU 重啟必連帶重啟劇本**(§6):已成為 sim 端標準作業。

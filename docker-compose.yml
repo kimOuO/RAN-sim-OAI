@@ -46,7 +46,7 @@ services:
       DJANGO_ALLOWED_HOSTS: "*"
       KPM_CALIB_ENABLE: "on"   # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
       HO_FORCE_FAIL_TARGET: ""   # Case#2 有害鄰區注入用(設 cell_id 逗號分隔啟用);平時留空
-      ANR_INTRA_ENABLED: "false"   # 第2題停用分支測試中(平時 true):false 時 ADD 回 REJECTED_ANR_DISABLED
+      ANR_INTRA_ENABLED: "true"    # ANR 自動建立功能部署組態;false 時 ADD 回 REJECTED_ANR_DISABLED(卷面前置檢查)
       ANR_XN_AUTO_REVERSE: "on"      # ANR ADD 後由 gNB 經 Xn 自動建反向關係(38.300 步驟4c);off=舊行為
       ANR_XN_SETUP_DELAY_SEC: "2.0"  # XnAP Setup 非瞬時,反向關係延遲此秒數才出現
       KPM_CALIB_URL: "http://kpm-calib:8200/calibrate"
