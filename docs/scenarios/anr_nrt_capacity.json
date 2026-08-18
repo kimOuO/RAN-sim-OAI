@@ -18,7 +18,9 @@
     "  n77 功率降到 18dBm:可被量測到但永遠不是最強 → 不會把 UE 吸走(先前 4 台被吸附)。",
     "修正4(定案):8/8 滿載佈在走廊全部 3 個 cell(n60/n62/n61)各自獨立滿載,",
     "      不再追著 sourceCellNcgi 的幾何漂移跑 —— 不論歸屬指到哪個 cell,容量故事都成立。",
-    "      語意:此區域各 cell 的 NRT 均已滿載,新鄰居 n77(207)一律進不來。"
+    "      語意:此區域各 cell 的 NRT 均已滿載,新鄰居 n77(207)一律進不來。",
+    "修正5:n77 標記 TS 38.331 cellBarred(量得到但 UE 不得駐留),功率放回 30dBm。",
+    "      先前靠低功率閃避無效 —— 只要它是最強鄰居,RLF 重建就會選它(實測 4 台被吸走)。"
   ],
   "scenario_id": "anr_nrt_capacity",
   "scene_id": "anr_nrt_capacity",
@@ -92,17 +94,18 @@
       "position": [
         0,
         30,
-        150
+        200
       ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
-      "power_dbm": 18.0,
+      "power_dbm": 30.0,
       "active": true,
       "cells": [
         {
           "pci": 207,
           "cell_id": "n77_c0",
-          "azimuth_deg": 180
+          "azimuth_deg": 180,
+          "barred": true
         }
       ]
     }

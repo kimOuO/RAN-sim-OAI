@@ -19,6 +19,9 @@ class CellConfig(models.Model):
 
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
+    # TS 38.331 cellBarred:被 barred 的 cell 仍會被量測回報,但 UE 不得駐留
+    # (初始選網 / RRC 重建皆須排除)。ANR 情境需要「量得到但不收 UE」的鄰居。
+    is_barred = models.BooleanField(default=False, db_index=True)
 
     # Cross-table reference to DuRegistry.gnb_du_id (kept as plain int — not FK
     # because we may onboard DUs lazily before their cells are registered).

@@ -144,6 +144,27 @@ class AnrQueryActor:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def set_barred(request):
+        """設定 cell 的 TS 38.331 cellBarred 旗標。Body: {cell_id, barred}
+
+        barred cell 仍會被量測回報,但 UE 不得駐留(RRC 重建時排除)——
+        ANR 情境需要「量得到但不收 UE」的鄰居,否則它會把 UE 吸走、情境瓦解。
+        """
+        try:
+            b = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as e:
+            return error_response("invalid JSON", str(e), status=400)
+        cid = b.get("cell_id")
+        if not cid:
+            return error_response("cell_id required", status=400)
+        barred = bool(b.get("barred", True))
+        n = CellConfig.objects.filter(cell_id=cid).update(is_barred=barred)
+        logger.info("cellBarred set: %s → %s (rows=%d)", cid, barred, n)
+        return success_response({"cell_id": cid, "barred": barred, "updated": n}, "ok")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def reseed(request):
         """手動(重)種子 NRT + CGI 解析。"""
         stats = seed_from_cells()

@@ -23,6 +23,7 @@ urlpatterns = [
     path("F1AP/F1ApRouter/ul_rrc_message", F1ApRouterActor.ul_rrc_message, name="f1_ul_rrc"),
     path("F1AP/F1ApRouter/measurement_report", F1ApRouterActor.measurement_report, name="f1_meas"),
     path("F1AP/F1ApRouter/cell_measurement_report", F1ApRouterActor.cell_measurement_report, name="f1_cell_meas"),
+    path("F1AP/F1ApRouter/rlf_report", F1ApRouterActor.rlf_report, name="f1_rlf_report"),  # P1-1/2 RLF + 重建
     # NGAP
     path("NGAP/NgapRouter/initial_ue_message", NgapRouterActor.initial_ue_message, name="ngap_init_ue"),
     path("NGAP/NgapRouter/initial_context_setup", NgapRouterActor.initial_context_setup, name="ngap_init_ctx"),
@@ -49,7 +50,15 @@ urlpatterns = [
     path("E2/E2NodeId/read", E2NodeIdActor.read, name="e2_node_id_read"),              # ↔ globalE2node-ID for E2 adapter
     # ── ANR / E2 Node Information（E2SM-ANR M0：鄰區關係表觀測）─────────────
     path("E2/NodeInfo/read", AnrQueryActor.node_info, name="e2_nodeinfo_read"),        # ↔ RC_E2NODEINFO_QUERY(§9.3.38)
+    path("E2/Anr/set_barred", AnrQueryActor.set_barred, name="e2_anr_set_barred"),   # TS 38.331 cellBarred
     path("E2/Anr/reseed", AnrQueryActor.reseed, name="e2_anr_reseed"),                 # 手動重種 NRT + CGI
+    # P0-2/3/4(2026-08-11):ANR KPM 查詢層(對齊 ANR情境_v8 卷面資料塊)
+    path("E2/Anr/kpm", AnrQueryActor.kpm, name="e2_anr_kpm"),                          # HO 速率/成功比(cell+關係級)
+    path("E2/Anr/meas_aggregate", AnrQueryActor.meas_aggregate, name="e2_anr_meas_agg"),  # 量測聚合(依 PCI)
+    path("E2/Anr/cgi_resolve", AnrQueryActor.cgi_resolve, name="e2_anr_cgi_resolve"),  # PCI→NCGI(confusion 感知)
+    path("E2/Anr/rlf_kpm", AnrQueryActor.rlf_kpm, name="e2_anr_rlf_kpm"),              # P1-3 RLF/重建速率 + inbound-by-prevPci
+    path("E2/Anr/mro_kpm", AnrQueryActor.mro_kpm, name="e2_anr_mro_kpm"),              # P2-1 MRO 歸因三聯速率
+    path("E2/Anr/indication", AnrQueryActor.indication, name="e2_anr_indication"),    # ran_func 6 producer 資料源(卷面全塊)
     path("E2/Anr/control", AnrControlActor.control, name="e2_anr_control"),            # ↔ SONTRIG_ANR_ADD/REMOVE/FLAG
     # KPM sim-speed knob — Dashboard 切 DU tick 速度時同步通知,讓 indication producer
     # 用 sim-time 為單位算 report_period_ms,不是 wall-clock。
