@@ -36,6 +36,89 @@ def _outcome(request_type: str, source: str, target: str, result: str,
             "version": version, "detail": detail}
 
 
+def _record_change(action: str, source: str, target: str, detail: str = "",
+                   by: str = "xapp") -> None:
+    """P0-5:成功變更 NRT 落審計事件(9.3.38 relationChangeEvents 資料源)。"""
+    try:
+        from main.apps.cu_cp.models.nr_relation_change_event import NrRelationChangeEvent
+        NrRelationChangeEvent.objects.create(
+            action=action, source_cell_id=source or "", target_cgi=target or "",
+            by=by, detail=detail[:128], at=TimestampService.now(),
+        )
+    except Exception:  # 審計失敗不影響主流程
+        logger.exception("record relation change event failed")
+
+
+
+
+def _schedule_xn_setup(source: str, target_cgi: str) -> None:
+    """延遲觸發 Xn Setup(XnAP Setup Request/Response 非瞬時,秒級)。
+
+    不可同步阻塞 —— RIC Control ACK 有 ~5s 逾時,ADD 必須立刻回 ACK。
+    故以背景 timer 執行;xApp 觀測 `xnX2Established` 會看到 false → true 的轉換。
+    延遲秒數 env `ANR_XN_SETUP_DELAY_SEC`(預設 2.0)。
+    """
+    import threading
+    from main.utils.env_loader import get_bool, get_float
+    if not get_bool("ANR_XN_AUTO_REVERSE", default=True):
+        return
+    delay = max(0.0, get_float("ANR_XN_SETUP_DELAY_SEC", 2.0))
+
+    def _run() -> None:
+        from django.db import close_old_connections
+        try:
+            close_old_connections()   # timer 執行緒不可沿用主執行緒連線
+            _establish_xn_reverse(source, target_cgi, TimestampService.now())
+        except Exception:
+            logger.exception("Xn setup (delayed) failed: %s → %s", source, target_cgi)
+        finally:
+            close_old_connections()
+
+    logger.info("Xn Setup scheduled: %s ↔ %s in %.1fs (XnAP step 4c)", source, target_cgi, delay)
+    t = threading.Timer(delay, _run)
+    t.daemon = True
+    t.start()
+
+def _establish_xn_reverse(source: str, target_cgi: str, now) -> None:
+    """gNB 側 Xn 建立 → 反向鄰區關係自動成立(TS 38.300 §15.3.3.2 步驟 4c + TS 38.423)。
+
+    卷面紅線:xApp **禁止替對端寫反向關係**,反向由 Xn 交換產生。因此正向 ADD 落地後,
+    由 sim 代表 gNB 自行建立反向關係並標 xnX2Established —— 否則 UE 換進新 cell 後
+    無關係可換回,會滯留到 RLF(第4題乾淨驗測實測到的殘留 RLF 即此因)。
+
+    由 `_schedule_xn_setup()` 延遲呼叫(XnAP Setup 非瞬時)。
+    env `ANR_XN_AUTO_REVERSE`=off 可停用(保留舊行為)。
+    """
+    from main.utils.env_loader import get_bool
+    if not get_bool("ANR_XN_AUTO_REVERSE", default=True):
+        return
+    from main.apps.cu_cp.models.cell_config import CellConfig
+    # 反向來源必須是本 sim 註冊過的 cell(跨域對端無法代建)
+    peer = CellConfig.objects.filter(cell_id=target_cgi).first()
+    src_cell = CellConfig.objects.filter(cell_id=source).first()
+    if peer is None or src_cell is None:
+        return
+    from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
+    rev, rev_created = NrCellRelation.objects.get_or_create(
+        source_cell_id=target_cgi, target_cgi=source,
+        defaults={
+            "target_pci": src_cell.pci or 0,
+            "target_arfcn": nr_arfcn_from_ghz(src_cell.frequency_ghz),
+            "target_rat": "NR", "target_plmn": "",
+            "is_ho_allowed": True, "is_remove_allowed": True, "is_xn_allowed": True,
+            "xn_x2_established": True, "ho_validated": False, "version": 1,
+            "ho_blocklist": False, "no_remove": False, "xn_blocklist": False,
+            "created_at": now, "updated_at": now,
+        },
+    )
+    # 正向也標記 Xn 已建立
+    NrCellRelation.objects.filter(source_cell_id=source, target_cgi=target_cgi).update(
+        xn_x2_established=True, updated_at=now)
+    if rev_created:
+        logger.info("Xn established → reverse relation auto-created: %s → %s (gNB step 4c)",
+                    target_cgi, source)
+        _record_change("ADD", target_cgi, source, "xn-reverse(step4c)", by="gnb-xn")
+
 def apply_son_trigger(req: dict) -> dict:
     """套用單筆 SON 觸發請求 → NrCellRelation。回傳 outcome dict。"""
     now = TimestampService.now()
@@ -69,6 +152,9 @@ def apply_son_trigger(req: dict) -> dict:
             rel.save(update_fields=["target_pci", "target_arfcn", "version", "updated_at"])
         logger.info("ANR ADD: %s → %s (%s, v%d)", source, cgi,
                     "created" if created else "updated", rel.version)
+        _record_change("ADD", source, cgi, "created" if created else "updated")
+        if created:
+            _schedule_xn_setup(source, cgi)
         return _outcome("ADD", source, cgi,
                         "ADDED" if created else "UPDATED", rel.version)
 
@@ -83,6 +169,7 @@ def apply_son_trigger(req: dict) -> dict:
                             rel.version, "is_remove_allowed=False or no_remove=True → SMO_NOTIFY")
         rel.delete()
         logger.info("ANR REMOVE: %s → %s (reason=%s)", source, cgi, req.get("reason", ""))
+        _record_change("REMOVE", source, cgi, str(req.get("reason", ""))[:100])
         return _outcome("REMOVE", source, cgi, "REMOVED")
 
     if rtype == "FLAG":
@@ -98,6 +185,7 @@ def apply_son_trigger(req: dict) -> dict:
         rel.save(update_fields=[field, "version", "updated_at"])
         logger.info("ANR FLAG: %s → %s %s=%s (v%d)", source, cgi, req.get("flag"),
                     op == "set", rel.version)
+        _record_change("FLAG", source, cgi, f"{req.get('flag')}={op == 'set'}")
         return _outcome("FLAG", source, cgi, f"FLAG_{op.upper()}", rel.version,
                         f"{req.get('flag')}={op == 'set'}")
 
