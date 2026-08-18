@@ -260,11 +260,30 @@ def rlf_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
 # ── P0-5:frequencyRelations ──────────────────────────────────────
 
 def freq_relations() -> list[dict[str, Any]]:
-    """由 CellConfig 聚合頻率關係(去重 arfcn)。單頻平台 = 一條。"""
+    """頻率關係容器 —— 由**既有 NRT 關係**的頻率集合推導(TS 28.541 階層)。
+
+    2026-08-18 修正:原本列「所有 CellConfig 的頻率」,語意錯誤 ——
+    頻率關係容器屬 gNB 模型內務,是「已建立關係的頻率層」,不是「網路上存在的頻率」。
+    卷面第8題(跨頻鄰區啟用)的核心信號正是:量測到 arfcn X 上的強 PCI,
+    但**既有關係的頻率集合沒有 X** → 分流的障礙是組態缺頻率層,純調參跨不過去。
+    列成所有 cell 的頻率會讓該題直接穿幫。
+
+    xApp 以帶 arfcn 的 ADD 建立跨頻關係後,此容器由 gNB 自建(= 這裡自動多一列)。
+    """
+    from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+    arfcns = set()
     try:
+        for a, r in NrCellRelation.objects.values_list("target_arfcn", "target_rat"):
+            if a:
+                arfcns.add((int(a), r or "NR"))
+        # serving cell 自身頻率恆在容器內(關係表為空時的下限)
         from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
-        arfcns = sorted({nr_arfcn_from_ghz(c.frequency_ghz)
-                         for c in CellConfig.objects.all()})
+        for c in CellConfig.objects.filter(is_active=True):
+            src_has = NrCellRelation.objects.filter(source_cell_id=c.cell_id).exists()
+            if src_has:
+                arfcns.add((nr_arfcn_from_ghz(c.frequency_ghz), "NR"))
     except Exception:
-        arfcns = []
-    return [{"radioAccessTechnology": "NR", "arfcn": a} for a in arfcns]
+        logger.exception("freq_relations 推導失敗")
+        return []
+    return [{"radioAccessTechnology": rat, "arfcn": a}
+            for a, rat in sorted(arfcns)]
