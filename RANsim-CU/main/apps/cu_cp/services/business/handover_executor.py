@@ -70,6 +70,17 @@ def execute_f1_handover(
         fail_cause = "CellNotAvailable"
     elif target_rsrp is not None and float(target_rsrp) < _RA_MIN_RSRP:
         fail_cause = "RandomAccessProblem"
+    # ANR 第6題 Xn-C TNL 探索失敗:關係存在但 Xn 傳輸從未建立(xnX2Established=false)
+    #   → 換手準備逾時 TXnRELOCprepExpiry(TS 38.423)。這是物理正確的:沒有 Xn 傳輸
+    #   就無法送 Handover Request,準備階段必然逾時。xApp 不得自動修 —— Xn 建立屬管理面。
+    if not fail_cause:
+        from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _R0
+        _rel0 = _R0.objects.filter(source_cell_id=source_cell, target_cgi=target_cell).first()
+        if _rel0 is not None and not _rel0.xn_x2_established:
+            fail_cause = "TXnRELOCprepExpiry"
+            logger.info("HO Xn-not-established: %s→%s xnX2Established=False → TXnRELOCprepExpiry",
+                        source_cell, target_cell)
+
     # ANR 第10題 過期對應(stale PCI mapping):relation 存的 target_pci 與 cell 實際 pci 不符
     #   → 依組態(舊 PCI)尋找目標而不獲 → CellNotAvailable。同站換 PCI 後未更新關係即此症。
     #   xApp 處置=先刪後建(REMOVE 舊 + ADD 新 pci)。env ANR_STALE_PCI_CHECK=off 可停用。
