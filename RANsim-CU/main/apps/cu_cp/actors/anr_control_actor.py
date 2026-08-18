@@ -128,6 +128,13 @@ def apply_son_trigger(req: dict) -> dict:
     if rtype == "ADD":
         tgt = req.get("target") or {}
         cgi = tgt.get("cgi")
+        # 卷面前置檢查:ANR 自動建立功能之部署組態。停用時 gNB 不得自動寫入 NRT,
+        # xApp 只能通報管理面(SMO_NOTIFY)。停用 != 禁止改 NRT(REMOVE/FLAG 不受此限)。
+        from main.utils.env_loader import get_bool as _gb
+        if not _gb("ANR_INTRA_ENABLED", default=True):
+            logger.warning("ANR ADD rejected: ANR_INTRA_ENABLED=false (自動建立功能停用)")
+            return _outcome("ADD", source, cgi, "REJECTED_ANR_DISABLED", None,
+                            "ANR_INTRA_ENABLED=false → 交管理面/人工建立(SMO_NOTIFY)")
         rel, created = NrCellRelation.objects.get_or_create(
             source_cell_id=source, target_cgi=cgi,
             defaults={

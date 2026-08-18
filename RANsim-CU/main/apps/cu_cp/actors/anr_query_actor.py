@@ -22,6 +22,13 @@ from main.utils.response import error_response, success_response
 logger = get_logger(__name__)
 
 
+
+def _anr_intra_enabled() -> bool:
+    """ANR 自動建立功能之部署組態(卷面前置檢查用)。false 時 gNB 不自動寫 NRT。"""
+    from main.utils.env_loader import get_bool
+    return get_bool("ANR_INTRA_ENABLED", default=True)
+
+
 def _relation_to_ie(r: NrCellRelation) -> dict:
     """NrCellRelation → E2SM-RC §9.3.38 neighbourCellRelation IE(+卷面延伸)。"""
     # Case#4 過期關係:給 xApp「年齡」信號(now − created_at 秒)。
@@ -110,6 +117,7 @@ class AnrQueryActor:
 
         return success_response({
             "servingCells": serving,
+            "anrIntraEnabled": _anr_intra_enabled(),
             "neighbourCellRelations": relations,
             "frequencyRelations": freq_relations(),
             "relationChangeEvents": change_events,
@@ -162,6 +170,7 @@ class AnrQueryActor:
             "e2NodeInformation": {
                 "servingCells": serving,
                 "frequencyRelations": freq_relations(),
+                "anrIntraEnabled": _anr_intra_enabled(),
                 "neighbourCellRelations": [_relation_to_ie(r) for r in rel_qs],
                 "relationChangeEvents": [
                     {"action": e.action, "targetCellGlobalId": e.target_cgi,
