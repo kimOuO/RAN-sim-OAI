@@ -135,6 +135,18 @@ def apply_son_trigger(req: dict) -> dict:
             logger.warning("ANR ADD rejected: ANR_INTRA_ENABLED=false (自動建立功能停用)")
             return _outcome("ADD", source, cgi, "REJECTED_ANR_DISABLED", None,
                             "ANR_INTRA_ENABLED=false → 交管理面/人工建立(SMO_NOTIFY)")
+        # 卷面第9題:NRT 每 cell 容量上限。滿載時新增條目被拒,並落一筆可觀測的
+        # ADD_REJECTED / NRT_CAPACITY_REACHED 事件 —— xApp 據此判定「阻斷點在容量」
+        # (偵測機制正常),進而修剪低價值條目後重試。既有條目的更新不受限。
+        from main.utils.env_loader import get_int as _gi
+        _cap = _gi("ANR_NRT_CAPACITY", 32)
+        _used = NrCellRelation.objects.filter(source_cell_id=source).count()
+        _exists = NrCellRelation.objects.filter(source_cell_id=source, target_cgi=cgi).exists()
+        if not _exists and _used >= _cap:
+            logger.warning("ANR ADD rejected: NRT capacity reached %s (%d/%d)", source, _used, _cap)
+            _record_change("ADD_REJECTED", source, cgi, "NRT_CAPACITY_REACHED")
+            return _outcome("ADD", source, cgi, "ADD_REJECTED", None,
+                            "NRT_CAPACITY_REACHED (used=%d limit=%d)" % (_used, _cap))
         rel, created = NrCellRelation.objects.get_or_create(
             source_cell_id=source, target_cgi=cgi,
             defaults={

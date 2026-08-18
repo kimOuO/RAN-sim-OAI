@@ -127,7 +127,8 @@ class AnrQueryActor:
             change_qs = change_qs.filter(source_cell_id=cell_id)
         change_events = [
             {"action": e.action, "targetCellGlobalId": e.target_cgi,
-             "by": e.by, "at": e.at.isoformat(), "detail": e.detail}
+             "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
+             "reason": e.detail if e.action == "ADD_REJECTED" else None}
             for e in change_qs[:100]
         ]
 
@@ -192,7 +193,8 @@ class AnrQueryActor:
                 "neighbourCellRelations": [_relation_to_ie(r) for r in rel_qs],
                 "relationChangeEvents": [
                     {"action": e.action, "targetCellGlobalId": e.target_cgi,
-                     "by": e.by, "at": e.at.isoformat(), "detail": e.detail}
+                     "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
+                     "reason": e.detail if e.action == "ADD_REJECTED" else None}
                     for e in change_qs[:50]],
             },
             "kpmIndication": ho_kpm(window_min),
