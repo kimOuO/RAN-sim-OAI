@@ -91,8 +91,11 @@ Control Message:`{"controlMessageFormat":{"sonTriggerRequest":{ … }}}`
 ```json
 {"requestType":"REMOVE","sourceCellId":"main_c0","targetCgi":"ghost_c0","result":"REMOVED","version":null,"detail":""}
 ```
-  - `result` ∈ `ADDED`/`REMOVED`/`FLAGGED`/`REJECTED_PROTECTED`/`NOT_FOUND`/`UNSUPPORTED`。
+  - `result` ∈ `ADDED`/`UPDATED`/`REMOVED`/`FLAG_SET`/`FLAG_CLEAR`/`REJECTED_PROTECTED`/`REJECTED_ANR_DISABLED`/`ADD_REJECTED`/`NOT_FOUND`/`UNSUPPORTED`。
   - `REJECTED_PROTECTED` = 命中 `is_remove_allowed=False` 或 `no_remove=True`(保護條目,改由 SMO 決策)。
+  - `REJECTED_ANR_DISABLED` = `anrIntraEnabled=false`(自動建立功能停用,只得 SMO_NOTIFY)。
+  - `ADD_REJECTED` + `detail=NRT_CAPACITY_REACHED` = NRT 滿載(須先修剪再重試)。
+  - `UPDATED` = 條目已存在,做的是更新(**不受容量限制**);`ADDED` 才是新增。
   - xApp 可直接從 ACK 的 `result` 即時分辨結果,不必等下一筆 indication。
 - confirm:輪詢 `RC_E2NODEINFO`(或 func 6 indication）看 version/條目變化。
 - 觀察:CU log `ANR ADD/REMOVE/FLAG …`;adapter `ANR control outcome → … result=…` + `ANR RIC_CONTROL_ACK sent`。
