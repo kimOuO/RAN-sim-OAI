@@ -52,6 +52,29 @@ def _rate_and_ratio(events: list[HandoverEvent], window_min: float) -> dict[str,
     }
 
 
+
+def _prb_by_cell(window_min: float) -> dict[str, dict[str, Any]]:
+    """cell 級 PRB 使用率(卷面 RRU.PrbTotDl / RRU.PrbTotUl,單位 %)。
+
+    來源 CellMeasurementLog(DU 每 PM window 上報)。窗內取平均。
+    """
+    from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
+    now = TimestampService.now()
+    win_start = now - timedelta(minutes=window_min)
+    acc: dict[str, list[tuple[float, float]]] = {}
+    for cid, dl, ul in CellMeasurementLog.objects.filter(
+            recorded_at__gte=win_start).values_list("cell_id", "prb_pct_dl", "prb_pct_ul"):
+        acc.setdefault(cid, []).append((float(dl or 0.0), float(ul or 0.0)))
+    out: dict[str, dict[str, Any]] = {}
+    for cid, rows in acc.items():
+        n = max(len(rows), 1)
+        out[cid] = {
+            "RRU.PrbTotDl": round(sum(r[0] for r in rows) / n, 1),
+            "RRU.PrbTotUl": round(sum(r[1] for r in rows) / n, 1),
+        }
+    return out
+
+
 def ho_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     """對齊卷面 kpmIndication:cell 級 + perNeighbourRelation。只計 active cell。"""
     active = set(CellConfig.objects.values_list("cell_id", flat=True))
@@ -65,11 +88,19 @@ def ho_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
         by_cell.setdefault(e.source_cell, []).append(e)
         by_rel.setdefault((e.source_cell, e.target_cell), []).append(e)
 
+    # 卷面第4/8/9題的 kpmIndication.cellLevel 含 RRU.PrbTotDl —— 壅塞是排除 MLB 型
+    # (第4/9題)與判定壅塞並發(第8題)的必要欄位,故一併帶出。
+    prb = _prb_by_cell(window_min)
+    cell_level = {
+        cell: _rate_and_ratio(evts, window_min) for cell, evts in by_cell.items()
+    }
+    for cell in set(cell_level) | set(prb):
+        cell_level.setdefault(cell, {})
+        cell_level[cell].update(prb.get(cell, {}))
+
     return {
         "windowMin": window_min,
-        "cellLevel": {
-            cell: _rate_and_ratio(evts, window_min) for cell, evts in by_cell.items()
-        },
+        "cellLevel": cell_level,
         "perNeighbourRelation": [
             {"sourceCellNcgi": src, "targetCellGlobalId": tgt,
              **_rate_and_ratio(evts, window_min)}

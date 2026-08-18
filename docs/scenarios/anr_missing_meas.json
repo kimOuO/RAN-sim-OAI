@@ -9,7 +9,8 @@
     "n35_c0 無關係。UE 掃 -320..+150:東端量到 pci135 約落後 serving 6dB、不強勢(不會被吸附)。",
     "xApp:量測聚合比對 rsrpP50 vs servingRsrpP50 落差 <= MARGIN_HO(6dB) 且 > TH_ABS(-85)",
     "      + NRT 查無 -> 前置檢查 anrIntraEnabled -> REPORTCGI -> ADD。",
-    "典型錯誤(卷面):拿樣本不足的 n37 succ 當根因去調參數;anrIntraEnabled=false 仍自動寫入。"
+    "典型錯誤(卷面):拿樣本不足的 n37 succ 當根因去調參數;anrIntraEnabled=false 仍自動寫入。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(mm0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_missing_meas",
   "scene_id": "anr_missing_meas",
@@ -6108,7 +6109,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "mm0",
       "profile": [
         [
           0,
@@ -6118,7 +6119,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "mm1",
       "profile": [
         [
           0,
@@ -6128,7 +6129,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "mm2",
       "profile": [
         [
           0,
@@ -6138,7 +6139,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "mm3",
       "profile": [
         [
           0,
@@ -6148,7 +6149,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "mm4",
       "profile": [
         [
           0,

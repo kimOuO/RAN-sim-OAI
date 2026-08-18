@@ -5,7 +5,8 @@
     "s15_c0(pci200)服務;b07_c0 為鄰居,實際已換新 PCI=233。",
     "驗測 seed 關係 s15_c0→b07_c0 但 target_pci=205(舊、過期)→ HO 比對 pci 不符 → CellNotAvailable。",
     "meas 自然呈現:pci205 無 cell(樣本崩)、pci233 有(b07_c0);cgi_resolve(233)→b07_c0 單一收斂。",
-    "xApp 處置:先刪(REMOVE 舊關係)後建(ADD target_pci=233)→ HO 恢復、CellNotAvailable 歸零。"
+    "xApp 處置:先刪(REMOVE 舊關係)後建(ADD target_pci=233)→ HO 恢復、CellNotAvailable 歸零。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(sp0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_stale_pci",
   "scene_id": "anr_stale_pci",
@@ -1085,7 +1086,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "sp0",
       "profile": [
         [
           0,
@@ -1095,7 +1096,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "sp1",
       "profile": [
         [
           0,
@@ -1105,7 +1106,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "sp2",
       "profile": [
         [
           0,
@@ -1115,7 +1116,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "sp3",
       "profile": [
         [
           0,
@@ -1125,7 +1126,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "sp4",
       "profile": [
         [
           0,

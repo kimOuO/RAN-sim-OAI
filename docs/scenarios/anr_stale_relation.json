@@ -5,7 +5,8 @@
     "main_c0/keep_c0 兩 cell,UE 連續震盪穿越 → main_c0↔keep_c0 產生健康 HO(att>0)當對照。",
     "另由驗測腳本 seed 兩條過期關係:main_c0→ghost_c0(退役 cell,att=0、age 大)可移除;",
     "main_c0→prot_c0(no_remove=True 保護)REMOVE 會被拒。",
-    "xApp:relationAgeSec 大 + 累計 HO att=0 → REMOVE;命中保護 → REJECTED_PROTECTED。"
+    "xApp:relationAgeSec 大 + 累計 HO att=0 → REMOVE;命中保護 → REJECTED_PROTECTED。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(su0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_stale_relation",
   "scene_id": "anr_stale_relation",
@@ -1085,7 +1086,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "su0",
       "profile": [
         [
           0,
@@ -1095,7 +1096,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "su1",
       "profile": [
         [
           0,
@@ -1105,7 +1106,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "su2",
       "profile": [
         [
           0,
@@ -1115,7 +1116,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "su3",
       "profile": [
         [
           0,
@@ -1125,7 +1126,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "su4",
       "profile": [
         [
           0,

@@ -11,7 +11,8 @@
     "修正:unk 原在 x=+300,與 s01 之間 300m 空隙造成覆蓋洞 RLF(SINR -6.5dB/T310),",
     "      該類 RLF 與鄰區關係無關、ADD 也修不好 → 移到 +150 使 RLF 純由缺關係造成。",
     "2026-08-18:duration 1200s→7200s(waypoint 40→240,掃動速度不變)。",
-    "      原因:1200s 波形跑完 UE 靜止 → RLF 假性歸零,打斷 RIC 的 6 窗驗收觀察。"
+    "      原因:1200s 波形跑完 UE 靜止 → RLF 假性歸零,打斷 RIC 的 6 窗驗收觀察。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(uk0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_unknown_cell",
   "scene_id": "anr_unknown_cell",
@@ -6129,7 +6130,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "uk0",
       "profile": [
         [
           0,
@@ -6139,7 +6140,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "uk1",
       "profile": [
         [
           0,
@@ -6149,7 +6150,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "uk2",
       "profile": [
         [
           0,
@@ -6159,7 +6160,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "uk3",
       "profile": [
         [
           0,
@@ -6169,7 +6170,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "uk4",
       "profile": [
         [
           0,

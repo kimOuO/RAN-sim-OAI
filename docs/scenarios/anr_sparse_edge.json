@@ -19,7 +19,8 @@
     "修正6(關鍵):dw4 改回『來回掃動』(-200 <-> 430/400),不再 park。",
     "      park 只會 RLF 一次就重建到 n91 後不再回來,訊號斷掉;來回掃才會循環:",
     "      出去→在 s28 無關係換不過去→RLF→重建 n91→回來→s28 服務→再出去,",
-    "      使 s28 持續有 RLF,且 pci209 那列(僅 dw4 貢獻)serving 弱→gap 為負。"
+    "      使 s28 持續有 RLF,且 pci209 那列(僅 dw4 貢獻)serving 弱→gap 為負。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(dw0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_sparse_edge",
   "scene_id": "anr_sparse_edge",
@@ -72137,7 +72138,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "dw0",
       "profile": [
         [
           0,
@@ -72147,7 +72148,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "dw1",
       "profile": [
         [
           0,
@@ -72157,7 +72158,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "dw2",
       "profile": [
         [
           0,
@@ -72167,7 +72168,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "dw3",
       "profile": [
         [
           0,
@@ -72177,7 +72178,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "dw4",
       "profile": [
         [
           0,

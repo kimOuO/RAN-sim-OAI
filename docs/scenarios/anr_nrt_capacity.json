@@ -20,7 +20,8 @@
     "      不再追著 sourceCellNcgi 的幾何漂移跑 —— 不論歸屬指到哪個 cell,容量故事都成立。",
     "      語意:此區域各 cell 的 NRT 均已滿載,新鄰居 n77(207)一律進不來。",
     "修正5:n77 標記 TS 38.331 cellBarred(量得到但 UE 不得駐留),功率放回 30dBm。",
-    "      先前靠低功率閃避無效 —— 只要它是最強鄰居,RLF 重建就會選它(實測 4 台被吸走)。"
+    "      先前靠低功率閃避無效 —— 只要它是最強鄰居,RLF 重建就會選它(實測 4 台被吸走)。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(cp0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_nrt_capacity",
   "scene_id": "anr_nrt_capacity",
@@ -72139,7 +72140,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "cp0",
       "profile": [
         [
           0,
@@ -72149,7 +72150,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "cp1",
       "profile": [
         [
           0,
@@ -72159,7 +72160,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "cp2",
       "profile": [
         [
           0,
@@ -72169,7 +72170,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "cp3",
       "profile": [
         [
           0,
@@ -72179,7 +72180,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "cp4",
       "profile": [
         [
           0,

@@ -8,7 +8,8 @@
     "xApp 觀測(func 6):RLF 高、HO=0、reestab inbound 集中同一 previousPci → 判缺漏鄰區。",
     "止血:xApp 下 ANR ADD 建 src↔nbr 關係 → A3 換手取代掉線 → RLF 歸零。",
     "實測(2026-08-12):缺漏 RLF 3.33/min HO 0 → ADD 後 RLF 0 HO 3.33/min(1:1 取代)。",
-    "★ 必須開 A3(a3_enabled)否則無換手可言;offset/hys 用低門檻在健康區換手。"
+    "★ 必須開 A3(a3_enabled)否則無換手可言;offset/hys 用低門檻在健康區換手。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(hu0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_harmful_neighbor",
   "scene_id": "anr_missing_neighbor",
@@ -1088,7 +1089,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "hu0",
       "profile": [
         [
           0,
@@ -1098,7 +1099,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "hu1",
       "profile": [
         [
           0,
@@ -1108,7 +1109,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "hu2",
       "profile": [
         [
           0,
@@ -1118,7 +1119,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "hu3",
       "profile": [
         [
           0,
@@ -1128,7 +1129,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "hu4",
       "profile": [
         [
           0,

@@ -10,7 +10,8 @@
     "xApp:逐 PCI 解析(REPORTCGI 帶 arfcn)收斂後,以帶 arfcn 的 ADD 交 gNB 建立;",
     "      頻率關係容器屬 gNB 模型內務(TS 28.541),xApp 不需也不應自建。",
     "典型錯誤(卷面):解析未收斂即送件;誤以為 xApp 要自建頻率關係容器。",
-    "註:異頻 cell 標 cellBarred,確保它們是『量得到但不收 UE』的待發現鄰居。"
+    "註:異頻 cell 標 cellBarred,確保它們是『量得到但不收 UE』的待發現鄰居。",
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(if0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
   ],
   "scenario_id": "anr_inter_freq",
   "scene_id": "anr_inter_freq",
@@ -72147,7 +72148,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "ru0",
+      "ue_name": "if0",
       "profile": [
         [
           0,
@@ -72157,7 +72158,7 @@
       ]
     },
     {
-      "ue_name": "ru1",
+      "ue_name": "if1",
       "profile": [
         [
           0,
@@ -72167,7 +72168,7 @@
       ]
     },
     {
-      "ue_name": "ru2",
+      "ue_name": "if2",
       "profile": [
         [
           0,
@@ -72177,7 +72178,7 @@
       ]
     },
     {
-      "ue_name": "ru3",
+      "ue_name": "if3",
       "profile": [
         [
           0,
@@ -72187,7 +72188,7 @@
       ]
     },
     {
-      "ue_name": "ru4",
+      "ue_name": "if4",
       "profile": [
         [
           0,
