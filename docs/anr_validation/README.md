@@ -75,7 +75,7 @@
 | 4 | 量測強 + 新 NCGI | PRB(A)、MRO(C) | 低 — 簽名獨立 |
 | 5 | `confusion=true` | — | 無 |
 | 6 | `xnX2Established=false` + cause 主導 | MRO(B,本病自我污染) | **已在該題當場處理**(RIC 降為佐證,我隨後修根因) |
-| 7 | succ 塌 + failCause 累積 | MRO(B/C) | **中** — 換手失敗型,自我污染最嚴重 |
+| 7 | succ 塌 + failCause 累積 | ~~MRO(B/C)~~ | ✅ **已重驗(2026-08-19 04:16)**,見 §3c |
 | 8 | 缺頻率層 + 跨頻強 PCI | MRO(B/C);PRB 已真實(61%) | 低 |
 | 9 | `used==limit` + `ADD_REJECTED` | ~~MRO 不成立、PRB=0~~ | ✅ **已重驗(2026-08-19 03:46)**,見 §3b |
 | 10 | `CellNotAvailable` 集中 + 新 PCI 同 NCGI | MRO(B,本病自我污染) | 中 |
@@ -112,11 +112,29 @@ n62: REMOVE n62_c0→x24_c0 (xapp) → ADD n62_c0→n77_c0 (xapp) → ADD n77_c0
 重驗過程另修一個 sim bug:**Xn 自動反向關係未受容量約束**(首輪造成 n62 9/8)。已修 —— 超限時不建並落
 `ADD_REJECTED / NRT_CAPACITY_REACHED`(`by="gnb-xn"`)。
 
+### 3c. 第7題重驗結果(2026-08-19 04:16,無保留通過)
+
+第一輪 guard 週期即完成:
+```
+DETECT harmful: src_c0→nbr_c0 succ=0.0 att=1.0/min causes={RandomAccessProblem:1.0}
+       exclusions REAL: MRO TooEarly=0.0 / ToWrongCell=0.0 flat;PRB src=2.4% dst=48.8% 未飽和
+04:16:26  FLAG hoBlocklist SET by=xapp  ack rtt=30ms
+```
+sim 端:`src_c0→nbr_c0 hoBlocklist=True v1→2`;反向 `False/v1` 零觸碰;
+`RandomAccessProblem` 累計凍結在 10(近2分零增長);A3 停止嘗試(att 1.0→0.0)。
+
+**RIC 誠實交代的重點**:harmful 是 08-12 的初代分支,**當時 MRO/PRB 欄位根本不存在,
+排除表一直是用「關係健康 + 防抖」代替**。所以那條排除表不只是「因 sim bug 空轉」,
+而是**在該分支從未被實作**。0.0.30 補上兩道硬條件:
+`max(TooEarly, ToWrongCell) ≤ 1.0`(TooLate 不計 —— 它是本病的果不是因)、
+來源與目標 PRB 皆 <85%,並把閘門實際讀值寫進 alarm 的 `exclusions` 欄位供稽核。
+
 ### 建議的再確認順序
 
-1. ~~第9題~~ **已完成**(見 §3b,無保留通過)。
-2. **第7題(中)** — 換手失敗型,MRO 自我污染最嚴重。修完 MRO 後重跑可驗證「MRO 平坦」這條真的成立。
-3. **第10題(中)** — 同為換手失敗型,同理。
+1. ~~第9題~~ **已完成**(§3b,無保留通過)。
+2. ~~第7題~~ **已完成**(§3c,無保留通過)。
+3. **第10題(中)** — 最後一項。同為換手失敗型(`CellNotAvailable` 集中會打高 MRO),
+   與第7題同源;RIC 端 remap 分支同樣尚未有 MRO/PRB 閘門,需一併補。
 4. 第1/2/3/4/11題(低) — 決定性簽名皆與 PRB/MRO 無關,結論穩固;若要求排除表逐條有效,可低優先補跑。
 
 > **結論**:十二題的**診斷結論全部成立**(決定性簽名都不依賴受影響的欄位),但**部分題目的「排除條件」在當時並未真正被驗證**。這不是判錯,是驗證覆蓋度的缺口。
