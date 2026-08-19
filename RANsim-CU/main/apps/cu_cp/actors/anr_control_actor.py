@@ -183,6 +183,14 @@ def apply_son_trigger(req: dict) -> dict:
                     "created" if created else "updated", rel.version)
         _record_change("ADD", source, cgi, "created" if created else "updated")
         if created:
+            # cellBarred 語意是「尚未納入網路,UE 不得駐留」。ANR 一旦為它建立鄰區關係
+            # (且 gNB 隨後建 Xn),該 cell 就已納入網路 —— 此時仍 barred 會造成矛盾:
+            # UE 換得進去(連線態換手不歸 barred 管)卻不能在那裡重建,RLF 後必被判
+            # ToWrongCell,backfill 再把那筆成功換手改寫成 FAIL/HandoverToWrongCell,
+            # 於是「剛修好的關係」立刻看起來像有害鄰居(交叉測試輪3 實測)。
+            from main.apps.cu_cp.models.cell_config import CellConfig as _CC2
+            if _CC2.objects.filter(cell_id=cgi, is_barred=True).update(is_barred=False):
+                logger.info("cellBarred cleared on %s — ANR 關係建立後即納入網路", cgi)
             _schedule_xn_setup(source, cgi)
         return _outcome("ADD", source, cgi,
                         "ADDED" if created else "UPDATED", rel.version)
