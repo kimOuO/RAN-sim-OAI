@@ -75,6 +75,28 @@ def _prb_by_cell(window_min: float) -> dict[str, dict[str, Any]]:
     return out
 
 
+
+def _per_relation_rows(by_rel: dict, window_min: float) -> list[dict[str, Any]]:
+    """perNeighbourRelation:**列出 NRT 全部關係**,零活動者也要在(att=0 / cum={})。
+
+    2026-08-19:原本只列有 HandoverEvent 的關係 —— 零換手條目整列消失。
+    但卷面第9題(容量修剪)要靠「att=0 且樣本近零」挑修剪候選、第12題(屬性稽核)
+    要靠「有條目但累計失敗依據為空」判定封鎖無依據 —— 兩題的判斷對象都是
+    **零活動的關係**,整列不出現的話 xApp 根本看不到它們。
+    """
+    from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+    rows = {}
+    for (src, tgt), evts in by_rel.items():
+        rows[(src, tgt)] = {"sourceCellNcgi": src, "targetCellGlobalId": tgt,
+                            **_rate_and_ratio(evts, window_min)}
+    for src, tgt in NrCellRelation.objects.values_list("source_cell_id", "target_cgi"):
+        rows.setdefault((src, tgt), {
+            "sourceCellNcgi": src, "targetCellGlobalId": tgt,
+            **_rate_and_ratio([], window_min),
+        })
+    return [rows[k] for k in sorted(rows)]
+
+
 def ho_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     """對齊卷面 kpmIndication:cell 級 + perNeighbourRelation。只計 active cell。"""
     active = set(CellConfig.objects.values_list("cell_id", flat=True))
@@ -101,11 +123,7 @@ def ho_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     return {
         "windowMin": window_min,
         "cellLevel": cell_level,
-        "perNeighbourRelation": [
-            {"sourceCellNcgi": src, "targetCellGlobalId": tgt,
-             **_rate_and_ratio(evts, window_min)}
-            for (src, tgt), evts in sorted(by_rel.items())
-        ],
+        "perNeighbourRelation": _per_relation_rows(by_rel, window_min),
     }
 
 
