@@ -21,7 +21,11 @@
     "      語意:此區域各 cell 的 NRT 均已滿載,新鄰居 n77(207)一律進不來。",
     "修正5:n77 標記 TS 38.331 cellBarred(量得到但 UE 不得駐留),功率放回 30dBm。",
     "      先前靠低功率閃避無效 —— 只要它是最強鄰居,RLF 重建就會選它(實測 4 台被吸走)。",
-    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(cp0)不符 → inject 從未執行、PRB 恆 0。已重綁。"
+    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(cp0)不符 → inject 從未執行、PRB 恆 0。已重綁。",
+    "⚠️ 測試設計限制:本劇本的 x20~x24 死條目是 prune 的修剪候選,但它們同時命中",
+    "   aging(第11題)的判準(att=0 + relationAgeSec 增長)。aging 刪它們是正解,不是缺陷 ——",
+    "   衝突在測試設計。**本劇本須在 re-arm 後 30 分鐘內完成**(aging 門檻 1800s),",
+    "   或 re-arm 時把死條目 created_at 設近一點。交叉測試輪3 實測靠此時間餘裕保護。"
   ],
   "scenario_id": "anr_nrt_capacity",
   "scene_id": "anr_nrt_capacity",
