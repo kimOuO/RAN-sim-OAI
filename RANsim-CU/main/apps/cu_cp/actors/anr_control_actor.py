@@ -98,6 +98,16 @@ def _establish_xn_reverse(source: str, target_cgi: str, now) -> None:
     src_cell = CellConfig.objects.filter(cell_id=source).first()
     if peer is None or src_cell is None:
         return
+    # 容量檢查:gNB 自建的反向關係同樣受 NRT 上限約束,否則會把對端推爆上限
+    # (第9題重驗實測:n62 因反向關係變成 9/8)。超限就不建 —— 真實 gNB 也建不了。
+    from main.utils.env_loader import get_int as _gi2
+    _cap2 = _gi2("ANR_NRT_CAPACITY", 32)
+    if (not NrCellRelation.objects.filter(source_cell_id=target_cgi, target_cgi=source).exists()
+            and NrCellRelation.objects.filter(source_cell_id=target_cgi).count() >= _cap2):
+        logger.warning("Xn reverse skipped: %s NRT capacity reached (%d/%d)",
+                       target_cgi, NrCellRelation.objects.filter(source_cell_id=target_cgi).count(), _cap2)
+        _record_change("ADD_REJECTED", target_cgi, source, "NRT_CAPACITY_REACHED", by="gnb-xn")
+        return
     from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
     rev, rev_created = NrCellRelation.objects.get_or_create(
         source_cell_id=target_cgi, target_cgi=source,
