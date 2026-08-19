@@ -77,7 +77,7 @@
 | 6 | `xnX2Established=false` + cause 主導 | MRO(B,本病自我污染) | **已在該題當場處理**(RIC 降為佐證,我隨後修根因) |
 | 7 | succ 塌 + failCause 累積 | MRO(B/C) | **中** — 換手失敗型,自我污染最嚴重 |
 | 8 | 缺頻率層 + 跨頻強 PCI | MRO(B/C);PRB 已真實(61%) | 低 |
-| 9 | `used==limit` + `ADD_REJECTED` | **MRO 條件明確不成立,RIC 放寬才通過**;PRB(A) | **高** — 見下 |
+| 9 | `used==limit` + `ADD_REJECTED` | ~~MRO 不成立、PRB=0~~ | ✅ **已重驗(2026-08-19 03:46)**,見 §3b |
 | 10 | `CellNotAvailable` 集中 + 新 PCI 同 NCGI | MRO(B,本病自我污染) | 中 |
 | 11 | `relationAgeSec` 大 + att=0 | PRB(A) | 低 |
 | 12 | `cum` 空 vs 有值 | — | 無 |
@@ -91,9 +91,30 @@
 | **7** | 「訊號 OK 但接入失敗」sim 做不出,靠 `HO_FORCE_FAIL_TARGET` **注入**才重現 | 低 |
 | **9** | RIC 端有自環寫入 bug(已修),其中 **n60 的一條關係是手動補的、非 guard 自主**(他們有標記) | 中 |
 
+### 3b. 第9題重驗結果(2026-08-19 03:46,無保留通過)
+
+修完 MRO / PRB / A3 / Xn 容量後以**同一場景、同一支 guard** 重跑:
+
+```
+ADD_REJECTED n60/n62/n61 → n77_c0   by=E2NodeAnrFunction     ← 前置證據
+n61: REMOVE n61_c0→x24_c0 (xapp) → ADD n61_c0→n77_c0 (xapp) → ADD n77_c0→n61_c0 (gnb-xn)
+n62: REMOVE n62_c0→x24_c0 (xapp) → ADD n62_c0→n77_c0 (xapp) → ADD n77_c0→n62_c0 (gnb-xn)
+```
+
+| 項目 | 首輪 | 重驗 |
+|---|---|---|
+| 來源方向 | ❌ `ADD n77_c0→n62_c0 by=xapp`(來源設成待發現的 cell) | ✅ `n62_c0→n77_c0`,反向由 `gnb-xn` 自動 |
+| NRT 容量 | ❌ n62 變 **9/8** | ✅ 三 cell 全 **8/8**(剪一補一) |
+| PRB 排除條件 | ❌ 恆 0 | ✅ **5.5 / 16.3 / 8.4%** 真值 |
+| MRO 排除條件 | ❌ 污染(RIC 放寬才過) | ✅ **ToWrongCell 全 0、TooEarly ≤0.6** |
+| 保護條目 | ✅ | ✅ `x25_c0` 未被碰 |
+
+重驗過程另修一個 sim bug:**Xn 自動反向關係未受容量約束**(首輪造成 n62 9/8)。已修 —— 超限時不建並落
+`ADD_REJECTED / NRT_CAPACITY_REACHED`(`by="gnb-xn"`)。
+
 ### 建議的再確認順序
 
-1. **第9題(高)** — MRO 排除條件當時明確不成立、RIC 放寬才過;PRB 當時為 0。現在 MRO 與 PRB 都修好了,**重跑一輪可讓該題不帶保留**。
+1. ~~第9題~~ **已完成**(見 §3b,無保留通過)。
 2. **第7題(中)** — 換手失敗型,MRO 自我污染最嚴重。修完 MRO 後重跑可驗證「MRO 平坦」這條真的成立。
 3. **第10題(中)** — 同為換手失敗型,同理。
 4. 第1/2/3/4/11題(低) — 決定性簽名皆與 PRB/MRO 無關,結論穩固;若要求排除表逐條有效,可低優先補跑。
