@@ -43,8 +43,14 @@ def _classify_one(rlf: RlfEvent, recent_ho: HandoverEvent | None) -> str | None:
             return "TooEarly"      # 掉回原 cell
         if reestab != recent_ho.target_cell:
             return "ToWrongCell"   # 進了第三 cell
-        # 重建回 target 本身(切過去又掉又接回同一個)——視為 TooEarly 的邊界,歸 TooEarly
-        return "TooEarly"
+        # 2026-08-19:重建回 **target 自己** → 不做 MRO 歸因。
+        # TS 28.313 的 TooEarly 定義是「換手後 RLF 且 UE **退回 source cell**」;
+        # 接回 target 表示換手目標選對了,只是在該 cell 發生無線失效 ——
+        # 那是覆蓋/無線問題,不是行動性時序錯誤。
+        # 原本把它當「TooEarly 邊界」硬歸,是 TooEarly 虛高的主要來源
+        # (交叉測試輪2:src_c0 64 筆中有 45 筆屬此類),會讓「MRO 平坦」
+        # 這條排除條件在有無線失效的場景永遠不成立。
+        return None
 
     # 近期無 HO → 重建進非原 serving = 該切沒切
     if reestab != rlf.source_cell:
@@ -75,6 +81,22 @@ def mro_kpm(window_min: float = _DEFAULT_WINDOW_MIN, *, backfill: bool = True) -
     for h in hos:
         ho_by_ue.setdefault(h.ue_id, []).append(h)
 
+    # 2026-08-19(交叉測試輪2 發現):只濾成功換手還不夠。
+    # 若 RLF 之前**更接近**的行動事件是一次「失敗的換手嘗試」,那次 RLF 的肇因是該失敗
+    # (它有自己的 handoverFailureCause),不該歸給更早、不相干的成功換手。
+    # 不處理的話:換手失敗型疾病(第6/7/10題)造成的 RLF 會被算到同 cell 上正常的
+    # 換手循環頭上 → TooEarly 虛高 → 「MRO 平坦」這條排除條件永遠不成立 →
+    # 病越嚴重越修不了(交叉測試輪2 實測 harmful 被自家 MRO 閘門鎖死半小時)。
+    fails = list(
+        HandoverEvent.objects.filter(status="FAIL",
+                                     started_at__gte=win_start - timedelta(seconds=_T_SHORT_SEC))
+        .exclude(failure_cause="")
+        .order_by("started_at")
+    )
+    fail_by_ue: dict[str, list[HandoverEvent]] = {}
+    for h in fails:
+        fail_by_ue.setdefault(h.ue_id, []).append(h)
+
     # per-cell(以 RLF 的 source_cell 計)counters
     counters: dict[str, dict[str, int]] = {}
     totals = {"TooEarly": 0, "TooLate": 0, "ToWrongCell": 0}
@@ -86,6 +108,15 @@ def mro_kpm(window_min: float = _DEFAULT_WINDOW_MIN, *, backfill: bool = True) -
             dt = (r.detected_at - h.started_at).total_seconds()
             if 0 <= dt <= _T_SHORT_SEC:
                 recent = h  # 取最後一個符合的(最接近 RLF)
+        # 更近的失敗嘗試 → 該 RLF 歸因於那次失敗,不做 MRO 歸因
+        recent_fail = None
+        for h in fail_by_ue.get(r.ue_id, []):
+            dt = (r.detected_at - h.started_at).total_seconds()
+            if 0 <= dt <= _T_SHORT_SEC:
+                recent_fail = h
+        if recent_fail is not None and (
+                recent is None or recent_fail.started_at >= recent.started_at):
+            continue  # 肇因是換手失敗(有自己的 failureCause),非 MRO
         cls = _classify_one(r, recent)
         if cls:
             src = r.source_cell if r.source_cell in active else "_other"
