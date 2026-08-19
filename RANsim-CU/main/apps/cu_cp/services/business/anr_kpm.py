@@ -26,8 +26,13 @@ _DEFAULT_WINDOW_MIN = 10.0
 
 # ── P0-2:HO 速率 / 成功比 ─────────────────────────────────────────
 
-def _rate_and_ratio(events: list[HandoverEvent], window_min: float) -> dict[str, Any]:
-    """由事件清單(新→舊排序)算 att rate(窗口內)+ succ ratio(最近 N 筆)。"""
+def _rate_and_ratio(events: list[HandoverEvent], window_min: float,
+                    cum_override: dict[str, int] | None = None) -> dict[str, Any]:
+    """由事件清單(新→舊排序)算 att rate(窗口內)+ succ ratio(最近 N 筆)。
+
+    `cum_override`:真正的 cumulativeSinceCreation(DB 聚合)。不給就退回用 events 算,
+    但那只涵蓋切片內的事件 —— 見下方 _cum_by_relation() 的說明。
+    """
     now = TimestampService.now()
     win_start = now - timedelta(minutes=window_min)
     in_window = [e for e in events if e.started_at >= win_start]
@@ -48,9 +53,31 @@ def _rate_and_ratio(events: list[HandoverEvent], window_min: float) -> dict[str,
         "sampleCount_last50": len(last_n),   # <50 時 xApp 據此判「樣本不足」(卷面判準)
         "handoverFailureCauseRatePerMin": {
             k: round(v / max(window_min, 1e-9), 3) for k, v in cause_win.items()},
-        "handoverFailureCauseCumulativeSinceCreation": cause_cum,
+        "handoverFailureCauseCumulativeSinceCreation": (
+            cum_override if cum_override is not None else cause_cum),
     }
 
+
+
+
+def _cum_by_relation() -> dict[tuple[str, str], dict[str, int]]:
+    """(source, target) → {failure_cause: 累計次數} —— **真正的 since-creation 聚合**。
+
+    2026-08-19(交叉測試輪5 發現):原本 cumulativeSinceCreation 是從
+    `HandoverEvent[:2000]` 這個「最近 2000 筆」切片算的,名字說 since-creation、
+    實際是「最近 2000 筆內」。UE 跑幾小時後新事件把舊證據擠出切片,wire 上
+    cum 就變成 {} —— 第12題賴以區分「封鎖有無依據」的證據整個消失,
+    guard 只能看 wire,於是把「有 128 筆失敗依據的正當封鎖」誤判成異常設定。
+    改用 DB 端 group-by,不受切片影響。
+    """
+    from django.db.models import Count
+    out: dict[tuple[str, str], dict[str, int]] = {}
+    rows = (HandoverEvent.objects.exclude(failure_cause="")
+            .values("source_cell", "target_cell", "failure_cause")
+            .annotate(n=Count("id")))
+    for r in rows:
+        out.setdefault((r["source_cell"], r["target_cell"]), {})[r["failure_cause"]] = r["n"]
+    return out
 
 
 def _prb_by_cell(window_min: float) -> dict[str, dict[str, Any]]:
@@ -85,14 +112,15 @@ def _per_relation_rows(by_rel: dict, window_min: float) -> list[dict[str, Any]]:
     **零活動的關係**,整列不出現的話 xApp 根本看不到它們。
     """
     from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+    cum = _cum_by_relation()
     rows = {}
     for (src, tgt), evts in by_rel.items():
         rows[(src, tgt)] = {"sourceCellNcgi": src, "targetCellGlobalId": tgt,
-                            **_rate_and_ratio(evts, window_min)}
+                            **_rate_and_ratio(evts, window_min, cum.get((src, tgt), {}))}
     for src, tgt in NrCellRelation.objects.values_list("source_cell_id", "target_cgi"):
         rows.setdefault((src, tgt), {
             "sourceCellNcgi": src, "targetCellGlobalId": tgt,
-            **_rate_and_ratio([], window_min),
+            **_rate_and_ratio([], window_min, cum.get((src, tgt), {})),
         })
     return [rows[k] for k in sorted(rows)]
 
