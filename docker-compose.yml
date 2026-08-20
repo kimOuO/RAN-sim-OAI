@@ -45,10 +45,10 @@ services:
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
       KPM_CALIB_ENABLE: "on"   # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
-      HO_FORCE_FAIL_TARGET: ""   # 第7題有害鄰區注入用(設 cell_id 啟用);平時留空
+      HO_FORCE_FAIL_TARGET: ""   # 交叉測試輪3(Q9 容量)不需注入
       MEAS_REPORT_MIN_RSRP_DBM: "-110" # 量測回報門檻(38.331 reportConfig);-110=幾乎不濾
       ANR_NRT_CAPACITY: "8"            # 卷面第9題 NRT 每 cell 容量上限假設值
-      ANR_INTRA_ENABLED: "true"    # ANR 自動建立功能部署組態;false 時 ADD 回 REJECTED_ANR_DISABLED(卷面前置檢查)
+      ANR_INTRA_ENABLED: "true"    # ANR 自動建立功能部署組態;false 時 ADD 回 REJECTED_ANR_DISABLED
       ANR_XN_AUTO_REVERSE: "on"      # ANR ADD 後由 gNB 經 Xn 自動建反向關係(38.300 步驟4c);off=舊行為
       ANR_XN_SETUP_DELAY_SEC: "2.0"  # XnAP Setup 非瞬時,反向關係延遲此秒數才出現
       KPM_CALIB_URL: "http://kpm-calib:8200/calibrate"
@@ -256,6 +256,12 @@ services:
 
   # ── Physics（Sionna RT，需要 GPU）─────────────────────────
   physics:
+    # PID 1 的訊號語意:核心不對 PID 1 套用訊號預設動作,沒裝 handler 的 SIGTERM 被直接丟棄。
+    # 本服務的 PID 1(manage.py runserver / sh -c)不處理 SIGTERM → docker stop 空等 10 秒
+    # 再 SIGKILL(exit 137),連線不送 FIN / SCTP 不做 SHUTDOWN。init:true 讓 tini 當 PID 1,
+    # 應用程式退回一般行程、吃得到預設動作 —— 實測 10.2s/exit137 → 0.23s/exit143。
+    # (RIC 端 2026-08-20 在 xApp pod 上踩到同一個坑,回報後我們自查發現同款問題。)
+    init: true
     build:
       context: ./Physics_sim
       dockerfile: Dockerfile
@@ -356,6 +362,12 @@ services:
   # P2.8 起會把 SCTP loop 接通到 RIC e2term
   # 注意：network_mode: host — pysctp 跨主機 SCTP 在 bridge 模式會踩 self-ABORT
   e2adapter:
+    # PID 1 的訊號語意:核心不對 PID 1 套用訊號預設動作,沒裝 handler 的 SIGTERM 被直接丟棄。
+    # 本服務的 PID 1(manage.py runserver / sh -c)不處理 SIGTERM → docker stop 空等 10 秒
+    # 再 SIGKILL(exit 137),連線不送 FIN / SCTP 不做 SHUTDOWN。init:true 讓 tini 當 PID 1,
+    # 應用程式退回一般行程、吃得到預設動作 —— 實測 10.2s/exit137 → 0.23s/exit143。
+    # (RIC 端 2026-08-20 在 xApp pod 上踩到同一個坑,回報後我們自查發現同款問題。)
+    init: true
     build:
       context: ./RANsim-E2Adapter
       dockerfile: Dockerfile
@@ -391,6 +403,12 @@ services:
   # 跑 N UE thread，per-UE 從 CU 同步狀態。Phase A 只做 lifecycle skeleton，
   # 之後 phase 加 trajectory / traffic / measurement / UCI report
   ue:
+    # PID 1 的訊號語意:核心不對 PID 1 套用訊號預設動作,沒裝 handler 的 SIGTERM 被直接丟棄。
+    # 本服務的 PID 1(manage.py runserver / sh -c)不處理 SIGTERM → docker stop 空等 10 秒
+    # 再 SIGKILL(exit 137),連線不送 FIN / SCTP 不做 SHUTDOWN。init:true 讓 tini 當 PID 1,
+    # 應用程式退回一般行程、吃得到預設動作 —— 實測 10.2s/exit137 → 0.23s/exit143。
+    # (RIC 端 2026-08-20 在 xApp pod 上踩到同一個坑,回報後我們自查發現同款問題。)
+    init: true
     build:
       context: ./RANsim-UE
       dockerfile: Dockerfile

@@ -18,7 +18,7 @@ from django.http import HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from main.apps.e2_adapter.services.optional.event_log.ring import get_ring
+from main.apps.e2_adapter.services.optional.event_log.ring import get_control_ring
 from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
@@ -38,8 +38,8 @@ class ControlAuditActor:
             return error_response("Invalid JSON", str(e), status=400)
         limit = max(1, min(int(body.get("limit", 50)), 500))
 
-        # ring 是全事件流,這裡只挑控制面三種 kind(讀多一些才夠配對出 limit 列)
-        entries = get_ring().read(since_seq=0, limit=500)
+        # 專用 ring,裡面只有控制事件 —— 不會被 indication 擠掉(見 ring.py 的說明)
+        entries = get_control_ring().read(since_seq=0, limit=500)
         rows: dict[tuple, dict] = {}
         order: list[tuple] = []
 

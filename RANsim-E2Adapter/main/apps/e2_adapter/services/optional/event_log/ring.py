@@ -44,9 +44,27 @@ class _Ring:
 
 _ring = _Ring()
 
+# 控制事件(RIC → sim 的下發命令)另存一份。
+# 原因:主 ring 是全事件流,indication 約每秒一筆,500 筆上限等於**控制紀錄只留得住
+# 約 8 分鐘** —— 等發現異常再去查,證據必然已經被擠掉(RIC 2026-08-20 實測 count=0,
+# 要查的 instId=191 是 8 分鐘前的事)。控制命令一整天也才百來筆,獨立 buffer 能撐很久。
+# 控制事件會同時進兩個 ring:主 ring 給 /logs 的 timeline 保持完整,
+# 獨立 ring 給 /e2 的下發命令面板做事後對帳。
+_control_ring = _Ring()
+
 
 def get_ring() -> _Ring:
     return _ring
+
+
+def get_control_ring() -> _Ring:
+    """只含控制面事件(control_req_recv / control_ack_sent / control_failure)。"""
+    return _control_ring
+
+
+def _append_control(kind: str, **fields: Any) -> None:
+    _ring.append(kind, **fields)
+    _control_ring.append(kind, **fields)
 
 
 def append(kind: str, **fields: Any) -> None:
@@ -127,7 +145,7 @@ def record_control_req_recv(style: int, action: int, sim_action: str, ueid: dict
     要能顯示「誰下了什麼」並和 RIC 端的 instId 直接對帳。adapter 是 RC / ANR / CCC
     三種控制的唯一咽喉點,所以這裡是唯一能一次看完所有下發命令的地方。
     """
-    _ring.append(
+    _append_control(
         "control_req_recv", style=style, action=action,
         sim_action=sim_action, ueid=ueid,
         ran_func=ran_func, inst_id=inst_id, params=params or {},
@@ -141,7 +159,7 @@ def record_control_ack_sent(style: int, action: int, sim_action: str, pdu_size: 
     """ACK 送出。result 是 sim 回的 outcome 碼(ADDED / REJECTED_PROTECTED / …),
     與 ACK 的 RICcontrolOutcome(IE id=32)內容同源 —— 光看 outcome="ok" 只知道
     傳輸層成功,分不出業務層被拒。"""
-    _ring.append(
+    _append_control(
         "control_ack_sent", style=style, action=action,
         sim_action=sim_action, pdu_size=pdu_size, outcome=outcome,
         ran_func=ran_func, inst_id=inst_id, result=result, detail=detail,
@@ -150,4 +168,4 @@ def record_control_ack_sent(style: int, action: int, sim_action: str, pdu_size: 
 
 
 def record_control_failure(reason: str, style: int = 0, action: int = 0) -> None:
-    _ring.append("control_failure", reason=reason, style=style, action=action)
+    _append_control("control_failure", reason=reason, style=style, action=action)
