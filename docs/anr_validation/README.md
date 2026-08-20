@@ -283,6 +283,46 @@ harmful 收手**純靠「cause 是 MRO 語意」的主動判斷**,沒有任何�
 加上 sim 修好 MRO 歸因後連誤報來源都消失,**「真實且持續的 MRO 不平坦」與「非 MRO cause 主導」
 在目前物理模型下無法自然並存**。故改用事件層注入,並在此標明。
 
+### 7f. Q1 / Q11 劇本 bug 重驗(2026-08-20)
+
+劇本的 UE 位置若是 3 元素 `[x,y,z]`(無時戳),sim 端 `_normalize_positions`
+會把時戳**平均攤在 `duration_sec` 上**。8/20 把 `anr_missing_neighbor`(Q1)與
+`anr_stale_relation`(Q11)的 duration 由 1200s 拉到 86400s **卻沒等比例加位置點**
+→ 每段 30s 變 2215s,**UE 速度 10.7 → 0.15 m/s**,兩題等於不會觸發換手。
+位置點 40 → 2880 修復(11.3 m/s),重驗:
+
+| 題 | 佈病 | xApp 動作 | 結果 |
+|---|---|---|---|
+| Q1 | 刪 src↔nbr | `04:08:00 ADD src_c0→nbr_c0` instId=183 → `ADDED`;`04:08:02` 反向 `by=gnb-xn` | ✅ RLF 1.2/min、重建 inbound `prevPci=20` 1.2/min;修後 HO 1.8/min succ 100% |
+| Q11 | 老化 30 天零活動 + noRemove 保護 | `04:44:32 REMOVE main_c0→old_c0 reason=aging` instId=189 → `REMOVED` | ✅ 關係 3→2;保護條目零觸碰;HO 3.0/min succ 100% |
+
+**Q11 拒絕路徑補驗(RIC 主動加測,04:53:50 instId=190)**:對受保護條目刻意送 REMOVE
+→ `REJECTED_PROTECTED`,rtt 18ms。關係完好的證明用**年齡連續性**:649s → 34 秒後 682s
+(= 649+33),若曾被刪再補回 age 會歸零 —— 故為「從未被移除」,不是「刪掉又救回」。
+
+RIC 補充:受保護條目零觸碰是**結構保障不是運氣** —— aging 分支送 REMOVE 前先看
+`flags.noRemove` / `isRemoveAllowed`,命中就跳過並記 `stale_protected`,control 根本不發出。
+拒絕路徑是打「防禦縱深」用的:萬一屬性判斷漏了,sim 端攔不攔得住。
+
+#### 這輪雙方各驗出一個對稱的洞
+
+| 端 | 洞 | 後果 |
+|---|---|---|
+| RIC | `_guard_stale_remove()` **不分辨 outcome 的 result** —— 回 `REMOVED` 或 `REJECTED_PROTECTED` 都記成 `stale_removed / REMOVE_SENT` | 稽核會宣稱刪掉了、其實沒刪(0.0.32 修掉的 ADD 側「靜默 REJECTED」在 REMOVE 側的孿生) |
+| sim | REMOVE 被拒**不落審計事件**(ADD 被拒有 `ADD_REJECTED`,REMOVE 沒有) | 「送了但被擋」與「根本沒送」在稽核面無法區分 |
+
+兩者疊加時,一筆被拒的 REMOVE 在兩邊同時隱形。
+sim 側已修:落 `REMOVE_REJECTED / PROTECTED_ENTRY`,`reason` 欄位擴及所有 `*_REJECTED`。
+自測(直打 CU 不經 RIC):`REJECTED_PROTECTED` + 稽核事件 `REMOVE_REJECTED`,關係 v=1 未變。
+RIC 側列入下版批次(共三項:Case#1 不寫 alarms、REMOVE 側 result 檢查、MRO flat 措辭),
+不為此單獨動 0.0.33 驗收基準,併下次功能改動一起出版並重跑共存煙霧測試。
+
+#### 操作規則(新增)
+
+**佈病一律在 sim 啟動 75 秒之後** —— 啟動後頭一分鐘關係表會被清場重建,
+該期間的 `changeEvents` 是雜訊(Q1 的 instId=185、Q11 的 instId=188 都是這樣來的:
+xApp 量測發現分支正確地把被清掉的關係補了回來)。
+
 ### 7e. 收官
 
 **交叉分支測試(五輪 + 兩變體)全部完結,無未結項目。**

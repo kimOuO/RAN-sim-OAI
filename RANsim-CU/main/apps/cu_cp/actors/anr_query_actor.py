@@ -128,7 +128,7 @@ class AnrQueryActor:
         change_events = [
             {"action": e.action, "targetCellGlobalId": e.target_cgi,
              "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
-             "reason": e.detail if e.action == "ADD_REJECTED" else None}
+             "reason": e.detail if e.action.endswith("_REJECTED") else None}
             for e in change_qs[:100]
         ]
 
@@ -215,7 +215,7 @@ class AnrQueryActor:
                 "relationChangeEvents": [
                     {"action": e.action, "targetCellGlobalId": e.target_cgi,
                      "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
-                     "reason": e.detail if e.action == "ADD_REJECTED" else None}
+                     "reason": e.detail if e.action.endswith("_REJECTED") else None}
                     for e in change_qs[:50]],
             },
             "kpmIndication": ho_kpm(window_min),

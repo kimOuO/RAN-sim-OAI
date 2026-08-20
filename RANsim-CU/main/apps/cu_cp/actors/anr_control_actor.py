@@ -202,6 +202,11 @@ def apply_son_trigger(req: dict) -> dict:
             return _outcome("REMOVE", source, cgi, "NOT_FOUND")
         if not rel.is_remove_allowed or rel.no_remove:
             logger.warning("ANR REMOVE rejected (protected): %s → %s", source, cgi)
+            # 被拒也要落審計 —— 與 ADD_REJECTED 對稱。少了這筆,「送了但被擋」
+            # 在稽核面上與「根本沒送」無法區分;若 xApp 那端又不檢查 outcome 的
+            # result,一筆被拒的 REMOVE 會在兩邊同時隱形(RIC 2026-08-20 於
+            # Q11 拒絕路徑實測時指出他們 REMOVE 側有同款的洞)。
+            _record_change("REMOVE_REJECTED", source, cgi, "PROTECTED_ENTRY")
             return _outcome("REMOVE", source, cgi, "REJECTED_PROTECTED",
                             rel.version, "is_remove_allowed=False or no_remove=True → SMO_NOTIFY")
         rel.delete()
