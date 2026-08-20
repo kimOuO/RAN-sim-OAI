@@ -40,9 +40,10 @@ function piecewiseConstant(profile: number[][], t: number, col: number): number 
 export function buildTrafficSeries(
   scenario: RawScenario,
   resolutionSec = 1,
+  totalSecOverride?: number,
 ): Array<Record<string, number>> {
   const out: Array<Record<string, number>> = [];
-  const totalSec = Math.ceil(scenario.duration_sec);
+  const totalSec = Math.ceil(totalSecOverride ?? scenario.duration_sec);
   for (let t = 0; t <= totalSec; t += resolutionSec) {
     const row: Record<string, number> = { tick: t };
     for (const tf of scenario.traffic || []) {
@@ -58,9 +59,10 @@ export function buildTrafficSeries(
 export function buildPositionZSeries(
   scenario: RawScenario,
   resolutionSec = 1,
+  totalSecOverride?: number,
 ): Array<Record<string, number>> {
   const out: Array<Record<string, number>> = [];
-  const totalSec = Math.ceil(scenario.duration_sec);
+  const totalSec = Math.ceil(totalSecOverride ?? scenario.duration_sec);
   for (let t = 0; t <= totalSec; t += resolutionSec) {
     const row: Record<string, number> = { tick: t };
     for (const ue of scenario.ues) {
@@ -75,17 +77,35 @@ export function buildPositionZSeries(
 function interpolatePos(positions: number[][], t: number): [number, number, number] {
   if (!positions || positions.length === 0) return [0, 0, 0];
   if (t <= positions[0][0]) return [positions[0][1], positions[0][2], positions[0][3]];
-  if (t >= positions[positions.length - 1][0]) {
-    const p = positions[positions.length - 1];
-    return [p[1], p[2], p[3]];
-  }
-  for (let i = 0; i < positions.length - 1; i++) {
-    const a = positions[i], b = positions[i + 1];
-    if (a[0] <= t && t <= b[0]) {
-      const r = b[0] === a[0] ? 0 : (t - a[0]) / (b[0] - a[0]);
-      return [a[1] + (b[1] - a[1]) * r, a[2] + (b[2] - a[2]) * r, a[3] + (b[3] - a[3]) * r];
-    }
-  }
   const last = positions[positions.length - 1];
-  return [last[1], last[2], last[3]];
+  if (t >= last[0]) return [last[1], last[2], last[3]];
+  // 二分搜尋找 t 所在區間。原本是線性掃 —— 長劇本(2880 點 × 每秒取樣 86400 格)
+  // 會變成上億次比較,是 /scenarios 卡頓的主因。
+  let lo = 0, hi = positions.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (positions[mid][0] <= t) lo = mid; else hi = mid;
+  }
+  const a = positions[lo], b = positions[hi];
+  const r = b[0] === a[0] ? 0 : (t - a[0]) / (b[0] - a[0]);
+  return [a[1] + (b[1] - a[1]) * r, a[2] + (b[2] - a[2]) * r, a[3] + (b[3] - a[3]) * r];
+}
+
+/** 預覽圖用的取樣間隔:不論劇本多長都只取約 MAX_PREVIEW_POINTS 點。
+ *  86400 秒的劇本每秒一格 = 86400 個點,圖上根本畫不出來,純浪費。 */
+export const MAX_PREVIEW_POINTS = 600;
+export function previewResolutionSec(durationSec: number): number {
+  return Math.max(1, Math.ceil((durationSec || 1) / MAX_PREVIEW_POINTS));
+}
+
+/** 預覽該畫多長:UE 軌跡實際跨度(sim 端是 mode="loop" 會循環播放)。
+ *  劇本 duration 常是 86400s 但軌跡只有幾百秒 —— 照 duration 畫的話
+ *  99% 的圖是軌跡結束後的一條直線,又大又看不出東西。 */
+export function previewSpanSec(scenario: RawScenario): number {
+  let span = 0;
+  for (const u of scenario.ues || []) {
+    const p = u.positions;
+    if (p && p.length) span = Math.max(span, p[p.length - 1][0] - p[0][0]);
+  }
+  return span > 0 ? span : Math.ceil(scenario.duration_sec);
 }

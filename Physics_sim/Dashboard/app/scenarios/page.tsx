@@ -13,7 +13,8 @@ import {
   type HandoverEventRow, type TriggerEval,
 } from '@/services/api/scenarioMonitor';
 import {
-  buildTrafficSeries, buildPositionZSeries, type RawScenario,
+  buildTrafficSeries, buildPositionZSeries, previewResolutionSec, previewSpanSec,
+  type RawScenario,
 } from '@/services/api/scenarioProfile';
 import { startUnifiedSim, stopUnifiedSim } from '@/services/api/simLoop';
 import { SignalChart } from '@/components/SignalChart';
@@ -157,7 +158,12 @@ export default function ScenariosPage() {
     try { setScenarios(await listScenarios()); }
     catch (e: any) { setError(e?.message ?? 'list failed'); }
   };
-  useEffect(() => { reload(); const t = setInterval(reload, 3000); return () => clearInterval(t); }, []);
+  // 沒在跑時清單不會變,3 秒輪詢只是白白觸發整頁 re-render → 拉長到 15 秒。
+  useEffect(() => {
+    reload();
+    const t = setInterval(reload, running ? 3000 : 15000);
+    return () => clearInterval(t);
+  }, [running]);
 
   // 切 page 離開再回來時,本地 `running` state 會歸零,即使 driver 還在跑也只看到
   // pre-sim 列表。mount 時 query driver,若 running 就從 sessionStorage 拿 onRun 當時
@@ -208,7 +214,14 @@ export default function ScenariosPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // 只抓「畫面上看得到的」——presets + 目前資料集。全抓是 15 份 ≈ 3MB,
+      // 但同一時間只會顯示一個資料集,其餘等切過去再抓(切完才抓也只是一次 fetch)。
+      const needed = new Set([
+        ...PRESETS.map(p => p.id),
+        ...scenarios.filter(v => datasetOf(v.scenario_id) === dataset).map(v => v.scenario_id),
+      ]);
       const stale = scenarios.filter(s => {
+        if (!needed.has(s.scenario_id)) return false;
         const cached = scenarioDetails.get(s.scenario_id);
         return !cached || cached.updatedAt !== s.updated_at;
       });
@@ -230,7 +243,7 @@ export default function ScenariosPage() {
       });
     })();
     return () => { cancelled = true; };
-  }, [scenarios]);
+  }, [scenarios, dataset]);
 
   useEffect(() => {
     if (!running) return;
@@ -1140,9 +1153,15 @@ function ScenarioCard({
   const reqGNB = preset?.requires?.min_gnbs;
   const status = scenario?.precompute_status ?? 'no_upload';
 
-  // 預覽 chart 資料(raw_json 抓得到才有)
-  const trafficSeries = rawJson ? buildTrafficSeries(rawJson, 1) : [];
-  const positionSeries = rawJson ? buildPositionZSeries(rawJson, 1) : [];
+  // 預覽 chart 資料(raw_json 抓得到才有)。
+  // ⚠️ 必須 useMemo + 取樣:每秒一格跑 86400 格、每格再掃 2880 個位置點,
+  //    ×14 張卡 ×每 3 秒 re-render = 上億次運算,這是頁面卡頓的根因。
+  const span = rawJson ? previewSpanSec(rawJson) : 0;
+  const res = previewResolutionSec(span);
+  const trafficSeries = useMemo(
+    () => (rawJson ? buildTrafficSeries(rawJson, res, span) : []), [rawJson, res, span]);
+  const positionSeries = useMemo(
+    () => (rawJson ? buildPositionZSeries(rawJson, res, span) : []), [rawJson, res, span]);
 
   // 抽 chart series keys
   const trafficLeftKeys = trafficSeries.length > 0
@@ -1160,20 +1179,25 @@ function ScenarioCard({
     key: k, label: k.replace('_z', ''), color: COLORS[i % COLORS.length],
   }));
 
-  // 統計:DL 最大、UE 數、軌跡 z 範圍
-  let dlMax = 0, zMin = 0, zMax = 0;
-  if (rawJson) {
-    for (const t of rawJson.traffic || []) {
-      for (const p of t.profile || []) {
-        if (p[1] > dlMax) dlMax = p[1];
+  // 統計:DL 最大、UE 數、軌跡 z 範圍。同樣 memo —— 這裡要掃全部位置點。
+  // 用迴圈取 min/max,不用 Math.min(...zs):展開上萬個引數又慢又可能爆堆疊。
+  const { dlMax, zMin, zMax } = useMemo(() => {
+    let dlMax = 0, zMin = 0, zMax = 0, seen = false;
+    if (rawJson) {
+      for (const t of rawJson.traffic || []) {
+        for (const p of t.profile || []) if (p[1] > dlMax) dlMax = p[1];
+      }
+      for (const u of rawJson.ues || []) {
+        for (const p of u.positions || []) {
+          const z = p[3];
+          if (!seen) { zMin = zMax = z; seen = true; }
+          else if (z < zMin) zMin = z;
+          else if (z > zMax) zMax = z;
+        }
       }
     }
-    let zs: number[] = [];
-    for (const u of rawJson.ues || []) {
-      for (const p of u.positions || []) zs.push(p[3]);
-    }
-    if (zs.length > 0) { zMin = Math.min(...zs); zMax = Math.max(...zs); }
-  }
+    return { dlMax, zMin, zMax };
+  }, [rawJson]);
 
   return (
     <div style={{
