@@ -1314,23 +1314,25 @@ function ScenarioCard({
           <button onClick={() => onPrecompute(scenario.scenario_id)}
             disabled={busy || scenario.precompute_status === 'running'}
             style={btn(status === 'pending' ? '#a78bfa' : '#8b5cf6')}>
-            {status === 'pending' ? '🔧 Pre(必要)' : 'Pre'}
+            {status === 'pending' ? '🔧 Pre(加速用)' : 'Pre'}
           </button>
         )}
-        {/* 速度倍率 1x / 2x / 3x — precompute ready 時走 cached(快、SINR 可能失真);
-            「▶ Live 2x」強制走 Sionna 即時 ray tracing,繞 cached SINR bug。
+        {/* 綠色 1x/2x/3x = cached 快跑,需要 precompute ready 才有快取可讀。
+            藍色 Live = Sionna 即時 ray tracing,**不需要 precompute**
+            (RU 本來就預設 live;precompute 只是為了能加速重播)。
             註:2x 為安全 baseline;3x 以上會掉封包/KPM 失真,只 demo 用不當量測比較對象。 */}
         {scenario && ready && [1, 2, 3].map((r) => (
           <button key={r} onClick={() => onRun(scenario, r)}
-            disabled={busy} style={btn('#22c55e')}>▶ {r}x</button>
+            disabled={busy} style={btn('#22c55e')}
+            title="cached 模式:讀 precompute 好的通道快取,可加速。">▶ {r}x</button>
         ))}
-        {scenario && ready && (
-          <button onClick={() => onRun(scenario, 1, true)}
+        {scenario && [1, 2].map((r) => (
+          <button key={`live${r}`} onClick={() => onRun(scenario, r, true)}
             disabled={busy} style={btn('#3b82f6')}
-            title="強制 RU 走 live mode(Sionna 即時 ray tracing,繞 cached SINR bug)。1x 真實速度跑,不加速。">
-            ▶ Live
+            title="Live:Sionna 即時 ray tracing,不需要 precompute。物理最真實,速度受 GPU 限制。">
+            ▶ Live {r}x
           </button>
-        )}
+        ))}
         {scenario && !preset && (
           <button onClick={() => onDelete(scenario.scenario_id)}
             disabled={busy} style={btn('#475569')}>Del</button>
