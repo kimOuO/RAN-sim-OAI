@@ -14,6 +14,7 @@ import {
 } from '@/services/api/scenarioMonitor';
 import {
   buildTrafficSeries, buildPositionZSeries, previewResolutionSec, previewSpanSec,
+  normalizePositions, dominantAxis,
   type RawScenario,
 } from '@/services/api/scenarioProfile';
 import { startUnifiedSim, stopUnifiedSim } from '@/services/api/simLoop';
@@ -1160,8 +1161,10 @@ function ScenarioCard({
   const res = previewResolutionSec(span);
   const trafficSeries = useMemo(
     () => (rawJson ? buildTrafficSeries(rawJson, res, span) : []), [rawJson, res, span]);
+  const axis = useMemo(() => (rawJson ? dominantAxis(rawJson) : 'z'), [rawJson]);
   const positionSeries = useMemo(
-    () => (rawJson ? buildPositionZSeries(rawJson, res, span) : []), [rawJson, res, span]);
+    () => (rawJson ? buildPositionZSeries(rawJson, res, span, axis) : []),
+    [rawJson, res, span, axis]);
 
   // 抽 chart series keys
   const trafficLeftKeys = trafficSeries.length > 0
@@ -1176,20 +1179,21 @@ function ScenarioCard({
     key: k, label: k.replace('_dl', ''), color: COLORS[i % COLORS.length],
   }));
   const positionLeft = positionLeftKeys.map((k, i) => ({
-    key: k, label: k.replace('_z', ''), color: COLORS[i % COLORS.length],
+    key: k, label: k.replace(/_[xz]$/, ''), color: COLORS[i % COLORS.length],
   }));
 
   // 統計:DL 最大、UE 數、軌跡 z 範圍。同樣 memo —— 這裡要掃全部位置點。
   // 用迴圈取 min/max,不用 Math.min(...zs):展開上萬個引數又慢又可能爆堆疊。
   const { dlMax, zMin, zMax } = useMemo(() => {
+    const ai = axis === 'x' ? 1 : 3;   // normalize 後是 [t,x,y,z]
     let dlMax = 0, zMin = 0, zMax = 0, seen = false;
     if (rawJson) {
       for (const t of rawJson.traffic || []) {
         for (const p of t.profile || []) if (p[1] > dlMax) dlMax = p[1];
       }
       for (const u of rawJson.ues || []) {
-        for (const p of u.positions || []) {
-          const z = p[3];
+        for (const p of normalizePositions(u.positions, rawJson.duration_sec)) {
+          const z = p[ai];
           if (!seen) { zMin = zMax = z; seen = true; }
           else if (z < zMin) zMin = z;
           else if (z > zMax) zMax = z;
@@ -1197,7 +1201,7 @@ function ScenarioCard({
       }
     }
     return { dlMax, zMin, zMax };
-  }, [rawJson]);
+  }, [rawJson, axis]);
 
   return (
     <div style={{
@@ -1232,8 +1236,8 @@ function ScenarioCard({
             <Stat label="UE" value={`${scenario.ue_count}`} />
             <Stat label="Tick" value={`${scenario.tick_ms}ms`} />
             {dlMax > 0 && <Stat label="Max DL" value={`${dlMax} kbps`} />}
-            {(zMin !== zMax) && <Stat label="UE z" value={`${zMin}~${zMax}`} />}
-            {(zMin === zMax && rawJson) && <Stat label="UE z" value={`${zMin}(固定)`} />}
+            {(zMin !== zMax) && <Stat label={`UE ${axis}`} value={`${zMin}~${zMax}`} />}
+            {(zMin === zMax && rawJson) && <Stat label={`UE ${axis}`} value={`${zMin}(固定)`} />}
           </>
         )}
       </div>
@@ -1264,7 +1268,7 @@ function ScenarioCard({
           </div>
           <div>
             <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>
-              📉 UE z 座標(劇本內各時間 UE 位置)
+              📉 UE {axis} 座標(劇本內各時間 UE 位置)
             </div>
             <div style={{ background: '#0f172a', borderRadius: 4, padding: 4 }}>
               <SimTimeChart

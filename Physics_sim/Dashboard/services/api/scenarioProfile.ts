@@ -55,20 +55,41 @@ export function buildTrafficSeries(
   return out;
 }
 
-// Build position vs time. For chart use scalar — z 軸最直觀(因為 CCO 是南北移動)
+/** 這個劇本的 UE 主要沿哪個軸移動。原本預覽圖寫死畫 z(CCO 是南北移動),
+ *  但 ANR 十二題的 UE 是東西向走 x、z 恆定 —— 畫出來是一條直線,
+ *  看起來就像「這個劇本沒有 UE 位置」。改成自動挑變化大的那軸。 */
+export function dominantAxis(scenario: RawScenario): 'x' | 'z' {
+  let rx = 0, rz = 0;
+  for (const u of scenario.ues || []) {
+    const p = normalizePositions(u.positions, scenario.duration_sec);
+    if (!p.length) continue;
+    let xmin = p[0][1], xmax = p[0][1], zmin = p[0][3], zmax = p[0][3];
+    for (const q of p) {
+      if (q[1] < xmin) xmin = q[1]; else if (q[1] > xmax) xmax = q[1];
+      if (q[3] < zmin) zmin = q[3]; else if (q[3] > zmax) zmax = q[3];
+    }
+    rx = Math.max(rx, xmax - xmin); rz = Math.max(rz, zmax - zmin);
+  }
+  return rx > rz ? 'x' : 'z';
+}
+
+// Build position vs time. axis 預設 z(CCO 南北移動);ANR 等東西向劇本傳 'x'。
 export function buildPositionZSeries(
   scenario: RawScenario,
   resolutionSec = 1,
   totalSecOverride?: number,
+  axis: 'x' | 'z' = 'z',
 ): Array<Record<string, number>> {
   const out: Array<Record<string, number>> = [];
   const totalSec = Math.ceil(totalSecOverride ?? scenario.duration_sec);
+  const ai = axis === 'x' ? 0 : 2;
+  // 先 normalize 一次,不要在 t 迴圈裡重建陣列
+  const norm = (scenario.ues || []).map(u => ({
+    name: u.name, pos: normalizePositions(u.positions, scenario.duration_sec),
+  }));
   for (let t = 0; t <= totalSec; t += resolutionSec) {
     const row: Record<string, number> = { tick: t };
-    for (const ue of scenario.ues) {
-      const pos = interpolatePos(ue.positions, t);
-      row[`${ue.name}_z`] = pos[2];
-    }
+    for (const ue of norm) row[`${ue.name}_${axis}`] = interpolatePos(ue.pos, t)[ai];
     out.push(row);
   }
   return out;
@@ -98,14 +119,29 @@ export function previewResolutionSec(durationSec: number): number {
   return Math.max(1, Math.ceil((durationSec || 1) / MAX_PREVIEW_POINTS));
 }
 
-/** 預覽該畫多長:UE 軌跡實際跨度(sim 端是 mode="loop" 會循環播放)。
+/** 劇本 positions 有兩種格式:`[t,x,y,z]`(自帶時戳)與 `[x,y,z]`(沒時戳)。
+ *  後者 sim 端由 scenario_loader._normalize_positions 把時戳平均攤在 duration 上,
+ *  前端必須做同一件事,否則會把 x 當成時間、把 undefined 當成 z —— 症狀是
+ *  卡片「看不到 UE 位置」。 */
+export function normalizePositions(
+  positions: number[][], durationSec: number,
+): number[][] {
+  if (!positions || positions.length === 0) return [];
+  if (positions[0].length >= 4) return positions;
+  const n = positions.length;
+  if (n === 1) return [[0, positions[0][0], positions[0][1], positions[0][2]]];
+  const step = (durationSec || 1) / (n - 1);
+  return positions.map((p, i) => [i * step, p[0], p[1], p[2]]);
+}
+
+/** 預覽該畫多長:UE 軌跡實際跨度。
  *  劇本 duration 常是 86400s 但軌跡只有幾百秒 —— 照 duration 畫的話
  *  99% 的圖是軌跡結束後的一條直線,又大又看不出東西。 */
 export function previewSpanSec(scenario: RawScenario): number {
   let span = 0;
   for (const u of scenario.ues || []) {
-    const p = u.positions;
-    if (p && p.length) span = Math.max(span, p[p.length - 1][0] - p[0][0]);
+    const p = normalizePositions(u.positions, scenario.duration_sec);
+    if (p.length) span = Math.max(span, p[p.length - 1][0] - p[0][0]);
   }
   return span > 0 ? span : Math.ceil(scenario.duration_sec);
 }
