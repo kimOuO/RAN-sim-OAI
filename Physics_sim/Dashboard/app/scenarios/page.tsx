@@ -19,6 +19,7 @@ import { startUnifiedSim, stopUnifiedSim } from '@/services/api/simLoop';
 import { SignalChart } from '@/components/SignalChart';
 import { ScenarioMap } from '@/components/ScenarioMap';
 import { SimTimeChart } from '@/components/SimTimeChart';
+import { DATASETS, datasetOf, displayName, SCENARIO_LABELS, ANR_CASE_NO } from '@/config/scenarioCatalog';
 
 const STATUS_COLOR: Record<string, string> = {
   pending: '#64748b', running: '#f59e0b', ready: '#22c55e', failed: '#ef4444',
@@ -115,6 +116,9 @@ interface OutHistorySample {
 
 export default function ScenariosPage() {
   const [scenarios, setScenarios] = useState<ScenarioRow[]>([]);
+  // 劇本一多就找不到 → 用資料集分頁 + 關鍵字過濾(分類規則見 config/scenarioCatalog.ts)
+  const [dataset, setDataset] = useState<string>('anr');
+  const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [jsonText, setJsonText] = useState('');
@@ -421,7 +425,26 @@ export default function ScenariosPage() {
 
   // ── derived ─────────────────────────────────────────
   const presetIds = new Set(PRESETS.map(p => p.id));
-  const customScenarios = scenarios.filter(s => !presetIds.has(s.scenario_id));
+  // 資料集分頁:先算各集數量(空的分頁也顯示,標 0 才知道沒東西不是壞了),再過濾
+  const datasetCounts = DATASETS.reduce<Record<string, number>>((acc, d) => {
+    acc[d.id] = scenarios.filter(s => datasetOf(s.scenario_id) === d.id).length;
+    return acc;
+  }, {});
+  const activeDataset = DATASETS.find(d => d.id === dataset) ?? DATASETS[0];
+  const q = query.trim().toLowerCase();
+  const visibleScenarios = scenarios
+    .filter(s => datasetOf(s.scenario_id) === dataset)
+    .filter(s => !q || s.scenario_id.toLowerCase().includes(q)
+                 || (SCENARIO_LABELS[s.scenario_id]?.label ?? '').toLowerCase().includes(q)
+                 || (SCENARIO_LABELS[s.scenario_id]?.desc ?? '').toLowerCase().includes(q))
+    // ANR 依題號排,其他依 id
+    .sort((a, b) => {
+      const na = ANR_CASE_NO[a.scenario_id], nb = ANR_CASE_NO[b.scenario_id];
+      if (na && nb) return na - nb;
+      if (na) return -1;
+      if (nb) return 1;
+      return a.scenario_id.localeCompare(b.scenario_id);
+    });
   // 配 PRESETS:先試 exact match,再退到 prefix(im_/cco_/es_)讓 *_1hr 變體共用 IM/CCO/ES preset
   const getPreset = (id: string) => {
     const exact = PRESETS.find(p => p.id === id);
@@ -549,7 +572,7 @@ export default function ScenariosPage() {
             </div>
           </section>
 
-          {/* Preset + Custom cards */}
+          {/* 資料集分頁 + Preset + 劇本卡 */}
           <section style={{ marginTop: 16 }}>
             <h3 style={{ fontSize: 14 }}>Preset Scenarios</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
@@ -564,21 +587,56 @@ export default function ScenariosPage() {
                 />
               ))}
             </div>
-            {customScenarios.length > 0 && (
-              <>
-                <h3 style={{ fontSize: 14, marginTop: 20 }}>Custom Scenarios ({customScenarios.length})</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                  {customScenarios.map((s) => (
-                    <ScenarioCard
-                      key={s.scenario_id} scenario={s}
-                      rawJson={scenarioDetails.get(s.scenario_id)?.raw}
-                      scenarioStart={scenarioStart}
-                      busy={busy}
-                      onRun={onRun} onPrecompute={onPrecompute} onDelete={onDelete}
-                    />
-                  ))}
-                </div>
-              </>
+
+            {/* ── 資料集(dataset)分頁 ───────────────────────────── */}
+            <div style={{ marginTop: 24, display: 'flex', alignItems: 'center',
+                          gap: 8, flexWrap: 'wrap' }}>
+              {DATASETS.map(d => {
+                const on = d.id === dataset;
+                return (
+                  <button key={d.id} onClick={() => setDataset(d.id)}
+                    style={{
+                      padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+                      background: on ? d.color : '#0f172a',
+                      color: on ? '#020617' : '#cbd5e1',
+                      border: `1px solid ${on ? d.color : '#334155'}`,
+                      fontWeight: on ? 700 : 400,
+                    }}>
+                    {d.label}
+                    <span style={{ marginLeft: 6, opacity: 0.75, fontSize: 11 }}>
+                      {datasetCounts[d.id] ?? 0}
+                    </span>
+                  </button>
+                );
+              })}
+              <input value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="搜尋劇本 id / 題名…"
+                style={{
+                  marginLeft: 'auto', padding: '5px 10px', minWidth: 200,
+                  background: '#020617', border: '1px solid #334155',
+                  borderRadius: 6, color: '#e5e7eb', fontSize: 12,
+                }} />
+            </div>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '6px 2px 12px' }}>
+              {activeDataset.desc}
+            </p>
+
+            {visibleScenarios.length === 0 ? (
+              <p style={{ fontSize: 12, color: '#64748b' }}>
+                此資料集沒有劇本{q ? '(或關鍵字無相符)' : ''}。
+              </p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                {visibleScenarios.map((s) => (
+                  <ScenarioCard
+                    key={s.scenario_id} scenario={s}
+                    rawJson={scenarioDetails.get(s.scenario_id)?.raw}
+                    scenarioStart={scenarioStart}
+                    busy={busy}
+                    onRun={onRun} onPrecompute={onPrecompute} onDelete={onDelete}
+                  />
+                ))}
+              </div>
             )}
           </section>
         </>
@@ -1074,9 +1132,10 @@ function ScenarioCard({
   onPrecompute: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const label = preset?.label || scenario?.scenario_id || '?';
   const id    = preset?.id    || scenario?.scenario_id || '';
-  const desc  = preset?.desc  || '';
+  const label = preset?.label || displayName(id) || '?';
+  const catalogDesc = SCENARIO_LABELS[id]?.desc;
+  const desc  = preset?.desc  || catalogDesc || '';
   const ready = scenario?.precompute_status === 'ready';
   const reqGNB = preset?.requires?.min_gnbs;
   const status = scenario?.precompute_status ?? 'no_upload';

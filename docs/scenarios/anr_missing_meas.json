@@ -18,9 +18,9 @@
   "tick_ms": 500,
   "default_serving_cell": "s25_c0",
   "a3_enabled": true,
-  "a3_offset_db": 1.0,
-  "a3_hys_db": 0.5,
-  "a3_ttt_ms": 80,
+  "a3_offset_db": 2.0,
+  "a3_hys_db": 1.0,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "n37",
@@ -6161,9 +6161,17 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 2,
+    "title": "缺漏鄰區(量測側偵測)",
+    "answer_type": "修",
+    "topology": "n37_c0(pci137,-300m) — s25_c0(pci133,0m) — n35_c0(pci135,+400m)",
+    "arm": "刪 s25_c0→n35_c0 關係;分支測試時可設 ANR_INTRA_ENABLED=false",
+    "trigger": "量測回報看得到 n35 且 gap ≤ MARGIN_HO,但 NRT 查無 → 換手發不出去",
+    "signal": "e2MessageCopyAggregate 有 pci=135 的樣本;neighbourCellRelations 無該筆;anrIntraEnabled 決定分支",
+    "xapp_action": "ANR 啟用 → REPORTCGI + ADD;ANR 停用 → 只能 SMO_NOTIFY,不得自動寫 NRT",
+    "expected_ack": "啟用:result=ADDED;停用:result=REJECTED_ANR_DISABLED(xApp 據此改走通報)",
+    "verify": "啟用分支關係 v=1 出現、量測 gap 收斂;停用分支 changeEvents 恆 0",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

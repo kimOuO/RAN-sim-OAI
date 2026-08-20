@@ -20,9 +20,9 @@
   "tick_ms": 500,
   "default_serving_cell": "s01_c0",
   "a3_enabled": true,
-  "a3_offset_db": 1.0,
-  "a3_hys_db": 0.5,
-  "a3_ttt_ms": 80,
+  "a3_offset_db": 2.0,
+  "a3_hys_db": 1.0,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "n02",
@@ -6182,9 +6182,18 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 4,
+    "title": "未知 cell 偵測",
+    "answer_type": "修",
+    "topology": "n02_c0 — n03_c0 — s01_c0(0m) — unk_c0(pci301,+150m,全新 NCGI)",
+    "arm": "unk_c0 不在任何 NRT 內、也未被 seeder 種過",
+    "trigger": "UE 量到 pci=301,系統從未見過此 NCGI",
+    "signal": "meas_aggregate 出現未知 pci;cgi_resolve(301) 解得唯一 NCGI 且 neighbourCellRelations 無此筆",
+    "xapp_action": "REPORTCGI(301) → ADD s01_c0→unk_c0",
+    "expected_ack": "REPORTCGI outcome {physicalCellId:301, cgi:...};ADD result=ADDED",
+    "verify": "關係出現、後續往 unk 的換手成功",
+    "caveat": "guard 166 秒就修好,未觀察到止血衰減曲線(病沒發作就治好)",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

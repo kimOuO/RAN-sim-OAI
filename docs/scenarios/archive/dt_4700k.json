@@ -1,0 +1,102 @@
+{
+  "scenario_id": "dt_4700k",
+  "scene_id": "kpm_compare",
+  "duration_sec": 600.0,
+  "tick_ms": 500,
+  "ue_count": 1,
+  "precompute_status": "none",
+  "precompute_progress": 0.0,
+  "precompute_error": "",
+  "cache_path": "",
+  "cache_size_bytes": 0,
+  "raw_json": {
+    "ues": [
+      {
+        "name": "cco_ue_01",
+        "positions": [
+          [
+            0,
+            125,
+            1.5,
+            100
+          ],
+          [
+            600,
+            125,
+            1.5,
+            100
+          ]
+        ]
+      }
+    ],
+    "gnbs": [
+      {
+        "name": "gnbDT",
+        "cells": [
+          {
+            "pci": 0,
+            "cell_id": "gnbDT_c0",
+            "position": [
+              0,
+              30,
+              0
+            ],
+            "azimuth_deg": 0,
+            "bandwidth_mhz": 40.0,
+            "frequency_ghz": 3.45072
+          },
+          {
+            "pci": 1,
+            "cell_id": "gnbDT_c1",
+            "position": [
+              300,
+              30,
+              0
+            ],
+            "azimuth_deg": 0,
+            "bandwidth_mhz": 40.0,
+            "frequency_ghz": 3.64944
+          }
+        ],
+        "active": true,
+        "position": [
+          0,
+          30,
+          0
+        ],
+        "power_dbm": 3.0,
+        "bandwidth_mhz": 40.0,
+        "frequency_ghz": 3.5
+      }
+    ],
+    "tick_ms": 500,
+    "traffic": [
+      {
+        "profile": [
+          [
+            0,
+            4700,
+            2
+          ]
+        ],
+        "ue_name": "cco_ue_01"
+      }
+    ],
+    "scene_id": "kpm_compare",
+    "_metadata": {
+      "intent": "DT load 掃描 2M 點;DL 2000 kbps。對照 OAI 乾淨 2M(kpm2M.log: delay 1.91ms / PrbDl 4.9%)。",
+      "oai_clean_baseline_1m": "delay_mean 1.17ms / VolDL 1036kbit / ThpDl ~1.04Mbps / PrbDl 2.5% / delay0 74%",
+      "oai_clean_baseline_2m": "delay_mean 1.91ms / VolDL 2072kbit / PrbDl 4.9% / delay0 66%"
+    },
+    "inter_freq": true,
+    "scenario_id": "dt_4700k",
+    "duration_sec": 600,
+    "tx_power_dbm": 3.0,
+    "antenna_pattern": "iso",
+    "rlc_delay_model": "subtick",
+    "discard_timer_ms": 300,
+    "default_serving_cell": "gnbDT_c0"
+  },
+  "created_at": "2026-07-09T06:52:13.385214+00:00",
+  "updated_at": "2026-07-09T06:52:13.385214+00:00"
+}

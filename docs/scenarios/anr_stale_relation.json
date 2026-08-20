@@ -10,13 +10,13 @@
   ],
   "scenario_id": "anr_stale_relation",
   "scene_id": "anr_stale_relation",
-  "duration_sec": 1200,
+  "duration_sec": 86400.0,
   "tick_ms": 500,
   "default_serving_cell": "main_c0",
   "a3_enabled": true,
-  "a3_offset_db": 1.0,
-  "a3_hys_db": 0.5,
-  "a3_ttt_ms": 80,
+  "a3_offset_db": 2.0,
+  "a3_hys_db": 1.0,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "main",
@@ -1138,9 +1138,18 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 11,
+    "title": "老化 / 自動刪除",
+    "answer_type": "修",
+    "topology": "main_c0(pci10,-150m) — keep_c0(pci40,+150m)",
+    "arm": "建立一筆年齡大且零活動的關係;另建一筆標 noRemove 的保護條目",
+    "trigger": "關係長期存在但從未被使用,佔用 NRT",
+    "signal": "relationAgeSec 大 + perNeighbourRelation 該筆 att=0 + cumulativeSinceCreation 亦為 0",
+    "xapp_action": "REMOVE 老化零活動關係;對受保護條目**必須被拒**",
+    "expected_ack": "一般:result=REMOVED;受保護:result=REJECTED_PROTECTED",
+    "verify": "老化關係消失、保護條目仍在且 version 不變",
+    "note": "cumulativeSinceCreation 走 DB group-by(非近端切片),舊證據不會被淘汰掉",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

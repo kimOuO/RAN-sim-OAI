@@ -12,13 +12,13 @@
   ],
   "scenario_id": "anr_missing_neighbor",
   "scene_id": "anr_missing_neighbor",
-  "duration_sec": 1200,
+  "duration_sec": 86400.0,
   "tick_ms": 500,
   "default_serving_cell": "src_c0",
   "a3_enabled": true,
   "a3_offset_db": 2.0,
   "a3_hys_db": 1.0,
-  "a3_ttt_ms": 1000,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "src",
@@ -1140,9 +1140,17 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 1,
+    "title": "缺漏鄰區(重建統計反推)",
+    "answer_type": "修",
+    "topology": "src_c0(pci20,-150m) ↔ nbr_c0(pci30,+150m),UE ru0~ru4 東西向來回",
+    "arm": "刪除 src_c0↔nbr_c0 兩向 NrCellRelation",
+    "trigger": "A3 判到 nbr 但 NRT 無此關係 → ANR_REQUIRE_NRT 擋掉換手 → UE 掉線後重建到 nbr",
+    "signal": "rlfKpm.reestablishmentInboundByPreviousPci 集中在 prevPci=20;perNeighbourRelation 查無該關係",
+    "xapp_action": "REPORTCGI(pci=30) → SONTRIG ADD src_c0→nbr_c0",
+    "expected_ack": "ADD ... result=ADDED, version=1;2 秒後 gnb-xn 自動補反向 nbr_c0→src_c0",
+    "verify": "RLF 3.33/min → 0;HO 0 → 3.33/min;changeEvents 出現 ADD(by=xapp)+ADD(by=gnb-xn)",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

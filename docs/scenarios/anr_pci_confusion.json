@@ -16,35 +16,59 @@
   "gnbs": [
     {
       "name": "west",
-      "position": [-600, 30, 0],
+      "position": [
+        -600,
+        30,
+        0
+      ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
       "power_dbm": 30.0,
       "active": true,
       "cells": [
-        { "pci": 7, "cell_id": "west_c7", "azimuth_deg": 90 }
+        {
+          "pci": 7,
+          "cell_id": "west_c7",
+          "azimuth_deg": 90
+        }
       ]
     },
     {
       "name": "mid",
-      "position": [0, 30, 0],
+      "position": [
+        0,
+        30,
+        0
+      ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
       "power_dbm": 30.0,
       "active": true,
       "cells": [
-        { "pci": 0, "cell_id": "mid_c0", "azimuth_deg": 0 }
+        {
+          "pci": 0,
+          "cell_id": "mid_c0",
+          "azimuth_deg": 0
+        }
       ]
     },
     {
       "name": "east",
-      "position": [600, 30, 0],
+      "position": [
+        600,
+        30,
+        0
+      ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
       "power_dbm": 30.0,
       "active": true,
       "cells": [
-        { "pci": 7, "cell_id": "east_c7", "azimuth_deg": 270 }
+        {
+          "pci": 7,
+          "cell_id": "east_c7",
+          "azimuth_deg": 270
+        }
       ]
     }
   ],
@@ -52,19 +76,52 @@
     {
       "name": "conf_ue",
       "positions": [
-        [0, -80, 1.5, 0],
-        [150, 80, 1.5, 0],
-        [300, -80, 1.5, 0]
+        [
+          0,
+          -80,
+          1.5,
+          0
+        ],
+        [
+          150,
+          80,
+          1.5,
+          0
+        ],
+        [
+          300,
+          -80,
+          1.5,
+          0
+        ]
       ]
     }
   ],
   "traffic": [
-    { "ue_name": "conf_ue", "profile": [[0, 2000, 300]] }
+    {
+      "ue_name": "conf_ue",
+      "profile": [
+        [
+          0,
+          2000,
+          300
+        ]
+      ]
+    }
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P0-4:PCI confusion 場景 — 同 PCI 兩 cell,CGI 解析回多結果",
-    "expected_kpm": { "meas_aggregate": "PCI 7 的樣本混合兩個實體 cell 的 RSRP" },
-    "xapp_expected_action": "cgi_resolve(pci=7) → confusion=true → 不做 ANR ADD,改走第 5 題 confusion 處置"
+    "dataset": "anr",
+    "case_no": 5,
+    "title": "PCI 撞號(擋)",
+    "answer_type": "擋",
+    "topology": "west_c7(pci7,-600m) — mid_c0(pci0,0m) — east_c7(pci7,+600m)",
+    "arm": "兩個 cell 刻意共用 pci=7(場景本身即病)",
+    "trigger": "UE 回報 pci=7,系統無法判定是哪一個實體 cell",
+    "signal": "cgi_resolve(pci=7) 回 confusion=true、results 有多鍵",
+    "xapp_action": "**不得** ADD —— 正解是抑制動作並通報(盲目 ADD 會建到錯的 cell)",
+    "expected_ack": "無 ANR control(零動作即正解);只發 SMO_NOTIFY",
+    "verify": "changeEvents 恆 0、adapter ANR control 0",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

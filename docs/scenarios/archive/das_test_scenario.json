@@ -1,0 +1,47 @@
+{
+  "$schema": "scenario.schema.v1",
+  "_doc": [
+    "分散式 cell(DAS / multi-TRP)測試劇本 — 2026-07-19",
+    "das1 一個 gNB 兩個 cell:c0 同址(無 position,fallback gNB 位置)、",
+    "c1 分散在 x=250(有自己 position)。單一 UE 3 分鐘從 c0 走到 c1,",
+    "預期:RSRP 先強→弱→再強(靠近 c1),中途 A3 觸發 c0→c1 handover。"
+  ],
+  "scenario_id": "das_test",
+  "scene_id": "das_test",
+  "duration_sec": 180,
+  "tick_ms": 500,
+  "default_serving_cell": "das1_c0",
+  "gnbs": [
+    {
+      "name": "das1",
+      "position": [0, 30, 0],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 23.0,
+      "active": true,
+      "cells": [
+        { "pci": 0, "cell_id": "das1_c0", "azimuth_deg": 0 },
+        { "pci": 1, "cell_id": "das1_c1", "azimuth_deg": 180,
+          "position": [250, 30, 0] }
+      ]
+    }
+  ],
+  "ues": [
+    {
+      "name": "das_ue",
+      "positions": [
+        [0,   -30, 1.5, 0],
+        [180, 280, 1.5, 0]
+      ]
+    }
+  ],
+  "traffic": [
+    { "ue_name": "das_ue", "profile": [[0, 1500, 12]] }
+  ],
+  "buildings": [],
+  "_metadata": {
+    "intent": "驗證 cells[].position 全鏈(Omniverse/Kit/DU/RU/Physics)+ 分散 cell 間 handover",
+    "expected_kpm": { "rsrp": "U 型曲線(離 c0 遠、近 c1 又變強)" },
+    "xapp_expected_action": "無(A3 內建 HO 即可)"
+  }
+}

@@ -21,9 +21,9 @@
   "tick_ms": 500,
   "default_serving_cell": "s19_c0",
   "a3_enabled": true,
-  "a3_offset_db": 1.0,
-  "a3_hys_db": 0.5,
-  "a3_ttt_ms": 80,
+  "a3_offset_db": 2.0,
+  "a3_hys_db": 1.0,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "s19",
@@ -72164,9 +72164,17 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 12,
+    "title": "NRT 屬性稽核(不動手)",
+    "answer_type": "不動手",
+    "topology": "s19_c0(pci240,0m) — d02_c0(pci251,+250m) — n80_c0(pci260,-450/300m)",
+    "arm": "讓某筆關係屬性看似異常(如 isHoAllowed=false / 旗標已設)但有正當來源",
+    "trigger": "稽核者容易誤判為故障而去改屬性",
+    "signal": "cumulativeSinceCreation 空 vs 有值可區分「從未用過」與「曾用過被關掉」;relationChangeEvents 的 by 欄位指出誰改的",
+    "xapp_action": "**不動手** —— 有正當理由的屬性不得改;只做稽核與 SMO_NOTIFY",
+    "expected_ack": "無 ANR control",
+    "verify": "changeEvents 0、by=xapp 0、關係 version 全不變",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

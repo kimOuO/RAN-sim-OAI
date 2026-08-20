@@ -16,9 +16,9 @@
   "tick_ms": 500,
   "default_serving_cell": "s07_c0",
   "a3_enabled": true,
-  "a3_offset_db": 1.0,
-  "a3_hys_db": 0.5,
-  "a3_ttt_ms": 80,
+  "a3_offset_db": 2.0,
+  "a3_hys_db": 1.0,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "s07",
@@ -72159,9 +72159,18 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 6,
+    "title": "Xn-C TNL 探索失敗(不動手)",
+    "answer_type": "不動手",
+    "topology": "n30_c0(-300m) — s07_c0(0m) — n33_c0(+300m)",
+    "arm": "把 s07_c0→n33_c0 的 xn_x2_established 設為 False(關係在、Xn 不在)",
+    "trigger": "關係存在故 A3 會發起換手,但沒有 Xn 傳輸 → 準備階段逾時",
+    "signal": "neighbourCellRelations 該筆 xnX2Established=false;failCause 由 TXnRELOCprepExpiry 主導(TS 38.423)",
+    "xapp_action": "**不動手** —— Xn 建立屬管理面,xApp 不得用 ADD/REMOVE 掩蓋;只發 SMO_NOTIFY",
+    "expected_ack": "無 ANR control",
+    "verify": "changeEvents 0、關係 version 不變、SMO 告警一筆",
+    "note": "本題會自我污染 MRO(換手失敗型),排除條件要用 handoverFailureCauseRatePerMin 不要用 mroKpm",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

@@ -1,44 +1,31 @@
 {
   "$schema": "scenario.schema.v1",
   "_doc": [
-    "ANR 第9題 NRT 容量修剪(neighbor list pruning)測試劇本 — 2026-08-18",
-    "s13_c0 的 NRT 已 8/8 滿載(卷面假設 limit=8):3 筆健康 + 5 筆零換手的低價值條目,",
-    "  其中 x25 為 isRemoveAllowed=false 的保護條目(修剪候選絕不得納入)。",
-    "n77_c0(pci207)訊號強且穩但因容量滿而進不來,20 分鐘前已有 ADD_REJECTED 事件在案。",
-    "拓樸:n60(191,-300) n61(193,-150) s13(180,0) n62(195,+150);n77(207) 在 s13 正北 200m",
-    "  → UE 在走廊上由 s13 服務時量得到 pci207 但不會被吸附(n77 非最強)。",
-    "x21-x25 指向已退役、CellConfig 不存在的 cell(真實的過期條目樣態,量測樣本為零)。",
-    "xApp:NRT used==limit + ADD_REJECTED(NRT_CAPACITY_REACHED)在案 → 阻斷點在容量",
-    "  → 選 att=0 且樣本近零且 isRemoveAllowed=true 者 REMOVE → 重試 ADD(207)。",
-    "典型錯誤(卷面):把 isRemoveAllowed=false 的 x25 納入修剪候選。",
-    "      但容量滿載的是 s13,來源錯了容量故事不成立。±200 使中段由 s13 服務、",
-    "修正3(定案):採第3題已驗證幾何 —— 300m 間距、受害 cell 置中。",
-    "  n60(191,-300)  n62(195,0)=受害/NRT 8/8 滿載  n61(193,+300);n77(207) 在 n62 正北 320m。",
-    "  150m 間距時 A3 delta 僅 1.6dB 勉強過線、換手執行不了;300m 才有足夠對比。",
-    "  n77 功率降到 18dBm:可被量測到但永遠不是最強 → 不會把 UE 吸走(先前 4 台被吸附)。",
-    "修正4(定案):8/8 滿載佈在走廊全部 3 個 cell(n60/n62/n61)各自獨立滿載,",
-    "      不再追著 sourceCellNcgi 的幾何漂移跑 —— 不論歸屬指到哪個 cell,容量故事都成立。",
-    "      語意:此區域各 cell 的 NRT 均已滿載,新鄰居 n77(207)一律進不來。",
-    "修正5:n77 標記 TS 38.331 cellBarred(量得到但 UE 不得駐留),功率放回 30dBm。",
-    "      先前靠低功率閃避無效 —— 只要它是最強鄰居,RLF 重建就會選它(實測 4 台被吸走)。",
-    "修正:traffic 的 ue_name 原沿用基底劇本(ru0),與本劇本 UE(cp0)不符 → inject 從未執行、PRB 恆 0。已重綁。",
-    "⚠️ 測試設計限制:本劇本的 x20~x24 死條目是 prune 的修剪候選,但它們同時命中",
-    "   aging(第11題)的判準(att=0 + relationAgeSec 增長)。aging 刪它們是正解,不是缺陷 ——",
-    "   衝突在測試設計。**本劇本須在 re-arm 後 30 分鐘內完成**(aging 門檻 1800s),",
-    "   或 re-arm 時把死條目 created_at 設近一點。交叉測試輪3 實測靠此時間餘裕保護。"
+    "ANR 共存煙霧測試 — 中性健康場景(2026-08-19)",
+    "目的:驗證 dt-anr-xapp 十二個 guard 分支同時常駐時不會誤報。",
+    "  十二支的共存衝突是逐對補的,但從未同時跑過 —— 兩兩不衝突不等於十二支同時不衝突。",
+    "設計原則:刻意做成『健康網路』,不留任何一題的誘餌信號:",
+    "  · 3 個等間距 cell(300m),全同頻 3.5GHz — 無跨頻層(第8題誘餌)",
+    "  · NRT 關係全連通且雙向、xnX2Established=true、hoValidated=true(第1/2/3/4/6題誘餌)",
+    "  · 屬性全 true:isHoAllowed / isRemoveAllowed / isXnAllowed(第12題誘餌)",
+    "  · 無孤兒 / 無過期 / 無零活動條目(第9/10/11題誘餌)",
+    "  · 無 PCI 重複(第5題誘餌)、無 barred cell、無 force-fail 注入(第7題誘餌)",
+    "  · NRT 3/32 遠低於容量上限(第9題誘餌)",
+    "驗收:全部十二支還原後觀察 15-20 分鐘,changeEvents 必須全程為 0。",
+    "  健康網路上任何 guard 動作都是誤報 —— 這是十二支可常駐的最低門檻。"
   ],
-  "scenario_id": "anr_nrt_capacity",
-  "scene_id": "anr_nrt_capacity",
+  "scenario_id": "anr_neutral_healthy",
+  "scene_id": "anr_neutral_healthy",
   "duration_sec": 86400,
   "tick_ms": 500,
-  "default_serving_cell": "n62_c0",
+  "default_serving_cell": "h1_c0",
   "a3_enabled": true,
   "a3_offset_db": 2.0,
   "a3_hys_db": 1.0,
   "a3_ttt_ms": 300,
   "gnbs": [
     {
-      "name": "n60",
+      "name": "h1",
       "position": [
         -300,
         30,
@@ -50,14 +37,14 @@
       "active": true,
       "cells": [
         {
-          "pci": 191,
-          "cell_id": "n60_c0",
+          "pci": 11,
+          "cell_id": "h1_c0",
           "azimuth_deg": 90
         }
       ]
     },
     {
-      "name": "n62",
+      "name": "h2",
       "position": [
         0,
         30,
@@ -69,14 +56,14 @@
       "active": true,
       "cells": [
         {
-          "pci": 195,
-          "cell_id": "n62_c0",
+          "pci": 22,
+          "cell_id": "h2_c0",
           "azimuth_deg": 90
         }
       ]
     },
     {
-      "name": "n61",
+      "name": "h3",
       "position": [
         300,
         30,
@@ -88,36 +75,16 @@
       "active": true,
       "cells": [
         {
-          "pci": 193,
-          "cell_id": "n61_c0",
+          "pci": 33,
+          "cell_id": "h3_c0",
           "azimuth_deg": 270
-        }
-      ]
-    },
-    {
-      "name": "n77",
-      "position": [
-        0,
-        30,
-        200
-      ],
-      "frequency_ghz": 3.5,
-      "bandwidth_mhz": 40.0,
-      "power_dbm": 30.0,
-      "active": true,
-      "cells": [
-        {
-          "pci": 207,
-          "cell_id": "n77_c0",
-          "azimuth_deg": 180,
-          "barred": true
         }
       ]
     }
   ],
   "ues": [
     {
-      "name": "cp0",
+      "name": "hh0",
       "positions": [
         [
           -320,
@@ -14522,7 +14489,7 @@
       ]
     },
     {
-      "name": "cp1",
+      "name": "hh1",
       "positions": [
         [
           -320,
@@ -28927,7 +28894,7 @@
       ]
     },
     {
-      "name": "cp2",
+      "name": "hh2",
       "positions": [
         [
           -320,
@@ -43332,7 +43299,7 @@
       ]
     },
     {
-      "name": "cp3",
+      "name": "hh3",
       "positions": [
         [
           -320,
@@ -57737,7 +57704,7 @@
       ]
     },
     {
-      "name": "cp4",
+      "name": "hh4",
       "positions": [
         [
           -320,
@@ -72144,7 +72111,7 @@
   ],
   "traffic": [
     {
-      "ue_name": "cp0",
+      "ue_name": "hh0",
       "profile": [
         [
           0,
@@ -72154,7 +72121,7 @@
       ]
     },
     {
-      "ue_name": "cp1",
+      "ue_name": "hh1",
       "profile": [
         [
           0,
@@ -72164,7 +72131,7 @@
       ]
     },
     {
-      "ue_name": "cp2",
+      "ue_name": "hh2",
       "profile": [
         [
           0,
@@ -72174,7 +72141,7 @@
       ]
     },
     {
-      "ue_name": "cp3",
+      "ue_name": "hh3",
       "profile": [
         [
           0,
@@ -72184,7 +72151,7 @@
       ]
     },
     {
-      "ue_name": "cp4",
+      "ue_name": "hh4",
       "profile": [
         [
           0,
@@ -72197,17 +72164,16 @@
   "buildings": [],
   "_metadata": {
     "dataset": "anr",
-    "case_no": 9,
-    "title": "NRT 容量修剪",
-    "answer_type": "修",
-    "topology": "n60_c0 / n62_c0 / n61_c0(一線)+ n77_c0(待發現,0/200m)",
-    "arm": "把各 cell 的 NRT 填到 used==limit(ANR_NRT_CAPACITY=8),其中含零活動的 x24_c0 與受保護的 x25_c0(noRemove)",
-    "trigger": "偵測到 n77 該建關係,但 ADD 被容量擋掉",
-    "signal": "nrtCapacity used==limit;changeEvents 出現 ADD_REJECTED / NRT_CAPACITY_REACHED",
-    "xapp_action": "先 REMOVE 零活動關係(x24_c0)騰位,再 ADD n6x_c0→n77_c0",
-    "expected_ack": "被擋:result=ADD_REJECTED, detail=NRT_CAPACITY_REACHED;剪:result=REMOVED;補:result=ADDED",
-    "verify": "剪一補一後 used 仍等於 limit(8/8,不得 9/8);受保護的 x25_c0 未被碰;反向由 gnb-xn 建且同受容量約束",
-    "note": "ADD 的 sourceCellId 必須是既有 cell,不能反過來拿待發現 cell 當來源",
+    "case_no": null,
+    "title": "中性健康對照組",
+    "answer_type": "對照",
+    "topology": "h1_c0(pci11,-300m) — h2_c0(pci22,0m) — h3_c0(pci33,+300m),6 條全連通健康關係",
+    "arm": "不佈任何病(基準用)",
+    "trigger": "無 —— 這是用來抓誤報的",
+    "signal": "所有 KPM 健康、關係 version 全為 1",
+    "xapp_action": "任何動作都是誤報",
+    "expected_ack": "不應有任何 ANR control",
+    "verify": "十二支 guard 全常駐 21 分鐘:changeEvents 0、by=xapp 0、adapter ANR control 0、HO 仍 15/min(場景是活的)",
     "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }

@@ -28,9 +28,9 @@
   "tick_ms": 500,
   "default_serving_cell": "s28_c0",
   "a3_enabled": true,
-  "a3_offset_db": 1.0,
-  "a3_hys_db": 0.5,
-  "a3_ttt_ms": 80,
+  "a3_offset_db": 2.0,
+  "a3_hys_db": 1.0,
+  "a3_ttt_ms": 300,
   "gnbs": [
     {
       "name": "n51",
@@ -72190,9 +72190,18 @@
   ],
   "buildings": [],
   "_metadata": {
-    "intent": "P1/P2:缺漏鄰區 → RLF/重建/MRO → ANR ADD 止血(第 2 題閉環)",
-    "preconditions": "src↔nbr 無 NrCellRelation;A3 開(a3_enabled)低門檻;ANR_REQUIRE_NRT=on",
-    "xapp_expected_action": "偵測 reestab inbound 集中 prevPci=20 → ANR ADD(src↔nbr)→ 觀察 RLF 歸零",
-    "verified": "2026-08-12 缺漏 RLF 3.33/HO 0 → ADD 後 RLF 0/HO 3.33"
+    "dataset": "anr",
+    "case_no": 3,
+    "title": "缺漏鄰區(深邊緣稀疏)",
+    "answer_type": "修",
+    "topology": "n51_c0(-300m) — s28_c0(0m) — n52_c0(+300m) — n91_c0(pci209,深邊緣 460/440m)",
+    "arm": "刪 s28_c0→n91_c0;UE 只有少數時段走到深邊緣",
+    "trigger": "n91 的量測樣本遠少於其他鄰區,但確實存在且會造成邊緣掉線",
+    "signal": "meas_aggregate 中 pci=209 的 sampleCount 遠低於他人(相對稀疏);nrtCapacity used<limit 排除容量因素",
+    "xapp_action": "低樣本下仍 REPORTCGI + ADD(不可因樣本少就忽略)",
+    "expected_ack": "ADD ... result=ADDED",
+    "verify": "關係建立且後續深邊緣 RLF 下降",
+    "caveat": "卷面 0.6/min 的絕對稀疏 sim 做不到(每 tick 每 UE 都記錄)→ 改用相對稀疏;gap<0 未達成",
+    "spec": "docs/anr_validation/12題劇本規格.md"
   }
 }
