@@ -243,7 +243,47 @@ storedPci: 205 → 233(過期對應已修復)
 3. **re-arm 後必須在 0 秒收基準。** 輪 4 的爭點本質是基準晚於動作(guard 36 秒就完成三步,
    而我 3 分鐘後才收「前置數據」)。基準與動作必須分離。
 
-### 7c. 尚未驗證的一項
+### 7c. mobility 仲裁變體(2026-08-20)—— 雙向實證完結
+
+0.0.32/0.0.33 的兩條 mobility 讓路原本只有離線驗證。以**事件層注入**補驗
+(注入標準樣態的 HandoverEvent + RlfEvent,`mro_kpm` 照正常邏輯計算 = fault injection;
+**wire 層代碼路徑已驗證,物理可重現性為已知限制**——見下)。
+
+| 變體 | 主導 cause | MRO 讀值 | 正解 | 結果 |
+|---|---|---|---|---|
+| ① **該讓** | `CellNotAvailable` 100% | TooEarly **3.0**(>門檻 1.0) | 讓路 → 照常 REMOVE+ADD | ✅ 30 秒閉環;alarm `exclusions.mroTooEarly: 3.0` 併 `action: REMOVE_THEN_ADD` = bypass 鐵證 |
+| ② **不該讓** | `HandoverToWrongCell` 100% | 0(見下) | **不動手** + SMO_NOTIFY | ✅ 2 秒收手;`changeEvents=0`、6 條關係全 `v=1`、`mobility_failure_smo_notify` 一筆 |
+
+**同樣是「cause 主導」,結論相反** —— ①證明會讓,②證明不會亂讓。
+
+**②比原設計更嚴**:`mroToWrongCell` 讀值是 0(見下),MRO 閘門全放行,
+harmful 收手**純靠「cause 是 MRO 語意」的主動判斷**,沒有任何外力兜底。
+
+#### ⚠️ `mroKpm.*Rate` 是自我抹除的 —— 不可當閘門
+
+```
+1. mro_kpm 判定某 RLF 為 ToWrongCell
+2. backfill 把對應的成功換手改寫成 status=FAIL / cause=HandoverToWrongCell
+3. 下次查詢時該筆已是 FAIL → 命中「更近的失敗嘗試優先 → 不做 MRO 歸因」(輪2 修正)
+4. → 該 RLF 從此被跳過,mroToWrongCell 歸零
+```
+
+**`mroKpm.*Rate` 是一次性的**(分類完就把自己的依據改掉);
+**關係層的 `handoverFailureCauseRatePerMin` 才是持續可靠的訊號**。
+
+判「這是 MRO 型病」請用 `handoverFailureCauseRatePerMin` 的 `HandoverToWrongCell` 佔比,
+**不要用 `mroKpm.ToWrongCellRate`**。雙方同意此為分類的合理副作用、非 bug ——
+改成獨立欄位會牽動輪 2 的歸因鏈,風險大於收益。
+
+### 7d. 已知限制:mobility 仲裁無法用物理自然重現
+
+嘗試過「4 cell、120m 間距、快速穿梭 UE、A3 拉回 1.5dB/80ms」造真 TooEarly,失敗:
+**兩個條件互斥** —— 真 TooEarly 需要「換手成功 → 立刻 RLF → 退回 source」,
+但近距離邊界訊號良好**不會 RLF**;要 RLF 就得挖覆蓋洞,UE 隨即掉光成 IDLE。
+加上 sim 修好 MRO 歸因後連誤報來源都消失,**「真實且持續的 MRO 不平坦」與「非 MRO cause 主導」
+在目前物理模型下無法自然並存**。故改用事件層注入,並在此標明。
+
+### 7e. 尚未驗證的一項
 
 **mobility-type 讓路的真實場景實測**:0.0.32/0.0.33 的「主導原因讓路」與「對 ToWrongCell 讓路」
 目前只有離線驗證。原因是 sim 側 MRO 歸因修好之後,換手失敗型疾病**不再污染 MRO**,
