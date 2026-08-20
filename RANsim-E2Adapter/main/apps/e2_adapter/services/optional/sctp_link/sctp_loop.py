@@ -1115,9 +1115,13 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
         )
         return
 
+    _inst_ccc = (ric_req_id or {}).get("instance_id")
+    _t0_ccc = time.time()
     for c in payload["cells"]:
         event_ring.record_control_req_recv(
             style=2, action=0, sim_action=f"control_cell_{c['action']}", ueid={},
+            ran_func=e2sm_ccc_codec.CCC_RAN_FUNCTION_ID, inst_id=_inst_ccc,
+            params={"cell": c.get("cell_id", ""), "op": c.get("action", "")},
         )
     logger.info("CCC control → sim CU: %s", payload["cells"])
     sim_http_client.call_control_request(payload)
@@ -1128,7 +1132,9 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
         )
         _send_sctp(sock, ack)
         event_ring.record_control_ack_sent(
-            style=2, action=0, sim_action="control_cell_onoff", pdu_size=len(ack), outcome="ok",
+            style=2, action=0, sim_action="control_cell_onoff", pdu_size=len(ack),
+            outcome="ok", ran_func=e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
+            inst_id=_inst_ccc, rtt_ms=(time.time() - _t0_ccc) * 1000.0,
         )
     except Exception:  # noqa: BLE001
         logger.exception("encode/send CCC control ACK failed")
@@ -1157,9 +1163,16 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
         return
 
     req = payload["request"]
+    _inst = (ric_req_id or {}).get("instance_id")
+    _tgt = req.get("targetCgi") or (req.get("target") or {}).get("cgi") or ""
     event_ring.record_control_req_recv(
         style=1, action=0, sim_action=f"anr_{req.get('requestType', '').lower()}", ueid={},
+        ran_func=e2sm_anr_codec.ANR_RAN_FUNCTION_ID, inst_id=_inst,
+        params={"source": req.get("sourceCellId", ""), "target": _tgt,
+                "flag": req.get("flag", ""), "op": req.get("op", ""),
+                "reason": req.get("reason", "")},
     )
+    _t0 = time.time()
     logger.info("ANR control → sim CU: %s ric_req_id=%s", req, ric_req_id)
 
     # CU 落地失敗不應讓 ACK 靜默消失 —— 包起來,失敗照樣回 ACK(ACK 是傳輸層確認)。
@@ -1167,6 +1180,7 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
     # RICcontrolOutcome(IE id=32,JSON),讓 xApp 從 ACK 即時分辨結果(對齊 ReportCGI)。
     import json as _json
     outcome_bytes = b""
+    co = None
     try:
         resp = sim_http_client.call_anr_control(payload)
         # _post_sim 已解包,resp 本身即 outcome dict {requestType,result,version,detail,...}
@@ -1188,7 +1202,11 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
         if sent:
             logger.info("ANR RIC_CONTROL_ACK sent (%d bytes) ric_req_id=%s", len(ack), ric_req_id)
             event_ring.record_control_ack_sent(
-                style=1, action=0, sim_action="anr_son_trigger", pdu_size=len(ack), outcome="ok",
+                style=1, action=0, sim_action=f"anr_{req.get('requestType', '').lower()}",
+                pdu_size=len(ack), outcome="ok",
+                ran_func=e2sm_anr_codec.ANR_RAN_FUNCTION_ID, inst_id=_inst,
+                result=(co or {}).get("result", ""), detail=(co or {}).get("detail", ""),
+                rtt_ms=(time.time() - _t0) * 1000.0,
             )
         else:
             logger.error("ANR RIC_CONTROL_ACK _send_sctp returned False ric_req_id=%s", ric_req_id)
@@ -1318,8 +1336,14 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
         return
 
     sim_action = sim_payload.get("action", "?")
-    event_ring.record_control_req_recv(style=style, action=action,
-                                         sim_action=sim_action, ueid=ueid)
+    _inst_rc = (ric_req_id or {}).get("instance_id")
+    _t0_rc = time.time()
+    event_ring.record_control_req_recv(
+        style=style, action=action, sim_action=sim_action, ueid=ueid,
+        ran_func=ran_func_id, inst_id=_inst_rc,
+        params={k: v for k, v in sim_payload.items()
+                if k not in ("action",) and isinstance(v, (str, int, float, bool))},
+    )
     logger.info(
         "RIC_CONTROL_REQ recv style=%d action=%d → sim action=%s ueid=%s",
         style, action, sim_action, ueid,
@@ -1335,6 +1359,7 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
 
     # ReportCGI(Style 9/Action 1):把 sim 解出的 CGI 塞進 RIC Control Acknowledge 的 outcome。
     outcome_bytes = b""
+    co = None
     if style == 9 and action == 1 and isinstance(sim_resp, dict):
         import json as _json
         co = sim_resp.get("control_outcome", sim_resp)
@@ -1362,7 +1387,11 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     MemoryStateBusinessService.update_state(
         registry, pdu_sent_count=registry.get_connection().pdu_sent_count + 1,
     )
-    event_ring.record_control_ack_sent(style=style, action=action, sim_action=sim_action,
-                                         pdu_size=len(ack), outcome=outcome)
+    event_ring.record_control_ack_sent(
+        style=style, action=action, sim_action=sim_action, pdu_size=len(ack),
+        outcome=outcome, ran_func=ran_func_id, inst_id=_inst_rc,
+        result=(co or {}).get("cgi", "") if style == 9 and action == 1 else "",
+        rtt_ms=(time.time() - _t0_rc) * 1000.0,
+    )
     logger.info("RIC_CONTROL_ACK sent (%d bytes) — style=%d action=%d outcome=%s",
                 len(ack), style, action, outcome)

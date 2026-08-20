@@ -118,18 +118,34 @@ def record_pdu_dispatch(proc_code: int, type_name: str, size: int) -> None:
     _ring.append("pdu_recv", proc_code=proc_code, type_name=type_name, size=size)
 
 
-def record_control_req_recv(style: int, action: int, sim_action: str, ueid: dict) -> None:
+def record_control_req_recv(style: int, action: int, sim_action: str, ueid: dict,
+                            *, ran_func: int = 3, inst_id: int | None = None,
+                            params: dict | None = None) -> None:
+    """xApp 下發的控制命令進來了。
+
+    ran_func / inst_id / params 是 2026-08-20 補的:Dashboard /e2 的「下發命令」面板
+    要能顯示「誰下了什麼」並和 RIC 端的 instId 直接對帳。adapter 是 RC / ANR / CCC
+    三種控制的唯一咽喉點,所以這裡是唯一能一次看完所有下發命令的地方。
+    """
     _ring.append(
         "control_req_recv", style=style, action=action,
         sim_action=sim_action, ueid=ueid,
+        ran_func=ran_func, inst_id=inst_id, params=params or {},
     )
 
 
 def record_control_ack_sent(style: int, action: int, sim_action: str, pdu_size: int,
-                             outcome: str = "ok") -> None:
+                             outcome: str = "ok", *, ran_func: int = 3,
+                             inst_id: int | None = None, result: str = "",
+                             detail: str = "", rtt_ms: float | None = None) -> None:
+    """ACK 送出。result 是 sim 回的 outcome 碼(ADDED / REJECTED_PROTECTED / …),
+    與 ACK 的 RICcontrolOutcome(IE id=32)內容同源 —— 光看 outcome="ok" 只知道
+    傳輸層成功,分不出業務層被拒。"""
     _ring.append(
         "control_ack_sent", style=style, action=action,
         sim_action=sim_action, pdu_size=pdu_size, outcome=outcome,
+        ran_func=ran_func, inst_id=inst_id, result=result, detail=detail,
+        rtt_ms=None if rtt_ms is None else round(rtt_ms, 1),
     )
 
 

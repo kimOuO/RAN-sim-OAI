@@ -5,6 +5,7 @@ URL pattern: POST /api/v0.1/E2Adapter/{Module}/{Component}/{Element}
 from django.urls import path
 
 from main.apps.e2_adapter.actors.adapter_status_actor import AdapterStatusActor
+from main.apps.e2_adapter.actors.control_audit_actor import ControlAuditActor
 from main.apps.e2_adapter.actors.event_log_actor import EventLogActor
 from main.apps.e2_adapter.actors.kpm_snapshot_actor import (
     KpmHistoryActor, KpmRecentActor, KpmSnapshotActor,
@@ -14,6 +15,8 @@ from main.apps.e2_adapter.actors.kpm_speed_actor import KpmSpeedActor
 urlpatterns = [
     path("Status/AdapterStatusReader/read", AdapterStatusActor.read, name="adapter_status_read"),
     path("EventLog/EventLogReader/read", EventLogActor.read, name="event_log_read"),
+    # 下發命令稽核 —— RC/CCC/ANR 三種 RIC Control 都經 adapter,這裡一次看完(給 /e2 頁)
+    path("ControlAudit/ControlAuditReader/read", ControlAuditActor.read, name="control_audit_read"),
     path("KpmSnapshot/SnapshotReader/read", KpmSnapshotActor.read, name="kpm_snapshot_read"),
     path("KpmSnapshot/SnapshotReader/reset", KpmSnapshotActor.reset, name="kpm_snapshot_reset"),
     path("KpmSnapshot/RecentReader/read", KpmRecentActor.read, name="kpm_recent_read"),

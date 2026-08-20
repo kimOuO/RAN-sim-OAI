@@ -1,0 +1,294 @@
+.page {
+  padding: 20px 28px 48px;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: #e5e7eb;
+}
+
+.pageHead {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.pageHead h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #f3f4f6;
+}
+
+.sub {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.liveDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+  margin-right: 6px;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.stale {
+  background: #6b7280;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── stat tiles ─────────────────────────────── */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+
+.tile {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.tileLabel {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.tileValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f9fafb;
+  line-height: 1.1;
+}
+
+.tileUnit {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 4px;
+}
+
+.tileGood  { border-left: 3px solid #34d399; }
+.tileWarn  { border-left: 3px solid #fbbf24; }
+.tileBad   { border-left: 3px solid #f87171; }
+.tileInfo  { border-left: 3px solid #38bdf8; }
+
+/* ── sections ───────────────────────────────── */
+.section {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-top: 16px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sectionHead h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #f3f4f6;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #374151;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.badgeTeal { color: #5eead4; border-color: #134e4a; background: #042f2e; }
+.badgeBlue { color: #7dd3fc; border-color: #0c4a6e; background: #082f49; }
+
+/* ── tables ─────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.table th {
+  text-align: left;
+  color: #9ca3af;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-bottom: 1px solid #374151;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #1f2937;
+  color: #d1d5db;
+  white-space: nowrap;
+}
+
+.table tr:hover td {
+  background: #1a2332;
+}
+
+.mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+.dim { color: #6b7280; }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* quality / 狀態 pills */
+.pill {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.pillGood { background: #064e3b; color: #6ee7b7; }
+.pillFair { background: #78350f; color: #fcd34d; }
+.pillPoor { background: #7f1d1d; color: #fca5a5; }
+.pillOn   { background: #064e3b; color: #6ee7b7; }
+.pillOff  { background: #374151; color: #9ca3af; }
+.pillFlag { background: #7f1d1d; color: #fca5a5; }
+
+/* mini bar(RSRP/PRB 視覺化)*/
+.barTrack {
+  display: inline-block;
+  width: 72px;
+  height: 6px;
+  background: #1f2937;
+  border-radius: 3px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* 兩欄排版(ANR 卡片)*/
+.cols2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .cols2 { grid-template-columns: 1fr; }
+}
+
+.miniCard {
+  background: #0b1220;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.miniCard h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.kvRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 3px 0;
+  color: #d1d5db;
+}
+
+.kvRow b { color: #f9fafb; font-variant-numeric: tabular-nums; }
+
+.empty {
+  color: #6b7280;
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.error {
+  color: #fca5a5;
+  font-size: 13px;
+  background: #7f1d1d33;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 12px;
+}
+
+.footNote {
+  color: #6b7280;
+  font-size: 11.5px;
+  margin-top: 8px;
+}
+
+/* ── 下發命令(RIC → sim 的 RIC Control)────────── */
+.badgeAmber { color: #fcd34d; border-color: #78350f; background: #451a03; }
+
+/* 上行/下行分隔:下行區塊用暖色左緣,一眼分得出方向 */
+.downlink { border-left: 3px solid #f59e0b; }
+
+.dirTag {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #78716c;
+  text-transform: uppercase;
+}
+
+/* ran function 標籤(RC / ANR / CCC 各自配色,對帳時好認) */
+.fnTag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+.fnRc   { background: #1e3a8a; color: #bfdbfe; }
+.fnAnr  { background: #134e4a; color: #99f6e4; }
+.fnCcc  { background: #4c1d95; color: #ddd6fe; }
+.fnMisc { background: #374151; color: #d1d5db; }
+
+/* 結果碼:成功綠、被拒琥珀(被拒不是錯誤,是規範要求的行為)、失敗紅 */
+.resOk       { background: #064e3b; color: #6ee7b7; }
+.resRejected { background: #78350f; color: #fcd34d; }
+.resFail     { background: #7f1d1d; color: #fca5a5; }
+.resPending  { background: #374151; color: #9ca3af; }
+
+.paramCell {
+  color: #9ca3af;
+  font-size: 11.5px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramKey { color: #6b7280; }
+.paramVal { color: #d1d5db; }
