@@ -15,6 +15,7 @@ from django.conf import settings
 
 from main.apps.ue_lifecycle.services import cu_client, du_client, kit_client, omniverse_client, ru_client
 from main.apps.ue_lifecycle.services.interp import interp_position
+from main.apps.ue_lifecycle.services import cell_selection
 from main.apps.ue_lifecycle.services.trajectory_store import get_store as get_traj_store
 from main.apps.ue_lifecycle.services.ue_thread import (
     UeContextSnapshot,
@@ -45,6 +46,7 @@ class UeLifecycleManager:
         self._session_uuid: str | None = None
         # signal ingest 節流 — 每 N 個 trajectory tick 才打一次(避免每 100ms
         # 打 Omniverse 太頻繁)。N=5 → 500ms 一次,跟 sim_dt 對齊。
+        self._camp_last_try_ms: dict[str, int] = {}   # 掉話 UE 上次選網時間(節流)
         self._tick_count_since_signal_ingest = 0
 
     def set_session_uuid(self, session_uuid: str | None) -> None:
@@ -110,8 +112,11 @@ class UeLifecycleManager:
 
         injected_total = 0
         for ue_id, ue in ue_list:
-            if ue.state != UeThreadState.RUNNING:
+            # RUNNING = 正常;STANDBY = 掉話中,位置照算(量測鏈才會恢復)但不灌流量。
+            # 只有 STOPPED 才真的不動它。
+            if ue.state not in (UeThreadState.RUNNING, UeThreadState.STANDBY):
                 continue
+            camping = ue.state is UeThreadState.STANDBY
 
             # ── (1) Trajectory: 算位置 ──────
             # AG3 fix: 即使 UE 沒設 trajectory, 也要 sync 一次 ue.position 給 RU.
@@ -135,13 +140,19 @@ class UeLifecycleManager:
             })
             positions_for_kit.append((ue_id, x, y, z))
 
-            # ── (2) Traffic gen tick ────────
+            # ── (2) 掉話中:自己選網,訊號回來就重新發起連線(TS 38.304 + 38.331)
+            if camping:
+                self._try_recamp(ue_id, (x, y, z), now_ms)
+                continue          # 掉話中沒有承載,不得灌流量
             try:
                 injected_total += ue.traffic_gen.tick()
             except Exception:
                 logger.exception("traffic_gen.tick failed for ue=%s", ue_id)
 
         # ── (3) Batch write RU + per-UE Kit ─
+        # RU = RAN 模擬用(同步,影響 path loss/SINR 正確性)
+        # Kit = 純視覺化,move_ue 已改為非阻塞發佈(latest-wins,背景 worker 推送),
+        #       Kit 卡住時只會丟棄中間畫格,不會拖慢這個 trajectory loop。
         if positions_for_ru:
             ru_client.update_ues_batch(positions_for_ru)
             for ue_id, x, y, z in positions_for_kit:
@@ -177,9 +188,16 @@ class UeLifecycleManager:
             entry: dict = {
                 "ue_name": ue_id,
                 "serving_cell": sig.get("serving_cell") or "unknown",
+                # serving_cell_id 讓 Kit label 的「Cell X PCI Y」行有值(否則顯示 '-')。
+                # DU dump_pm 目前只提供 cell_id(serving_cell),PCI 尚未提供 → 帶 cell_id,
+                # PCI 由 label 端在缺值時省略(見 labels/extension.py)。
+                "serving_cell_id": sig.get("serving_cell"),
                 "rsrp_dbm": float(sig["rsrp_dbm"]),
                 "sinr_db": float(sig["sinr_db"]),
             }
+            # serving PCI(DU 由 cell_id→pci 對照提供)→ label 顯示 "Cell X PCI Y"
+            if sig.get("serving_pci") is not None:
+                entry["serving_pci"] = sig["serving_pci"]
             # 可選 KPM 欄
             for k in ("throughput_dl_mbps", "throughput_ul_mbps", "mcs_dl",
                       "prb_used_dl", "mimo_rank"):
@@ -197,6 +215,34 @@ class UeLifecycleManager:
         if signals_payload:
             omniverse_client.ingest_signals(signals_payload, session_uuid=self._session_uuid)
 
+    def _try_recamp(self, ue_id: str, pos: tuple[float, float, float], now_ms: int) -> None:
+        """掉話 UE 的 IDLE 態選網。節流:每 CAMP_RETRY_SEC 才量一次。
+
+        決策在 UE 端 —— IDLE 沒有 measConfig,網路端看不到它,只能自己量自己決定。
+        量到合格 cell 就走 rrc_attach(RRCSetupRequest + RRCSetupComplete),
+        跟開機初次入網同一條路;CU 收到就把它帶回 CONNECTED,
+        下一輪 _sync_from_cu 自然把 thread 拉回 RUNNING。
+        """
+        last = self._camp_last_try_ms.get(ue_id, 0)
+        if now_ms - last < settings.CAMP_RETRY_SEC * 1000:
+            return
+        self._camp_last_try_ms[ue_id] = now_ms
+        cell, rsrp = cell_selection.select_cell(
+            ue_id, pos, min_rsrp_dbm=settings.CAMP_MIN_RSRP_DBM,
+        )
+        if not cell:
+            return
+        logger.info("UE %s 選到 %s(rsrp=%.1f ≥ %.1f)→ 重新發起 RRC 連線",
+                    ue_id, cell, rsrp, settings.CAMP_MIN_RSRP_DBM)
+        try:
+            if cu_client.rrc_attach(ue_id):
+                cu_client.force_serving_cell(ue_id, cell)
+                # 不 pop —— attach 回 True 只代表訊息送出去了,是否真的回到
+                # CONNECTED 由下一輪 _sync_from_cu 認定。這裡 pop 會讓節流失效,
+                # 變成每個 tick 都重送(2026-08-20 實測 0.3 秒一次)。
+        except Exception:  # noqa: BLE001
+            logger.exception("re-camp attach failed ue=%s", ue_id)
+
     def _sync_from_cu(self) -> None:
         sessions = cu_client.list_sessions()
         # CU 端「真實 active」: rrc_state == CONNECTED (含 traffic_profile)
@@ -204,13 +250,23 @@ class UeLifecycleManager:
             s["ue_id"]: s for s in sessions
             if s.get("rrc_state") == "CONNECTED"
         }
+        # 掉話(IDLE)但 context 還在的 UE —— **不可以殺 thread**。
+        # 殺掉就不再推位置 → RU 量不到 → DU 不產量測 → CU 永遠不知道它回到覆蓋內,
+        # 於是走出死角也回不來(死結)。保留 thread 繼續走軌跡、但不灌流量,
+        # 量測鏈就會自己恢復,CU 的 [RE-CAMP] 會把它收回 CONNECTED。
+        idle_ids = {
+            s["ue_id"] for s in sessions
+            if s.get("rrc_state") == "IDLE" and s["ue_id"] not in cu_set
+        }
 
         with self._lock:
             existing = set(self._threads.keys())
             cu_ids = set(cu_set.keys())
 
             new_ues = cu_ids - existing
-            removed = existing - cu_ids
+            # 掉話中的不算「消失」—— 留著讓它繼續走(見上方說明)
+            removed = existing - cu_ids - idle_ids
+            camping = (existing & idle_ids)
             kept = cu_ids & existing
 
             # 新加: spawn thread
@@ -223,15 +279,29 @@ class UeLifecycleManager:
                 if t:
                     t.stop()
 
+            # 掉話中: 降到 STANDBY(位置照算、traffic 停),等 CU 收回
+            for ue_id in camping:
+                t = self._threads.get(ue_id)
+                if t is not None and t.state == UeThreadState.RUNNING:
+                    t.transition_to(UeThreadState.STANDBY)
+                    logger.info("UE %s 掉話 → STANDBY(保留軌跡,等訊號回來重新駐留)", ue_id)
+
             # 沿用: 更新 snapshot
             for ue_id in kept:
                 t = self._threads[ue_id]
                 t.update_snapshot(self._build_snapshot(cu_set[ue_id]))
+                # 掉話後重新駐留成功 → thread 拉回 RUNNING。少了這段,UE 會
+                # 一直卡在 STANDBY:CU 已經是 CONNECTED、位置也在動,但不灌流量。
+                if self.sim_running and t.state == UeThreadState.STANDBY:
+                    t.transition_to(UeThreadState.RUNNING)
+                    self._camp_last_try_ms.pop(ue_id, None)
+                    logger.info("UE %s 重新駐留成功 → RUNNING(serving=%s)",
+                                ue_id, cu_set[ue_id].get("serving_cell", ""))
 
-        if new_ues or removed:
+        if new_ues or removed or camping:
             logger.info(
-                "UE list diff: added=%s removed=%s kept_count=%d",
-                sorted(new_ues), sorted(removed), len(kept),
+                "UE list diff: added=%s removed=%s camping=%s kept_count=%d",
+                sorted(new_ues), sorted(removed), sorted(camping), len(kept),
             )
 
     def _build_snapshot(self, cu_data: dict[str, Any]) -> UeContextSnapshot:

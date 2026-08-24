@@ -297,11 +297,22 @@ def _link_loop(host: str, port: int) -> None:
         try:
             logger.info("SCTP connecting to %s:%d ...", host, port)
             sock.connect((host, port))
+            # 每次(重)連都先把 E2 Setup 狀態清空 —— 新的 association 對 RIC 而言
+            # 是全新的節點,必須重新完成 setup 才算數。
+            # 2026-08-20 RIC 端診斷:e2term 重啟 → SCTP 斷 → adapter 重連,但
+            # peer-closed(半關)那條 break 路徑沒有清旗標,狀態端點仍回
+            # connected=True / e2_setup.completed=True,看起來一切正常,實際上
+            # RIC 那邊該節點停在 DISCONNECTED、xApp 的訂閱迴圈條件不成立而完全靜默。
+            # E2AP 規範上 E2 Setup 只能由 E2 Node 發起,RIC 無法強制 —— 所以旗標
+            # 陳舊就等於死鎖,只能靠人重啟。清在這裡是唯一涵蓋所有重連路徑的位置。
             MemoryStateBusinessService.update_state(
                 registry,
                 sctp_connected=True,
                 last_connect_at_ms=_now_ms(),
                 last_error="",
+                e2_setup_completed=False,
+                accepted_ran_function_ids=[],
+                rejected_ran_function_ids=[],
             )
             logger.info("SCTP connected")
             event_ring.record_sctp_connect(host, port)
@@ -324,6 +335,17 @@ def _link_loop(host: str, port: int) -> None:
                         logger.warning(
                             "SCTP peer half-closed: %s — break to outer reconnect", exc,
                         )
+                        # 這條路徑原本不清 E2 Setup 狀態 → 陳舊旗標的來源。
+                        MemoryStateBusinessService.update_state(
+                            registry,
+                            sctp_connected=False,
+                            last_disconnect_at_ms=_now_ms(),
+                            last_error=f"peer half-closed: {exc}",
+                            e2_setup_completed=False,
+                            accepted_ran_function_ids=[],
+                            rejected_ran_function_ids=[],
+                        )
+                        _stop_all_indication_threads()
                         break
                     if pdu is None:
                         # timeout — keep alive, no data this round

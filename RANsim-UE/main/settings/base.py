@@ -64,6 +64,11 @@ SIM_CU_URL = os.getenv("SIM_CU_URL", "http://cu:8000")
 SIM_DU_URL = os.getenv("SIM_DU_URL", "http://du:8000")
 SIM_RU_URL = os.getenv("SIM_RU_URL", "http://ru:8000")
 SIM_PHYSICS_URL = os.getenv("SIM_PHYSICS_URL", "http://physics:8000")
+
+# IDLE 態選網(TS 38.304)—— 掉話 UE 自己量 SSB、自己重新發起連線用。
+CAMP_TX_POWER_DBM = float(os.getenv("CAMP_TX_POWER_DBM", "30"))      # SSB 發射功率(sim 沒有 SIB)
+CAMP_MIN_RSRP_DBM = float(os.getenv("CAMP_MIN_RSRP_DBM", "-117"))    # 重建門檻 -120 + 3dB 遲滯
+CAMP_RETRY_SEC = float(os.getenv("CAMP_RETRY_SEC", "5"))             # 掉話 UE 多久量一次
 OMNIVERSE_KIT_URL = os.getenv("OMNIVERSE_KIT_URL", "http://localhost:8080")
 # Omniverse Django backend (scene + UE + handover write-back) — port 8001
 OMNIVERSE_URL = os.getenv("OMNIVERSE_URL", "http://host.docker.internal:8001")

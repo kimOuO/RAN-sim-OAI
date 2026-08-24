@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CU_BASE_URL, E2_ADAPTER_BASE_URL } from '@/config';
+import { fetchLiveUePositions, type LiveUeSnapshot } from '@/services/api/ueLive';
 import styles from './page.module.css';
 
 const POLL_MS = 2000;
@@ -191,6 +192,10 @@ export default function E2Page() {
   const [full, setFull] = useState<FullData | null>(null);
   const [anr, setAnr] = useState<AnrData | null>(null);
   const [ctrl, setCtrl] = useState<ControlRow[]>([]);
+  // 掉話(IDLE)的 UE 不在 FULLKPM 的 ue_status 裡 —— 那份只收 CONNECTED。
+  // 只看它會讓 UE「憑空從 5 個變 3 個」,像是壞掉;其實是掉話後在選網中。
+  // 這份補上執行期看得到的全部 UE 與其狀態。
+  const [liveUe, setLiveUe] = useState<LiveUeSnapshot | null>(null);
   const [lastOk, setLastOk] = useState<number>(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -204,6 +209,8 @@ export default function E2Page() {
           `${E2_ADAPTER_BASE_URL}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read`,
           { limit: 40 }),
       ]);
+      try { const lv = await fetchLiveUePositions(); if (alive) setLiveUe(lv); }
+      catch { /* UE service 拉不到就只顯示 CONNECTED,不影響其他區塊 */ }
       if (!alive) return;
       if (f) setFull(f);
       if (a) setAnr(a);
@@ -218,6 +225,16 @@ export default function E2Page() {
   const live = Date.now() - lastOk < POLL_MS * 3;
   const ues = full?.ue_status ?? [];
   const connected = ues.filter((u) => u.rsrp_dbm != null && u.rsrp_dbm > -150);
+  // 掉話中的 UE:執行期看得到,但沒進 ue_status(CU 端是 IDLE)。
+  // STANDBY = 我們的執行期狀態,對應 RRC_IDLE 正在選網(TS 38.304)。
+  const shownIds = new Set(connected.map((u) => u.ue_id));
+  const droppedUes = Object.entries(liveUe?.states ?? {})
+    .filter(([id, st]) => !shownIds.has(id) && st !== 'STOPPED')
+    .map(([id]) => ({
+      ue_id: id,
+      pos: liveUe?.positions[id],
+      lastCell: liveUe?.servingCells[id] ?? '',
+    }));
   const cells = full?.e2.flatMap((g) => g.cells) ?? [];
   const pmRecs = full ? Object.values(full.pm).flat() : [];
   const sumPm = (key: string) => pmRecs.reduce((s, r) => s + (parseInt(r[key] ?? '0', 10) || 0), 0);
@@ -247,7 +264,9 @@ export default function E2Page() {
 
       {/* ── 總覽 tiles ── */}
       <div className={styles.tiles}>
-        <Tile label="CONNECTED UE" value={connected.length} tone="info" />
+        <Tile label="CONNECTED UE" value={connected.length}
+              unit={droppedUes.length ? `+${droppedUes.length} 掉話` : ''}
+              tone={droppedUes.length ? 'warn' : 'info'} />
         <Tile label="Cells" value={cells.length} tone="info" />
         <Tile label="HO 成功(累計)" value={sumPm('cu_MM.HoExeIntraSucc')} tone="good" />
         <Tile label="RLF 掉線率" value={totalRlfRate.toFixed(2)} unit="/min" tone={totalRlfRate > 0.5 ? 'bad' : totalRlfRate > 0 ? 'warn' : 'good'} />
@@ -322,7 +341,9 @@ export default function E2Page() {
           <h3>UE 即時量測</h3>
           <span className={`${styles.badge} ${styles.badgeBlue}`}>FULLKPM · func 5 · ue_status[]</span>
         </div>
-        {connected.length === 0 ? <div className={styles.empty}>無 CONNECTED UE(sim 未跑或量測未就緒)</div> : (
+        {connected.length === 0 && droppedUes.length === 0 ? (
+          <div className={styles.empty}>無 UE(sim 未跑或量測未就緒)</div>
+        ) : (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead><tr>
@@ -344,8 +365,36 @@ export default function E2Page() {
                     <td className={`${styles.num} ${styles.mono}`}>{u.qos_5qi}</td>
                   </tr>
                 ))}
+                {/* 掉話中的 UE —— 灰列。它們沒有 CONNECTED 態的量測,欄位以「—」表示
+                    「這一刻沒有這個值」,而不是 0(0 會被誤讀成量到了但很差)。 */}
+                {droppedUes.map((u) => (
+                  <tr key={u.ue_id} className={styles.dimRow}>
+                    <td className={styles.mono}>{u.ue_id}</td>
+                    <td>
+                      <span className={`${styles.pill} ${styles.pillIdle}`}>IDLE 選網中</span>
+                      {u.lastCell && <span className={styles.dim}> 前 {u.lastCell}</span>}
+                    </td>
+                    <td className={styles.dim}>—</td>
+                    <td className={`${styles.num} ${styles.dim}`}>—</td>
+                    <td className={`${styles.num} ${styles.dim}`}>—</td>
+                    <td className={`${styles.num} ${styles.dim}`}>—</td>
+                    <td className={`${styles.num} ${styles.dim}`}>—</td>
+                    <td className={styles.dim}>
+                      {u.pos ? `(${u.pos[0].toFixed(0)}, ${u.pos[2].toFixed(0)})` : '—'}
+                    </td>
+                    <td className={`${styles.num} ${styles.dim}`}>—</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {droppedUes.length > 0 && (
+          <div className={styles.footNote}>
+            掉話的 UE 仍留在模擬中:位置照走、每 5 秒自行量 SSB 選網(TS 38.304),
+            訊號回到門檻以上就自己發起 RRCSetupRequest 重新連線。
+            它們不在 FULLKPM 的 <code>ue_status</code> 裡(那份只收 CONNECTED),
+            此處由 UE service 的執行期狀態補上 —— 否則 UE 會像憑空消失。
           </div>
         )}
       </section>

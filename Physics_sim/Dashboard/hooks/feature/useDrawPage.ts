@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { setupUE } from '@/services/api/simLoop';
 import { initScene } from '@/services/api/scene';
 import * as omniverseApi from '@/services/api/omniverse';
+import { fetchLiveUePositions } from '@/services/api/ueLive';
 import {
   setTrajectory as ueSetTrajectory,
   updateTrafficProfile as ueUpdateTrafficProfile,
@@ -35,6 +36,9 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
   const [selectedUEIndex, setSelectedUEIndex] = useState(0);
   const [trajectories, setTrajectories] = useState<UE[]>([]);
   // simRunning 透過 ref 給 polling closure 用,避免每次 simRunning 變 dep 都重起 interval
+  // 目前有執行期座標的 UE —— 畫布可據此標 LIVE,一眼分得出「執行期真值」與「設定值」。
+  // 兩者混在一起看不出來,正是這類 bug 難查的原因。
+  const [liveUeIds, setLiveUeIds] = useState<Set<string>>(new Set());
   const simRunningRef = useRef<boolean>(false);
   simRunningRef.current = !!opts?.simRunning;
 
@@ -116,13 +120,42 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
   // client-side waypoint interpolation(每 1s 算),DB 不會即時被寫(RU update_ues
   // 是 fire-and-forget,且 Omniverse DB 不一定同步反映)。若這時還拉 DB 蓋,
   // Scene Layout 的 UE 會週期性「跳回 DB 內舊位置」。
+  //
+  // 2026-08-20:sim 跑的時候改拉「執行期 live 位置」而不是什麼都不做。
+  //   UeLifecycleManager 算完位置只推 RU 與 Kit(3D),**不寫回 Omniverse DB** ——
+  //   所以 3D 會動、2D 不動。原本這裡在 simRunning 時直接 return,期待 useSimPage
+  //   接手內插,但 Scene Layout 這條路沒有 useSimPage,畫布就一直停在出生點。
+  //   改成問 UE service 拿真值:兩邊同源,也不會再有「跳回 DB 舊位置」。
   useEffect(() => {
     let cancelled = false;
     const id = setInterval(async () => {
-      if (simRunningRef.current) return;  // sim 跑時讓 useSimPage 獨占位置寫入
+      if (simRunningRef.current) {
+        try {
+          const live = await fetchLiveUePositions();
+          if (cancelled || !live.simRunning) return;
+          setTrajectories((prev) => {
+            if (prev.length === 0) return prev;
+            let changed = false;
+            const next = prev.map((t) => {
+              const p = live.positions[t.name];
+              if (!p) return t;                     // 掉話/未 attach 的 UE 留在原地
+              const np: [number, number, number] = [p[0], p[1], p[2]];
+              if (np[0] !== t.position[0] || np[1] !== t.position[1] || np[2] !== t.position[2]) {
+                changed = true;
+                return { ...t, position: np };
+              }
+              return t;
+            });
+            return changed ? next : prev;
+          });
+          setLiveUeIds(new Set(Object.keys(live.positions)));
+        } catch { /* UE service 拉失敗 → 畫布保持現值,下次再試 */ }
+        return;
+      }
       try {
         const ues = await omniverseApi.listUes();
         if (cancelled) return;
+        setLiveUeIds((prev) => (prev.size === 0 ? prev : new Set()));
         setTrajectories((prev) => {
           if (prev.length === 0) return prev;
           const byName = new Map(ues.map(u => [u.name, u]));
@@ -245,6 +278,32 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
       }
     },
     [refreshScene]
+  );
+
+  // 分散式 cell(有自己 position)在畫布上被拖曳 → 更新該 cell 座標
+  const handleMoveCell = useCallback(
+    async (gnbName: string, cellIdx: number, x: number, z: number) => {
+      try {
+        const g = sceneConfig?.gnbs?.find((gg: any) => gg.name === gnbName);
+        if (!g || !g.cells?.[cellIdx]) return;
+        const cells = g.cells.map((c: any, i: number) =>
+          i === cellIdx
+            ? { ...c, position: [x, c.position?.[1] ?? g.position?.[1] ?? 30, z] }
+            : c,
+        );
+        await omniverseApi.updateGnb(gnbName, { cells });
+        await refreshScene();
+        // cell 位置 = Sionna TX 位置 → path_gain 全變,跟 gNB 移動同樣要重建
+        try {
+          await initScene({ scene_id: 'default' });
+        } catch (e) {
+          console.warn('[scene-rebuild] auto-init failed after handleMoveCell:', e);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update cell position');
+      }
+    },
+    [sceneConfig, refreshScene]
   );
 
   const handleMoveUE = useCallback(
@@ -461,6 +520,7 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
     setSelectedUEIndex,
     trajectories,
     setTrajectories,
+    liveUeIds,   // 這些 UE 的座標是執行期真值(非 DB 設定值)
     trafficProfiles,
     setTrafficProfile,
     loading,
@@ -473,6 +533,7 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
     handleRemoveWaypoint,
     handleMoveBuilding,
     handleMoveGnb,
+    handleMoveCell,
     handleMoveUE,
     handleClearTrajectory,
     handleSpeedChange,

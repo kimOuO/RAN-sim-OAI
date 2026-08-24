@@ -103,6 +103,21 @@ def is_ue_connected(ue_id: str) -> bool:
         return False
 
 
+def list_cells() -> list[dict[str, Any]]:
+    """CU 認得的 cell(只回 is_active 的)。UE 選網後要拿它驗證 —— Physics 回的是
+    scene 裡的 gNB 標籤(如 "gnb1#0"),不是 CU 的 cell_id("gnb1_c0"),
+    直接拿去 attach 會把 phantom 名稱寫進 serving_cell(2026-08-20 踩到)。"""
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/E2/NodeInfo/read"
+    try:
+        r = requests.post(url, json={}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            return []
+        return ((r.json() or {}).get("data") or {}).get("servingCells") or []
+    except (requests.RequestException, ValueError) as exc:
+        logger.debug("list_cells failed: %s", exc)
+        return []
+
+
 def rrc_attach(ue_id: str) -> bool:
     """走 RRC SetupRequest + SetupComplete 兩步,把 UE 帶到 CONNECTED。
 
@@ -154,13 +169,23 @@ def force_serving_cell(ue_id: str, target_cell: str) -> bool:
         return False
 
 
-def set_a3(enabled: bool) -> bool:
-    """設 CU A3 自動換手開關(Mobility/A3Controller/set)。
+def set_a3(enabled: bool, *, offset_db: float | None = None,
+           hys_db: float | None = None, ttt_ms: int | None = None) -> bool:
+    """設 CU A3 自動換手開關 + 門檻(Mobility/A3Controller/set)。
     CCO 等「RC 手動換到較弱 cell」的劇本要關掉 A3,否則 A3 看訊號把 UE 彈回強 cell。
+    offset/hys/ttt None = 不覆寫(用 CU env 預設,offset 5 + hys 6 = 11dB 門檻)。
+    ANR 缺漏鄰區 demo 要低門檻(offset 2 hys 1)才在健康區換手 —— 劇本帶參數。
     """
     url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Mobility/A3Controller/set"
+    payload: dict = {"enabled": bool(enabled)}
+    if offset_db is not None:
+        payload["offset_db"] = float(offset_db)
+    if hys_db is not None:
+        payload["hys_db"] = float(hys_db)
+    if ttt_ms is not None:
+        payload["ttt_ms"] = int(ttt_ms)
     try:
-        r = requests.post(url, json={"enabled": bool(enabled)}, timeout=_TIMEOUT_SEC)
+        r = requests.post(url, json=payload, timeout=_TIMEOUT_SEC)
         if not r.ok:
             logger.warning("set_a3 enabled=%s non-OK %s: %s", enabled, r.status_code, r.text[:200])
             return False

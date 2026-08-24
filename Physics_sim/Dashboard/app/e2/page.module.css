@@ -292,3 +292,7 @@
 
 .paramKey { color: #6b7280; }
 .paramVal { color: #d1d5db; }
+
+/* 掉話中的 UE —— 整列壓暗,和有量測的 CONNECTED 列明顯分層 */
+.dimRow td { color: #6b7280; background: #0b1220; }
+.pillIdle { background: #422006; color: #fbbf24; }
