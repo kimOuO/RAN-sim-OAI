@@ -48,6 +48,10 @@ services:
       HO_FORCE_FAIL_TARGET: ""   # 交叉測試輪3(Q9 容量)不需注入
       MEAS_REPORT_MIN_RSRP_DBM: "-110" # 量測回報門檻(38.331 reportConfig);-110=幾乎不濾
       ANR_NRT_CAPACITY: "8"            # 卷面第9題 NRT 每 cell 容量上限假設值
+      # 重建落點門檻(TS 38.331 重建須選 suitable cell)。
+      # 註:本場景四個 cell 各 30dBm 無遮蔽,全場最弱角落仍有 -88dBm,
+      # 用預設 -120 時位置再遠都掉不了話 —— 驗掉話重連需另造覆蓋洞或注入 RLF。
+      REESTAB_MIN_RSRP_DBM: "-120"
       ANR_INTRA_ENABLED: "true"    # ANR 自動建立功能部署組態;false 時 ADD 回 REJECTED_ANR_DISABLED
       ANR_XN_AUTO_REVERSE: "on"      # ANR ADD 後由 gNB 經 Xn 自動建反向關係(38.300 步驟4c);off=舊行為
       ANR_XN_SETUP_DELAY_SEC: "2.0"  # XnAP Setup 非瞬時,反向關係延遲此秒數才出現
@@ -415,6 +419,8 @@ services:
     image: ransim-ue:platform
     container_name: ransim-ue
     environment:
+      # IDLE 態選網門檻(TS 38.304)= 重建門檻 -120 + 3dB 遲滯,避免邊緣反覆 attach/drop。
+      CAMP_MIN_RSRP_DBM: "-117"
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
