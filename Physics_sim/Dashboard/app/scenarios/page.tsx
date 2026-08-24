@@ -21,6 +21,7 @@ import { startUnifiedSim, stopUnifiedSim } from '@/services/api/simLoop';
 import { SignalChart } from '@/components/SignalChart';
 import { ScenarioMap } from '@/components/ScenarioMap';
 import { SimTimeChart } from '@/components/SimTimeChart';
+import { fetchAnrTimeline, type TimelineRow } from '@/services/api/anrTimeline';
 import { DATASETS, datasetOf, displayName, SCENARIO_LABELS, ANR_CASE_NO } from '@/config/scenarioCatalog';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -131,6 +132,10 @@ export default function ScenariosPage() {
   const [driver, setDriver] = useState<ScenarioDriverStatus | null>(null);
   const [pm, setPm] = useState<DuPmSnapshot | null>(null);
   const [actions, setActions] = useState<ControlActionRow[]>([]);
+  // ANR 題目跑起來時要看的是「這題在驗什麼 + 現在到哪了」,不是滿屏 KPM。
+  // 其餘細節 /e2 與 /logs 都看得到,擠在這裡只是負擔。fullView 可切回完整監控。
+  const [timeline, setTimeline] = useState<TimelineRow[]>([]);
+  const [fullView, setFullView] = useState(false);
   const [handovers, setHandovers] = useState<HandoverEventRow[]>([]);
   const [history, setHistory] = useState<OutHistorySample[]>([]);
   const [nowMs, setNowMs] = useState<number>(Date.now());
@@ -258,6 +263,10 @@ export default function ScenariosPage() {
       if (d) setDriver(d);
       if (p) setPm(p);
       setActions(a); setHandovers(ho); setNowMs(Date.now());
+      // ANR 題目才拉時間線(其他劇本用不到,不浪費兩支請求)
+      if (running.scenarioId.startsWith('anr_')) {
+        try { setTimeline(await fetchAnrTimeline(40)); } catch { /* 拉不到就留舊的 */ }
+      }
       // Auto-stop:driver 從 running → false 的邊緣 → scenario 跑完(或自然中止)。
       // 用 sawRunningRef 確認真的看過 true 才算 transition,避免剛 mount 那一拍
       // 還沒有 driver state 就被誤判成已停。autoStopFiredRef 防止後續 poll 重複觸發。
@@ -445,6 +454,11 @@ export default function ScenariosPage() {
     return acc;
   }, {});
   const activeDataset = DATASETS.find(d => d.id === dataset) ?? DATASETS[0];
+  const isAnrRun = !!running?.scenarioId?.startsWith('anr_');
+  const runMeta = (running
+    ? (scenarioDetails.get(running.scenarioId)?.raw as unknown as
+        { _metadata?: Record<string, string> } | undefined)?._metadata
+    : undefined) ?? {};
   const q = query.trim().toLowerCase();
   const visibleScenarios = scenarios
     .filter(s => datasetOf(s.scenario_id) === dataset)
@@ -678,13 +692,96 @@ export default function ScenariosPage() {
               <ClockBlock label="Sim(劇本)" color="#fde68a"
                 main={addSecToHMS(running.scenarioStartHHMMSS, simNowSec)}
                 sub={`已過 ${simNowSec.toFixed(1)}s 劇本時間`} />
+              {isAnrRun && (
+                <button onClick={() => setFullView((v) => !v)}
+                  style={{ ...btn(fullView ? '#475569' : '#334155'), padding: '8px 12px' }}
+                  title="完整監控含 INPUT/OUTPUT 圖表、PM 表、門檻檢查 —— 那些 /e2 與 /logs 也看得到">
+                  {fullView ? '← 精簡檢視' : '完整監控'}
+                </button>
+              )}
               <button onClick={onStop} disabled={busy} style={{ ...btn('#ef4444'), padding: '8px 14px' }}>
                 ⏹ Stop
               </button>
             </div>
           </div>
 
-          {/* Driver progress + Trigger eval */}
+          {/* ── ANR 精簡檢視:這題在驗什麼 + 現在到哪了 ────────────── */}
+          {isAnrRun && !fullView && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                <Panel title={`📋 ${runMeta.title || running.scenarioId}${runMeta.case_no ? ` — 第 ${runMeta.case_no} 題` : ''}`}>
+                  <MetaRow k="病因" v={runMeta.trigger} />
+                  <MetaRow k="佈病" v={runMeta.arm} />
+                  <MetaRow k="拓樸" v={runMeta.topology} />
+                  <MetaRow k="正解" v={runMeta.xapp_action} />
+                  <MetaRow k="預期 ACK" v={runMeta.expected_ack} />
+                  {runMeta.exclusion && <MetaRow k="排除條件" v={runMeta.exclusion} />}
+                </Panel>
+                <div>
+                  <Panel title="✅ 這題要驗到什麼">
+                    <div style={{ fontSize: 12.5, color: '#a7f3d0', lineHeight: 1.7 }}>
+                      {runMeta.verify || '(劇本未填 _metadata.verify)'}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8, lineHeight: 1.6 }}>
+                      看什麼指標:{runMeta.signal || '—'}
+                    </div>
+                  </Panel>
+                  {(runMeta.caveat || runMeta.note) && (
+                    <Panel title="⚠️ 已知限制 / 注意" margin>
+                      <div style={{ fontSize: 11.5, color: '#fcd34d', lineHeight: 1.6 }}>
+                        {runMeta.caveat || runMeta.note}
+                      </div>
+                    </Panel>
+                  )}
+                  <Panel title="進度" margin>
+                    <div style={{ fontSize: 12, color: '#cbd5e1' }}>
+                      UE {driver?.ue_count ?? '—'} · 換手 {handovers.length} 筆 ·
+                      關係變更 {timeline.filter((t) => t.kind === 'relation').length} 筆 ·
+                      下發命令 {timeline.filter((t) => t.kind === 'control').length} 筆
+                    </div>
+                  </Panel>
+                </div>
+              </div>
+
+              <Panel title={`🕒 事件時間線(${timeline.length})— 下發命令 + 關係變更`} margin>
+                {timeline.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    尚無事件。xApp 要先收到 indication、判定成立才會動手 ——
+                    劇本剛起來時空白是正常的。
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    {timeline.map((t, i) => (
+                      <div key={`${t.ts}-${i}`} style={{
+                        display: 'flex', gap: 10, alignItems: 'baseline',
+                        padding: '4px 2px', borderTop: i ? '1px solid #1f2937' : 'none',
+                      }}>
+                        <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace', minWidth: 62 }}>
+                          {new Date(t.ts).toLocaleTimeString('en-GB')}
+                        </span>
+                        <span style={{
+                          fontSize: 10, padding: '1px 6px', borderRadius: 3, minWidth: 52,
+                          textAlign: 'center', fontWeight: 600,
+                          background: t.kind === 'control' ? '#0c4a6e' : '#134e4a',
+                          color: t.kind === 'control' ? '#7dd3fc' : '#99f6e4',
+                        }}>
+                          {t.kind === 'control' ? '下發' : '關係'}
+                        </span>
+                        <span style={{
+                          fontSize: 12.5, fontFamily: 'monospace',
+                          color: t.ok === false ? '#fca5a5' : t.ok ? '#e5e7eb' : '#94a3b8',
+                        }}>{t.label}</span>
+                        <span style={{ fontSize: 11.5, color: '#6b7280' }}>{t.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </>
+          )}
+
+          {/* Driver progress + Trigger eval —— ANR 精簡檢視時隱藏 */}
+          {(!isAnrRun || fullView) && (<>
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 10, marginTop: 10 }}>
             <Panel title="Driver Progress">
               {driver && (
@@ -1092,6 +1189,7 @@ export default function ScenariosPage() {
                 </table>
             }
           </Panel>
+          </>)}
         </section>
       )}
     </div>
@@ -1118,6 +1216,17 @@ function ClockBlock({ label, main, sub, color }: { label: string; main: string; 
       <div style={{ fontSize: 10, color: '#64748b' }}>{label}</div>
       <div style={{ fontSize: 16, color, fontFamily: 'ui-monospace,monospace', fontWeight: 600 }}>{main}</div>
       <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>{sub}</div>
+    </div>
+  );
+}
+
+/** 劇本 _metadata 的一列。值可能沒填 —— 沒填就不佔版面。 */
+function MetaRow({ k, v }: { k: string; v?: string }) {
+  if (!v) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, fontSize: 12, padding: '3px 0', lineHeight: 1.6 }}>
+      <span style={{ color: '#64748b', minWidth: 58, flexShrink: 0 }}>{k}</span>
+      <span style={{ color: '#d1d5db' }}>{v}</span>
     </div>
   );
 }
