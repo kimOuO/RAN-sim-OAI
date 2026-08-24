@@ -50,10 +50,19 @@ def _mk(src, dst, pci=None, arfcn=None, **kw):
 
 
 def _set(src, dst, **kw):
+    """改既有關係的屬性;關係不存在就先建。
+
+    ⚠️ 為什麼要 create-if-missing:seed_from_cells() **只種同 gNB 內**的鄰區
+    (`if tgt.gnb_id != src.gnb_id: continue`),而 ANR 劇本每個 gNB 只有一個
+    cell → 基準 NRT 恆為空。第 6/10/12 題要改「既有關係」的屬性,若不先建
+    就永遠改不到(2026-08-24 十二題健康檢查踩到:三題同時因此失敗)。
+    真實網路裡這些關係是 ANR 自動建立或 OAM 佈的,這裡等價於「已經有這條關係」。
+    """
+    if not R.objects.filter(source_cell_id=src, target_cgi=dst).exists():
+        print(f"  (關係 {src}→{dst} 不存在,先建 —— 基準 NRT 為空是預期的)")
+        _mk(src, dst)
     n = R.objects.filter(source_cell_id=src, target_cgi=dst).update(updated_at=timezone.now(), **kw)
     print(f"  set {src}→{dst} {kw}  (rows={n})")
-    if n == 0:
-        print(f"  ⚠️ 找不到關係 {src}→{dst} —— 劇本起來了嗎?seeder 種過了嗎?")
 
 
 def _age(src, dst, days=30):
@@ -91,10 +100,13 @@ def q6():
     _set("s07_c0", "n33_c0", xn_x2_established=False)
 
 def q7():
-    """有害鄰居 —— 病在 env,DB 只確認關係健在。"""
-    r = R.objects.filter(source_cell_id="src_c0", target_cgi="nbr_c0").first()
-    print(f"  src_c0→nbr_c0 {'存在' if r else '不存在(要先 ADD)'};"
-          f" ho_blocklist={getattr(r, 'ho_blocklist', None)}")
+    """有害鄰居:關係要「在」,但換過去一律失敗。
+
+    前提是關係存在 —— 基準 NRT 為空(seeder 只種同 gNB 內),所以要先建;
+    原本這裡只做檢查不建立,導致第7題永遠卡在「關係不在」(2026-08-24 檢查踩到)。
+    """
+    r = _mk("src_c0", "nbr_c0", ho_blocklist=False)   # 病要能發作,不能一開始就封
+    print(f"  src_c0→nbr_c0 ho_blocklist={r.ho_blocklist} v={r.version}")
     print("  ※ 必要 env:HO_FORCE_FAIL_TARGET=nbr_c0(改完 docker compose up -d ransim-cu)")
 
 def q8():
@@ -125,7 +137,8 @@ def q9():
 
 def q10():
     """過期 PCI 對應:關係留舊 pci=205,cell 實際 233"""
-    _set("s15_c0", "b07_c0", target_pci=205)
+    _set("s15_c0", "b07_c0")          # 先確保關係存在(值會照 cell 實際 pci)
+    _set("s15_c0", "b07_c0", target_pci=205)   # 再改成過期的舊 PCI
     c = CellConfig.objects.filter(cell_id="b07_c0").first()
     print(f"  b07_c0 實際 pci={getattr(c, 'pci', None)}(應為 233)→ 對應過期成立")
 
