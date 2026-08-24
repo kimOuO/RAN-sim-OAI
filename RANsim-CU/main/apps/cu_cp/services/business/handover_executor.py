@@ -81,6 +81,16 @@ def execute_f1_handover(
             logger.info("HO Xn-not-established: %s→%s xnX2Established=False → TXnRELOCprepExpiry",
                         source_cell, target_cell)
 
+    # v10 第6題:xnBlocklist = Xn 換手路徑被禁用(TS 28.313 §6.4.1.3.7,不拆線)。
+    # A3 已會跳過,但 RC 直接下令仍會走到這裡 —— 路徑禁用時準備階段必然逾時。
+    if not fail_cause:
+        from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _RX
+        _relx = _RX.objects.filter(source_cell_id=source_cell, target_cgi=target_cell).first()
+        if _relx is not None and _relx.xn_blocklist:
+            fail_cause = "TXnRELOCprepExpiry"
+            logger.info("HO xnBlocklist: %s→%s Xn 換手路徑已禁用 → TXnRELOCprepExpiry",
+                        source_cell, target_cell)
+
     # ANR 第10題 過期對應(stale PCI mapping):relation 存的 target_pci 與 cell 實際 pci 不符
     #   → 依組態(舊 PCI)尋找目標而不獲 → CellNotAvailable。同站換 PCI 後未更新關係即此症。
     #   xApp 處置=先刪後建(REMOVE 舊 + ADD 新 pci)。env ANR_STALE_PCI_CHECK=off 可停用。

@@ -83,7 +83,7 @@ def set_a3_config(*, enabled: bool | None = None, offset_db: float | None = None
 
 
 def _ho_blocklisted_targets(serving_cell: str) -> set[str]:
-    """回傳 serving_cell 目前被 ANR 封鎖(ho_blocklist=True)的鄰區 target 集合。
+    """回傳 serving_cell 目前不可用於換手的鄰區 target(hoBlocklist 或 xnBlocklist)。
     env ANR_ENFORCE_HO_BLOCKLIST=off 可停用(rollback);DB 出錯不擋換手。"""
     if not serving_cell:
         return set()
@@ -91,14 +91,41 @@ def _ho_blocklisted_targets(serving_cell: str) -> set[str]:
         return set()
     try:
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+        # xnBlocklist 與 hoBlocklist 都會讓換手不可用,語意不同但對 A3 的效果一樣:
+        #   hoBlocklist — TS 28.313 §6.4.1.3.5 Handover Blocklisting(封而不刪)
+        #   xnBlocklist — §6.4.1.3.7 Xn 換手路徑禁用(不拆線,交管理面修 Xn)
+        # v10 第 6 題的正解就是 set xnBlocklist;不在這裡擋掉的話設了等於沒設。
+        from django.db.models import Q
         return set(
             NrCellRelation.objects.filter(
-                source_cell_id=serving_cell, ho_blocklist=True,
+                Q(ho_blocklist=True) | Q(xn_blocklist=True),
+                source_cell_id=serving_cell,
             ).values_list("target_cgi", flat=True)
         )
     except Exception:  # noqa: BLE001 — DB 問題不應擋換手決策
         logger.exception("ANR ho_blocklist lookup failed for %s", serving_cell)
         return set()
+
+
+def _nrt_allowed_targets(serving_cell: str) -> set[str] | None:
+    """回傳 serving_cell 在 NRT 有關係且 is_ho_allowed 的 target 集(對齊 3GPP:
+    換手必須有 NrCellRelation)。env `ANR_REQUIRE_NRT`=off 時回 None = 不 gate(舊行為)。
+
+    2026-08-12:補上「缺漏關係 → 換不了」的因果 —— 這是 ANR use-case 的地基。
+    None(不 gate)與 空集(有 gate 但無任何關係)語意不同,caller 要分辨。
+    """
+    if not get_bool("ANR_REQUIRE_NRT", default=True):
+        return None
+    try:
+        from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+        return set(
+            NrCellRelation.objects.filter(
+                source_cell_id=serving_cell, is_ho_allowed=True,
+            ).values_list("target_cgi", flat=True)
+        )
+    except Exception:
+        logger.exception("ANR NRT lookup failed for %s", serving_cell)
+        return None  # 出錯不擋換手
 
 
 class A3HandoverCalculation:
@@ -132,6 +159,8 @@ class A3HandoverCalculation:
         # E2SM-ANR M4(A 級行為):xApp 用 SONTRIG_ANR_FLAG_REQUEST 封鎖的鄰區關係
         # (ho_blocklist=True)→ A3 換手決策直接略過該目標(封而不刪,止血)。
         blocked = _ho_blocklisted_targets(serving_cell)
+        # 缺漏鄰區 gate:target 必須在 NRT(3GPP 換手前提)。None = 不 gate。
+        allowed = _nrt_allowed_targets(serving_cell)
 
         for nb_cell, nb_rsrp in neighbors:
             if nb_cell == serving_cell:
@@ -139,6 +168,11 @@ class A3HandoverCalculation:
             if nb_cell in blocked:
                 logger.info("A3 skip blocklisted target ue serving=%s nb=%s (ANR ho_blocklist)",
                             serving_cell, nb_cell)
+                ue_state.pending.pop(nb_cell, None)
+                continue
+            if allowed is not None and nb_cell not in allowed:
+                # 缺漏鄰區:NRT 無此關係 → 換不了(UE 只能撐到 RLF → 重建)。
+                # xApp 對此該下 ANR ADD 建立關係,而非 FLAG。
                 ue_state.pending.pop(nb_cell, None)
                 continue
             condition_met = (nb_rsrp - self.hys_db) > (serving_rsrp + self.offset_db)

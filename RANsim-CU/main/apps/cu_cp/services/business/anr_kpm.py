@@ -251,6 +251,7 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
     """
     qs = CellConfig.objects.filter(pci=int(pci))
     matches = []
+    plmns: list[str] = []
     for c in qs:
         if arfcn is not None:
             try:
@@ -261,6 +262,7 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
                 pass
         ncgi = f"{int(c.nr_cellid):015x}" if c.nr_cellid else c.cell_id
         matches.append(ncgi)
+        plmns.append(c.served_plmn or "")
 
     if not matches:
         results = {"FAIL": attempts}
@@ -278,12 +280,40 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
         "arfcn": arfcn,
         "attempts": attempts,
         "results": results,
+        # v10:PLMN 是第 11 題「本網檢核」的依據 —— 非本網者只通報不建關係。
+        # 讀取內容含 PLMN 有規範依據(TS 38.300 §15.3.3.2 步驟 3)。
+        "plmnIdentity": plmns[0] if len(set(plmns)) == 1 and plmns else (plmns or [None])[0],
         "unique": len(matches) == 1,
         "confusion": len(matches) > 1,
     }
 
 
+def cgi_resolution_sampling(attempts: int = 20) -> list[dict[str, Any]]:
+    """v10 的 cgiResolutionSampling[] 容器 —— 對「量測看得到的每個 (pci,arfcn)」抽樣解析。
+
+    v8 只有 cgi_resolve 這支被動查詢端點,xApp 得先知道要查哪個 PCI 才問得出來;
+    v10 把它列為觀測資料的一部分,讓 confusion 在快照裡就看得見。
+    """
+    out = []
+    seen = set()
+    for m in (meas_aggregate().get("measurementReportAggregate") or []):
+        pci, arfcn = m.get("reportedPhysicalCellId"), m.get("reportedArfcn")
+        if pci is None or (pci, arfcn) in seen:
+            continue
+        seen.add((pci, arfcn))
+        out.append(cgi_resolve(int(pci), arfcn, attempts))
+    return out
+
+
 # ── P1-3:RLF / 重建速率 + reestablishmentInboundByPreviousPci ──────
+
+def _arfcn_of_pci(pci: int) -> int | None:
+    """由 PCI 反查 arfcn(同 PCI 多 cell 且頻率不同時回 None —— 不猜)。"""
+    from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
+    fs = {nr_arfcn_from_ghz(c.frequency_ghz)
+          for c in CellConfig.objects.filter(pci=int(pci))}
+    return fs.pop() if len(fs) == 1 else None
+
 
 def rlf_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     """RlfEvent → cell 級 RLF/重建速率 + 依重建落點 cell 的 inbound-by-previous-PCI。
@@ -327,7 +357,11 @@ def rlf_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
         },
         "reestablishmentInboundByPreviousPci": [
             {"cellNcgi": cell,
-             "byPreviousPci": [{"previousPhysicalCellId": pci, "ratePerMin": _r(n)}
+             # v10 加 previousArfcn:只有 PCI 無法消歧(限制 L2),
+             # 而 (pci, arfcn) 才是解析 CGI 的配對鍵。
+             "byPreviousPci": [{"previousPhysicalCellId": pci,
+                                "previousArfcn": _arfcn_of_pci(pci),
+                                "ratePerMin": _r(n)}
                                for pci, n in sorted(pcis.items())]}
             for cell, pcis in sorted(inbound.items())
         ],

@@ -204,6 +204,13 @@ class AnrQueryActor:
         if cell_id:
             rel_qs = rel_qs.filter(source_cell_id=cell_id)
             change_qs = change_qs.filter(source_cell_id=cell_id)
+        # v10 是重組後的格式(見 anr_kpm_v10 檔頭)。ANR_SCHEMA=v10 切換;
+        # 預設仍為 v8,讓 RIC 端有遷移窗口 —— 直接切會讓現行 xApp 全部讀不到資料。
+        from main.utils.env_loader import get_str as _gs2
+        if (_gs2("ANR_SCHEMA", "v8") or "v8").lower() == "v10":
+            from main.apps.cu_cp.services.business.anr_kpm_v10 import indication_v10
+            return success_response(indication_v10(cell_id, window_min), "ok")
+
         return success_response({
             "timestamp_ms": int(time.time() * 1000),
             "e2NodeInformation": {
