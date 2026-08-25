@@ -210,6 +210,18 @@ def q12():
             completed_at=now - timedelta(hours=6, minutes=i))
         mk += 1
     print(f"  n80_c0 失敗史 +{mk} 筆(共 {have + mk});d02_c0 失敗史 0 筆 ← 鑑別點")
+
+    # UE 必須駐留 s19_c0 —— 真實情境裡 UE 之所以沒過去 d02,正是因為它從一開始
+    # 就被封鎖;但 sim 是先跑再佈病,A3 早把 UE 全搬到 d02 了。
+    # 不搬回來的話 s19 的 att=0 有「根本沒人用」的良性解釋,
+    # 「強訊號而零嘗試」的矛盾就不成立(RIC 2026-08-25 指出)。
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = 0
+    for u in _U.objects.filter(serving_cell="d02_c0"):
+        if execute_f1_handover(ue_id=u.ue_id, target_cell="s19_c0", trigger="MANUAL"):
+            moved += 1
+    print(f"  已把 {moved} 台 UE 搬回 s19_c0(封鎖後 A3 不會再把它們拉走)")
     print("  ※ v10 正解:clear d02 的 hoBlocklist/xnBlocklist;n80 維持不動")
 
 

@@ -80,27 +80,33 @@ def _cell_throughput(window_min: float) -> dict[str, dict[str, float]]:
 
 
 def _meas_rate_by_relation(window_min: float) -> dict[tuple[str, str], float]:
-    """把「依 (pci, arfcn) 統計的量測樣本速率」對映到「逐關係」。
+    """measSampleRatePerMin 的正式定義(2026-08-25 定案,RIC 第八輪指出原語意矛盾):
 
-    第 11 題的回收判準是**雙歸零**:量測樣本速率與換手嘗試速率**同步**歸零
-    並持續 6 小時。只看換手嘗試會誤刪「暫時靜默但還在的鄰居」——
-    量測還看得到就代表它沒走,雙訊號才是防誤刪的關鍵。
-    量測面原本只有 per-(pci,arfcn),這裡用關係的 target pci/arfcn 回接。
+        **「駐留於 source cell 的 UE,量測回報中看到 target cell 的樣本率(/min)」**
+        —— per-(source, target) 歸屬,不是 target 的總量測率。
+
+    原實作是「該 target (pci,arfcn) 的總量測率,不分來源」,同時還有
+    arfcn 鍵對不上的 bug,兩者疊加讓同一份輸出用任何一種定義都解釋不通
+    (d02→s19=0 但 d02 的 UE 正以 300/min 量測 s19;s19→d02=300 但無任何來源歸屬)。
+
+    為什麼要來源歸屬:第 11 題的雙歸零判準是「**這條關係**沒人在用了」——
+    別的 cell 的 UE 量得到 target 不代表這條關係活著。歸屬用 meas_aggregate
+    的 bySourceCell(回報該筆量測的 UE 當下 serving cell)。
     """
     agg = anr_kpm.meas_aggregate(window_min).get("measurementReportAggregate") or []
-    by_key: dict[tuple[int, int], float] = {}
+    # (target_pci, source_cell) → rate
+    by_src: dict[int, dict[str, float]] = {}
     for a in agg:
-        pci, arfcn = a.get("reportedPhysicalCellId"), a.get("reportedArfcn")
+        pci = a.get("reportedPhysicalCellId")
         if pci is None:
             continue
-        by_key[(int(pci), int(arfcn) if arfcn is not None else -1)] = float(
-            a.get("sampleRatePerMin") or 0.0)
+        by_src[int(pci)] = {k: float(v) for k, v in (a.get("bySourceCell") or {}).items()}
     out: dict[tuple[str, str], float] = {}
-    for src, tgt, pci, arfcn in NrCellRelation.objects.values_list(
-            "source_cell_id", "target_cgi", "target_pci", "target_arfcn"):
+    for src, tgt, pci in NrCellRelation.objects.values_list(
+            "source_cell_id", "target_cgi", "target_pci"):
         if pci is None:
             continue
-        out[(src, tgt)] = by_key.get((int(pci), int(arfcn) if arfcn is not None else -1), 0.0)
+        out[(src, tgt)] = by_src.get(int(pci), {}).get(src, 0.0)
     return out
 
 
@@ -245,6 +251,9 @@ def indication_v10(cell_id: str | None = None,
     if cell_id:
         rel_qs = rel_qs.filter(source_cell_id=cell_id)
         chg_qs = chg_qs.filter(source_cell_id=cell_id)
+    # 現存 cell(含非 active 的,只要組態還在就不算殘留)
+    _live = set(CellConfig.objects.values_list("cell_id", flat=True))
+    chg_qs = chg_qs.filter(source_cell_id__in=_live, target_cgi__in=_live)
 
     meas = anr_kpm.meas_aggregate(window_min)
     agg = meas.get("measurementReportAggregate") or []
@@ -277,6 +286,12 @@ def indication_v10(cell_id: str | None = None,
             #                          孤兒旗標會讓那條關係永久呈現假的第 6 題
             # 實測他們那台的 50 筆是「REMOVE 32 + ADD 18」一格不剩,
             # 任何一筆 FLAG 進來會立刻被擠掉 —— 拉高上限只是把問題往後推。
+            # 剪掉「指向已不存在的 cell」的事件 —— 換劇本後上一場的事件會殘留,
+            # 而 xApp 用 flagChangeEvents 重建旗標帳本,殘留會讓它以為自己在
+            # 一個根本不存在的 cell 上設過旗標(RIC 2026-08-25 在第12題 fixture
+            # 看到上一場的 nbr_c0 事件)。
+            # 用「cell 是否存在」而不是「切劇本就清空」:E2 重連時 cell 沒變、
+            # 旗標也還在,清掉反而讓對方重建不出帳本 —— 那比殘留更糟。
             "relationChangeEvents": [
                 {"action": e.action, "targetCellGlobalId": e.target_cgi,
                  "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
