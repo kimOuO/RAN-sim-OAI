@@ -107,8 +107,24 @@ def execute_f1_handover(
     # env HO_FORCE_FAIL_TARGET="nbr_c0" 或 "cell_a,cell_b";cause 由 HO_FORCE_FAIL_CAUSE 定(預設 RandomAccessProblem)。
     if not fail_cause:
         _force = {t.strip() for t in (_gs("HO_FORCE_FAIL_TARGET", "") or "").split(",") if t.strip()}
+        _cause = _gs("HO_FORCE_FAIL_CAUSE", "RandomAccessProblem") or "RandomAccessProblem"
+        # 熱開關(2026-08-25 第 7 題 L4 staging):env 改動要重啟 CU,而中場重啟
+        # 會殺 UE 量測流(坑7)且打斷 xApp L4 探測計時 —— 改讀 bind-mount 檔案,
+        # 每次換手評估時讀,寫檔即生效。格式:每行 "target[,cause]";空檔/無檔=不注入。
+        try:
+            with open("/app/tmp/ho_force_fail.txt") as _f:
+                for _ln in _f:
+                    _ln = _ln.strip()
+                    if not _ln or _ln.startswith("#"):
+                        continue
+                    _parts = [x.strip() for x in _ln.split(",")]
+                    _force.add(_parts[0])
+                    if len(_parts) > 1 and _parts[1]:
+                        _cause = _parts[1]
+        except FileNotFoundError:
+            pass
         if target_cell in _force:
-            fail_cause = _gs("HO_FORCE_FAIL_CAUSE", "RandomAccessProblem") or "RandomAccessProblem"
+            fail_cause = _cause
 
     if fail_cause:
         SqlDbBusinessService.create_entity(HandoverEvent, {
