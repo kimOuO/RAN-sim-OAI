@@ -157,9 +157,27 @@ def q10():
     print(f"  b07_c0 實際 pci={getattr(c, 'pci', None)}(應為 233)→ 對應過期成立")
 
 def q11():
-    """老化 / 自動刪除:一筆老化零活動 + 一筆受保護"""
+    """臨時節點生命週期(v10)—— 進場要建、離場雙歸零要回收。
+
+    v10 把觸發背景定為「臨時節點」,並要求組態面(CCC 新實例)與量測面
+    (從無到有的樣本)互證。這裡把 tmp_c0 的 created_at 推成「剛剛」,
+    讓 cccConfigurationEvents 有真的誕生事件 —— 而不是靠劇本重啟時
+    所有 cell 都落在回看窗內的假訊號(那分不出誰才是新來的)。
+    """
+    # 老化零活動 + 受保護條目(回收段的判斷對象與保護對象)
     _mk("main_c0", "old_c0", pci=940); _age("main_c0", "old_c0", 30)
     _mk("main_c0", "keep_c0", no_remove=True)
+
+    # 臨時節點:標成剛誕生,並刪掉指向它的關係讓 ANR 必須重新發現
+    tmp = CellConfig.objects.filter(cell_id="tmp_c0").first()
+    if tmp is None:
+        print("  ⚠️ 場景沒有 tmp_c0 —— 請確認跑的是更新後的 anr_stale_relation 劇本")
+    else:
+        CellConfig.objects.filter(cell_id="tmp_c0").update(created_at=timezone.now())
+        n = R.objects.filter(target_cgi="tmp_c0").delete()[0]
+        n += R.objects.filter(source_cell_id="tmp_c0").delete()[0]
+        print(f"  tmp_c0 標記為剛誕生(CCC 事件);刪掉指向它的關係 {n} 筆 → 待 ANR 發現")
+    print("  ※ 回收段判準為**雙歸零**(measSampleRatePerMin 與 att 同步為 0),不是年齡")
 
 def q12():
     """屬性稽核 —— v10 改為「修復」:清掉無依據的封鎖,正當封鎖不得碰。

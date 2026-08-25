@@ -649,8 +649,15 @@ def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
         except Exception:
             action_id = 0
 
-    sub_id = f"anr-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}"
-    logger.info("ANR SUB_REQ → sub_id=%s period=%dms", sub_id, period_ms)
+    # action_id=2 → RC_E2NODEINFO_SUBSCRIBE 語意(只在 NRT 變更時推,confirm 的載體);
+    # 其餘 action_id 維持週期性 ANR indication。用 action 區分是為了讓 xApp
+    # 可以同時訂兩種:一條看指標、一條等確認。
+    _is_nodeinfo = (action_id == 2)
+    kind = "nodeinfo" if _is_nodeinfo else "anr"
+    sub_id = (f"anrnrt-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}"
+              if _is_nodeinfo else
+              f"anr-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}")
+    logger.info("ANR SUB_REQ → sub_id=%s period=%dms kind=%s", sub_id, period_ms, kind)
     event_ring.record_sub_req_recv(
         sub_id=sub_id, ric_req_id=ric_req_id, ran_func_id=ran_func_id,
         metrics=["DT-ANR-JSON"], period_ms=period_ms,
@@ -670,7 +677,7 @@ def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
     event_ring.record_sub_resp_sent(sub_id=sub_id, admitted_action_ids=[action_id],
                                      pdu_size=len(resp_bytes))
     _start_producer(sock, sub_id, ric_req_id, ran_func_id, action_id, period_ms,
-                    producer="anr")
+                    producer=kind)
 
 
 def _anr_producer_loop(sock, meta: dict) -> None:
@@ -741,6 +748,82 @@ def _anr_producer_loop(sock, meta: dict) -> None:
                 logger.exception("ANR indication encode/send failed")
         meta["stop"].wait(max(0.05, period_sec - (_time.monotonic() - t0)))
     logger.info("ANR producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent_count)
+
+
+def _nodeinfo_change_producer_loop(sock, meta: dict) -> None:
+    """RC_E2NODEINFO_SUBSCRIBE —— **只在 NRT 變更時**送出完整關係表 + 修改標示。
+
+    對應 E2SM-RC Event Trigger Style 3 之 Change ID 2「Cell Neighbour Relation Change」
+    (§7.3.4)＋ REPORT Style 3(§7.4.4)。v10 指定它是 **confirm() 確認慣用式的機制載體**:
+    xApp 下完 SON 觸發後等這個推播判定生效,逾時 T_CONFIRM=60s 未確認就 SMO_NOTIFY。
+
+    與週期性 ANR indication 的差別是**事件驅動**:沒有變更就完全不送。
+    xApp 若改用輪詢也能達到目的,但那不是 v10 指定的機制,而且會在
+    「動作生效」與「下一次輪詢」之間留下無法界定的延遲。
+    """
+    import time as _time
+
+    from main.apps.e2_adapter.models.connection_state import get_registry
+    from main.apps.e2_adapter.services.business.memory_state_operations import (
+        MemoryStateBusinessService,
+    )
+    from main.apps.e2_adapter.services.optional.codec import (
+        e2_subscription_codec, e2sm_anr_codec,
+    )
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+
+    registry = get_registry()
+    sub_id = meta["sub_id"]
+    poll_sec = max(0.2, meta["period_ms"] / 1000.0)
+    logger.info("NODEINFO-CHANGE producer LIFECYCLE.start sub_id=%s poll=%.1fs", sub_id, poll_sec)
+
+    prev: dict[tuple, int] | None = None
+    sent = 0
+    while not meta["stop"].is_set():
+        t0 = _time.monotonic()
+        try:
+            data = sim_http_client.fetch_anr_indication() or {}
+            rels = ((data.get("e2NodeInformation") or {}).get("neighbourCellRelations") or [])
+            cur = {(r.get("sourceCellNcgi"), r.get("targetCellGlobalId")): r.get("version")
+                   for r in rels}
+            if prev is not None and cur != prev:
+                added = [k for k in cur if k not in prev]
+                removed = [k for k in prev if k not in cur]
+                bumped = [k for k in cur if k in prev and cur[k] != prev[k]]
+                payload = {
+                    "timestamp": data.get("timestamp"),
+                    "e2NodeInformation": {"neighbourCellRelations": rels},
+                    # 修改標示 —— REPORT Style 3 的重點:不只給表,還要說哪裡變了
+                    "changeMarks": {
+                        "added": [f"{a}->{b}" for a, b in added],
+                        "removed": [f"{a}->{b}" for a, b in removed],
+                        "versionBumped": [f"{a}->{b}" for a, b in bumped],
+                    },
+                }
+                meta["sn"] = (meta["sn"] + 1) & 0xFFFF
+                ok = True
+                for hdr, msg in e2sm_anr_codec.build_indication_payloads(payload, meta["sn"]):
+                    pdu = e2_subscription_codec.encode_ric_indication(
+                        ric_req_id=meta["ric_req_id"], ran_function_id=meta["ran_func_id"],
+                        action_id=meta["action_id"], indication_sn=meta["sn"],
+                        indication_header=hdr, indication_message=msg,
+                        indication_type="report")
+                    if not _send_sctp(sock, pdu):
+                        ok = False
+                        break
+                if ok:
+                    sent += 1
+                    MemoryStateBusinessService.update_state(
+                        registry,
+                        pdu_sent_count=registry.get_connection().pdu_sent_count + 1)
+                    logger.info("NODEINFO-CHANGE sent sub=%s +%d -%d v%d (total=%d)",
+                                sub_id, len(added), len(removed), len(bumped), sent)
+                    event_ring.record_indication_sent(sub_id=sub_id, sn=meta["sn"], pdu_size=0)
+            prev = cur
+        except Exception:
+            logger.exception("nodeinfo-change producer iteration failed")
+        meta["stop"].wait(max(0.05, poll_sec - (_time.monotonic() - t0)))
+    logger.info("NODEINFO-CHANGE producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent)
 
 
 def _fullkpm_producer_loop(sock, meta: dict) -> None:
@@ -843,6 +926,7 @@ def _start_producer(sock, sub_id: str, ric_req_id: dict, ran_func_id: int,
         _PRODUCERS = {
             "fullkpm": _fullkpm_producer_loop,
             "anr": _anr_producer_loop,
+            "nodeinfo": _nodeinfo_change_producer_loop,
         }
         t = threading.Thread(
             target=_PRODUCERS.get(producer, _indication_producer_loop),

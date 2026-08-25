@@ -55,6 +55,25 @@
           "azimuth_deg": 270
         }
       ]
+    },
+    {
+      "name": "tmp",
+      "position": [
+        0,
+        30,
+        260
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 30.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 77,
+          "cell_id": "tmp_c0",
+          "azimuth_deg": 180
+        }
+      ]
     }
   ],
   "ues": [
@@ -72140,16 +72159,17 @@
   "_metadata": {
     "dataset": "anr",
     "case_no": 11,
-    "title": "老化 / 自動刪除",
+    "title": "未使用鄰區之移除 —— 臨時節點生命週期(v10)",
     "answer_type": "修",
-    "topology": "main_c0(pci10,-150m) — keep_c0(pci40,+150m)",
-    "arm": "建立一筆年齡大且零活動的關係;另建一筆標 noRemove 的保護條目",
-    "trigger": "關係長期存在但從未被使用,佔用 NRT",
-    "signal": "relationAgeSec 大 + perNeighbourRelation 該筆 att=0 + cumulativeSinceCreation 亦為 0",
-    "xapp_action": "REMOVE 老化零活動關係;對受保護條目**必須被拒**",
+    "topology": "main_c0(pci10,-150m)— keep_c0(pci40,+150m)+ **tmp_c0(pci77,臨時節點)**",
+    "arm": "CASE=q11:把 tmp_c0 的 CellConfig 重建成「剛誕生」(cccConfigurationEvents 有據)、刪掉指向它的關係讓 ANR 必須重新發現;另建一筆老化零活動關係與一筆 noRemove 保護條目",
+    "trigger": "臨時節點進場 → 應建關係;離場後長期雙歸零 → 應回收",
+    "signal": "**雙歸零**:measSampleRatePerMin 與 MM.HoExeAttRatePerMin 同步為 0 並持續;cgiResolutionSampling 的 plmnIdentity 需屬本網;cccConfigurationEvents 顯示 tmp_c0 的 O-NRCellCU 新實例建立(組態面與量測面互證)",
+    "xapp_action": "建立段:ADD(isRemoveAllowed 由 gNB 依 CON-01 給 true,回收路要留著);回收段:REMOVE(reason=\"aging-double-zero\")。受保護條目必須被拒。非本網 PLMN 只通報不建",
     "expected_ack": "一般:result=REMOVED;受保護:result=REJECTED_PROTECTED",
-    "verify": "老化關係消失、保護條目仍在且 version 不變",
+    "verify": "tmp_c0 關係被建立;之後雙歸零達門檻被回收;保護條目全程不動",
     "note": "cumulativeSinceCreation 走 DB group-by(非近端切片),舊證據不會被淘汰掉",
-    "spec": "docs/anr_validation/12題劇本規格.md"
+    "spec": "docs/anr_validation/12題劇本規格.md",
+    "caveat": "典型錯誤:對自建的臨時關係加 noRemove 保護 —— 那會自斷回收路;單一訊號歸零就回收 —— 會誤刪暫時靜默者。⚠️ v10 要求雙歸零持續 6 小時,實測時會縮短門檻,此為刻意加速"
   }
 }
