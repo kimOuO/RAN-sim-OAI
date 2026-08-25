@@ -37,6 +37,21 @@ logger = get_logger(__name__)
 RUNTIME_SCENE_XML_PATH = "/tmp/ranp_runtime_scene.xml"
 
 
+def _release_engine(old: Any) -> None:
+    """換場景後釋放舊 engine —— 不做的話 DrJit 的 GPU/host 緩衝不會還。
+
+    2026-08-25:連跑十二題切換十二次場景,physics 漲到 31.8 GiB 被 global
+    OOM killer 殺掉(dmesg: Killed process daphne anon-rss 33306552 kB),
+    UE 全部失去通道 → RLF → 掉話。在鎖外做,避免 flush 阻塞 compute_paths。
+    """
+    if old is None:
+        return
+    try:
+        old.close()
+    except Exception:  # noqa: BLE001 — 釋放失敗不該讓換場景失敗
+        logger.exception("release old SionnaEngine failed")
+
+
 class SionnaBusinessService:
     """Stateful singleton service. Caches loaded scene + engine + counters across requests."""
 
@@ -125,6 +140,7 @@ class SionnaBusinessService:
 
         # 短暫鎖 swap engine（毫秒級）
         with cls._engine_lock:
+            _old = cls._engine
             cls._loaded_config = cfg
             cls._engine = engine
             cls._scene_id = scene_id
@@ -135,6 +151,7 @@ class SionnaBusinessService:
             cls._current_mitsuba_path = mitsuba_scene_path
             cls._current_geometry_source_type = None
             cls._last_tick_ms = None
+        _release_engine(_old)
         return cls.get_loaded_config()  # type: ignore[return-value]
 
     # ── mutate: 外部 push override ───────────────────────────────
@@ -219,6 +236,7 @@ class SionnaBusinessService:
 
         # ── Step 4: 提交 state（短暫鎖 swap engine） ─────────────
         with cls._engine_lock:
+            _old = cls._engine
             cls._loaded_config = merged_cfg
             cls._engine = engine
             cls._scene_id = new_scene_id
@@ -237,6 +255,7 @@ class SionnaBusinessService:
 
         sionna_rebuild_ms = TimestampService.now_ms() - rebuild_start_ms
 
+        _release_engine(_old)
         return {
             "scene_id": cls._scene_id,
             "previous_scene_id": prev_scene_id,
@@ -262,9 +281,19 @@ class SionnaBusinessService:
     def _materialize_geometry(cls, geometry_source: dict[str, Any]) -> str:
         """把 geometry_source 轉成容器內可讀的 Mitsuba XML 路徑。
 
-        目前只支援 buildings_json：收到建築 box 列表後，後端自己轉 XML 落地。
+        兩種來源：
+          - buildings_json  ：收到建築 box 列表後，後端自己用 mitsuba_builder 轉 XML 落地。
+          - mitsuba_xml_path：已產好的 Mitsuba XML（例：OSM 地圖的真實 mesh），直接使用。
         """
         src_type = geometry_source["type"]
+        if src_type == "mitsuba_xml_path":
+            path = (geometry_source.get("path") or "").strip()
+            if not path:
+                raise RuntimeError("mitsuba_xml_path 需要 path")
+            if not Path(path).is_file():
+                raise RuntimeError(f"Mitsuba XML 不存在（容器內路徑）：{path}")
+            logger.info("runtime scene from existing Mitsuba XML → %s", path)
+            return path
         if src_type == "buildings_json":
             buildings = geometry_source["buildings"]
             ground = geometry_source.get("ground")

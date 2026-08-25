@@ -263,6 +263,12 @@ services:
 
   # ── Physics（Sionna RT，需要 GPU）─────────────────────────
   physics:
+    # 記憶體上限 + 自動重啟 —— 保險,不是修復(真修在 sionna_operations._release_engine)。
+    # 2026-08-25:換場景時舊 SionnaEngine 沒釋放,DrJit 的 GPU/host 緩衝不會還,
+    # 連跑十二題後漲到 31.8 GiB,被 **global** OOM killer 殺掉 —— 沒有上限時
+    # 核心是從全機挑最大的行程下手,等於一個容器的洩漏可以拖垮整台。
+    # 設上限後最壞情況是這個容器自己被殺並重啟,其他服務不受影響。
+    mem_limit: 12g
     # PID 1 的訊號語意:核心不對 PID 1 套用訊號預設動作,沒裝 handler 的 SIGTERM 被直接丟棄。
     # 本服務的 PID 1(manage.py runserver / sh -c)不處理 SIGTERM → docker stop 空等 10 秒
     # 再 SIGKILL(exit 137),連線不送 FIN / SCTP 不做 SHUTDOWN。init:true 讓 tini 當 PID 1,

@@ -161,6 +161,28 @@ class SionnaEngine:
 
         logger.info("SionnaEngine ready (warmed up)")
 
+
+    def close(self) -> None:
+        """釋放 Sionna/DrJit 持有的資源。
+
+        每次換場景都會新建一個 SionnaEngine 再換掉舊的,但舊的只是解除 Python
+        參照 —— Mitsuba 場景與 PathSolver 背後是 DrJit 配置的 GPU/host 緩衝,
+        不 flush 就不會還。2026-08-25 連跑十二題切換十二次場景後,physics
+        漲到 **31.8 GiB** 被 global OOM killer 殺掉(anon-rss 33306552 kB)。
+        """
+        import gc
+        for attr in ("_solver", "_scene", "_cell_entries", "_rt"):
+            try:
+                setattr(self, attr, None)
+            except Exception:  # noqa: BLE001
+                pass
+        gc.collect()
+        try:
+            import drjit  # type: ignore
+            drjit.flush_malloc_cache()
+        except Exception:  # noqa: BLE001 — 沒有 drjit 或版本無此 API 就算了
+            pass
+
     def _warmup(self) -> None:
         """啟動時跑一次 dummy compute 觸發 OptiX kernel JIT 編譯。"""
         import time
