@@ -57,7 +57,7 @@ services:
       # 註:本場景四個 cell 各 30dBm 無遮蔽,全場最弱角落仍有 -88dBm,
       # 用預設 -120 時位置再遠都掉不了話 —— 驗掉話重連需另造覆蓋洞或注入 RLF。
       REESTAB_MIN_RSRP_DBM: "-120"
-      ANR_INTRA_ENABLED: "false"   # 6b 驗證中,驗完還原 true    # ANR 自動建立功能部署組態;false 時 ADD 回 REJECTED_ANR_DISABLED
+      ANR_INTRA_ENABLED: "true"    # ANR 自動建立功能部署組態;false 時 ADD 回 REJECTED_ANR_DISABLED
       ANR_XN_AUTO_REVERSE: "on"      # ANR ADD 後由 gNB 經 Xn 自動建反向關係(38.300 步驟4c);off=舊行為
       ANR_XN_SETUP_DELAY_SEC: "2.0"  # XnAP Setup 非瞬時,反向關係延遲此秒數才出現
       KPM_CALIB_URL: "http://kpm-calib:8200/calibrate"

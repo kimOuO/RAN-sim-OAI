@@ -307,6 +307,9 @@ def indication_v10(cell_id: str | None = None,
                 for e in chg_qs.exclude(action__startswith="FLAG_")[:50]],
             "flagChangeEvents": [
                 {"action": e.action,               # FLAG_SET / FLAG_CLEAR
+                 # RIC 第二十五輪正式請求:target-only 在多條同 target 關係下
+                 # 結構性無法歸屬(幽靈 FLAG_CLEAR 插曲);模型本就存 source。
+                 "sourceCellNcgi": e.source_cell_id,
                  "targetCellGlobalId": e.target_cgi,
                  "flag": e.detail,                 # hoBlocklist / noRemove / xnBlocklist
                  "by": e.by, "at": e.at.isoformat()}

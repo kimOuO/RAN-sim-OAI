@@ -115,6 +115,12 @@ def q6():
     佈病時必須確保 xnBlocklist 是關的 —— 否則病一開始就被治好了。
     """
     _set("s07_c0", "n33_c0", xn_x2_established=False, xn_blocklist=False)
+    # 坑1:佈病前 UE 已被換/駐留到 n33(barred 擋重建不擋既有駐留)→ 搬回 s07
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(ue_id__startswith="xd").exclude(serving_cell="s07_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="s07_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 s07_c0")
     print("  ※ v10 正解:xApp 應 set xnBlocklist;恢復用 CASE=q6_restore")
 
 
