@@ -96,8 +96,20 @@ def q5():
     print(f"  pci=7 的 cell:{dup}  {'✓ 撞號成立' if len(dup) > 1 else '✗ 劇本沒起來?'}")
 
 def q6():
-    """Xn-C 探索失敗:關係在、Xn 不在 → TXnRELOCprepExpiry"""
-    _set("s07_c0", "n33_c0", xn_x2_established=False)
+    """Xn-C 探索失敗:關係在、Xn 不在 → TXnRELOCprepExpiry。
+
+    v10 正解改了:不再是「不動手只通報」,而是 set xnBlocklist 禁用換手路徑
+    (TS 28.313 §6.4.1.3.7,不拆線),Xn 恢復後 clear。
+    佈病時必須確保 xnBlocklist 是關的 —— 否則病一開始就被治好了。
+    """
+    _set("s07_c0", "n33_c0", xn_x2_established=False, xn_blocklist=False)
+    print("  ※ v10 正解:xApp 應 set xnBlocklist;恢復用 CASE=q6_restore")
+
+
+def q6_restore():
+    """Xn 修復(管理面完成)—— 驗 xApp 會不會把 xnBlocklist 清掉。"""
+    _set("s07_c0", "n33_c0", xn_x2_established=True)
+    print("  ※ Xn 已恢復,xApp 應 clear xnBlocklist")
 
 def q7():
     """有害鄰居:關係要「在」,但換過去一律失敗。
@@ -105,8 +117,10 @@ def q7():
     前提是關係存在 —— 基準 NRT 為空(seeder 只種同 gNB 內),所以要先建;
     原本這裡只做檢查不建立,導致第7題永遠卡在「關係不在」(2026-08-24 檢查踩到)。
     """
-    r = _mk("src_c0", "nbr_c0", ho_blocklist=False)   # 病要能發作,不能一開始就封
-    print(f"  src_c0→nbr_c0 ho_blocklist={r.ho_blocklist} v={r.version}")
+    r = _mk("src_c0", "nbr_c0", ho_blocklist=False, no_remove=False)  # 病要能發作
+    print(f"  src_c0→nbr_c0 ho_blocklist={r.ho_blocklist} no_remove={r.no_remove} v={r.version}")
+    print("  ※ v10 正解為**成對**:hoBlocklist + noRemove 一起 set")
+    print("     (TS 28.313 §6.4.1.3.5 Step 2 本即複合動作;只 set 一個算不完整)")
     print("  ※ 必要 env:HO_FORCE_FAIL_TARGET=nbr_c0(改完 docker compose up -d ransim-cu)")
 
 def q8():
@@ -148,9 +162,37 @@ def q11():
     _mk("main_c0", "keep_c0", no_remove=True)
 
 def q12():
-    """屬性稽核:一筆屬性看似異常但有正當理由的關係"""
-    _set("s19_c0", "d02_c0", is_ho_allowed=False)
-    print("  ※ 正解是「不動手」—— 此屬性有正當來源,xApp 改它就是誤判")
+    """屬性稽核 —— v10 改為「修復」:清掉無依據的封鎖,正當封鎖不得碰。
+
+    要造出兩條**外觀相同、來歷不同**的封鎖,差別只在行為訊號:
+      d02_c0  無依據封鎖:量測強、換手嘗試 0、hoValidated=false、無失敗史 → 該修
+      n80_c0  正當封鎖  :量測弱、hoValidated=true、有大量接取失敗史   → 不得碰
+    v10 明訂旗標非 E2 可觀測,所以 xApp 只能靠上面四項行為訊號分辨 ——
+    這正是本題的考點,佈病時兩條的旗標必須一模一樣。
+    """
+    from datetime import timedelta
+    from main.apps.cu_cp.models.handover_event import HandoverEvent
+    from main.apps.cu_cp.services.common.uuid_service import UUIDService
+
+    _set("s19_c0", "d02_c0", ho_blocklist=True, xn_blocklist=True,
+         ho_validated=False)                      # 從未成功服務過 → 封鎖無依據
+    _set("s19_c0", "n80_c0", ho_blocklist=True, xn_blocklist=True,
+         ho_validated=True)                       # 曾正常服務,後因劣化被封
+
+    # n80 的失敗史 —— 「因失敗而封」的證據;d02 刻意一筆都沒有
+    now = timezone.now()
+    have = HandoverEvent.objects.filter(source_cell="s19_c0", target_cell="n80_c0").count()
+    mk = 0
+    for i in range(max(0, 40 - have)):
+        HandoverEvent.objects.create(
+            ho_uuid=UUIDService.random_uuid(), ue_id=f"hist{i%5}",
+            source_cell="s19_c0", target_cell="n80_c0", trigger="A3_TTT",
+            status="FAIL", failure_cause="RandomAccessProblem",
+            started_at=now - timedelta(hours=6, minutes=i),
+            completed_at=now - timedelta(hours=6, minutes=i))
+        mk += 1
+    print(f"  n80_c0 失敗史 +{mk} 筆(共 {have + mk});d02_c0 失敗史 0 筆 ← 鑑別點")
+    print("  ※ v10 正解:clear d02 的 hoBlocklist/xnBlocklist;n80 維持不動")
 
 
 def reset():
@@ -179,6 +221,7 @@ def status():
 
 CASES = {f"q{i}": fn for i, fn in enumerate(
     [q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12], start=1)}
+CASES["q6_restore"] = q6_restore
 
 print(f"=== ANR arm: CASE={CASE or '(未給)'} ===")
 if CASE in CASES:

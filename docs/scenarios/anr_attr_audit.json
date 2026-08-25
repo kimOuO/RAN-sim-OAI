@@ -72166,15 +72166,16 @@
   "_metadata": {
     "dataset": "anr",
     "case_no": 12,
-    "title": "NRT 屬性稽核(不動手)",
-    "answer_type": "不動手",
+    "title": "封鎖稽核與修復(v10:要修,不是不動手)",
+    "answer_type": "修(修復無依據封鎖)",
     "topology": "s19_c0(pci240,0m) — d02_c0(pci251,+250m) — n80_c0(pci260,-450/300m)",
-    "arm": "讓某筆關係屬性看似異常(如 isHoAllowed=false / 旗標已設)但有正當來源",
-    "trigger": "稽核者容易誤判為故障而去改屬性",
-    "signal": "cumulativeSinceCreation 空 vs 有值可區分「從未用過」與「曾用過被關掉」;relationChangeEvents 的 by 欄位指出誰改的",
-    "xapp_action": "**不動手** —— 有正當理由的屬性不得改;只做稽核與 SMO_NOTIFY",
-    "expected_ack": "無 ANR control",
-    "verify": "changeEvents 0、by=xapp 0、關係 version 全不變",
-    "spec": "docs/anr_validation/12題劇本規格.md"
+    "arm": "兩條**外觀相同、來歷不同**的封鎖:d02_c0 量測強/換手嘗試 0/hoValidated=false/無失敗史(無依據);n80_c0 量測弱/hoValidated=true/40 筆接取失敗史(因失敗而封,正當)",
+    "trigger": "組態偏離「自動建立之關係初始應允許換手」之原則(TS 28.313 CON-01)",
+    "signal": "四項行為訊號並立即矛盾:目標量測極強且持續 + 該關係換手嘗試恆為 0 + hoValidated=false + 建立以來失敗累計為空 → 強訊號而零嘗試又無失敗可解釋,唯一自洽的解釋是被擋在換手準備之前。**旗標非 E2 可觀測**,只能這樣推論 —— 這是本題的考點",
+    "xapp_action": "v10 改了:**不再是「不動手」**,要修復 —— clear d02_c0 的 hoBlocklist/xnBlocklist;n80_c0 有失敗史,維持不動",
+    "expected_ack": "d02 兩筆 FLAG_CLEAR;n80 零動作",
+    "verify": "d02 換手嘗試由 0 回升且成功;n80 的旗標與 version 全程不變",
+    "spec": "docs/anr_validation/12題劇本規格.md",
+    "caveat": "典型錯誤:把 n80 一併「修復」—— 那是第 7 題型停損的事後樣貌,正當處置"
   }
 }

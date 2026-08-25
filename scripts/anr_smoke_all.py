@@ -90,12 +90,23 @@ def q4():
 
 def q5():
     c = cgi(7)
-    return bool(c.get("confusion")), f"cgi_resolve(7) confusion={c.get('confusion')} results={c.get('results')}"
+    ok = bool(c.get("confusion")) and len(c.get("results") or {}) > 1
+    return ok, (f"cgi_resolve(7) confusion={c.get('confusion')} results={c.get('results')} "
+                f"plmn={c.get('plmnIdentity')}(多身分=混淆確診)")
 
 def q6():
     r = rels().get(("s07_c0", "n33_c0"))
+    prep = {}
+    try:
+        for row in post(f"{CU}/E2/Anr/kpm", {"window_min": 10})["data"].get(
+                "perNeighbourRelation") or []:
+            if (row.get("sourceCellNcgi"), row.get("targetCellGlobalId")) == ("s07_c0", "n33_c0"):
+                prep = row.get("handoverFailureCauseRatePerMin") or {}
+    except Exception:
+        pass
     return (r is not None and not r["xnX2Established"]), \
-        f"s07_c0→n33_c0 xnX2Established={r['xnX2Established'] if r else '關係不存在'}"
+        (f"xnX2Established={r['xnX2Established'] if r else '關係不存在'};"
+         f"失敗原因={prep or '尚未發生換手'}(應由 TXnRELOCprepExpiry 主導=準備階段)")
 
 def q7():
     r = rels().get(("src_c0", "nbr_c0"))
@@ -150,9 +161,29 @@ def q11():
         f"老化關係 age={(old or {}).get('relationAgeSec', 0):.0f}s;保護條目 noRemove={prot}"
 
 def q12():
-    r = rels().get(("s19_c0", "d02_c0"))
-    return (r is not None and not r["isHoAllowed"]), \
-        f"s19_c0→d02_c0 isHoAllowed={r['isHoAllowed'] if r else '關係不存在'}"
+    """v10:旗標非 E2 可觀測 —— 驗的是兩條關係的**行為訊號**能不能分辨。
+
+    d02(無依據封鎖):hoValidated=false + 失敗累計 0
+    n80(正當封鎖)  :hoValidated=true  + 失敗累計 > 0
+    兩者旗標一模一樣,只能靠這兩項分辨 —— 分不出來這題就不成題。
+    """
+    r = rels()
+    d02, n80 = r.get(("s19_c0", "d02_c0")), r.get(("s19_c0", "n80_c0"))
+    cum = {}
+    try:
+        for row in post(f"{CU}/E2/Anr/kpm", {"window_min": 10})["data"].get(
+                "perNeighbourRelation") or []:
+            k = (row.get("sourceCellNcgi"), row.get("targetCellGlobalId"))
+            cum[k] = sum((row.get("handoverFailureCauseCumulativeSinceCreation") or {}).values())
+    except Exception:
+        pass
+    c_d = cum.get(("s19_c0", "d02_c0"), 0)
+    c_n = cum.get(("s19_c0", "n80_c0"), 0)
+    ok = (d02 is not None and n80 is not None
+          and d02["hoValidated"] is False and n80["hoValidated"] is True
+          and c_d == 0 and c_n > 0)
+    return ok, (f"d02 hoValidated={d02['hoValidated'] if d02 else '—'} 失敗累計={c_d}(應 0);"
+                f"n80 hoValidated={n80['hoValidated'] if n80 else '—'} 失敗累計={c_n}(應 >0)")
 
 
 CASES = [

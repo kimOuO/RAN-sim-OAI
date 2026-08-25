@@ -72161,15 +72161,15 @@
   "_metadata": {
     "dataset": "anr",
     "case_no": 6,
-    "title": "Xn-C TNL 探索失敗(不動手)",
-    "answer_type": "不動手",
+    "title": "Xn-C TNL 探索失敗(v10:禁用換手路徑)",
+    "answer_type": "修(禁用路徑,不拆線)",
     "topology": "n30_c0(-300m) — s07_c0(0m) — n33_c0(+300m)",
     "arm": "把 s07_c0→n33_c0 的 xn_x2_established 設為 False(關係在、Xn 不在)",
     "trigger": "關係存在故 A3 會發起換手,但沒有 Xn 傳輸 → 準備階段逾時",
-    "signal": "neighbourCellRelations 該筆 xnX2Established=false;failCause 由 TXnRELOCprepExpiry 主導(TS 38.423)",
-    "xapp_action": "**不動手** —— Xn 建立屬管理面,xApp 不得用 ADD/REMOVE 掩蓋;只發 SMO_NOTIFY",
-    "expected_ack": "無 ANR control",
-    "verify": "changeEvents 0、關係 version 不變、SMO 告警一筆",
+    "signal": "xnX2Established=false + 失敗原因由 MM.HoPrepInterFailRatePerMin 的 TXnRELOCprepExpiry 主導(**準備**階段,不是執行階段 —— 與第 7 題的鑑別點)",
+    "xapp_action": "v10 改了:**不再是「不動手只通報」**,而是 SONTRIG_ANR_FLAG_REQUEST(xnBlocklist, set)禁用換手路徑(TS 28.313 §6.4.1.3.7,不拆線);Xn 連線之建立仍屬管理面 → SMO_NOTIFY 請求修復;修復後 clear",
+    "expected_ack": "FLAG_SET(xnBlocklist);修復後 FLAG_CLEAR",
+    "verify": "set 後往 n33_c0 的換手嘗試歸零(不再空轉失敗);Xn 恢復(CASE=q6_restore)後 xApp 應 clear,換手恢復。旗標本身非 E2 可觀測 —— 以行為訊號確認",
     "note": "本題會自我污染 MRO(換手失敗型),排除條件要用 handoverFailureCauseRatePerMin 不要用 mroKpm",
     "spec": "docs/anr_validation/12題劇本規格.md"
   }

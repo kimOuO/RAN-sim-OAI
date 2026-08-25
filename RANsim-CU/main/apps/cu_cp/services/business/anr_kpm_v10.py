@@ -79,9 +79,35 @@ def _cell_throughput(window_min: float) -> dict[str, dict[str, float]]:
     return out
 
 
+def _meas_rate_by_relation(window_min: float) -> dict[tuple[str, str], float]:
+    """把「依 (pci, arfcn) 統計的量測樣本速率」對映到「逐關係」。
+
+    第 11 題的回收判準是**雙歸零**:量測樣本速率與換手嘗試速率**同步**歸零
+    並持續 6 小時。只看換手嘗試會誤刪「暫時靜默但還在的鄰居」——
+    量測還看得到就代表它沒走,雙訊號才是防誤刪的關鍵。
+    量測面原本只有 per-(pci,arfcn),這裡用關係的 target pci/arfcn 回接。
+    """
+    agg = anr_kpm.meas_aggregate(window_min).get("measurementReportAggregate") or []
+    by_key: dict[tuple[int, int], float] = {}
+    for a in agg:
+        pci, arfcn = a.get("reportedPhysicalCellId"), a.get("reportedArfcn")
+        if pci is None:
+            continue
+        by_key[(int(pci), int(arfcn) if arfcn is not None else -1)] = float(
+            a.get("sampleRatePerMin") or 0.0)
+    out: dict[tuple[str, str], float] = {}
+    for src, tgt, pci, arfcn in NrCellRelation.objects.values_list(
+            "source_cell_id", "target_cgi", "target_pci", "target_arfcn"):
+        if pci is None:
+            continue
+        out[(src, tgt)] = by_key.get((int(pci), int(arfcn) if arfcn is not None else -1), 0.0)
+    return out
+
+
 def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
     """逐關係量測 —— v10 形狀(純量 + trendLast30Min_*,不是 current/baseline 物件)。"""
     v8_rows = anr_kpm.ho_kpm(window_min).get("perNeighbourRelation") or []
+    meas_rate = _meas_rate_by_relation(window_min)
     # 逐關係的換錯 cell 速率(v10 新增:9.3.38 物件層級含 NRCellRelation)
     wrong = _to_wrong_cell_by_relation(window_min)
     out = []
@@ -103,8 +129,12 @@ def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
             # 準備+執行合計之累計(v10 要的是總數,不是 cause 分列)
             "MM.HoFailCumulativeSinceCreation": sum(cum.values()) if cum else 0,
             "HO.IntraSys.ToWrongCellRate": wr,
+            # 第 11 題雙歸零 aging 的另一半 —— 量測面
+            "measSampleRatePerMin": meas_rate.get((src, tgt), 0.0),
             "trendLast30Min_attRatePerMin": _trend(f"rel.att.{key}", att),
             "trendLast30Min_ToWrongCell": _trend(f"rel.wrong.{key}", wr),
+            "trendLast30Min_measSampleRatePerMin": _trend(
+                f"rel.meas.{key}", meas_rate.get((src, tgt), 0.0)),
         })
     return out
 
