@@ -275,8 +275,16 @@ def indication_v10(cell_id: str | None = None,
                  "radioAccessTechnology": "NR"} for c in cells],
             "neighbourCellRelations": [_relation_ie_v10(r) for r in rel_qs],
             "frequencyRelations": anr_kpm.freq_relations(),
-            "nrtCapacity": {"limit": get_int("ANR_NRT_CAPACITY", 32),
-                            "used": rel_qs.count()},
+            # limit 是 per-cell 語意(每 cell 的 NRT 條目上限),used 也必須 per-cell ——
+            # 原本未指定 cell_id 時回全表 count(3 cell 滿載時 used=24 vs limit=8),
+            # xApp 判 used==limit 會錯。usedByCell 逐 cell 給;used 保留為「最滿的
+            # 那個 cell」向後相容(第 9 題的觸發 = 任一 source cell 滿載)。
+            "nrtCapacity": (lambda _cnt: {
+                "limit": get_int("ANR_NRT_CAPACITY", 32),
+                "used": max(_cnt.values(), default=0),
+                "usedByCell": _cnt,
+            })({c.cell_id: rel_qs.filter(source_cell_id=c.cell_id).count()
+                for c in cells}),
             "anrIntraEnabled": get_bool("ANR_INTRA_ENABLED", default=True),
             # 兩個容器分開,各自 50 筆 —— 不是一個 ring 塞兩種事件。
             # 理由(RIC 2026-08-25 §5 提出,我們採納):
