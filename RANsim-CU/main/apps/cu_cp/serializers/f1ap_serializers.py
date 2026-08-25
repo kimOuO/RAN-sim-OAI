@@ -53,6 +53,7 @@ class MeasurementReportWriteSerializer(serializers.Serializer):
     pdcp_sdu_volume_dl = serializers.IntegerField(default=0)
     pdcp_sdu_volume_ul = serializers.IntegerField(default=0)
     rlc_sdu_delay_dl_ms = serializers.FloatField(default=0.0)
+    qos_5qi = serializers.IntegerField(default=9)   # 2026-08-12(D):per-5QI 分桶
     neighbor_cells = _NeighborMeasSerializer(many=True, default=list)
 
 

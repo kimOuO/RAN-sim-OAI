@@ -1,0 +1,29 @@
+E2SM-RC ControlHeader Format 3 — 往返驗證向量
+由 E2SM_RC_for_sim.py 產生,2026-08-25
+
+APER 編碼(31 bytes):
+  40801c00001000a4271004067331395f6330522711010200f0400103000000
+
+解碼後應還原成:
+  ue-Group-ID          = 17
+  ric-Style-Type       = 3
+  ric-ControlAction-ID = 1
+  條件項 1: ranParameter-ID=10001  value=b's19_c0'  logicalOR='false'
+  條件項 2: ranParameter-ID=10002  value=240        logicalOR='false'
+
+驗證腳本(換上模組後執行):
+
+  from E2SM_RC_for_sim import E2SM_RC_IEs as R
+  enc = bytes.fromhex("40801c00001000a4271004067331395f6330522711010200f0400103000000")
+  H = R.E2SM_RC_ControlHeader; H.from_aper(enc)
+  v = H.get_val()['ric-controlHeader-formats'][1]
+  assert v['ue-Group-ID'] == 17
+  items = v['ue-Group-Definition']['ueGroupDefinitionIdentifier-LIST']
+  assert [i['ranParameter-ID'] for i in items] == [10001, 10002]
+  assert [i['logicalOR'] for i in items] == ['false', 'false']   # 名稱,不是 0/1
+  print('OK')
+
+⚠️ logicalOR 請以名稱比對('false'),不要比 0/1 ——
+   LogicalOR ::= ENUMERATED { true(0), false(1) },與直覺相反。
+
+實測還原值: {'ue-Group-ID': 17, 'style': 3, 'action': 1, 'items': [(10001, b's19_c0', 'false'), (10002, 240, 'false')]}

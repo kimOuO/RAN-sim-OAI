@@ -38,6 +38,7 @@ type DragTarget =
   | { type: 'waypoint'; idx: number }
   | { type: 'building'; name: string }
   | { type: 'gnb'; name: string }
+  | { type: 'cell'; gnbName: string; cellIdx: number }   // 分散式 cell(有自己 position 才可拖)
   | { type: 'ue'; name: string };
 
 interface Props {
@@ -53,10 +54,25 @@ interface Props {
   onRemoveWaypoint: (idx: number) => void;
   onMoveBuilding: (name: string, x: number, z: number) => void;
   onMoveGnb: (name: string, x: number, z: number) => void;
+  onMoveCell?: (gnbName: string, cellIdx: number, x: number, z: number) => void;
   onMoveUE: (name: string, x: number, z: number) => void;
   onSelectObject?: (obj: { type: 'building' | 'gnb' | 'ue'; name: string } | null) => void;
   onSelectUEIndex?: (idx: number) => void;
   coverageOverlay?: CoverageOverlayData;
+  mapFootprints?: { points: [number, number][]; height: number }[];
+  // 路徑規劃:A/B 端點與規劃出的路線(繞過建築)
+  pathA?: [number, number] | null;
+  pathB?: [number, number] | null;
+  plannedPath?: [number, number][];
+}
+
+// 依樓高上色(對齊 3D 的 viridis 感):矮=深藍紫、高=青黃
+function footprintColor(h: number): string {
+  const t = Math.max(0, Math.min(1, h / 50));
+  const r = Math.round(40 + t * 180);
+  const g = Math.round(50 + t * 150);
+  const b = Math.round(120 - t * 60);
+  return `rgb(${r},${g},${b})`;
 }
 
 export function TopDownMap({
@@ -72,10 +88,15 @@ export function TopDownMap({
   onRemoveWaypoint,
   onMoveBuilding,
   onMoveGnb,
+  onMoveCell,
   onMoveUE,
   onSelectObject,
   onSelectUEIndex,
   coverageOverlay,
+  mapFootprints,
+  pathA,
+  pathB,
+  plannedPath,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragging, setDragging] = useState<DragTarget | null>(null);
@@ -134,6 +155,8 @@ export function TopDownMap({
       onMoveBuilding(dragging.name, tempPos.x, tempPos.z);
     } else if (dragging.type === 'gnb') {
       onMoveGnb(dragging.name, tempPos.x, tempPos.z);
+    } else if (dragging.type === 'cell') {
+      onMoveCell?.(dragging.gnbName, dragging.cellIdx, tempPos.x, tempPos.z);
     } else if (dragging.type === 'ue') {
       onMoveUE(dragging.name, tempPos.x, tempPos.z);
     }
@@ -223,6 +246,59 @@ export function TopDownMap({
         )
       })()}
 
+      {/* Map footprints (OSM 校園輪廓,背景層,不可互動) */}
+      {mapFootprints && mapFootprints.length > 0 && (
+        <g style={{ pointerEvents: 'none' }}>
+          {mapFootprints.map((f, i) => (
+            <polygon
+              key={`fp-${i}`}
+              points={f.points.map(([x, z]) => `${sx(x)},${sz(z)}`).join(' ')}
+              fill={footprintColor(f.height)}
+              fillOpacity={0.55}
+              stroke="#1a1a2a"
+              strokeWidth={0.5}
+            />
+          ))}
+        </g>
+      )}
+
+      {/* 路徑規劃圖層:A/B 端點 + 繞過建築的規劃路線 */}
+      {(pathA || pathB || (plannedPath && plannedPath.length > 1)) && (
+        <g style={{ pointerEvents: 'none' }}>
+          {/* 直線對照(虛線,可能穿牆) */}
+          {pathA && pathB && (
+            <line x1={sx(pathA[0])} y1={sz(pathA[1])} x2={sx(pathB[0])} y2={sz(pathB[1])}
+                  stroke="#ef4444" strokeWidth={1.5} strokeDasharray="6 4" opacity={0.7} />
+          )}
+          {/* 規劃路徑 */}
+          {plannedPath && plannedPath.length > 1 && (
+            <>
+              <polyline
+                points={plannedPath.map(([x, z]) => `${sx(x)},${sz(z)}`).join(' ')}
+                fill="none" stroke="#22c55e" strokeWidth={3}
+                strokeLinejoin="round" strokeLinecap="round"
+              />
+              {plannedPath.map(([x, z], i) => (
+                <circle key={`pp-${i}`} cx={sx(x)} cy={sz(z)} r={3.5}
+                        fill="#22c55e" stroke="#0b1220" strokeWidth={1} />
+              ))}
+            </>
+          )}
+          {pathA && (
+            <g>
+              <circle cx={sx(pathA[0])} cy={sz(pathA[1])} r={7} fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+              <text x={sx(pathA[0]) + 10} y={sz(pathA[1]) - 8} fill="#f59e0b" fontSize={13} fontWeight="bold">A</text>
+            </g>
+          )}
+          {pathB && (
+            <g>
+              <circle cx={sx(pathB[0])} cy={sz(pathB[1])} r={7} fill="#ef4444" stroke="#fff" strokeWidth={2} />
+              <text x={sx(pathB[0]) + 10} y={sz(pathB[1]) - 8} fill="#ef4444" fontSize={13} fontWeight="bold">B</text>
+            </g>
+          )}
+        </g>
+      )}
+
       {/* Main interactive layer */}
       <g style={{ pointerEvents: 'auto' }}>
         {/* Buildings */}
@@ -260,9 +336,20 @@ export function TopDownMap({
           // AK8 UX: 為每個 sector 畫 azimuth 箭頭。Sionna 慣例 azimuth=0 沿 +X 軸；
           // 而 sx() 把 +X 鏡到螢幕左 → 0° 箭頭視覺指向螢幕左邊（與使用者觀察一致）。
           // 用 sx/sz 映射端點，自動套用同一個鏡射 + 縮放，不用手算 screen delta。
-          const sectors: Array<{ az: number; pci?: number }> = (g.cells && g.cells.length > 0)
-            ? g.cells.map((c: any) => ({ az: c.azimuth_deg ?? 0, pci: c.pci }))
-            : [{ az: g.azimuth_deg ?? 0, pci: g.pci }];
+          // 每個 sector 帶自己的世界座標:有 cell.position(分散式/DAS)畫在該處且可拖;
+          // 沒有(扇區模式)畫在 gNB 中心,拖曳走整站。拖曳中的 cell 用 tempPos 預覽。
+          const sectors: Array<{ az: number; pci?: number; cx: number; cz: number; movable: boolean; idx: number }> =
+            (g.cells && g.cells.length > 0)
+              ? g.cells.map((c: any, ci: number) => {
+                  const dragMe = dragging?.type === 'cell' && dragging.gnbName === g.name && dragging.cellIdx === ci;
+                  const hasPos = Array.isArray(c.position) && c.position.length >= 3;
+                  return {
+                    az: c.azimuth_deg ?? 0, pci: c.pci, idx: ci, movable: hasPos,
+                    cx: dragMe && tempPos ? tempPos.x : (hasPos ? c.position[0] : gx),
+                    cz: dragMe && tempPos ? tempPos.z : (hasPos ? c.position[2] : gz),
+                  };
+                })
+              : [{ az: g.azimuth_deg ?? 0, pci: g.pci, cx: gx, cz: gz, movable: false, idx: 0 }];
           const arrowLenM = 40; // 世界座標 40 m；視覺長度依場景縮放跟著變
           return (
             <g key={`gnb-${g.name}`} opacity={isBeingDragged ? 0.7 : 1}
@@ -281,17 +368,34 @@ export function TopDownMap({
                 onClick={() => onSelectObject?.({ type: 'gnb', name: g.name })}
                 style={{ cursor: 'pointer' }}
               />
-              {/* Azimuth arrows per sector — 箭頭尖端標 PCI */}
+              {/* Azimuth arrows per sector — 箭頭從 sector 自身座標出發,尖端標 PCI */}
               {sectors.map((s, idx) => {
                 const azRad = (s.az * Math.PI) / 180;
-                const endX = gx + arrowLenM * Math.cos(azRad);
-                const endZ = gz + arrowLenM * Math.sin(azRad);
+                const scx = sx(s.cx);
+                const scy = sz(s.cz);
+                const endX = s.cx + arrowLenM * Math.cos(azRad);
+                const endZ = s.cz + arrowLenM * Math.sin(azRad);
                 const ex = sx(endX);
                 const ey = sz(endZ);
                 return (
                   <g key={`gnb-${g.name}-sec-${idx}`} pointerEvents="none">
+                    {/* 分散式 cell:與母站連一條淡虛線 + 可拖曳的方形圖示 */}
+                    {s.movable && (
+                      <>
+                        <line x1={px} y1={py} x2={scx} y2={scy}
+                          stroke={color} strokeWidth={1} strokeOpacity={0.35} strokeDasharray="3,4" />
+                        <rect
+                          x={scx - 6} y={scy - 6} width={12} height={12}
+                          fill={color} fillOpacity={0.9} stroke="#fff" strokeWidth={1.5}
+                          transform={`rotate(45 ${scx} ${scy})`}
+                          pointerEvents="auto"
+                          style={{ cursor: 'move' }}
+                          onMouseDown={handleDragStart({ type: 'cell', gnbName: g.name, cellIdx: s.idx })}
+                        />
+                      </>
+                    )}
                     <line
-                      x1={px} y1={py} x2={ex} y2={ey}
+                      x1={scx} y1={scy} x2={ex} y2={ey}
                       stroke={color} strokeWidth={2} strokeOpacity={0.85}
                       markerEnd={`url(#az-arrow-${g.name}-${idx})`}
                     />
@@ -379,10 +483,12 @@ export function TopDownMap({
         {trajectories.map((t, idx) => {
           if (!t.waypoints || t.waypoints.length === 0) return null;
           const isSelected = idx === selectedUEIndex;
-          const stroke = isSelected ? '#4CAF50' : '#9E9E9E';
-          const opacity = isSelected ? 1 : 0.4;
-          const polylineWidth = isSelected ? 2 : 1;
-          const dash = isSelected ? '6,3' : '4,4';
+          // 每個 UE 一個固定色相,未選取也清楚可辨(舊版灰色 40% 在地圖輪廓上近乎隱形)
+          const TRAJ_COLORS = ['#f59e0b', '#3b82f6', '#ec4899', '#22d3ee', '#a78bfa', '#f97316', '#84cc16'];
+          const stroke = isSelected ? '#4CAF50' : TRAJ_COLORS[idx % TRAJ_COLORS.length];
+          const opacity = isSelected ? 1 : 0.85;
+          const polylineWidth = isSelected ? 2.5 : 1.5;
+          const dash = isSelected ? '6,3' : '5,3';
           return (
             <g key={`traj-${t.name}`} opacity={opacity}>
               {t.waypoints.length > 1 && (

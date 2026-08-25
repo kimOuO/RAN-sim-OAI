@@ -133,7 +133,9 @@ class ScenarioDriver:
             except Exception as e:  # noqa: BLE001
                 logger.warning("gnb sync failed (Omniverse offline?): %s", e)
 
-        # Step 1ab — 同步建築(劇本可帶 buildings 區塊)
+        # Step 1ab — 同步建築(強制對齊,與下面 UE 的 scene sync 一致):
+        # 劇本帶 buildings 就對齊到那組,沒帶(payload 空)就清空既有建築,
+        # 讓「跑無建築劇本 → Omniverse 3D 也沒建築」。故永遠呼叫 sync,不再 guard。
         # 只把劇本顯式給的欄位放進 payload,沒給的(size/color/rotation/target_height)
         # 留給 backend BuildingWriteSerializer 從 preset_id="brownstone01" 取
         # default_size / default_color / default_rotation,跟前端 /editor Build 一致。
@@ -156,12 +158,12 @@ class ScenarioDriver:
             if b.target_height_m is not None:
                 entry["target_height_m"] = b.target_height_m
             building_payload.append(entry)
-        if building_payload:
-            try:
-                bstats = omniverse_client.sync_buildings_to_scenario(building_payload)
-                logger.info("scenario %s building sync: %s", self.scenario.scenario_id, bstats)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("building sync failed (Omniverse offline?): %s", e)
+        # 永遠呼叫:空 payload → 清空建築(強制對齊語意)。失敗只 log,不擋 RAN sim。
+        try:
+            bstats = omniverse_client.sync_buildings_to_scenario(building_payload)
+            logger.info("scenario %s building sync: %s", self.scenario.scenario_id, bstats)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("building sync failed (Omniverse offline?): %s", e)
 
         # Step 1b — 把 Omniverse 場景同步成「只有 scenario 的 UE」:
         # 刪掉上次劇本留下的 + 前端手動建的 stray UE,建上 scenario 缺的,
@@ -244,7 +246,12 @@ class ScenarioDriver:
         # 劇本 a3_enabled None = 用預設關(CCO 等 RC 手動換手不被 A3 彈回);劇本要自動 A3 設 true。
         a3_on = bool(self.scenario.a3_enabled) if self.scenario.a3_enabled is not None else False
         try:
-            ok = cu_client.set_a3(a3_on)
+            ok = cu_client.set_a3(
+                a3_on,
+                offset_db=self.scenario.a3_offset_db,
+                hys_db=self.scenario.a3_hys_db,
+                ttt_ms=self.scenario.a3_ttt_ms,
+            )
             logger.info("scenario %s set A3 enabled=%s: ok=%s",
                         self.scenario.scenario_id, a3_on, ok)
         except Exception as e:  # noqa: BLE001

@@ -245,11 +245,18 @@ def fetch_ue_signals() -> dict[str, dict[str, Any]]:
     # 先用 last_ue_stats(per-tick 即時),fallback ue_latest
     src = data.get("last_ue_stats") or data.get("ue_latest") or {}
     for ue_name, s in src.items():
+        # throughput 用 1s 窗口平均(= KPM DRB.UEThpDl,平滑且與 KPM 一致);
+        # 窗口值還沒 flush 過(剛起 sim)時 fallback 到逐 tick 瞬時值。
+        thp_dl = s.get("throughput_dl_mbps_window")
+        if thp_dl is None:
+            thp_dl = s.get("throughput_dl_mbps_this_tick")
         out[ue_name] = {
             "sinr_db": s.get("sinr_db"),
             "rsrp_dbm": s.get("rsrp_dbm"),
             "serving_cell": s.get("serving_cell") or "",
-            "throughput_dl_mbps": s.get("throughput_dl_mbps_this_tick"),
+            "serving_pci": s.get("serving_pci"),
+            "throughput_dl_mbps": thp_dl,
+            "throughput_ul_mbps": s.get("throughput_ul_mbps_window"),
             "mcs_dl": s.get("mcs_dl"),
             "prb_used_dl": s.get("prb_dl_this_tick"),
             "rlc_buffer_bo": s.get("rlc_buffer_bo_this_tick"),

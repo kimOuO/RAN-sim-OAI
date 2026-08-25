@@ -118,6 +118,11 @@ class NgapRouterActor:
             "InitialContextSetup processed for %s (%d DRBs, serving_cell=%s)",
             ue.ue_id, len(drbs), initial_cell or "<none>",
         )
+        # 2026-08-12:RRC 建立真累計 —— 這裡 serving cell 已知(RRC Setup 階段還沒有)。
+        # 平台 attach 無失敗模型 → Att=Succ(真實語意:每次嘗試都成功,誠實反映)。
+        if initial_cell:
+            from main.apps.cu_cp.actors.f1ap_router_actor import _bump_estab_counter
+            _bump_estab_counter(initial_cell, att=1, succ=1)
         return success_response({
             "ue_id": ue.ue_id,
             "drbs": drbs,

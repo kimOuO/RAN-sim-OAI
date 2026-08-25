@@ -136,11 +136,14 @@ def delete_building(name: str) -> bool:
 
 
 def sync_buildings_to_scenario(scenario_buildings: list[dict[str, Any]]) -> dict[str, int]:
-    """劇本帶 buildings 時把場景對齊。沒帶就回 {} 不動建築。
+    """把 Omniverse 建築對齊到劇本(強制對齊,與 UE 的 sync_scene_to_scenario 一致):
+      - 在 DB 但不在劇本的建築 → delete(含上一場殘留、前端手動建的)
+      - 在劇本但不在 DB 的 → upsert
+      - 劇本沒帶 buildings(空 list)→ wanted 為空 → 清空所有建築
+    最後一律 Scene/build 讓 Kit 反映。這樣「跑無建築劇本 → 3D 就沒建築」。
     傳入 [{name, position:[x,y,z], size:[x,y,z], color, rotation_xyz_deg, material, ...}]
     """
-    if not scenario_buildings:
-        return {}
+    scenario_buildings = scenario_buildings or []
     existing = set(list_buildings_in_db())
     wanted_names = {b["name"] for b in scenario_buildings}
     to_del = existing - wanted_names

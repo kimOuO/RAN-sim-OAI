@@ -1,0 +1,75 @@
+@startuml UCE_precompute_cached
+!pragma teoz true
+
+title "UC-E：Precompute → cached 模式\n離線把 (tick, ue, cell) path_gain 算成 .npz，供 sim 查表跳過 Sionna"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 13
+skinparam DefaultFontName Arial
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor Caller as "Dashboard / API"
+
+box "Physics :8104 (GPU)" #Thistle
+    participant PC as "PrecomputeActor\n(/Precompute/run)"
+    participant RUN as "run_precompute.py\n(subprocess)"
+    participant SION as "SionnaBusinessService\n(compute_paths, in-process)"
+end box
+
+box "劇本倉庫" #LightGray
+    participant STORE as "Scenario store\n(Omniverse / physics_db)"
+end box
+
+database NPZ as "/data/channel_cache\n{scenario_id}.npz"
+
+group Precompute [離線批次]
+    autonumber 1.1
+    Caller -> PC : POST /Physics/Precompute/run {scenario_id}
+    activate PC
+    PC -> RUN : spawn subprocess(scenario_id)
+    PC --> Caller : {scenario_id, running, pid}
+    deactivate PC
+
+    autonumber 1.2
+    activate RUN
+    RUN -> STORE : /RAN/Scenario/ScenarioController/read\n(duration, tick_ms, UE 軌跡)
+    activate STORE
+    STORE --> RUN : scenario JSON
+    deactivate STORE
+
+    autonumber 1.3
+    RUN -> SION : reload_scene_config()  (載 Mitsuba 場景)
+
+    autonumber 1.4
+    loop 每 tick
+        RUN -> RUN : 內插 UE 位置\n(靜止則沿用上一 tick，省 GPU)
+        opt 位置有變
+            RUN -> SION : compute_paths(ue_positions)
+            activate SION
+            SION --> RUN : path_gain_linear {ue:{cell:pg}}
+            deactivate SION
+        end
+        RUN -> RUN : 堆進 [tick, ue, cell] path_gain_db
+    end
+
+    autonumber 1.5
+    opt 每 50 ticks
+        RUN -> STORE : PATCH ScenarioController/update_status\n{precompute_progress}
+    end
+
+    autonumber 1.6
+    RUN -> NPZ : np.savez_compressed(path_gain_db, ue_names,\ncell_names, tick_ms, total_ticks)
+    autonumber 1.7
+    RUN -> STORE : update_status {ready, cache_path}
+    deactivate RUN
+end group
+
+note over NPZ
+  之後跑 sim 的 cached 模式 (見 UC-A 步 1.9 / UC-B 步 2.2)：
+  RU  channel_cache_loader 讀此 .npz (查表 <0.1ms)
+  DU  channel_cache_du    讀同一 .npz (in-process SINR)
+  → 跳過 Sionna，解鎖高倍速 (sustained ~7-8x)
+end note
+@enduml

@@ -42,6 +42,9 @@ if len(buf_by_sn[hdr["sn"]]) == hdr["parts"]:
     data = json.loads(zlib.decompress(comp))   # ← E2_data_example.md 的 data 區
 ```
 
+> wire 上**不含** `success/message/data` 外層(那是 HTTP API 回應包裝);
+> 解壓後第一層即 `timestamp_ms / e2 / ue_status / pm / bbu_status / warnings`。
+
 `data` 結構 = `{timestamp_ms, compute_ms, tick_ms, e2:[...], ue_status:[...], pm:{...}, bbu_status:{...}, warnings:[]}`。
 
 ## 注意事項

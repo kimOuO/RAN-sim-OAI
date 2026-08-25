@@ -29,6 +29,13 @@ class HandoverEvent(models.Model):
     started_at = models.DateTimeField()
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    # P2-2(2026-08-12):HO 失敗原因(status=FAIL 時填)。空 = 成功或未判。
+    # 值域對齊 ANR情境_v8:CellNotAvailable / RandomAccessProblem /
+    # TXnRELOCprepExpiry / HandoverToWrongCell。
+    failure_cause = models.CharField(max_length=32, blank=True, default="")
+    # P2-1:MRO 歸因(TooEarly/TooLate/ToWrongCell),由歸因引擎回填。
+    mro_class = models.CharField(max_length=16, blank=True, default="")
+
     class Meta:
         app_label = "cu_cp"
         db_table = "cu_cp_handover_event"

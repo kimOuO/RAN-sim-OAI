@@ -23,6 +23,8 @@ class MeasurementLog(models.Model):
     pdcp_sdu_volume_dl = models.BigIntegerField(default=0)
     pdcp_sdu_volume_ul = models.BigIntegerField(default=0)
     rlc_sdu_delay_dl_ms = models.FloatField(default=0.0)
+    # 2026-08-12(D):UE 的 5QI → delay/thp per-5QI 分桶(AirIfDelayDlAvg.5QI1 轉真)
+    qos_5qi = models.IntegerField(default=9)
     neighbor_cells_json = models.JSONField(default=list)
 
     recorded_at = models.DateTimeField(db_index=True)

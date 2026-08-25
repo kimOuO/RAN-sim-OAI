@@ -63,6 +63,19 @@ class CuClientBusinessService:
             return False
 
     @staticmethod
+    def post_rlf_report(payload: dict[str, Any], timeout: float = 5.0) -> bool:
+        """P1-1:DU 偵測到 RLF → 通報 CU(對齊 F1AP UE Context Release / RLF indication)。
+        payload: {ue_id, serving_cell, sinr_at_rlf, t310_ms, reason, strongest_cell?, strongest_rsrp?}
+        """
+        url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/rlf_report"
+        try:
+            r = requests.post(url, json=payload, timeout=timeout)
+            return r.ok
+        except requests.RequestException as e:
+            logger.warning("post_rlf_report failed: %s", e)
+            return False
+
+    @staticmethod
     def post_ul_rrc_message(payload: dict[str, Any], timeout: float = 5.0) -> bool:
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message"
         try:

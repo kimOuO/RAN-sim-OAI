@@ -86,7 +86,9 @@ class SessionControllerActor:
             try:
                 drbs = [{
                     "drb_id": bearer_id,
-                    "qos_5qi": 9,        # 預設 non-GBR 9 (best-effort web)
+                    # P0-6(2026-08-11):吃 traffic profile 的 5QI(預設 9 best-effort);
+                    # 5QI 1~4 會讓 DU PF 排程器走 GBR-first 優先權
+                    "qos_5qi": int(profile.get("qos_5qi", 9) or 9),
                     "rlc_mode": "AM",
                 }]
                 DuClientBusinessService.post_ue_context_setup(
@@ -229,6 +231,13 @@ class SessionControllerActor:
             )
 
         now = TimestampService.now()
+        # A(2026-08-12):釋放前把各 UE session 存活秒數落帳到 serving cell(真累計)
+        try:
+            from main.apps.cu_cp.services.business.cell_counters import add_session_time
+            for _u in all_qs.filter(rrc_state="CONNECTED").exclude(serving_cell=""):
+                add_session_time(_u.serving_cell, (now - _u.created_at).total_seconds())
+        except Exception:
+            logger.exception("session-time accounting on release failed")
         updated = all_qs.update(rrc_state="IDLE", serving_cell="", updated_at=now)
         logger.info("release_all marked %d UEs IDLE", updated)
         return success_response(
@@ -341,6 +350,13 @@ class SessionControllerActor:
                 f"deleted {count} stale UEs",
             )
 
+        # A(2026-08-12):釋放前 session 秒數落帳
+        try:
+            from main.apps.cu_cp.services.business.cell_counters import add_session_time
+            for _u in stale_qs.filter(rrc_state="CONNECTED").exclude(serving_cell=""):
+                add_session_time(_u.serving_cell, (now - _u.created_at).total_seconds())
+        except Exception:
+            logger.exception("session-time on release_stale failed")
         updated = stale_qs.update(rrc_state="IDLE", serving_cell="", updated_at=now)
         logger.info("release_stale marked %d UEs IDLE: %s", updated, stale_ids)
 

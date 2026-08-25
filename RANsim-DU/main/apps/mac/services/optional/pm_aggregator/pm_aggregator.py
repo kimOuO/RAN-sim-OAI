@@ -153,6 +153,9 @@ class _GnbAccumulator:
         self.num_sinr_meas = 0
         self.last_rsrp_sum = 0
         self.num_rsrp_meas = 0
+        # P0-1(2026-08-11):per-cell RLC drop 累計 — PdcpPacketDiscardDL 上報鏈
+        self.rlc_drop_sdus = 0
+        self.rlc_drop_bytes = 0
 
 
 @dataclass
@@ -347,6 +350,13 @@ class PmAggregatorService:
         acc = self._ue_acc_for(ue_id)
         acc.rlc_drop_sdus += int(dropped_sdus)
         acc.rlc_drop_bytes += int(dropped_bytes)
+        # P0-1:同步累進 per-cell 帳本(session 累計,dump_pm 曝光 → FullReporter
+        # 填 cu_DRB.PdcpPacketDiscardDL.5QI9)。cell 從 UE window 的 serving_cell 反查。
+        cell = acc.serving_cell
+        if cell:
+            g = self._acc_for(cell)
+            g.rlc_drop_sdus += int(dropped_sdus)
+            g.rlc_drop_bytes += int(dropped_bytes)
 
     def flush_ue_report(self, ue_id: str, window_seconds: float) -> dict[str, Any] | None:
         """取出 UE 在 window 內的累積報告並 reset。完全沒資料才回 None。
@@ -390,6 +400,9 @@ class PmAggregatorService:
                 "harq_errors_ul": acc.harq_errors_ul,
                 "avg_sinr_db": avg_sinr,
                 "avg_rsrp_dbm": avg_rsrp,
+                # P0-1:per-cell RLC drop(PdcpPacketDiscardDL 資料源)
+                "rlc_drop_sdus": acc.rlc_drop_sdus,
+                "rlc_drop_bytes": acc.rlc_drop_bytes,
             }
         return out
 

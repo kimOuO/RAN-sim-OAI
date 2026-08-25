@@ -76,6 +76,8 @@ class GnbDuMeasurementReport:
     pdcp_sdu_volume_ul: int = 0
     # 平均 RLC SDU 延遲 (ms) — 對齊 DRB.RlcSduDelayDl（暫不採集，預留）
     rlc_sdu_delay_dl_ms: float = 0.0
+    # 2026-08-12(D):UE 的 5QI —— CU 端 delay/thp per-5QI 分桶用(AirIfDelayDlAvg.5QI1 轉真)
+    qos_5qi: int = 9
     neighbor_cells: list[NeighborMeas] = field(default_factory=list)
 
 

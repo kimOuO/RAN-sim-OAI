@@ -244,10 +244,18 @@ HO 兩階段:Prep(source 向 target 要資源)與 Exec(UE 實際切換)。Req/Su
 | MM.Ho\*、MR.Event.A3 | 狀態機事件計數,發生一次記一次 |
 | ConnMean | 當下 CONNECTED 數,直接 count |
 | PRBUsageNbr(顆數版)| 排程器實配 PRB 原始累計,無校正 |
-| UE position | 移動引擎真實座標 |
+| **RLF.\* / ReEstab\* / 釋放計數(gNBinit)**(P1/P2)| RlfEvent 真事件計數:掉線、重建、gNB 發起釋放皆真狀態轉移(Sionna SINR 驅動)|
+| **RRC.ConnEstabAtt/Succ 四族**(2026-08-12 轉真)| RrcEstabCounter:InitialCtxSetup 事件 +1,只加不減、HO 不搬家(真歷史累計);平台 attach 無失敗模型 → Att=Succ |
+| **SessionTime / ConnMean / ConnMax**(2026-08-12 轉真)| CellCumCounter:釋放時落帳(含歷史)/ 取樣真平均 / 持久高水位(CU 重啟不歸零)|
+| **AirIfDelayDlAvg per-5QI**(2026-08-12)| MeasurementLog 帶 qos_5qi → delay 按業務分桶,5QI1(語音)delay 可直接量測 |
+| **RelActNbr**(掉話時活躍 DRB)| = RLF 掉話數(掉話 UE 必在傳輸中)|
 
-兩個註記:
-- **position 是模擬器上帝視角** —— 真網路沒有這個資料(UE 位置要靠定位技術估算),「比現實更真」也是一種失真
+三個註記:
+- **position 上帝視角**(見下)
+- **Volume PDCP 名義為 RLC 代理**(見下)
+- **釋放計數只涵蓋 gNB 發起(=RLF 掉話)**;核網發起(`Release.5GCinit.*`)平台無此流程 → 維持誠實 0,不列入
+
+- **UE position 已於 2026-08-12 移除**(原為 legacy 範例格式帶入)—— 真實 E2/KPM 不攜帶 UE 位置(真網路需定位技術估算),送出會給 xApp 現實中拿不到的資料
 - **Volume 的 PDCP 名義實為 RLC bytes 代理**(無 PDCP 層,差 header 數 byte)
 
 ### B 級 — 有值且真,但是**計算/推導**,不是獨立量測(原料真、函數是自選的)
@@ -259,6 +267,8 @@ HO 兩階段:Prep(source 向 target 要資源)與 Exec(UE 實際切換)。Req/Su
 | quality | SINR 門檻分級 | 分級線自定義 |
 | rb_start | 同 cell 按 rb_width 虛擬疊排 | 寬度真、起點是表示法 |
 | cpu_power | CPU% × 65W TDP | 65W 是假設,非功率計 |
+
+| **MRO 三聯 / HO failureCause** | RLF+HO 時序推導分類（TooEarly/Late/WrongCell）| 真事件時序,但分類門檻（T_SHORT 5s 等)自定義 |
 
 ### C 級 — 有真實基礎,但**有已知爭議**(絕對值須帶不確定性說明)
 | 欄位 | 爭議 |
@@ -273,9 +283,9 @@ HO 兩階段:Prep(source 向 target 要資源)與 Exec(UE 實際切換)。Req/Su
 
 | 欄位 | 代理方式 |
 |---|---|
-| ConnEstab / UECNTX / SM / DRB.Estab 四族 | 以現值(當下連線數)代理歷史累計 |
 | bbu_status 全族 | 量測對象是模擬主機,不是被模擬的 gNB 硬體 |
 | PEE 溫度 | VM 無感測器,恆 0 |
+| **ConnReConfigAtt/Succ**（2026-08-12）| HO 執行鏡像 —— 換手是真的,但「Reconfig」欄位在借 HO 的數(真實 Reconfig 還含量測配置變更,平台只有 HO 一來源)|
 
 **使用鐵則**:相對比較(cell 間、換手前後、趨勢)→ 四級全可用;
 絕對值入報告 → A 直接用、B 註明推導、C 帶不確定性、D 聲明 proxy。

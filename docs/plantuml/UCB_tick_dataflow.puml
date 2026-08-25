@@ -1,0 +1,131 @@
+@startuml UCB_tick_dataflow
+!pragma teoz true
+
+title "UC-B：一個 tick 的資料流 (DU tick_runner 為心跳)\nsim_dt=500ms/tick；wall 可縮短加速；tick 內以 0.5ms slot 建模 delay"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 13
+skinparam DefaultFontName Arial
+hide footbox
+skinparam sequenceMessageAlign center
+
+box "RANsim-UE :8105" #LightGreen
+    participant UE as "traffic_gen\n(trajectory loop)"
+end box
+
+box "RANsim-DU :8102  ★模擬真實來源★" #LightYellow
+    participant Tick as "TickRunner\n(_tick_body)"
+    participant RLC as "rlc_factory\n(AM/UM/TM entity)"
+    participant SCH as "PF scheduler\n(+ prb_quota cap)"
+    participant MCS as "mcs_controller\n(SINR→MCS→TBS)"
+    participant SLOT as "slot_engine\n(0.5ms slot) 🟣"
+    participant DUCACHE as "channel_cache_du\n(in-process SINR)"
+    participant PM as "pm_aggregator\n(+ ul_buffer)"
+    participant RUClient as "RuClient\n(fapi_north)"
+    participant CUClient as "CuClient\n(f1ap_du)"
+end box
+
+box "RANsim-RU :8103" #Wheat
+    participant RUPipe as "dl_tti_pipeline\n(_compute_sinr...)"
+end box
+
+box "Physics :8104" #Thistle
+    participant PHY as "PathSolver\n(Sionna, ~200ms)"
+end box
+
+box "RANsim-CU :8101" #LightCyan
+    participant CU as "F1ApRouter\n(measurement_report)"
+end box
+
+autonumber 0
+UE -> RLC : (非同步)POST /DU/RLC/inject_sdu_batch\nper-packet ts_offset → RLC buffer
+
+group TickRunner._tick_body [每 tick]
+    autonumber 2.1
+    Tick -> RLC : buffer_status / take_delay_samples\ntake_sdu_arrivals / take_drop_samples
+    activate Tick
+    activate RLC
+    RLC --> Tick : bo_by_ue, delay_by_ue, arrivals, drops
+    deactivate RLC
+
+    autonumber 2.2
+    alt DU_RU_INPROCESS=on (cached 模式，無 HTTP 延遲)
+        Tick -> DUCACHE : sinr_for_ue(now_sim, ue_id, serving_cell)
+        activate DUCACHE
+        DUCACHE -> DUCACHE : 讀 .mode → npz lookup\ncompute_sinr_db(gains, serving_tx)
+        DUCACHE --> Tick : sinr_db (同 tick)
+        deactivate DUCACHE
+    else 預設 live-HTTP
+        note over Tick : 使用上一 tick RU 回填的 _ue_registry SINR\n(★ 1-tick lag ★)
+    end
+
+    autonumber 2.3
+    Tick -> SCH : allocate(gnb, ues, n_prb×cap_factor, tick_ms)
+    activate SCH
+    SCH -> SCH : PF = inst_rate/avg_rate；2-pass\nprb_needed=ceil(bo·8/bits_per_prb)；retx-aware
+    SCH --> Tick : rb_alloc_global
+    deactivate SCH
+
+    autonumber 2.4
+    Tick -> MCS : update/get_mcs；sinr_to_mcs;\nmcs_to_throughput → tbs_map
+
+    autonumber 2.5
+    Tick -> RLC : generate_pdu(budget, now_sim)
+    activate RLC
+    RLC --> Tick : actual_drained_map (真實排空 bytes)
+    deactivate RLC
+
+    autonumber 2.6
+    Tick -> RUClient : build_dl_tti → encode → post_dl_tti_request
+    activate RUClient
+    RUClient -> RUPipe : POST /RU/FAPI/FapiRouter/dl_tti_request
+    activate RUPipe
+    alt cached
+        RUPipe -> RUPipe : ccache.lookup(sfn·20+slot, ue)
+    else live
+        RUPipe -> PHY : compute_paths(psr)
+        activate PHY
+        PHY --> RUPipe : path_gain / channel matrix
+        deactivate PHY
+    end
+    RUPipe -> RUPipe : _compute_sinr_db_with_real_interference\n= S/(Σ同頻干擾+noise)；PMI→rank；sinr_to_cqi
+    RUPipe --> RUClient : CqiIndication[]
+    deactivate RUPipe
+    RUClient -> Tick : (非同步回填)POST /DU/FAPI/cqi_indication\nupdate_ue_sinr → 供【下一 tick】用
+    deactivate RUClient
+
+    autonumber 2.7
+    Tick -> PM : UL: ul_buffer.report/drain (TCP-ACK 模型)\naccumulate_ue(dl/ul bytes, mcs, sinr, prb, rank)\naccumulate_cell_ul(prb_ul)
+    activate PM
+    PM --> Tick
+    deactivate PM
+
+    autonumber 2.8
+    opt SLOT_ENGINE_TAKEOVER=on
+        Tick -> SLOT : simulate_sdu_delays(sdus, sinr, n_prb,\nk0_slots, discard_timer)
+        activate SLOT
+        SLOT -> SLOT : 🟣 逐 0.5ms slot：K0 pipeline / TDD /\nBLER-HARQ retx / FIFO drain → per-SDU delay
+        SLOT --> Tick : SlotResult(delays_ms, retx_slots, dropped)
+        deactivate SLOT
+        Tick -> PM : accumulate_rlc_delay(delays)  ← 取代 /30 calib
+    end
+
+    autonumber 2.9
+    opt 每 REPORT_EVERY_N_TICKS (PM_WINDOW=1s → 每 2 tick)
+        Tick -> PM : flush_ue_report / flush_cell_report
+        activate PM
+        PM --> Tick : per-UE + per-cell KPM (含 ThpUl/PrbUl/VolUl)
+        deactivate PM
+        Tick -> CUClient : post_measurement_report / post_cell_measurement_report
+        activate CUClient
+        CUClient -> CU : POST /CU/F1AP/F1ApRouter/measurement_report\n+ /cell_measurement_report
+        deactivate CUClient
+        note right of CU : KPM 進 CU → 供 E2Adapter 拉走 (見 UC-C)
+    end
+
+    autonumber 2.10
+    Tick -> Tick : 推進 sfn/slot (slot%20, sfn%1024)
+    deactivate Tick
+end group
+@enduml

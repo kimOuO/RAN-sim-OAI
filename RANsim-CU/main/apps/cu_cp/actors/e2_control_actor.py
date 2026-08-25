@@ -311,8 +311,20 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
     # 目標 CGI 走 ControlMessage Format 1(與逐 UE 換手同一半),resolve 共用
     target_cell, _src = resolve_target_cell({"target_cgi": message.get("target_cgi_msg") or {},
                                              **message})
-    if not target_cell or not serving or tgt_pci is None:
-        return error_response("handover_group requires serving_cell_ncgi, target_pci, target CGI", status=400)
+    if not serving or tgt_pci is None:
+        return error_response("handover_group requires serving_cell_ncgi, target_pci", status=400)
+    if not target_cell:
+        # target CGI 解不開(如 NCI 打錯)不是通訊錯:回 REJECTED outcome 讓 xApp
+        # 分得出「匹配 0」「執行失敗」「target 錯」三態(RIC 第十七輪第 3 點)。
+        outcome = {
+            "requestType": "HO_GROUP", "ueGroupId": grp_id,
+            "servingCellNcgi": serving,
+            "matchedUeCount": 0, "executedCount": 0, "failedCount": 0,
+            "targetCgi": None, "result": "REJECTED",
+            "detail": "target CGI unresolved — check NR Cell Identity",
+        }
+        logger.info("HO_GROUP grp=%d %s target unresolved → REJECTED", grp_id, serving)
+        return success_response({"control_outcome": outcome}, "handover_group processed")
 
     # 條件解析:駐留 serving 且近 2 分鐘量測回報含 target pci 的 UE
     win = TimestampService.now() - timedelta(minutes=2)

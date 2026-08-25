@@ -388,6 +388,9 @@ services:
     container_name: ransim-e2adapter
     network_mode: host        # SCTP outbound 跨主機必要
     environment:
+      # 換模組窗口(2026-08-25 開窗令):RC 內層改用 RIC 預編譯模組
+      # (Format 3 / UE Group)。回退 = 改 off 重啟。E2AP 外層不受影響。
+      RC_MODULE_V10: "on"
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"

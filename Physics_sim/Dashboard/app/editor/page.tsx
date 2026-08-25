@@ -10,9 +10,11 @@ import { ObjectForm } from '@/components/ObjectForm';
 import { SignalTable } from '@/components/SignalTable';
 import { SignalChart } from '@/components/SignalChart';
 import { MimoSettingsPanel } from '@/components/MimoSettingsPanel';
+import { MapGenerator } from '@/components/MapGenerator';
+import { planPath, listMaps, type PlannedPath } from '@/services/api/map';
 import * as omniverseApi from '@/services/api/omniverse';
 import { initScene } from '@/services/api/scene';
-import { computeCoverage, type CoverageResponse } from '@/services/api/coverage';
+import { computeCoverage, getLoadedSceneId, type CoverageResponse } from '@/services/api/coverage';
 import { updateTrafficProfile, type TrafficProfile } from '@/services/api/ueProfile';
 import { setSimSpeed, getStatus } from '@/services/api/simLoop';
 import { listScenarios, applyScenarioToScene, type ScenarioRow } from '@/services/api/scenario';
@@ -185,11 +187,96 @@ export default function SceneEditor() {
     }
   };
 
+  // ── 路徑規劃(點 A/B → A* 繞過建築 → 建 UE)────────────────
+  const [pathMode, setPathMode] = useState(false);
+  const [pathA, setPathA] = useState<[number, number] | null>(null);
+  const [pathB, setPathB] = useState<[number, number] | null>(null);
+  const [planned, setPlanned] = useState<PlannedPath | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const [planMsg, setPlanMsg] = useState('');
+  const [newUeName, setNewUeName] = useState('');
+
+  const activeMapName = async (): Promise<string | null> => {
+    try {
+      const maps = await listMaps();
+      return maps.find((m) => m.active)?.name ?? null;
+    } catch { return null; }
+  };
+
+  /** 畫布點擊:路徑模式下第一下設 A、第二下設 B 並規劃 */
+  const handlePathClick = async (x: number, z: number) => {
+    if (!pathA || (pathA && pathB)) {
+      setPathA([x, z]); setPathB(null); setPlanned(null);
+      setPlanMsg('已設 A 點,再點一下設 B 點');
+      return;
+    }
+    const b: [number, number] = [x, z];
+    setPathB(b);
+    setPlanning(true); setPlanMsg('規劃中…');
+    try {
+      const name = await activeMapName();
+      if (!name) { setPlanMsg('✗ 尚未套用地圖(需先在上方選一張地圖套用)'); return; }
+      const r = await planPath(name, pathA, b);
+      setPlanned(r);
+      const snap = (r.start_snapped || r.goal_snapped) ? '(端點在建築內,已自動移到空地)' : '';
+      setPlanMsg(`✓ ${r.waypoint_count} 點 / ${r.path_length_m}m(直線 ${r.direct_distance_m}m,繞行 ${r.detour_ratio}x)${snap}`);
+    } catch (e: any) {
+      setPlanMsg(`✗ ${e?.response?.data?.message ?? e?.message ?? e}`);
+      setPlanned(null);
+    } finally { setPlanning(false); }
+  };
+
+  // 套用規劃路徑到「既有 UE」(取代其軌跡;位置移到路徑起點)
+  const [applyUeName, setApplyUeName] = useState('');
+  const handleApplyPathToUe = async () => {
+    if (!planned || !applyUeName) return;
+    setPlanning(true);
+    try {
+      await omniverseApi.updateUe(applyUeName, {
+        waypoints: planned.waypoints,
+        // 後端 UEController/update 的 position 格式是 [x, y, z] 陣列
+        position: [planned.waypoints[0][0], 0, planned.waypoints[0][2]],
+        loop: true,
+      });
+      setPlanMsg(`✓ 已把路徑套用到「${applyUeName}」(重新 Start Sim 生效)`);
+      setApplyUeName(''); setPathA(null); setPathB(null); setPlanned(null);
+      await draw.refreshScene();
+    } catch (e: any) {
+      setPlanMsg(`✗ 套用失敗:${e?.response?.data?.message ?? e?.message ?? e}`);
+    } finally { setPlanning(false); }
+  };
+
+  const handleCreateUeFromPath = async () => {
+    if (!planned || !newUeName.trim()) return;
+    setPlanning(true);
+    try {
+      await omniverseApi.createUe({
+        name: newUeName.trim(),
+        position: { x: planned.waypoints[0][0], y: 0, z: planned.waypoints[0][2] },
+        speed_mps: 1.4,
+        loop: true,
+        preset_id: 'female_office',
+        waypoints: planned.waypoints,
+      });
+      setPlanMsg(`✓ 已建立 UE「${newUeName.trim()}」`);
+      setNewUeName(''); setPathA(null); setPathB(null); setPlanned(null);
+      await draw.refreshScene();
+    } catch (e: any) {
+      setPlanMsg(`✗ 建立失敗:${e?.response?.data?.message ?? e?.message ?? e}`);
+    } finally { setPlanning(false); }
+  };
+
+  const clearPath = () => {
+    setPathA(null); setPathB(null); setPlanned(null); setPlanMsg('');
+  };
+
   const handleComputeCoverage = async () => {
     setCoverageLoading(true);
     try {
+      // 場景可能來自地圖/劇本/手拉,scene_id 必須跟 Physics 已載入的一致
+      const sceneId = await getLoadedSceneId();
       const result = await computeCoverage({
-        scene_id: 'default',
+        scene_id: sceneId,
         grid: {
           x_range: [-500, 500],
           x_step: 11,
@@ -282,6 +369,105 @@ export default function SceneEditor() {
         <h2 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 20px 0' }}>
           Scene Editor
         </h2>
+
+        {/* MAP — OpenStreetMap → USD 地圖產生 + 名稱選取套用 */}
+        <MapGenerator
+          disabled={simRunning || coverageLoading}
+          onApplied={() => draw.refreshScene()}
+        />
+
+        {/* UE 路徑規劃 — 點 A/B,A* 自動繞過建築(解決穿牆) */}
+        <div style={{ marginBottom: '32px' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#9ca3af', marginBottom: '12px' }}>
+            UE 路徑規劃(繞過建築)
+          </h3>
+          <button
+            onClick={() => { setPathMode(!pathMode); clearPath(); }}
+            style={{
+              width: '100%', padding: '9px 12px',
+              background: pathMode ? '#22c55e' : 'transparent',
+              color: pathMode ? '#fff' : '#9ca3af',
+              border: `1px solid ${pathMode ? '#22c55e' : '#374151'}`,
+              borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {pathMode ? '● 路徑模式(點畫布選 A→B)' : '啟用路徑規劃模式'}
+          </button>
+
+          {pathMode && (
+            <>
+              <div style={{ fontSize: '11px', color: planMsg.startsWith('✗') ? '#f87171' : '#6b7280', marginTop: '8px', lineHeight: 1.5 }}>
+                {planning ? '規劃中…' : (planMsg || '在畫布上點第一下設 A 點,第二下設 B 點')}
+              </div>
+
+              {planned && (
+                <div style={{ marginTop: '10px' }}>
+                  <input
+                    value={newUeName}
+                    onChange={(e) => setNewUeName(e.target.value)}
+                    placeholder="新 UE 名稱"
+                    style={{
+                      width: '100%', padding: '7px 9px', background: '#111827', color: '#e5e7eb',
+                      border: '1px solid #374151', borderRadius: '5px', fontSize: '12px',
+                      boxSizing: 'border-box', marginBottom: '6px',
+                    }}
+                  />
+                  <button
+                    onClick={handleCreateUeFromPath}
+                    disabled={planning || !newUeName.trim()}
+                    style={{
+                      width: '100%', padding: '9px 12px',
+                      background: (planning || !newUeName.trim()) ? '#374151' : '#3b82f6',
+                      color: '#fff', border: 'none', borderRadius: '6px',
+                      fontSize: '13px', fontWeight: 600,
+                      cursor: (planning || !newUeName.trim()) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    以此路徑建立 UE
+                  </button>
+
+                  {/* 或:套用到既有 UE */}
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                    <select
+                      value={applyUeName}
+                      onChange={(e) => setApplyUeName(e.target.value)}
+                      disabled={planning}
+                      style={{
+                        flex: 1, padding: '7px 9px', background: '#111827', color: '#e5e7eb',
+                        border: '1px solid #374151', borderRadius: '5px', fontSize: '12px',
+                      }}
+                    >
+                      <option value="">— 或套用到既有 UE —</option>
+                      {(draw.sceneConfig?.ues ?? []).map((u: any) => (
+                        <option key={u.name} value={u.name}>{u.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleApplyPathToUe}
+                      disabled={planning || !applyUeName}
+                      style={{
+                        width: '84px', padding: '7px 0',
+                        background: (planning || !applyUeName) ? '#374151' : '#22c55e',
+                        color: '#fff', border: 'none', borderRadius: '6px',
+                        fontSize: '12px', fontWeight: 600,
+                        cursor: (planning || !applyUeName) ? 'not-allowed' : 'pointer',
+                      }}
+                    >套用路徑</button>
+                  </div>
+                </div>
+              )}
+
+              {(pathA || planned) && (
+                <button onClick={clearPath}
+                  style={{
+                    width: '100%', marginTop: '6px', padding: '7px 12px', background: 'transparent',
+                    color: '#9ca3af', border: '1px solid #374151', borderRadius: '6px',
+                    fontSize: '12px', cursor: 'pointer',
+                  }}>清除路徑</button>
+              )}
+            </>
+          )}
+        </div>
 
         {/* SCENARIO — 選劇本即把劇本拓樸套進場景(Scene Layout + 3D 反映劇本) */}
         <div style={{ marginBottom: '32px' }}>
@@ -647,13 +833,18 @@ export default function SceneEditor() {
             buildings={draw.sceneConfig?.buildings ?? []}
             gnbs={draw.sceneConfig?.gnbs ?? []}
             ues={draw.sceneConfig?.ues ?? []}
+            mapFootprints={draw.sceneConfig?.map_footprints}
             selectedUEIndex={draw.selectedUEIndex}
             trajectories={draw.trajectories}
-            onAddWaypoint={draw.handleAddWaypoint}
+            onAddWaypoint={pathMode ? handlePathClick : draw.handleAddWaypoint}
+            pathA={pathA}
+            pathB={pathB}
+            plannedPath={planned ? planned.waypoints.map((w) => [w[0], w[2]] as [number, number]) : undefined}
             onMoveWaypoint={draw.handleMoveWaypoint}
             onRemoveWaypoint={draw.handleRemoveWaypoint}
             onMoveBuilding={draw.handleMoveBuilding}
             onMoveGnb={draw.handleMoveGnb}
+            onMoveCell={draw.handleMoveCell}
             onMoveUE={draw.handleMoveUE}
             onSelectObject={setSelectedObject}
             onSelectUEIndex={draw.setSelectedUEIndex}
@@ -806,7 +997,23 @@ export default function SceneEditor() {
             </label>
             {!simRunning ? (
               <button
-                onClick={handleStartSim}
+                onClick={async () => {
+                  // 規劃路徑自動落地:Start 時若有「規劃好但未套用」的路徑,
+                  // 依面板選擇自動套用(選了 UE→套用;填了新名→建立);
+                  // 兩者都沒有 → 擋下 Start 並提示,避免「畫面有路線、模擬卻沒有」的落差。
+                  if (planned) {
+                    if (applyUeName) {
+                      await handleApplyPathToUe();          // 內含寫 DB + refreshScene
+                    } else if (newUeName.trim()) {
+                      await handleCreateUeFromPath();
+                    } else {
+                      setPlanMsg('⚠ 規劃路徑尚未套用:請在路徑面板「選一個 UE 套用」或「輸入新 UE 名稱建立」,或按「清除路徑」放棄,再 Start');
+                      return;                                // 擋下,不啟動
+                    }
+                  }
+                  setPathA(null); setPathB(null); setPathMode(false);
+                  handleStartSim();
+                }}
                 disabled={draw.loading || coverageLoading}
                 style={{
                   padding: '10px 20px',

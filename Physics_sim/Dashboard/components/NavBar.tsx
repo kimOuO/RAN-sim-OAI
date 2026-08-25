@@ -7,6 +7,7 @@ import styles from './NavBar.module.css';
 const NAV_ITEMS = [
   { href: '/editor', label: 'Scene Editor' },
   { href: '/logs', label: 'Logs' },
+  { href: '/e2', label: 'E2 Data' },
   { href: '/scenarios', label: 'Scenarios' },
   { href: '/playback', label: 'Playback' },
 ];

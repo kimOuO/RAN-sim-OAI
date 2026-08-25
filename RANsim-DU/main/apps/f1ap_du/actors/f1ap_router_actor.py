@@ -85,6 +85,12 @@ class F1ApRouterController:
         get_ra_manager().msg1_detected(ue_id, ts_mac)
         get_harq_manager().add_ue(ue_id)
 
+        # P0-6:DRB 5QI → tick registry(PF 排程器 GBR-first 讀這個)
+        _drbs = v.get("drbs", [])
+        if _drbs:
+            from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+            get_tick_runner().update_ue_qos(ue_id, int(_drbs[0].get("qos_5qi", 9) or 9))
+
         # RLC: 為每個 DRB 建 entity
         ts_rlc = RlcTs.now_ms()
         drbs_setup: list[int] = []

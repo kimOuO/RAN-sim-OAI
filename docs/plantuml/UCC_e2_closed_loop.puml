@@ -1,0 +1,103 @@
+@startuml UCC_e2_closed_loop
+!pragma teoz true
+
+title "UC-C：E2 閉環 (KPM 上行 + RC 下行)\nE2Adapter = gNB E2 termination；HTTP(sim CU) ↔ ASN.1/SCTP(RIC)"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 13
+skinparam DefaultFontName Arial
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor RIC as "外部 RIC / xApp\n10.3.0.71:36422\nSCTP PPID=70"
+
+box "RANsim-E2Adapter :8201 (host net)" #Moccasin
+    participant SCTP as "sctp_loop\n(_dispatch_pdu)"
+    participant CODEC as "codec\n(pycrate APER)"
+    participant PROD as "indication\nproducer thread"
+    participant BR as "sim_bridge\n(sim_http_client)"
+end box
+
+box "RANsim-CU :8101" #LightCyan
+    participant CU as "e2 subscription /\nindication / control actor"
+end box
+
+box "RANsim-DU :8102" #LightYellow
+    participant DU as "MAC / F1AP\n(set_prb_quota / HO)"
+end box
+
+box "Omniverse :8001" #LightGray
+    participant OMNI as "ControlAction\n(RcObservationReader)"
+end box
+
+== 建立：E2 Setup + Subscription ==
+group E2 Setup [連線握手]
+    autonumber 1.1
+    SCTP -> BR : GlobalE2NodeID?
+    BR -> CU : POST /CU/E2/E2NodeId/read
+    activate CU
+    CU --> BR : globalE2node-ID
+    deactivate CU
+    autonumber 1.2
+    SCTP -> CODEC : encode_e2_setup_request(node_id)
+    SCTP -> RIC : E2 Setup Request (SCTP, htonl PPID=70)
+    activate RIC
+    RIC --> SCTP : E2 Setup Response (accepted RAN funcs)
+    deactivate RIC
+
+    autonumber 1.3
+    RIC -> SCTP : RICsubscriptionRequest (procCode=8)
+    activate RIC
+    SCTP -> CODEC : decode → ric_req_id, ran_func_id, period, metrics
+    SCTP -> CU : POST /CU/E2/Subscription/create
+    activate CU
+    CU --> SCTP : subscription_id
+    deactivate CU
+    SCTP -> RIC : RICsubscriptionResponse
+    deactivate RIC
+    SCTP -> PROD : _start_producer(sub)  ← 每訂閱一執行緒
+end group
+
+== KPM 上行 (per-sub 週期迴圈) ==
+group Indication producer [每 period_ms / speed] #E8FFE8
+    autonumber 2.1
+    PROD -> BR : poll_indication(sub_id)
+    BR -> CU : POST /CU/E2/Indication/poll
+    activate CU
+    CU --> BR : ue_status[] (per-UE KPM)
+    deactivate CU
+    alt SubNotFound (sim CU 重啟清空)
+        PROD -> RIC : E2 Reset (30s debounce)\n→ RIC 重發 SUB_REQ
+    end
+    autonumber 2.2
+    PROD -> CODEC : encode_kpm_indication (Format3)\nRSRP −156..−31→+156；SINR −23..40→+23
+    note right of CODEC : R3：per serving_cell 拆一則\nheader senderName = cell/0xNCI
+    autonumber 2.3
+    PROD -> RIC : RIC_INDICATION (E2SM-KPM, SCTP)
+end group
+
+== RC 下行 (xApp 決策落地) ==
+group RC Control [xApp → 落地] #FFECEC
+    autonumber 3.1
+    RIC -> SCTP : RICcontrolRequest (procCode=4)
+    activate RIC
+    SCTP -> CODEC : decode E2SM-RC (style/action/ranParameters)
+    SCTP -> CU : POST /CU/E2/Control/request
+    activate CU
+    alt Style2 / Action6 — PRB quota (IM/ES)
+        CU -> DU : MAC/set_prb_quota
+    else Style3 / Action1 — Handover (CCO)
+        CU -> DU : nr_HO_F1_trigger →\nF1AP/ue_context_modification
+    else Style2 / Action7 — Cell On/Off (ES)
+        CU -> DU : MAC cell enable/disable
+    end
+    autonumber 3.2
+    CU -> OMNI : push_control_action\n(→ RcObservationReader 可查)
+    CU --> SCTP : outcome
+    deactivate CU
+    autonumber 3.3
+    SCTP -> RIC : RIC_CONTROL_ACK / FAILURE
+    deactivate RIC
+end group
+@enduml

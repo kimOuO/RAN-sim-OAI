@@ -22,7 +22,7 @@ from main.apps.scenario.services.ue_attach import UeAttachService
 from main.apps.scenario.services.scenario_loader import waypoints_with_speed_to_trajectory
 from main.apps.scenario.services import scenario_driver
 from main.apps.ue_lifecycle.services import (
-    cu_client, du_client, omniverse_client, ru_client,
+    cu_client, du_client, omniverse_client, physics_client, ru_client,
 )
 from main.apps.ue_lifecycle.services.trajectory_store import get_store as get_traj_store
 
@@ -121,6 +121,14 @@ def _load_live_db() -> dict[str, Any]:
                 "speed_mps": float(u.get("speed_mps") or 1.0),
                 "loop": bool(u.get("loop", True)),
             })
+        else:
+            # 無軌跡的 UE:推「單點靜止軌跡」= 它的設定位置。
+            # 否則 UeThread.position 停留在程式預設 (0,0,0),RU/3D/回放
+            # 全都記到原點(ue_campus 2026-07-19 踩到:設定 (60,40) 卻全程 0)。
+            ue_waypoint_specs.append({
+                "name": name,
+                "static_pos": [float(pos[0]), float(pos[1]), float(pos[2])],
+            })
 
     return {
         "source": "live_db",
@@ -130,6 +138,7 @@ def _load_live_db() -> dict[str, Any]:
         "ue_names": ue_names,
         "ues_with_profile": [{"name": n} for n in ue_names],  # default profile in UeAttachService
         "ue_waypoint_specs": ue_waypoint_specs,
+        "raw_gnbs": gnbs,   # 原始 gNB(含 cells)— 給 physics push_scene 同步 Sionna 用
         "default_serving_cell": (du_cells[0]["cell_id"] if du_cells else "gnb1_cell0"),
     }
 
@@ -269,6 +278,32 @@ def start_sim(
             clear_stale_ues=True,
             context="editor",
         )
+        # ★ 同步 Kit 3D stage ★ — 場景在 editor 改過(增刪 UE/gNB)而使用者沒按
+        # Build Scene 時,Kit stage 會缺 prim → 前端從 Kit /ues 拉位置永遠拿空
+        # → 畫面看似「卡住」。Start 自動 build 讓 3D 永遠跟上場景表(冪等,best-effort)。
+        omniverse_client.trigger_scene_build()
+
+        # ★ 同步 Physics/Sionna 場景 ★ — 同類陷阱的 RF 版:改了 gNB 沒按 Build,
+        # Sionna 還抱著舊 TX → RU 拿不到 path_gain → RSRP 掉雜訊底 → MCS 0 →
+        # thp 永遠 0(t1/t2 2026-07-19 踩到)。走 ConfigManager/push_scene
+        # (Layer 2 override,無 session 副作用),重建約 3 秒,best-effort。
+        try:
+            physics_client.push_scene(scene_id="default", gnbs=bundle["raw_gnbs"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("physics push_scene failed (RF 可能用舊場景): %s", e)
+
+        # ★ DU Tick 必須在 attach「之前」啟動 ★
+        # TickRunner.start() 會無條件清空 _ue_registry(防上一場鬼魂 UE 的保險),
+        # 其設計假設是「tick 先起、UE 後註冊」。若照舊順序(attach → tick_start),
+        # 剛 attach 註冊的 UE 會被當殘留清掉 → registry=0 → 空 TTI → Physics
+        # 不被呼叫 → 全 UE 無訊號(無 profile 的 UE 沒有二次註冊機會,2026-07-20 實踩)。
+        tick_start_err: str | None = None
+        try:
+            du_client.tick_start()
+        except Exception as e:  # noqa: BLE001
+            tick_start_err = str(e)
+            logger.warning("DU TickController.start failed: %s", e)
+
         attach_result = UeAttachService.attach_all(
             bundle["ues_with_profile"],
             default_serving_cell=bundle["default_serving_cell"],
@@ -282,23 +317,23 @@ def start_sim(
         start_at_ms = int(_time.time() * 1000)
         traj_pushed = 0
         for spec in bundle["ue_waypoint_specs"]:
-            wps = waypoints_with_speed_to_trajectory(spec["waypoints"], spec["speed_mps"])
-            if not wps:
-                continue
-            mode = "loop" if spec["loop"] else "once"
+            if spec.get("static_pos"):
+                # 無軌跡 UE → 單點靜止軌跡(interp len==1 直接回傳該點)
+                sx, sy, sz = spec["static_pos"]
+                wps = [{"x": sx, "y": sy, "z": sz, "t_ms": 0}]
+                mode = "once"
+            else:
+                wps = waypoints_with_speed_to_trajectory(spec["waypoints"], spec["speed_mps"])
+                if not wps:
+                    continue
+                mode = "loop" if spec["loop"] else "once"
             try:
                 store.set(spec["name"], waypoints=wps, start_at_ms=start_at_ms, mode=mode)
                 traj_pushed += 1
             except ValueError as e:
                 logger.warning("trajectory_store.set ue=%s failed: %s", spec["name"], e)
 
-        # DU Tick 啟動
-        tick_start_err: str | None = None
-        try:
-            du_client.tick_start()
-        except Exception as e:  # noqa: BLE001
-            tick_start_err = str(e)
-            logger.warning("DU TickController.start failed: %s", e)
+        # (DU Tick 已在 attach 之前啟動 — 見上方 TickRunner registry 清空順序說明)
 
         # UE Lifecycle 啟動(in-process,讓 UeLifecycleManager 接管 trajectory + traffic_gen tick)
         # 注意:start() 只起 thread,真正 STANDBY→RUNNING 需 push_sync(event="sim_start")。

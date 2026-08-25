@@ -82,6 +82,9 @@ export interface SceneLayout {
   buildings: Building[];
   gnbs: any[];
   ues: any[];
+  environment?: { template_usd: string; name: string };
+  skip_buildings?: boolean;
+  map_footprints?: { points: [number, number][]; height: number }[];
 }
 
 export interface SceneAntennaConfig {

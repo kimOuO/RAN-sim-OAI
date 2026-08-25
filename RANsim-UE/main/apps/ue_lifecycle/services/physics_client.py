@@ -38,6 +38,9 @@ def _flatten_gnbs(scenario_gnbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "frequency_ghz": float(g.get("frequency_ghz", 3.5)),
                 "power_dbm": float(g.get("power_dbm", 23.0)),
                 "bandwidth_mhz": float(g.get("bandwidth_mhz", 40.0)),
+                # 扇區方位角 — 漏帶的話 Sionna TX 全部朝預設方向,
+                # 使用者設的多扇區(如 0°/180°)完全失效(2026-07-19 實踩)
+                "azimuth_deg": float(c.get("azimuth_deg", g.get("azimuth_deg", 0) or 0)),
             })
     return flat
 

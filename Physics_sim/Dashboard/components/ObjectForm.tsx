@@ -30,6 +30,28 @@ export function ObjectForm({
 }: ObjectFormProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
   const [formData, setFormData] = useState<Record<string, any>>({});
+  // gNB cell 佈署模式:sector = 同址扇區(靠 azimuth 分方向,拖曳走整站);
+  // distributed = 分散式/DAS(每 cell 有自己座標,畫布上各自可拖)
+  const [cellMode, setCellMode] = useState<'sector' | 'distributed'>('sector');
+
+  /** 依模式(重新)生成 cells:sector 給均分 azimuth;distributed 額外給環狀分佈座標 */
+  const genCells = (n: number, mode: 'sector' | 'distributed', prev: any[] = []) => {
+    const gp = formData.position ?? [0, 30, 0];
+    return Array.from({ length: n }, (_, i) => {
+      const base = prev[i] || { pci: i, azimuth_deg: i > 0 ? (i * 360) / n : 0 };
+      if (mode === 'distributed') {
+        const th = (i * 2 * Math.PI) / n;
+        const R = 60; // 預設環半徑 60m,之後可在畫布拖
+        return { ...base, position: base.position ?? [
+          (gp[0] ?? 0) + Math.round(R * Math.cos(th)),
+          gp[1] ?? 30,
+          (gp[2] ?? 0) + Math.round(R * Math.sin(th)),
+        ] };
+      }
+      const { position: _drop, ...rest } = base;
+      return rest;
+    });
+  };
 
   // 过滤该类型的资产
   const filteredAssets = useMemo(
@@ -224,8 +246,13 @@ export function ObjectForm({
                     step="0.1"
                     min={field.min}
                     max={field.max}
-                    value={formData[field.name] !== undefined ? formData[field.name] : ''}
-                    onChange={(e) => handleInputChange(field.name, parseFloat(e.target.value))}
+                    // NaN 防護:欄位清空時 parseFloat('') = NaN → React 警告 + 髒資料。
+                    // 空值存 undefined、顯示空字串;非有限數一律顯示空。
+                    value={Number.isFinite(formData[field.name]) ? formData[field.name] : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      handleInputChange(field.name, v === '' ? undefined : parseFloat(v));
+                    }}
                   />
                 )}
 
@@ -371,19 +398,34 @@ export function ObjectForm({
 
                 {field.type === 'cells' && (
                   <div className={styles.cellsInput}>
+                    {/* gNB 模式:同址扇區 vs 分散式可移動 cell */}
+                    <label>gNB 模式</label>
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '6px', fontSize: '12px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                        <input type="radio" checked={cellMode === 'sector'}
+                          onChange={() => {
+                            setCellMode('sector');
+                            const cur = formData[field.name] || [];
+                            handleInputChange(field.name, genCells(cur.length || 1, 'sector', cur));
+                          }} />
+                        天線方向模式(同址扇區)
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                        <input type="radio" checked={cellMode === 'distributed'}
+                          onChange={() => {
+                            setCellMode('distributed');
+                            const cur = formData[field.name] || [];
+                            handleInputChange(field.name, genCells(cur.length || 1, 'distributed', cur));
+                          }} />
+                        Cell 可移動模式(分散式,畫布可拖)
+                      </label>
+                    </div>
                     <label>Number of cells</label>
                     <select
                       value={(formData[field.name] || []).length || 1}
                       onChange={(e) => {
                         const n = parseInt(e.target.value, 10);
-                        const cells = Array.from({ length: n }, (_, i) => {
-                          const existing = (formData[field.name] || [])[i];
-                          return existing || {
-                            pci: i,
-                            azimuth_deg: i > 0 ? (i * 360) / n : 0
-                          };
-                        });
-                        handleInputChange(field.name, cells);
+                        handleInputChange(field.name, genCells(n, cellMode, formData[field.name] || []));
                       }}
                     >
                       <option value="1">1</option>
@@ -435,6 +477,47 @@ export function ObjectForm({
                               handleInputChange(field.name, [...cells]);
                             }}
                           />
+                          {/* Multi-TRP / DAS:cell 可有自己的世界座標(留空 = 跟 gNB 同位置)。
+                              後端 DU/RU/Physics/Kit 全鏈已支援 cell.position fallback gNB。
+                              只在「Cell 可移動模式」顯示;扇區模式 cells 無 position。 */}
+                          {cellMode === 'distributed' && (<>
+                          <input
+                            type="number"
+                            placeholder="Pos X (留空=同 gNB)"
+                            step={1}
+                            value={cell.position?.[0] ?? ''}
+                            onChange={(e) => {
+                              const cells = formData[field.name];
+                              const v = e.target.value;
+                              const gy = formData.position?.[1] ?? 30;
+                              if (v === '' && (cells[i].position?.[2] === undefined)) {
+                                delete cells[i].position;
+                              } else {
+                                const cur = cells[i].position ?? [formData.position?.[0] ?? 0, gy, formData.position?.[2] ?? 0];
+                                cells[i].position = [v === '' ? (formData.position?.[0] ?? 0) : parseFloat(v), gy, cur[2]];
+                              }
+                              handleInputChange(field.name, [...cells]);
+                            }}
+                          />
+                          <input
+                            type="number"
+                            placeholder="Pos Z (留空=同 gNB)"
+                            step={1}
+                            value={cell.position?.[2] ?? ''}
+                            onChange={(e) => {
+                              const cells = formData[field.name];
+                              const v = e.target.value;
+                              const gy = formData.position?.[1] ?? 30;
+                              if (v === '' && (cells[i].position?.[0] === undefined)) {
+                                delete cells[i].position;
+                              } else {
+                                const cur = cells[i].position ?? [formData.position?.[0] ?? 0, gy, formData.position?.[2] ?? 0];
+                                cells[i].position = [cur[0], gy, v === '' ? (formData.position?.[2] ?? 0) : parseFloat(v)];
+                              }
+                              handleInputChange(field.name, [...cells]);
+                            }}
+                          />
+                          </>)}
                         </div>
                       </div>
                     ))}

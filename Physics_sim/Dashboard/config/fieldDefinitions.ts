@@ -45,7 +45,8 @@ export function formatRangesForMaterial(material: string): string {
 
 // 5G NR 频段预设 (gNB)
 export const GNB_FREQUENCY_PRESETS = [
-  { value: 0.617, label: 'n71 (617 MHz) - Broadband' },
+  // n71 (0.617 GHz) 已移除:低於 ITU 材質下限(≥1 GHz),Sionna 場景重建必被拒。
+  // 它原本排第一 = 下拉預設值,使用者不選也中招(2026-07-19/20 兩度實踩)。
   { value: 2.5, label: 'n41 (2.5 GHz) - Midband' },
   { value: 3.5, label: 'n78 (3.5 GHz) - Urban (default)', isDefault: true },
   { value: 3.8, label: 'n77 (3.8 GHz) - Urban' },
@@ -54,7 +55,8 @@ export const GNB_FREQUENCY_PRESETS = [
 
 // GNB 带宽预设
 export const GNB_BANDWIDTH_PRESETS = [
-  { frequency: 0.617, bandwidth: 20, label: 'n71 Standard' },
+  // n71 (0.617 GHz) 已移除:低於 ITU 材質下限(concrete/brick/metal 皆 ≥1 GHz),
+  // Sionna 場景重建必被拒 → Physics 卡舊場景 → RSRP 掉雜訊底、thp=0(2026-07-19 實踩)。
   { frequency: 2.5, bandwidth: 100, label: 'n41 Standard' },
   { frequency: 3.5, bandwidth: 100, label: 'n78 Standard' },
   { frequency: 3.8, bandwidth: 100, label: 'n77 Standard' },

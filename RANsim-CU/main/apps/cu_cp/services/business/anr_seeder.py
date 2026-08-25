@@ -76,7 +76,19 @@ def seed_from_cells() -> dict:
             )
             rel_created += int(created)
 
-    logger.info("ANR seed: %d cells → +%d relations, +%d cgi entries",
-                len(cells), rel_created, cgi_created)
+    # 2026-08-12:清 stale 關係 —— source/target 任一不是「當前存在的 cell_id」就刪。
+    # 換場景後舊 cell 的關係若不清,xApp 會看到不存在的鄰區(e.g. gnbDT_c0↔c1 殘留)。
+    # 只清「兩端都不在現有 cell 集」的孤兒;xApp 手動 ADD 的跨 gNB 關係(target 仍存在)保留。
+    valid_ids = set(CellConfig.objects.values_list("cell_id", flat=True))
+    stale_qs = NrCellRelation.objects.exclude(
+        source_cell_id__in=valid_ids
+    ) | NrCellRelation.objects.exclude(target_cgi__in=valid_ids)
+    stale_removed = stale_qs.distinct().delete()[0]
+    # CGI 解析表同步清 stale
+    cgi_removed = CgiResolution.objects.exclude(cgi__in=valid_ids).delete()[0]
+
+    logger.info("ANR seed: %d cells → +%d relations, +%d cgi entries; "
+                "-%d stale relations, -%d stale cgi",
+                len(cells), rel_created, cgi_created, stale_removed, cgi_removed)
     return {"cells": len(cells), "relations_created": rel_created,
-            "cgi_created": cgi_created}
+            "cgi_created": cgi_created, "stale_removed": stale_removed}

@@ -21,7 +21,7 @@ Sionna RT(RSRP/SINR/neighbor)→ RU → DU(排程/RLC/PM 聚合)
   → F1AP measurement_report → CU DB(MeasurementLog / UeContext / HandoverEvent)
                                         │
 DU dump_pm(MCS/CQI bins、PRB、PDCP bytes)──┤
-UE Status/read(即時位置)────────────────────┼──→ FullKpmReporter.collect()
+CU 事件表(RlfEvent/HandoverEvent/計數器)──┼──→ FullKpmReporter.collect()
 BbuTelemetry(host psutil/pynvml)───────────┘        → 本報告所述 JSON
 ```
 
@@ -72,7 +72,7 @@ BbuTelemetry(host psutil/pynvml)───────────┘        → 
 | 欄位 | 等級 | 來源與說明 |
 |---|---|---|
 | `ue_id` | 真 | UE 名稱 |
-| `position` | 真 | UE 容器 `Status/read` 即時位置 [x,y,z](m)。UE 容器連不上時填 [0,0,0] 並記 warnings |
+| ~~`position`~~ | **已移除**(2026-08-12)| 真實 E2/KPM 不攜帶 UE 位置(真網路需定位技術估算);原為 legacy 範例格式帶入,現不送出 |
 | `serving_gnb` | 真 | serving cell 所屬 gNB 名 |
 | `serving_pci` | 真 | serving cell 的 PCI |
 | `rsrp_dbm` / `sinr_db` | 真 | 同 §2,保留 1 位小數 |
@@ -93,18 +93,20 @@ BbuTelemetry(host psutil/pynvml)───────────┘        → 
 
 `cell_id`(同 §2)、`cu/du_timestamp_start/end`(本次 snapshot 時刻,格式 `YYYYMMDD.HHMM+0000`)、`cu/du_filename`(依 3GPP XML 檔名慣例 `A<start>-<end>_<gnb>-cu.xml` 合成,時間內容為真)。
 
-### 4.2 RRC 連線建立(9 欄)— 代理
+### 4.2 RRC 連線建立(9 欄)— 真(2026-08-12 轉真)
 
-`cu_RRC.ConnEstabAtt.*` / `ConnEstabSucc.*`:**目前 CONNECTED 在本 cell 的 UE 數**。
-語意差異:標準定義是「歷史累計 attach 次數」,模擬器未持久化 per-cell attach 事件,
-以現時連線數當代理(每個連線中的 UE 必然完成過一次 attach)。全部歸 `mo-Data`,
+`cu_RRC.ConnEstabAtt.*` / `ConnEstabSucc.*`:**`RrcEstabCounter` 事件真累計** ——
+InitialContextSetup 每次 +1、只加不減、HO 不搬家(對齊官方歷史累計語意)。
+平台 attach 無失敗模型 → Att = Succ。全部歸 `mo-Data`,
 `mo-Signalling`/`emergency` 恆 0(模擬器只有 data bearer)。
-`cu_RRC.ConnMax`:**真** — process 存活期間該 cell 的連線數高水位(CU 重啟歸零)。
-`cu_RRC.ConnMean`:**真** — 當下連線數。
+`cu_RRC.ConnMax`:**真** — `CellCumCounter` 持久高水位(CU 重啟不歸零)。
+`cu_RRC.ConnMean`:**真** — 取樣累計平均(非瞬時值)。
 
-### 4.3 RRC 重建(7 欄)— 0
+### 4.3 RRC 重建(7 欄)— 真(P1,2026-08-12)
 
-`ConnReEstabSetup` / `ReEstabAtt` / `ReEstabSuccWith(out)UeContext.*`:模擬器無 RRC re-establishment 流程。
+`ConnReEstabSetup` / `ReEstabAtt` / `ReEstabSuccWith(out)UeContext.*`:由 `RlfEvent` 依
+source_cell 聚合 —— DU T310 狀態機(真 SINR 驅動)宣告 RLF → CU 依 Xn 關係判
+With/Without context → 無處可去則 DROP。`.otherFailure` = 掉話數。
 
 ### 4.4 換手 MM.*(7 欄)— 真
 
@@ -122,20 +124,25 @@ BbuTelemetry(host psutil/pynvml)───────────┘        → 
 
 `cu_UECNTX.ConnEstab*`:與 §4.2 同源(F1 UE context = RRC 連線 1:1)。
 `cu_SM.PDUSessionSetupReq/Succ`、`cu_DRB.EstabAtt/Succ.5QI*`、`InitialEstab*`、`cu_gnb.RRC.ConnEstabSetup.sum`:模擬器每 UE 恰建 1 個 PDU session + 1 個 5QI9 DRB → 值 = 連線數。
-`UECNTX.Release.*` / `SM.PDUSessionRelease.*`:0(釋放事件未 per-cell 計數)。
+`UECNTX.Release.gNBinit.*` / `SM.PDUSessionRelease.*` / `ConnRelease.sum`:**真**(2026-08-12)
+—— gNB 發起釋放 = RLF 掉話事件數。`Release.5GCinit.*`(核網發起)平台無此流程 → 誠實 0。
 
 ### 4.6 PDCP/SDAP 流量(12 欄)— 真(5QI9);0(5QI1/4)
 
 `cu_DRB.PdcpSduVolumeDL_5QI9` / `Ul_5QI9` / `cu_gnb.DRB.SdapSduVolume*.5QI9`:
 **DU pm_aggregator 累計 RLC SDU bytes**(per-5QI 分桶,PDCP≈RLC SDU,差 header 數 byte)。
 實測 40 秒 2Mbps×3UE 累計 18,005,769 bytes — 真流量。SDAP 與 PDCP 同值(模擬器無 SDAP 層,同範例行為)。
-5QI1/5QI4 欄:0(目前所有流量都是 5QI9;未來掛 5QI1 traffic profile 會自動有值)。
+5QI1/5QI4 欄:**分桶已轉真**(2026-08-11)—— 掛 `qos_5qi:1` 語音流量即有值;DU PF 排程器同步加了 GBR-first 優先權(實測壅塞下語音 delay 0.2ms vs 數據 166ms)。
 
-### 4.7 其他 CU 欄(28 欄)— 0
+### 4.7 其他 CU 欄 — 部分轉真(2026-08-12)
 
-`cu_DRB.PdcpPacketDiscardDL.5QI9`(RLC drop 有統計但未接進本 report,見「已知限制」)、
-`PdcpReordDelayUl`、`RelActNbr.*`、`SessionTime.*`、`QF.*`(12 欄,無獨立 QoS flow 流程)、
-`ConnReConfig*`、`ConnRelease*`、`SigTime*`(6 欄,模擬器 RRC 訊令無耗時模型)。
+**已轉真**:`PdcpPacketDiscardDL.5QI9`(DU RLC tx-cap drop 計數)、`RelActNbr.*`(掉話時
+活躍 DRB)、`SessionTime.*`(釋放落帳 + 當下連線,含歷史)、`ConnReConfigAtt/Succ`
+(HO 執行鏡像,**代理**:平台無獨立 Reconfig 訊令)。
+
+**維持誠實 0**:`QF.*`(12 欄,無獨立 QoS flow 層)、`SigTime*`(6 欄,訊令無耗時模型)、
+`PdcpReordDelayUl`(無亂序機制)、`Release.5GCinit.*`(無核網發起釋放)、
+`emergency`/`mo-Signalling`(UE 只有傳資料一種動機)。
 
 ### 4.8 PEE 溫度(3 欄)— 代理
 
@@ -161,8 +168,9 @@ DU 排程器**每次實際選定 MCS 就在對應 bin +1**(session 起累計)。
 
 ### 4.12 空口延遲(4 欄)— 真(DL 5QI9);0(其餘)
 
-`du_DRB.AirIfDelayDlAvg.5QI9`:該 cell 所有 UE 的 RLC SDU delay(ms)平均 — DU 對每顆 SDU
-從進 RLC 到 drain 完成的真實計時。5QI1(無此流量)與 UL(delay 未建模)為 0。
+`du_DRB.AirIfDelayDlAvg.5QI9` / `.5QI1`:該 cell UE 的 RLC SDU delay(ms)平均,**依 UE 的
+5QI 分桶**(2026-08-12:MeasurementLog 帶 qos_5qi)—— 可直接量測 GBR 語音 vs 數據的延遲隔離。
+UL 方向(delay 未建模)維持 0。
 
 ## 5. `bbu_status` — 每 gNB 主機遙測(代理)
 
@@ -172,7 +180,7 @@ DU 排程器**每次實際選定 MCS 就在對應 bin +1**(session 起累計)。
 |---|---|
 | `cpu` | psutil host CPU% ÷ gNB 數 |
 | `cpu_power` | CPU% × 65W TDP 估算 ÷ gNB 數 |
-| `cpu_temp` | host CPU 溫度(不均攤) |
+| `cpu_temp` | host CPU 溫度(不均攤);本機為 VM 無感測器 → 0 |
 | `load_average` | 1-min load ÷ gNB 數 |
 | `mem` | host 記憶體 %(不均攤) |
 | `tot_power` | cpu_power + GPU 功耗(pynvml 實讀 A40)÷ gNB 數 |
@@ -181,19 +189,28 @@ DU 排程器**每次實際選定 MCS 就在對應 bin +1**(session 起累計)。
 
 ## 6. 統計摘要
 
-| 區塊 | 真 | 代理 | 0 |
+| 區塊 | 真 | 代理 | 恆 0 |
 |---|---:|---:|---:|
 | top-level(3 資料欄) | 3 | 0 | 0 |
 | e2 per-UE(11 欄) | 11 | 0 | 0 |
-| ue_status(14 欄) | 14 | 0 | 0 |
-| pm(190 欄/cell) | 96 | 32 | 62 |
+| ue_status(13 欄,position 已移除) | 13 | 0 | 0 |
+| **pm(190 欄/cell)** | **~137** | ~16 | **37** |
 | bbu_status(6 欄) | 0 | 6 | 0 |
 
-pm 的 62 個 0 欄全屬模擬器無對應事件源的流程(RRC 重建、QoS flow 拆分、訊令耗時、釋放計數),依「量不到就填 0」規格保留欄位。
+**pm 190 欄的實作面拆解(以程式碼為準)**:
+
+| 類別 | 欄數 | 說明 |
+|---|---:|---|
+| 動態值(隨模擬變動) | **153** | 靜態字典 67 + 迴圈產生 86(MCS 64 / CQI 16 / PRB 2 / delay 4)|
+| **硬編 `"0"`** | **37** | 模擬器無對應事件源(QF 12、SigTime 6、5GCinit 釋放 3、emergency/mo-Signalling 6、ReordDelay 1、其他 9)|
+
+⚠ **「動態」不等於「一定非零」**:MCS/CQI bin 沒用到該檔位就是 0、5QI1 欄位沒掛語音流量就是 0
+—— 這類是**條件性零**,配置到位就有值。實測單一 cell 快照:190 欄中 **91 欄非零、99 欄為 0**
+(含 37 硬編 + 62 條件性零)。
 
 ## 7. 已知限制與未來擴充點
 
-1. **RRC/DRB 建立計數是「現時連線數」代理** — 要變成真歷史累計,需在 CU attach/release 路徑加 per-cell 持久計數器(小改動,尚未做)。
+1. ~~RRC/DRB 建立計數是現時連線數代理~~ → **2026-08-12 已轉真**(RrcEstabCounter 事件累計)。
 2. **`PdcpPacketDiscardDL` 恆 0** — DU 其實有 RLC drop 統計(AK10 `rlc_drop_sdus`),但目前只留在 DU 本地未上 F1AP;接上即可變真值。
 3. **DU 計數器是 session 累計** — MCS/CQI bins、PRB、PDCP bytes 從 sim start 累計,不隨 report 重置;Stop→Start 會歸零(pm_aggregator.reset())。範例的 legacy 系統同為累計語意。
 4. **CU 重啟後 `ConnMax` 高水位歸零**(in-process 追蹤)。

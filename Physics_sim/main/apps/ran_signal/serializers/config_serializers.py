@@ -24,7 +24,7 @@ class ConfigReloadRequestSerializer(serializers.Serializer):
 
 # ─── Push scene (runtime override) ───────────────────────────────
 
-GEOMETRY_SOURCE_TYPES = ("buildings_json",)
+GEOMETRY_SOURCE_TYPES = ("buildings_json", "mitsuba_xml_path")
 OVERRIDE_MODES = ("full", "ran_only", "geometry_only")
 ALLOWED_MATERIALS = ("concrete", "glass", "metal", "brick", "wood")
 
@@ -59,10 +59,31 @@ class GroundWriteSerializer(serializers.Serializer):
 
 
 class GeometrySourceWriteSerializer(serializers.Serializer):
-    """現在唯一支援：buildings_json（建築 box 列表）。"""
+    """幾何來源，兩種：
+      - buildings_json  ：建築 box 列表，後端用 mitsuba_builder 轉成 cube XML（原有行為）
+      - mitsuba_xml_path：已產好的 Mitsuba XML 路徑（如 OSM 地圖的真實 mesh），直接載入
+    """
     type = serializers.ChoiceField(choices=GEOMETRY_SOURCE_TYPES)
-    buildings = BuildingWriteSerializer(many=True, allow_empty=True)  # 空=平地/自由空間(mitsuba_builder 只建 ground)
+    buildings = BuildingWriteSerializer(many=True, allow_empty=True, required=False)  # 空=平地/自由空間(mitsuba_builder 只建 ground)
     ground = GroundWriteSerializer(required=False, allow_null=True)
+    path = serializers.CharField(
+        required=False, allow_blank=True, default="",
+        help_text="type=mitsuba_xml_path 時必填：容器內可讀的 .xml 絕對路徑",
+    )
+
+    def validate(self, attrs):
+        src_type = attrs.get("type")
+        if src_type == "buildings_json":
+            if attrs.get("buildings") is None:
+                raise serializers.ValidationError(
+                    {"buildings": "type=buildings_json 時必填（可為空陣列）"}
+                )
+        elif src_type == "mitsuba_xml_path":
+            if not (attrs.get("path") or "").strip():
+                raise serializers.ValidationError(
+                    {"path": "type=mitsuba_xml_path 時必填"}
+                )
+        return attrs
 
     def validate_buildings(self, value):
         # 允許空 buildings(開闊場景=只有地面);CCO/OAI 對照劇本就是自由空間。
@@ -81,6 +102,9 @@ class GnbWriteSerializer(serializers.Serializer):
     frequency_ghz = serializers.FloatField(min_value=0.4, max_value=100.0)
     power_dbm = serializers.FloatField(min_value=-30.0, max_value=60.0)
     bandwidth_mhz = serializers.FloatField(min_value=1.0, max_value=400.0)
+    # 扇區方位角 — 未宣告的話 DRF 會把 caller 傳的 azimuth_deg 靜默丟掉,
+    # Sionna TX 全部朝預設方向,多扇區設定失效(2026-07-19 實踩)
+    azimuth_deg = serializers.FloatField(required=False, default=0.0)
 
 
 class UeWriteSerializer(serializers.Serializer):

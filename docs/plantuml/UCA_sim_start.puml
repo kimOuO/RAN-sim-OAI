@@ -1,0 +1,148 @@
+@startuml UCA_sim_start
+!pragma teoz true
+
+title "UC-A：Sim 啟動 (SimController.start → scene-apply → UE attach → DU tick)\n以 source=\"scenario\" 為主線；live_db 差異見註解"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 13
+skinparam DefaultFontName Arial
+hide footbox
+skinparam sequenceMessageAlign center
+
+actor Caller as "Dashboard / API\n(操作者)"
+
+box "RANsim-UE :8105" #LightGreen
+    participant SimCtl as "SimController\n[Actor]"
+    participant Orch as "sim_orchestrator\n(start_sim)"
+    participant Driver as "ScenarioDriver\n(start)"
+    participant SceneApply as "SceneApplyService"
+    participant UeAttach as "UeAttachService"
+    participant Mgr as "UeLifecycleManager\n+ trajectory_store"
+end box
+
+box "RANsim-CU :8101" #LightCyan
+    participant CU as "cu_cp\n(F1AP/Session/E2/A3)"
+end box
+
+box "RANsim-DU :8102" #LightYellow
+    participant DU as "tick / mac\n(TickController)"
+end box
+
+box "RANsim-RU :8103" #Wheat
+    participant RU as "RuController\n(antenna/cells)"
+end box
+
+box "Physics :8104" #Thistle
+    participant PHY as "ConfigManager\n(Sionna scene)"
+end box
+
+box "Omniverse :8001 (場景/歷史/劇本倉庫)" #LightGray
+    participant OMNI as "RAN backend\n(Scenario/GNB/UE/SimSession)"
+end box
+
+activate Caller
+
+group SimController.start [Function]
+    autonumber 1.1
+    Caller -> SimCtl : POST /UE/Sim/SimController/start\n{source, scenario_id, speed_x, sim_dt_ms}
+    activate SimCtl
+    autonumber 1.2
+    SimCtl -> Orch : start_sim(source, scenario_id, speed_x, sim_dt_ms)
+    activate Orch
+
+    == 共同前置 (兩種 source 皆做) ==
+    autonumber 1.3
+    Orch -> Orch : stop_sim()  ← 冪等自動清場
+    note right of Orch
+      DU Tick/stop、CU Session/release_all、
+      DU Tick/reset_pm、E2Adapter KpmSnapshot/reset、
+      DU MAC/clear_prb_quota(逐 cell)
+    end note
+
+    autonumber 1.4
+    Orch -> DU : POST /DU/Tick/TickController/set_speed\n{tick_ms, sim_dt_ms}
+    Orch -> CU : POST /CU/E2/KpmSpeed/set {sim_speed_x}
+
+    autonumber 1.5
+    Orch -> OMNI : POST /RAN/SimSession/SimSessionController/create\n{session_uuid, scene_id, scenario_id, ratio}
+    activate OMNI
+    OMNI --> Orch : session_uuid
+    deactivate OMNI
+    Orch -> Mgr : set_session_uuid(session_uuid)
+
+    == source=="scenario"：委派 ScenarioDriver ==
+    autonumber 1.6
+    Orch -> Driver : start_scenario(scenario_id, wall_tick_ms, sim_speed_x)
+    activate Driver
+
+    autonumber 1.7
+    Driver -> OMNI : fetch 劇本 (SCENARIO_STORE_URL)\n/RAN/Scenario/ScenarioController/read
+    note right of Driver
+      SCENARIO_STORE_URL 預設 = Omniverse；
+      設成 Physics :8104 即可脫離 Omniverse
+      (physics_db scenario_store)
+    end note
+
+    autonumber 1.8
+    Driver -> OMNI : sync gnbs / buildings / scene\n(GNBController, BuildingController, UEController, Scene/build)
+
+    autonumber 1.9
+    Driver -> RU : POST /RU/Config/RuController/set_channel_mode\n(cached | live)
+    opt live 模式才推場景給 Sionna
+        Driver -> PHY : POST /Physics/RanSignal/ConfigManager/push_scene
+    end
+
+    autonumber 1.10
+    Driver -> SceneApply : apply(ru_cells, du_cells, ue_names)
+    activate SceneApply
+    SceneApply -> RU : C.1 update_cells / C.2 update_ues
+    SceneApply -> DU : C.3 MAC/replace_cells / C.4 Tick/replace_ues
+    SceneApply -> CU : C.5 Session/release_stale
+    SceneApply --> Driver
+    deactivate SceneApply
+
+    autonumber 1.11
+    Driver -> UeAttach : attach_all(ues_with_profile, serving_cell)
+    activate UeAttach
+    loop 每個 UE
+        UeAttach -> CU : F1AP/ul_rrc_message  RRCSetupRequest → RRCSetupComplete\n(→ CONNECTED)
+        UeAttach -> DU : Tick/register_ue(serving_cell)
+        UeAttach -> CU : Session/handover(force serving_cell)
+        UeAttach -> CU : Session/update_traffic_profile\n(→ F1AP UE Context Setup)
+        CU -> DU : F1AP UE Context Setup\n★ DU 端建 RLC / MAC / HARQ entity ★
+    end
+    UeAttach --> Driver
+    deactivate UeAttach
+
+    autonumber 1.12
+    Driver -> DU : MAC/set_runtime_phys、逐 cell MAC/set_prb_quota
+    Driver -> RU : Config/set_inter_freq
+    Driver -> CU : Mobility/A3Controller/set
+
+    autonumber 1.13
+    Driver -> Mgr : trajectory_store.set(waypoints, mode="once")
+    Driver -> Mgr : UeLifecycleManager.start() + push_sync(sim_start)
+    note right of Mgr : 啟動 poll(5s)/trajectory(100ms) 兩迴圈 → 見 UC-D
+
+    autonumber 1.14
+    Driver -> DU : POST /DU/Tick/TickController/start\n★ 心跳啟動 → 見 UC-B ★
+    Driver --> Orch : state
+    deactivate Driver
+
+    autonumber 1.15
+    Orch --> SimCtl : {success, session_uuid, state}
+    deactivate Orch
+    SimCtl --> Caller : 200 OK
+    deactivate SimCtl
+end group
+
+note over Caller, OMNI
+  source=="live_db"：略過 ScenarioDriver，直接由 start_sim 讀 Omniverse
+  GNBReader/UEReader → SceneApply.apply → UeAttach.attach_all
+  → trajectory_store(mode="loop") → DU tick_start → Mgr.start。
+  (不帶 traffic_profile，沿用 CU 既有 profile)
+end note
+
+deactivate Caller
+@enduml

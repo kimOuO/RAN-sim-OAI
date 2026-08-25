@@ -1,0 +1,90 @@
+@startuml UCD_omniverse_viz
+!pragma teoz true
+
+title "UC-D：Omniverse 視覺化 + 歷史 ingest + 回放\nRAN sim 以 fire-and-forget 推訊號/位置/HO/RC；Kit 渲染 USD；Dashboard 回放"
+
+skinparam backgroundColor #ECFFFF
+skinparam roundcorner 15
+skinparam DefaultFontSize 13
+skinparam DefaultFontName Arial
+hide footbox
+skinparam sequenceMessageAlign center
+
+box "RANsim-UE :8105" #LightGreen
+    participant UE as "trajectory loop\n(~100ms)"
+end box
+
+box "RANsim-CU :8101" #LightCyan
+    participant CU as "handover /\nE2 control"
+end box
+
+box "RANsim-RU :8103" #Wheat
+    participant RU as "Position/set"
+end box
+
+box "Omniverse backend :8001" #LightGray
+    participant ING as "SignalIngestor /\nPositionHistory"
+    participant HOI as "HandoverIngestor /\nControlActionIngestor"
+    participant PB as "PlaybackController /\nHandoverReader"
+end box
+
+box "Omniverse Kit :8080 / noVNC :6080" #E0E0FF
+    participant KIT as "mitlab.ran.api\n+ scene.builder + labels"
+end box
+
+actor Dash as "Dashboard :3010\n(iframe + 回放 UI)"
+
+== 即時視覺化 (sim 進行中) ==
+group Live ingest [UE trajectory loop] #E8FFE8
+    autonumber 1.1
+    UE -> UE : 插值位置 (interp_position)
+    autonumber 1.2
+    UE -> KIT : POST /ue/{name}/move (USD viewport)
+    autonumber 1.3
+    UE -> RU : POST /RU/Position/set (batch)
+    note right of UE : (RU 供下一 tick 光追，見 UC-B)
+    autonumber 1.4
+    opt 每 ~500ms (5 ticks)
+        UE -> ING : POST /RAN/Ingest/SignalIngestor/create\n{session_uuid, rsrp/sinr/KPM, positions}
+        activate ING
+        ING -> ING : 寫 SignalHistory + PositionHistory
+        ING --> UE
+        deactivate ING
+    end
+end group
+
+== 事件歷史 (CU fire-and-forget) ==
+group Event ingest #FFF3E0
+    autonumber 2.1
+    CU -> HOI : POST /RAN/Playback/HandoverIngestor/create\n{ho_uuid, ue, src→dst cell, ts}  → HandoverHistory
+    autonumber 2.2
+    CU -> HOI : POST /RAN/Playback/ControlActionIngestor/create\n{style, action, ue, cell, ts}  → ControlAction
+    note right of HOI : 對應 UC-C 的 push_control_action
+end group
+
+== Kit 3D 渲染 ==
+group USD render
+    autonumber 3.1
+    ING -> KIT : (SceneIngestor 觸發) push_scene_config
+    activate KIT
+    KIT -> KIT : scene.builder mutate /World\n(buildings/gNB/UE prims)；labels HUD 疊 RSRP/SINR
+    KIT --> Dash : noVNC 6080 → iframe 3D 畫面
+    deactivate KIT
+end group
+
+== 回放 (sim 結束後) ==
+group Playback #E8F0FF
+    autonumber 4.1
+    Dash -> PB : POST /RAN/SimSession/PlaybackController/list|read {session_uuid}
+    activate PB
+    PB --> Dash : 逐 frame UE 位置 + 訊號
+    deactivate PB
+    autonumber 4.2
+    Dash -> PB : HandoverReader / RcObservationReader
+    activate PB
+    PB --> Dash : HO 時間軸 + xApp 控制決策
+    deactivate PB
+    autonumber 4.3
+    Dash -> KIT : push_snapshot_to_kit(frame)  → 回放場景
+end group
+@enduml

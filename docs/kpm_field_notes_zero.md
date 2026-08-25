@@ -1,6 +1,10 @@
 # KPM 零值欄位筆記 — 官方定義 × 平台缺口 × 實踐可行性
 
-> 姊妹篇:`kpm_field_notes.md`(有值欄位)。本篇涵蓋 pm 190 欄中恆為 `"0"` 的 62 欄。
+> 姊妹篇:`kpm_field_notes.md`(有值欄位)。本篇原盤點 pm 190 欄中恆為 `"0"` 的 62 欄。
+> **2026-08-12 更新**:路線圖「必做 5 項」全部轉真(§3 discard、§4 SessionTime/RelActNbr、
+> §5 RRC 重建、§6 gNB 發起釋放、§10 ConnReConfig;各節標 ✅)。剩餘恆 0 者皆為
+> ⚫「模擬器無此世界,維持誠實 0」(QF/SigTime/緊急呼叫/核網釋放/UL delay 等)或延後的 ROP。
+> 各欄的可信度分級見姊妹篇附二(釋放/掉話事件屬 A 級、SessionTime 屬 B 級、ConnReConfig 屬 D 級)。
 > 每族三段:**官方定義**(意義、能判斷什麼)/ **為何在平台是 0**(缺什麼)/
 > **實踐可行性**(做法、工作量、值不值得)。
 > 依「離有值多遠」排序:條件性零(零開發)→ 待接線(小工程)→ 需建模(大工程)。
@@ -50,7 +54,11 @@ PDCP 層因壅塞/逾時**主動丟棄**的下行封包數。與 delay 互補:de
 
 **實踐可行性 🟢(半天)**:`GnbDuMeasurementReport` 加 `rlc_drop_sdus` 欄 → CU MeasurementLog 加欄 → FullReporter 按 cell 加總填入。全鏈路現成,純接線。**建議第一個做** —— 它讓「過載」從推測(delay 高)變成實錘(丟包數)。
 
-### 4. cu_DRB.SessionTime.5QI9 / RelActNbr.5QI9(4 欄)🟡
+### 4. cu_DRB.SessionTime.5QI9 / RelActNbr.5QI9(4 欄)✅ 已轉真(2026-08-12)
+
+SessionTime = Σ(now − UeContext.created_at) 秒(本 cell CONNECTED UE);RelActNbr = RLF 掉話數(掉話 UE 本在傳輸,即「釋放時仍活躍」)。原「🟡 待做」已完成,由真實時間戳/事件推導。
+
+<details><summary>原可行性評估</summary>
 
 **官方定義**(3GPP TS 28.552)
 SessionTime:DRB 存活總秒數(所有 UE 加總)。RelActNbr:釋放時**仍在活躍傳輸**的 DRB 數(異常釋放指標)。
@@ -60,11 +68,13 @@ SessionTime:DRB 存活總秒數(所有 UE 加總)。RelActNbr:釋放時**仍在�
 
 **實踐可行性 🟡(1 天)**:SessionTime = Σ(now − created_at) 直接可填(但要決定語意:目前連線的累計 vs 含歷史 —— 含歷史需釋放時落帳,連動第 6 項);RelActNbr 在 release 路徑查「最近 window 有無流量」即可判。價值中等 —— 主要對「UE 動態進出」型劇本有用,目前劇本 UE 都是常駐。
 
+</details>
+
 ---
 
 ## 丙、需建模 —— 模擬器裡沒有這個世界
 
-### 5. RRC 重建家族(10 欄)🔴
+### 5. RRC 重建家族(10 欄)✅ 已轉真(P1,2026-08-12)
 
 `cu_RRC.ConnReEstabSetup.sum`、`ReEstabAtt(.otherFailure)`、`ReEstabSuccWith(out)UeContext.*`、
 `cu_gnb.RRC.ConnReEstab.*`、`ConnReEstabSetup.otherFailure`
@@ -81,7 +91,11 @@ RRC Re-establishment:UE 無線鏈路失敗(RLF)後嘗試「不重跑完整註冊
 3. **CU 端流程**:收 ReEstabRequest → 查 UeContext 存在與否 → 走 With/Without 兩條路 → 計數。
 做完的副產品很值錢:**平台從此有「掉話」概念**,ES xApp 關 cell 太激進會製造 RLF —— 這是目前平台無法呈現的懲罰信號,對 xApp 訓練是質變。**建議列為丙類第一優先。**
 
-### 6. 釋放計數家族(9 欄)🟡
+### 6. 釋放計數家族(9 欄)✅ 部分轉真(2026-08-12)
+
+gNB 發起釋放(gNBinit / ConnRelease / PDUSessionRelease)= RLF 掉話數(真事件,無線原因);**核網發起(5GCinit.*)平台無此流程 → 維持誠實 0**。
+
+<details><summary>原可行性評估</summary>
 
 `cu_UECNTX.Release.5GCinit.{NASCause,RNCause,sum}`、`cu_gnb.UECNTX.Release.gNBinit.*`、
 `cu_gnb.SM.PDUSessionRelease.Att/Succ`、`cu_gnb.RRC.ConnRelease.{Other,sum}`
@@ -93,6 +107,8 @@ RRC Re-establishment:UE 無線鏈路失敗(RLF)後嘗試「不重跑完整註冊
 **為何是 0**:平台有釋放動作(Stop Sim、detach、release_stale),但釋放路徑沒做 per-cell 計數,也沒有原因分類。
 
 **實踐可行性 🟡(1~2 天)**:在 CU release 路徑(session_controller / ue_context 刪除處)加 per-cell counter + 簡單原因標籤(user-stop / stale / RLF)。與第 5 項合做最划算(RLF 就是最重要的釋放原因)。單獨做價值偏低 —— 目前的釋放都是「管理操作」不是「網路事件」。
+
+</details>
 
 ### 7. QF QoS Flow 家族(12 欄)🔴/⚫
 
@@ -133,7 +149,11 @@ RRC 各流程(建立/重配/重建)從發起到完成的耗時統計。
 
 **實踐可行性 ⚫**:技術上加 UE profile 欄位十分鐘就能「有值」,但模擬緊急呼叫/純訊令連線對本平台的研究目標(HO/PRB 決策驗證)零增益。維持誠實 0。
 
-### 10. cu_RRC.ConnReConfig Att/Succ(2 欄)🟡
+### 10. cu_RRC.ConnReConfig Att/Succ(2 欄)✅ 已轉真(2026-08-12)
+
+HO 執行鏡像:Att=HoExeReq、Succ=HoExeSucc(每次換手隱含一次 reconfig)。**註:短期為 HO 計數別名**,真實 Reconfig 還含量測配置變更等,平台目前只有 HO 這一來源。
+
+<details><summary>原可行性評估</summary>
 
 **官方定義**(3GPP TS 28.552;流程 TS 38.331 §5.3.5)
 RRC Reconfiguration 計數 —— 換手、量測配置變更、DRB 修改都靠這個訊令載體。
@@ -142,6 +162,8 @@ RRC Reconfiguration 計數 —— 換手、量測配置變更、DRB 修改都靠
 **為何是 0**:平台的 HO 直接改狀態,沒有顯式的 Reconfig 訊令步驟。
 
 **實踐可行性 🟡(半天)**:語意上每次 HO 執行 = 一次 Reconfig —— 在 HO 路徑同步計數即可(Att = HoExeReq、Succ = HoExeSucc 的鏡像 + 未來其他 reconfig 來源)。誠實度尚可(HO 確實隱含 reconfig),但短期內只是 HO 計數的別名。
+
+</details>
 
 ### 11. cu_DRB.PdcpReordDelayUl(1 欄)🔴/⚫
 
@@ -171,9 +193,13 @@ RRC Reconfiguration 計數 —— 換手、量測配置變更、DRB 修改都靠
 | 1 | PdcpPacketDiscard 接線(§3)| 🟢 | 半天 | 過載鐵證,ES/CCO xApp 直接受益 |
 | 2 | 5QI1 語音流量劇本(§1)| 🟢 | 零開發 | 分桶欄位活起來(注意排程器不分優先權的限制)|
 | 3 | RLF + RRC 重建(§5)| 🔴 | 3~5 天 | **平台獲得「掉話」概念** —— xApp 訓練的質變 |
-| 4 | 釋放計數(§6,搭 §5 做)| 🟡 | +1 天 | 連線生命週期完整 |
-| 5 | ConnReConfig 鏡像(§10)| 🟡 | 半天 | 低成本補全 |
-| — | QF/SigTime/emergency/ReordDelay | ⚫ | — | 維持誠實 0,填值無研究增益 |
+| 4 | 釋放計數(§6,搭 §5 做)| ✅ 完成 | — | gNB 發起=RLF 掉話;核網發起維持誠實 0 |
+| 5 | ConnReConfig 鏡像(§10)| ✅ 完成 | — | HO 鏡像(短期為 HO 計數別名)|
+| + | SessionTime/RelActNbr(§4)| ✅ 完成 | — | 時間戳/掉話事件推導 |
+| — | QF/SigTime/emergency/ReordDelay/AirIfDelayUl | ⚫ | — | 維持誠實 0,填值無研究增益 |
+| — | ROP 週期收割(附)| 延後 | — | 使用者裁定延後(格式完整性,非剛需)|
+
+**必做 5 項全部完成(2026-08-12)**。剩餘皆 ⚫「維持誠實 0」或延後。
 
 ---
 

@@ -1,72 +1,237 @@
-<mxfile host="app.diagrams.net" version="21.0.0"><diagram name="DT RAN 元件圖" id="comp"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="980" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="plat" value="平台:XAPP_DT — 分裂式 5G NR RAN 數位孿生(xApp 先在 DT 驗證 HO/PRB 決策再上實體 RAN)　※不含 Omniverse" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=14;fillColor=#FFFFFF;strokeColor=#999999;dashed=1;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="1310" height="910" as="geometry"/></mxCell>
-<mxCell id="box_DU" value="系統 RANsim-DU :8102　目的:★模擬真實來源★ MAC/RLC/PF排程/PM 心跳" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="40" y="70" width="290" height="838" as="geometry"/></mxCell>
-<mxCell id="du_tick" value="&lt;b&gt;tick&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:slot時鐘/sim-wall解耦/PM window/RLC delay模型&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:gNB_scheduler 迴圈&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="50" y="112" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="du_mac" value="&lt;b&gt;mac&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:PF排程(2-pass/retx-aware)/HARQ/link-adapt/PRB quota&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:NR_MAC_gNB scheduler&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="50" y="246" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="du_rlc" value="&lt;b&gt;rlc&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:AM/UM分段/retx/BO/SDU delay/discardTimer&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:nr_rlc_entity.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="50" y="380" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="du_phy" value="&lt;b&gt;phy_high&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:MCS→調變階數/layer map/BLER查表/TBS&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:LAYER1/NR_TRANSPORT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="50" y="514" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="du_f1" value="&lt;b&gt;f1ap_du&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:F1Setup/UE context/DL·UL RRC/measurement_report&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:f1ap_du_task.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="50" y="648" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="du_fapi" value="&lt;b&gt;fapi_north&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:DL/UL TTI組裝/CQI→MCS/CRC→HARQ/in-proc SINR&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:nFAPI DL/UL TTI&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="50" y="782" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e_DU_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="du_tick" target="du_mac"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_DU_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="du_mac" target="du_rlc"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_DU_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="du_mac" target="du_phy"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_DU_3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="du_mac" target="du_fapi"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_DU_4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="du_f1" target="du_mac"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_DU_5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="du_f1" target="du_rlc"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="box_RU" value="系統 RANsim-RU :8103　目的:O-RU 天線/Beamform/SINR估計/channel cache" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="360" y="70" width="290" height="704" as="geometry"/></mxCell>
-<mxCell id="ru_fapi" value="&lt;b&gt;fapi_south&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:DL/UL TTI pipeline/真實多cell干擾/SINR→CQI·CRC/live·cached&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:nr_ru_procedures.c::ru_thread()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="370" y="112" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="ru_bf" value="&lt;b&gt;beamforming&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:38.211 codebook/PMI/precoder/SINR·rank·CQI估計&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:nr_modulation.c / nr_feptx_prec&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="370" y="246" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="ru_ant" value="&lt;b&gt;antenna&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:天線陣列/cell/UE位置DB + RuController 配置API&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:PHY/MODULATION/antenna.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="370" y="380" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="ru_pc" value="&lt;b&gt;physics_client&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:組PathSolverRequest打Physics + L2 cache&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:gNB RU→物理引擎&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="370" y="514" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="ru_phy" value="&lt;b&gt;phy_low&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:RU state(SFN/slot/numerology/FFT/CP)/OFDM描述&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:nr_ru_timing.c / ofdm.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="370" y="648" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e_RU_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="ru_fapi" target="ru_bf"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_RU_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="ru_fapi" target="ru_ant"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_RU_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="ru_fapi" target="ru_pc"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="box_E2A" value="系統 RANsim-E2Adapter :8201(host net)　目的:gNB E2 termination HTTP↔ASN.1/SCTP" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="680" y="70" width="290" height="570" as="geometry"/></mxCell>
-<mxCell id="e2_sctp" value="&lt;b&gt;sctp_link&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:SCTP daemon/E2 Setup握手/indication執行緒/Reset debounce&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:RIC e2term SCTP(PPID=70)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="690" y="112" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e2_codec" value="&lt;b&gt;codec&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:E2AP/E2SM-KPM F3/E2SM-RC/Subscription APER編解碼&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:E2AP/E2SM-KPM/RC 規範&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="690" y="246" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e2_bridge" value="&lt;b&gt;sim_bridge&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:HTTP打sim CU 拉indication/落地control&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:—&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="690" y="380" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e2_log" value="&lt;b&gt;event_log&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:KPM ring(perUE×metric,60/30s stale)/事件ring&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:—&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="690" y="514" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e_E2A_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="e2_sctp" target="e2_codec"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_E2A_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="e2_sctp" target="e2_bridge"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_E2A_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="e2_sctp" target="e2_log"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_E2A_3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="e2_bridge" target="e2_codec"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="box_PHY" value="系統 Physics :8104　目的:Sionna RT 光追物理層(GPU) 取代 RF/channel + coverage" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="1000" y="70" width="290" height="570" as="geometry"/></mxCell>
-<mxCell id="phy_act" value="&lt;b&gt;ran_signal (actors)&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:PathSolver/Coverage/Precompute/Config/Health REST&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:RF/channel 存取層&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="1010" y="112" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="phy_ops" value="&lt;b&gt;sionna_operations&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:Sionna引擎/載Mitsuba/compute_paths/coverage_map&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:RF hardware/channel 模擬&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="1010" y="246" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="phy_calc" value="&lt;b&gt;ran_calculation&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:sionna_engine/coverage_solver/scene·mitsuba builder&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:通道模型&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="1010" y="380" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="phy_pre" value="&lt;b&gt;precompute&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:離線算(tick,ue,cell)path_gain→.npz 供cached&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:「錄好 path_gain 回放」&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="1010" y="514" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e_PHY_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="phy_act" target="phy_ops"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_PHY_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="phy_ops" target="phy_calc"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e_PHY_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="phy_pre" target="phy_ops"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="box_CU" value="系統 RANsim-CU :8101　目的:gNB-CU RRC/F1AP/NGAP/E2 + A3 HO決策 + KPM匯集" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="680" y="680" width="290" height="302" as="geometry"/></mxCell>
-<mxCell id="cu_cp" value="&lt;b&gt;cu_cp&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:RRC狀態機/A3 HO/F1AP·NGAP·E2訊令/UE context/KPM匯集&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:rrc_gNB.c / f1ap_cu / ngap_gNB.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="690" y="722" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="cu_up" value="&lt;b&gt;cu_up&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:PDCP/SDAP/GTP-U 使用者面/E1AP bearer/DRB&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:PDCP_v10.1.0 / SDAP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="690" y="856" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e_CU_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="cu_cp" target="cu_up"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="box_UE" value="系統 RANsim-UE :8105　目的:UE群 位置/流量/量測(由 DU tick 驅動)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="1000" y="680" width="290" height="302" as="geometry"/></mxCell>
-<mxCell id="ue_scn" value="&lt;b&gt;scenario&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:載劇本/套場景幾何/切channel mode/bulk attach/進度&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:測試框架(gNB boot+UE attach)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="1010" y="722" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="ue_lc" value="&lt;b&gt;ue_lifecycle&lt;/b&gt;&lt;br&gt;&lt;font color='#333'&gt;作用:per-UE執行緒/poll CU/trajectory內插(~100ms)/traffic gen/量測&lt;/font&gt;&lt;br&gt;&lt;font color='#8a4a00'&gt;↔OAI:NAS·RRC + 38.331 A3量測&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" vertex="1" parent="1"><mxGeometry x="1010" y="856" width="270" height="118" as="geometry"/></mxCell>
-<mxCell id="e_UE_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" edge="1" parent="1" source="ue_scn" target="ue_lc"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram><diagram name="DT RAN 部署圖" id="dep"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="720" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="d_ric" value="外部 RIC　10.3.0.71:36422" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#EEE;strokeColor=#666;fontSize=11;" vertex="1" parent="1"><mxGeometry x="520" y="20" width="200" height="70" as="geometry"/></mxCell>
-<mxCell id="d_host" value="Host network" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=left;fontSize=11;fontStyle=1;fillColor=#F7F7F7;strokeColor=#999;dashed=1;spacingLeft=6;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="470" y="120" width="260" height="90" as="geometry"/></mxCell>
-<mxCell id="d_e2a" value="ransim-e2adapter :8201　(host net,避免 SCTP heartbeat ABORT)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="490" y="150" width="220" height="52" as="geometry"/></mxCell>
-<mxCell id="d_bridge" value="docker bridge net" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=left;fontSize=11;fontStyle=1;fillColor=#F7F7F7;strokeColor=#999;dashed=1;spacingLeft=6;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="40" y="250" width="1120" height="360" as="geometry"/></mxCell>
-<mxCell id="d_cu" value="ransim-cu :8101" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="80" y="300" width="210" height="130" as="geometry"/></mxCell>
-<mxCell id="d_cucp" value="cu_cp" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="100" y="338" width="170" height="34" as="geometry"/></mxCell>
-<mxCell id="d_cuup" value="cu_up(內嵌同容器)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="100" y="382" width="170" height="34" as="geometry"/></mxCell>
-<mxCell id="d_du" value="ransim-du :8102　★模擬真實來源★" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="330" y="300" width="190" height="80" as="geometry"/></mxCell>
-<mxCell id="d_ru" value="ransim-ru :8103" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="560" y="300" width="190" height="80" as="geometry"/></mxCell>
-<mxCell id="d_ue" value="ransim-ue :8105" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="790" y="300" width="190" height="80" as="geometry"/></mxCell>
-<mxCell id="d_phy" value="ransim-physics :8104　(GPU)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="1000" y="300" width="140" height="80" as="geometry"/></mxCell>
-<mxCell id="d_dash" value="ransim-dashboard :3010　(Next.js 前端)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" vertex="1" parent="1"><mxGeometry x="330" y="470" width="230" height="60" as="geometry"/></mxCell>
-<mxCell id="d_pg" value="ransim-postgres :5433　cu/du/ru/physics_db" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#B0872B;fontSize=11;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="650" y="455" width="300" height="90" as="geometry"/></mxCell>
-<mxCell id="d_note" value="註:Omniverse backend :8001 / Kit :8080 依規格「先不含」而省略" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=10;fillColor=#FFF9E6;strokeColor=#CBB26A;" vertex="1" parent="1"><mxGeometry x="40" y="630" width="560" height="40" as="geometry"/></mxCell>
-<mxCell id="de1" value="SCTP PPID=70" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_ric" target="d_e2a"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de2" value="HTTP 拉KPM/落地RC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_e2a" target="d_cu"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de3" value="F1AP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_cu" target="d_du"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de4" value="FAPI" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_du" target="d_ru"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de5" value="PathSolver" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_ru" target="d_phy"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de6" value="位置" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_ue" target="d_ru"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de7" value="SDU" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_ue" target="d_du"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de8" value="poll" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_ue" target="d_cu"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_dash" target="d_cu"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_cu" target="d_pg"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="de11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" edge="1" parent="1" source="d_du" target="d_pg"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>
+<mxfile host="65bd71144e">
+    <diagram name="DT RAN 元件圖" id="comp">
+        <mxGraphModel dx="2052" dy="396" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="980" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="plat" value="平台:XAPP_DT — 分裂式 5G NR RAN 數位孿生(xApp 先在 DT 驗證 HO/PRB 決策再上實體 RAN)　※不含 Omniverse" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=14;fillColor=#FFFFFF;strokeColor=#999999;dashed=1;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="20" width="1310" height="910" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_DU" value="系統 RANsim-DU :8102　目的:★模擬真實來源★ MAC/RLC/PF排程/PM 心跳" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="70" width="290" height="838" as="geometry"/>
+                </mxCell>
+                <mxCell id="du_tick" value="&lt;b&gt;tick&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:slot時鐘/sim-wall解耦/PM window/RLC delay模型&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:gNB_scheduler 迴圈&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="112" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="du_mac" value="&lt;b&gt;mac&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:PF排程(2-pass/retx-aware)/HARQ/link-adapt/PRB quota&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:NR_MAC_gNB scheduler&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="246" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="du_rlc" value="&lt;b&gt;rlc&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:AM/UM分段/retx/BO/SDU delay/discardTimer&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:nr_rlc_entity.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="380" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="du_phy" value="&lt;b&gt;phy_high&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:MCS→調變階數/layer map/BLER查表/TBS&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:LAYER1/NR_TRANSPORT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="514" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="du_f1" value="&lt;b&gt;f1ap_du&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:F1Setup/UE context/DL·UL RRC/measurement_report&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:f1ap_du_task.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="648" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="du_fapi" value="&lt;b&gt;fapi_north&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:DL/UL TTI組裝/CQI→MCS/CRC→HARQ/in-proc SINR&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:nFAPI DL/UL TTI&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="782" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_DU_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_tick" target="du_mac" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_DU_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_mac" target="du_rlc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_DU_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_mac" target="du_phy" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_DU_3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_mac" target="du_fapi" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_DU_4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_f1" target="du_mac" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_DU_5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_f1" target="du_rlc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_RU" value="系統 RANsim-RU :8103　目的:O-RU 天線/Beamform/SINR估計/channel cache" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="70" width="290" height="704" as="geometry"/>
+                </mxCell>
+                <mxCell id="ru_fapi" value="&lt;b&gt;fapi_south&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:DL/UL TTI pipeline/真實多cell干擾/SINR→CQI·CRC/live·cached&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:nr_ru_procedures.c::ru_thread()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="112" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="ru_bf" value="&lt;b&gt;beamforming&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:38.211 codebook/PMI/precoder/SINR·rank·CQI估計&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:nr_modulation.c / nr_feptx_prec&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="246" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="ru_ant" value="&lt;b&gt;antenna&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:天線陣列/cell/UE位置DB + RuController 配置API&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:PHY/MODULATION/antenna.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="380" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="ru_pc" value="&lt;b&gt;physics_client&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:組PathSolverRequest打Physics + L2 cache&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:gNB RU→物理引擎&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="514" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="ru_phy" value="&lt;b&gt;phy_low&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:RU state(SFN/slot/numerology/FFT/CP)/OFDM描述&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:nr_ru_timing.c / ofdm.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="648" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_RU_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="ru_fapi" target="ru_bf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_RU_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="ru_fapi" target="ru_ant" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_RU_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="ru_fapi" target="ru_pc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_E2A" value="系統 RANsim-E2Adapter :8201(host net)　目的:gNB E2 termination HTTP↔ASN.1/SCTP" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="70" width="290" height="570" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2_sctp" value="&lt;b&gt;sctp_link&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:SCTP daemon/E2 Setup握手/indication執行緒/Reset debounce&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:RIC e2term SCTP(PPID=70)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="112" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2_codec" value="&lt;b&gt;codec&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:E2AP/E2SM-KPM F3/E2SM-RC/Subscription APER編解碼&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:E2AP/E2SM-KPM/RC 規範&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="246" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2_bridge" value="&lt;b&gt;sim_bridge&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:HTTP打sim CU 拉indication/落地control&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:—&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="380" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2_log" value="&lt;b&gt;event_log&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:KPM ring(perUE×metric,60/30s stale)/事件ring&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:—&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="514" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_E2A_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="e2_sctp" target="e2_codec" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_E2A_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="e2_sctp" target="e2_bridge" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_E2A_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="e2_sctp" target="e2_log" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_E2A_3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="e2_bridge" target="e2_codec" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_PHY" value="系統 Physics :8104　目的:Sionna RT 光追物理層(GPU) 取代 RF/channel + coverage" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="1000" y="70" width="290" height="570" as="geometry"/>
+                </mxCell>
+                <mxCell id="phy_act" value="&lt;b&gt;ran_signal (actors)&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:PathSolver/Coverage/Precompute/Config/Health REST&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:RF/channel 存取層&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="1010" y="112" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="phy_ops" value="&lt;b&gt;sionna_operations&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:Sionna引擎/載Mitsuba/compute_paths/coverage_map&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:RF hardware/channel 模擬&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="1010" y="246" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="phy_calc" value="&lt;b&gt;ran_calculation&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:sionna_engine/coverage_solver/scene·mitsuba builder&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:通道模型&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="1010" y="380" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="phy_pre" value="&lt;b&gt;precompute&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:離線算(tick,ue,cell)path_gain→.npz 供cached&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:「錄好 path_gain 回放」&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="1010" y="514" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_PHY_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="phy_act" target="phy_ops" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_PHY_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="phy_ops" target="phy_calc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_PHY_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="phy_pre" target="phy_ops" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_CU" value="系統 RANsim-CU :8101　目的:gNB-CU RRC/F1AP/NGAP/E2 + A3 HO決策 + KPM匯集" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="680" width="290" height="302" as="geometry"/>
+                </mxCell>
+                <mxCell id="cu_cp" value="&lt;b&gt;cu_cp&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:RRC狀態機/A3 HO/F1AP·NGAP·E2訊令/UE context/KPM匯集&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:rrc_gNB.c / f1ap_cu / ngap_gNB.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="722" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="cu_up" value="&lt;b&gt;cu_up&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:PDCP/SDAP/GTP-U 使用者面/E1AP bearer/DRB&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:PDCP_v10.1.0 / SDAP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="856" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_CU_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="cu_cp" target="cu_up" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_UE" value="系統 RANsim-UE :8105　目的:UE群 位置/流量/量測(由 DU tick 驅動)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontStyle=1;fontSize=12;fillColor=#FBFBFB;strokeColor=#333333;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="1000" y="680" width="290" height="302" as="geometry"/>
+                </mxCell>
+                <mxCell id="ue_scn" value="&lt;b&gt;scenario&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:載劇本/套場景幾何/切channel mode/bulk attach/進度&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:測試框架(gNB boot+UE attach)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="1010" y="722" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="ue_lc" value="&lt;b&gt;ue_lifecycle&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:per-UE執行緒/poll CU/trajectory內插(~100ms)/traffic gen/量測&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:NAS·RRC + 38.331 A3量測&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
+                    <mxGeometry x="1010" y="856" width="270" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_UE_0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="ue_scn" target="ue_lc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram name="DT RAN 部署圖" id="dep">
+        <mxGraphModel dx="1026" dy="198" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="720" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="d_ric" value="外部 RIC　10.3.0.71:36422" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#EEE;strokeColor=#666;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="520" y="20" width="200" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_host" value="Host network" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=left;fontSize=11;fontStyle=1;fillColor=#F7F7F7;strokeColor=#999;dashed=1;spacingLeft=6;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="470" y="120" width="260" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_e2a" value="ransim-e2adapter :8201　(host net,避免 SCTP heartbeat ABORT)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="490" y="150" width="220" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_bridge" value="docker bridge net" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=left;fontSize=11;fontStyle=1;fillColor=#F7F7F7;strokeColor=#999;dashed=1;spacingLeft=6;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="250" width="1120" height="360" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_cu" value="ransim-cu :8101" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="300" width="210" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_cucp" value="cu_cp" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="338" width="170" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_cuup" value="cu_up(內嵌同容器)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="382" width="170" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_du" value="ransim-du :8102　★模擬真實來源★" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="330" y="300" width="190" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_ru" value="ransim-ru :8103" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="300" width="190" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_ue" value="ransim-ue :8105" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="790" y="300" width="190" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_phy" value="ransim-physics :8104　(GPU)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="1000" y="300" width="140" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_dash" value="ransim-dashboard :3010　(Next.js 前端)" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;align=center;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="330" y="470" width="230" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_pg" value="ransim-postgres :5433　cu/du/ru/physics_db" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#B0872B;fontSize=11;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="650" y="455" width="300" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_note" value="註:Omniverse backend :8001 / Kit :8080 依規格「先不含」而省略" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=10;fillColor=#FFF9E6;strokeColor=#CBB26A;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="630" width="560" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="de1" value="SCTP PPID=70" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_ric" target="d_e2a" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de2" value="HTTP 拉KPM/落地RC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_e2a" target="d_cu" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de3" value="F1AP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_cu" target="d_du" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de4" value="FAPI" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_du" target="d_ru" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de5" value="PathSolver" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_ru" target="d_phy" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de6" value="位置" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_ue" target="d_ru" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de7" value="SDU" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_ue" target="d_du" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de8" value="poll" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_ue" target="d_cu" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_dash" target="d_cu" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_cu" target="d_pg" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="de11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#555;fontSize=10;" parent="1" source="d_du" target="d_pg" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

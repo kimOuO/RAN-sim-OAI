@@ -159,6 +159,9 @@ class TickRunner:
         # Phase B — per-tick 即時 stats(每 _tick_body 結尾覆寫),給 Dashboard chart 用
         self.last_ue_stats: dict[str, dict[str, Any]] = {}
         self.last_cell_stats: dict[str, dict[str, Any]] = {}
+        # 每 UE「最後一次 KPM window flush」的窗口吞吐(1s 平均,= 送 CU 的 DRB.UEThpDl)。
+        # 給 dump_pm 用,讓 Omniverse label 顯示跟 KPM 一致的平滑吞吐(而非逐 tick 瞬時值)。
+        self._last_ue_window_kpm: dict[str, dict[str, float]] = {}
         # P0a (2026-06-01) — 實際達成倍速 achieved_speed_x。
         # sim_speed_x 是「設定值」(sim_dt/wall_tick),但 loop 在負載下 body 塞不進
         # wall_tick 時實際跑不到那麼快。achieved = 近 ~1s 內 tick_count 真實增長率換算,
@@ -253,6 +256,49 @@ class TickRunner:
             "qos_5qi": qos_5qi,
         }
 
+    def update_ue_qos(self, ue_id: str, qos_5qi: int) -> None:
+        """P0-6:F1AP UE Context Setup 帶來的 DRB 5QI → registry(排程器優先權用)。"""
+        if ue_id in self._ue_registry:
+            self._ue_registry[ue_id]["qos_5qi"] = int(qos_5qi)
+
+    def _detect_rlf(self, ues: list[dict[str, Any]]) -> None:
+        """P1-1:對每個 UE 餵 SINR 進 RLF 狀態機;宣告 RLF 者上報 CU + 移出 registry。"""
+        from main.apps.tick.services.optional.runner.rlf_detector import get_rlf_detector
+        det = get_rlf_detector()
+        now_sim = self.status.tick_count * self._sim_dt_ms
+        declared: list[dict[str, Any]] = []
+        for ue in ues:
+            rlf = det.observe(ue["id"], float(ue.get("sinr_db", 0.0)), now_sim)
+            if rlf:
+                # 從 registry 緩存的鄰區量測挑最強 cell(供 CU 決定重建落點)
+                state = self._ue_registry.get(ue["id"], {})
+                neighbors = state.get("neighbors") or []
+                best = max(neighbors, key=lambda n: n.get("rsrp_dbm", -999.0), default=None)
+                rlf["serving_cell"] = ue.get("serving_cell", "")
+                rlf["strongest_cell"] = best.get("cell_id") if best else ""
+                rlf["strongest_rsrp"] = float(best.get("rsrp_dbm", -140.0)) if best else -140.0
+                declared.append(rlf)
+        if declared:
+            # serving PCI(對齊 reestablishmentInboundByPreviousPci — 缺漏鄰區證據鏈)
+            try:
+                from main.apps.mac.models.cell_state import CellState
+                pci_map = dict(CellState.objects.values_list("cell_id", "pci"))
+            except Exception:
+                pci_map = {}
+            for rlf in declared:
+                rlf["serving_pci"] = pci_map.get(rlf.get("serving_cell", ""), -1)
+        for rlf in declared:
+            uid = rlf["ue_id"]
+            self._ue_registry.pop(uid, None)  # 停止排程這個 UE
+            det.remove(uid)
+            try:
+                from main.apps.f1ap_du.services.business.cu_client_operations import (
+                    CuClientBusinessService,
+                )
+                CuClientBusinessService.post_rlf_report(rlf)
+            except Exception:
+                logger.exception("post_rlf_report failed for %s", uid)
+
     def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
@@ -307,6 +353,7 @@ class TickRunner:
         # Phase B — 清 last-tick stats(避免上次 session 的最後一筆殘留)
         self.last_ue_stats = {}
         self.last_cell_stats = {}
+        self._last_ue_window_kpm = {}
         # 清 PM aggregator（avg delay / throughput / PRB / volume 累積資料）
         try:
             get_pm_aggregator().reset()
@@ -514,6 +561,10 @@ class TickRunner:
                 _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"))
                 if _ip is not None and _ip > -200:
                     ue["sinr_db"] = _ip
+        # P1-1(2026-08-12):RLF 偵測 — 每 CONNECTED UE 餵當前 SINR 進 T310 狀態機。
+        # 宣告 RLF 的 UE:上報 CU(含最強鄰 cell 供重建)+ 移出 registry(停止排程)。
+        self._detect_rlf(ues_for_measurement)
+
         ues_with_bo = [
             self._ue_registry[u] for u in self._ue_registry if bo_by_ue.get(u, 0) > 0
         ]
@@ -915,8 +966,14 @@ class TickRunner:
                     pdcp_sdu_volume_dl=w.get("pdcp_sdu_volume_dl", 0),
                     pdcp_sdu_volume_ul=w.get("pdcp_sdu_volume_ul", 0),
                     rlc_sdu_delay_dl_ms=w.get("rlc_sdu_delay_dl_ms", 0.0),
+                    qos_5qi=int(w.get("qos_5qi", 9) or 9),   # D:per-5QI 分桶
                     neighbor_cells=neighbor_meas_list,    # ★ A3 evaluator 終於有料
                 )
+                # 留存 1s 窗口吞吐給 dump_pm(Omniverse label 用,與此處送 CU 的值同源)
+                self._last_ue_window_kpm[uid] = {
+                    "throughput_dl_mbps": w["throughput_dl_mbps"],
+                    "throughput_ul_mbps": w["throughput_ul_mbps"],
+                }
                 CuClientBusinessService.post_measurement_report(encode_measurement_report(report))
 
             # AL2 — flush cell-level PRB% (RRU.PrbTotDl) per active cell
@@ -939,6 +996,12 @@ class TickRunner:
         # Phase B — 存「此 tick 即時 stats」給 Dashboard 用(不是 cumulative)
         # 注意:_acc 是累積,_ue_window 是 rolling,這裡 last_*_stats 是真正「最後一個 tick」
         sim_dt_s = self._sim_dt_ms / 1000.0
+        # cell_id → pci 對照(給 dump_pm / Omniverse label 顯示 serving PCI)
+        try:
+            from main.apps.mac.models.cell_state import CellState
+            cell_pci_map = dict(CellState.objects.values_list("cell_id", "pci"))
+        except Exception:  # noqa: BLE001
+            cell_pci_map = {}
         new_ue_stats: dict[str, dict[str, Any]] = {}
         for ue in ues_for_measurement:
             uid = ue["id"]
@@ -947,8 +1010,11 @@ class TickRunner:
             if _SLOT_ENGINE_TAKEOVER:  # 顯示一致:dashboard 也用接管後的 slot 引擎 delay
                 avg_delay = takeover_delay_by_ue.get(uid, avg_delay)
             bytes_drained = actual_drained_map.get(uid, 0)
+            _wk = self._last_ue_window_kpm.get(uid, {})
+            _scell = ue.get("serving_cell", "")
             new_ue_stats[uid] = {
-                "serving_cell": ue.get("serving_cell", ""),
+                "serving_cell": _scell,
+                "serving_pci": cell_pci_map.get(_scell),
                 "sinr_db": ue["sinr_db"],
                 "rsrp_dbm": ue["rsrp_dbm"],
                 "prb_dl_this_tick": rb_alloc_global.get(uid, 0),
@@ -956,6 +1022,10 @@ class TickRunner:
                 "bytes_dl_this_tick": bytes_drained,
                 "throughput_dl_mbps_this_tick":
                     (bytes_drained * 8 / 1e6 / sim_dt_s) if sim_dt_s > 0 else 0.0,
+                # 1s 窗口平均吞吐(= KPM DRB.UEThpDl),tick 間 hold 住上次 flush 值。
+                # Omniverse label 讀這個,顯示平滑且與 KPM 一致的吞吐。
+                "throughput_dl_mbps_window": _wk.get("throughput_dl_mbps"),
+                "throughput_ul_mbps_window": _wk.get("throughput_ul_mbps"),
                 "rlc_delay_ms_avg_this_tick": avg_delay,
                 "rlc_buffer_bo_this_tick": bo_by_ue.get(uid, 0),
                 "neighbors": ue.get("neighbors", []),

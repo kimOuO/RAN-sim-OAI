@@ -9,7 +9,6 @@ bbu_status / warnings。量測得到的欄位給真值,量不到且推不出來�
     HandoverEvent / CellMeasurementLog
   - DU dump_pm(HTTP):per-cell MCS 32-bin / CQI 16-bin / PRB 累計 / PDCP bytes
     per-5QI / wall_tick_ms
-  - UE Status/read(HTTP):UE 即時位置
   - BbuTelemetryService:host psutil/pynvml(per-gNB 分攤 → proxy 值)
 
 RSRQ:3GPP 真實版(2026-08-07 升級,見 _derive_rsrq)—— RSRQ = RSRP/RSSI,
@@ -111,30 +110,6 @@ def _fetch_du_dump_pm() -> dict[str, Any]:
         return {}
 
 
-def _fetch_ue_positions() -> dict[str, list[float]]:
-    """UE 容器 Status/read → {ue_id: [x, y, z]}。抓不到回空 dict(position 補 0)。"""
-    host = get_str("HTTP_UE_HOST", "ue")
-    port = get_str("HTTP_UE_PORT", "8000")
-    try:
-        r = requests.post(
-            f"http://{host}:{port}/api/v0.1/UE/Status/read",
-            json={}, timeout=_HTTP_TIMEOUT,
-        )
-        r.raise_for_status()
-        out: dict[str, list[float]] = {}
-        for t in (r.json().get("data", {}) or {}).get("threads", []):
-            pos = t.get("position") or {}
-            out[t.get("ue_id", "")] = [
-                round(float(pos.get("x", 0.0)), 2),
-                round(float(pos.get("y", 0.0)), 2),
-                round(float(pos.get("z", 0.0)), 2),
-            ]
-        return out
-    except requests.RequestException as exc:
-        logger.warning("UE position fetch failed: %s", exc)
-        return {}
-
-
 # ── pm 區:190 欄模板 ───────────────────────────────────────────────
 
 def _pm_record(
@@ -148,15 +123,39 @@ def _pm_record(
     prb_log: CellMeasurementLog | None,
     cell_delay_ms: float,
     cpu_temp: float,
+    rlf: dict[str, int] | None = None,
+    session_time_sec: int = 0,
+    estab: tuple[int, int] = (0, 0),
+    cell_delay_q1_ms: float = 0.0,
+    conn_mean: float | None = None,
 ) -> dict[str, str]:
     """單一 cell 的 pm dict — 鍵名/順序/值型別(字串)完全對齊範例。"""
     ts_start = now.strftime("%Y%m%d.%H%M%z")
     ts_end = now.strftime("%H%M%z")
     gid = cfg.gnb_id or "unknown"
 
-    attach = str(conn_cnt)   # 附著代理值:目前 CONNECTED 在本 cell 的 UE 數(見報告)
-    pdcp_dl = str(int(du_acc.get("pdcp_bytes_dl", {}).get("9", du_acc.get("pdcp_bytes_dl", {}).get(9, 0))))
-    pdcp_ul = str(int(du_acc.get("pdcp_bytes_ul", {}).get("9", du_acc.get("pdcp_bytes_ul", {}).get(9, 0))))
+    # 2026-08-12 轉真:RrcEstabCounter 事件真累計(SETUP_REQUEST=Att / SETUP_COMPLETE=Succ,
+    # 只加不減,HO 不影響)。取代舊「現值代理」。
+    est_att, est_succ = str(int(estab[0])), str(int(estab[1]))
+    attach = est_succ   # 下游 UECNTX/SM/DRB.Estab 同源(每成功 attach 建 1 session/DRB)
+
+    def _bucket(direction: str, qi: int) -> str:
+        d = du_acc.get(f"pdcp_bytes_{direction}", {}) or {}
+        return str(int(d.get(str(qi), d.get(qi, 0))))
+
+    pdcp_dl, pdcp_ul = _bucket("dl", 9), _bucket("ul", 9)
+    # P0-6(2026-08-11):5QI1/4 分桶轉真 — DU per-5QI 帳本本來就有,照桶讀
+    q1_dl, q1_ul = _bucket("dl", 1), _bucket("ul", 1)
+    q4_dl, q4_ul = _bucket("dl", 4), _bucket("ul", 4)
+
+    # P1-3 補(2026-08-12):釋放/Reconfig/SessionTime 轉真 —— 全部由真實事件推導。
+    #   gNB 發起釋放 = RLF 掉話(RlfEvent DROP,無線原因);核網(5GCinit)發起釋放
+    #   平台無此流程 → 誠實維持 0。ConnReConfig = HO 執行鏡像(每次換手隱含一次 reconfig)。
+    drop_n = int((rlf or {}).get("drop", 0))       # 本 cell RLF 掉話數(真事件)
+    ho_req = int((ho or {}).get("exe_req", 0))
+    ho_succ = int((ho or {}).get("exe_succ", 0))
+    drop_s = str(drop_n)
+    st_s = str(int(session_time_sec))
 
     rec: dict[str, str] = {
         "cell_id": _cell_hex_id(cfg),
@@ -168,22 +167,22 @@ def _pm_record(
         "du_filename": f"A{ts_start}-{ts_end}_{gid}-du.xml",
         "cu_CU_Capability": "1",
         # RRC 連線建立(代理:目前 CONNECTED 數;皆為 mo-Data)
-        "cu_RRC.ConnEstabAtt.sum": attach,
-        "cu_RRC.ConnEstabAtt.mo-Data": attach,
+        "cu_RRC.ConnEstabAtt.sum": est_att,
+        "cu_RRC.ConnEstabAtt.mo-Data": est_att,
         "cu_RRC.ConnEstabAtt.mo-Signalling": "0",
         "cu_RRC.ConnEstabSucc.sum": attach,
         "cu_RRC.ConnEstabSucc.mo-Data": attach,
         "cu_RRC.ConnEstabSucc.mo-Signalling": "0",
         "cu_RRC.ConnEstabSucc.emergency": "0",
         "cu_RRC.ConnMax": str(conn_max),
-        "cu_RRC.ConnMean": str(conn_cnt),
-        # ReEstab — 模擬器無 RRC re-establishment 流程 → 0
-        "cu_RRC.ConnReEstabSetup.sum": "0",
-        "cu_RRC.ReEstabAtt": "0",
-        "cu_RRC.ReEstabAtt.otherFailure": "0",
-        "cu_RRC.ReEstabSuccWithUeContext.sum": "0",
+        "cu_RRC.ConnMean": str(int(round(conn_mean if conn_mean is not None else conn_cnt))),  # C:取樣真平均
+        # ReEstab — P1-3(2026-08-12)轉真:RlfEvent 依 source_cell 聚合
+        "cu_RRC.ConnReEstabSetup.sum": str((rlf or {}).get("reestab_att", 0)),
+        "cu_RRC.ReEstabAtt": str((rlf or {}).get("reestab_att", 0)),
+        "cu_RRC.ReEstabAtt.otherFailure": str((rlf or {}).get("drop", 0)),
+        "cu_RRC.ReEstabSuccWithUeContext.sum": str((rlf or {}).get("reestab_with", 0)),
         "cu_RRC.ReEstabSuccWithUeContext.otherFailure": "0",
-        "cu_RRC.ReEstabSuccWithoutUeContext.sum": "0",
+        "cu_RRC.ReEstabSuccWithoutUeContext.sum": str((rlf or {}).get("reestab_without", 0)),
         "cu_RRC.ReEstabSuccWithoutUeContext.otherFailure": "0",
         # HO — 真值(HandoverEvent;全部 intra-freq)
         "cu_MM.HoExeIntraFreqReq": str(ho.get("exe_req", 0)),
@@ -194,22 +193,22 @@ def _pm_record(
         "cu_MM.HoPrepIntraSucc": str(ho.get("prep_succ", 0)),
         "cu_gnb.MR.Event.A3": str(ho.get("a3", 0)),
         # UECNTX — 與 RRC ConnEstab 同源
-        "cu_UECNTX.ConnEstabAtt.sum": attach,
-        "cu_UECNTX.ConnEstabAtt.mo-Data": attach,
+        "cu_UECNTX.ConnEstabAtt.sum": est_att,
+        "cu_UECNTX.ConnEstabAtt.mo-Data": est_att,
         "cu_UECNTX.ConnEstabAtt.mo-Signalling": "0",
         "cu_UECNTX.ConnEstabSucc.sum": attach,
         "cu_UECNTX.ConnEstabSucc.mo-Data": attach,
         "cu_UECNTX.ConnEstabSucc.mo-Signalling": "0",
-        "cu_UECNTX.Release.5GCinit.NASCause": "0",
+        "cu_UECNTX.Release.5GCinit.NASCause": "0",  # 核網發起釋放:平台無此流程,誠實 0
         "cu_UECNTX.Release.5GCinit.RNCause": "0",
         "cu_UECNTX.Release.5GCinit.sum": "0",
-        "cu_gnb.UECNTX.Release.gNBinit.RNCause": "0",
-        "cu_gnb.UECNTX.Release.gNBinit.sum": "0",
+        "cu_gnb.UECNTX.Release.gNBinit.RNCause": drop_s,  # gNB 發起釋放=RLF 掉話(無線原因)
+        "cu_gnb.UECNTX.Release.gNBinit.sum": drop_s,
         # PDU session / DRB:一 UE 一 session(5QI9)
         "cu_SM.PDUSessionSetupReq": attach,
         "cu_SM.PDUSessionSetupSucc": attach,
-        "cu_gnb.SM.PDUSessionRelease.Att": "0",
-        "cu_gnb.SM.PDUSessionRelease.Succ": "0",
+        "cu_gnb.SM.PDUSessionRelease.Att": drop_s,  # 每掉話 UE 一 session
+        "cu_gnb.SM.PDUSessionRelease.Succ": drop_s,
         "cu_DRB.EstabAtt.5QI.sum": attach,
         "cu_DRB.EstabAtt.5QI9": attach,
         "cu_DRB.EstabSucc.5QI.sum": attach,
@@ -218,21 +217,22 @@ def _pm_record(
         "cu_DRB.InitialEstabAtt.5QI1": "0",
         "cu_DRB.InitialEstabSucc.5QI.sum": attach,
         "cu_DRB.InitialEstabSucc.5QI9": attach,
-        "cu_DRB.PdcpPacketDiscardDL.5QI9": "0",
+        # P0-1(2026-08-11)轉真:DU per-cell RLC tx-cap drop 累計(對齊 OAI sdu_rejected)
+        "cu_DRB.PdcpPacketDiscardDL.5QI9": str(int(du_acc.get("rlc_drop_sdus", 0))),
         "cu_DRB.PdcpReordDelayUl": "0",
-        "cu_DRB.RelActNbr.5QI.sum": "0",
-        "cu_DRB.RelActNbr.5QI9": "0",
-        "cu_DRB.SessionTime.5QI.sum": "0",
-        "cu_DRB.SessionTime.5QI9": "0",
+        "cu_DRB.RelActNbr.5QI.sum": drop_s,  # 釋放時仍活躍的 DRB=掉話(掉話 UE 本在傳輸)
+        "cu_DRB.RelActNbr.5QI9": drop_s,
+        "cu_DRB.SessionTime.5QI.sum": st_s,  # Σ(now−created_at) 秒
+        "cu_DRB.SessionTime.5QI9": st_s,
         # PDCP/SDAP volume — 真值(DU 累計 bytes,5QI 分桶)
-        "cu_DRB.PdcpSduVolumeDL_5QI1": "0",
-        "cu_DRB.PdcpSduVolumeUl_5QI1": "0",
-        "cu_gnb.DRB.SdapSduVolumeDL.5QI1": "0",
-        "cu_gnb.DRB.SdapSduVolumeUl.5QI1": "0",
-        "cu_DRB.PdcpSduVolumeDL_5QI4": "0",
-        "cu_DRB.PdcpSduVolumeUl_5QI4": "0",
-        "cu_gnb.DRB.SdapSduVolumeDL.5QI4": "0",
-        "cu_gnb.DRB.SdapSduVolumeUl.5QI4": "0",
+        "cu_DRB.PdcpSduVolumeDL_5QI1": q1_dl,
+        "cu_DRB.PdcpSduVolumeUl_5QI1": q1_ul,
+        "cu_gnb.DRB.SdapSduVolumeDL.5QI1": q1_dl,
+        "cu_gnb.DRB.SdapSduVolumeUl.5QI1": q1_ul,
+        "cu_DRB.PdcpSduVolumeDL_5QI4": q4_dl,
+        "cu_DRB.PdcpSduVolumeUl_5QI4": q4_ul,
+        "cu_gnb.DRB.SdapSduVolumeDL.5QI4": q4_dl,
+        "cu_gnb.DRB.SdapSduVolumeUl.5QI4": q4_ul,
         "cu_DRB.PdcpSduVolumeDL_5QI9": pdcp_dl,
         "cu_DRB.PdcpSduVolumeUl_5QI9": pdcp_ul,
         "cu_gnb.DRB.SdapSduVolumeDL.5QI9": pdcp_dl,
@@ -254,13 +254,13 @@ def _pm_record(
         "cu_gnb.RRC.ConnEstabSetup.mo-Data": "0",
         "cu_gnb.RRC.ConnEstabSetup.mo-Signalling": "0",
         "cu_gnb.RRC.ConnEstabSetup.sum": attach,
-        "cu_gnb.RRC.ConnReConfigAtt": "0",
-        "cu_gnb.RRC.ConnReConfigSucc": "0",
+        "cu_gnb.RRC.ConnReConfigAtt": str(ho_req),  # HO 執行=Reconfig(短期為 HO 鏡像)
+        "cu_gnb.RRC.ConnReConfigSucc": str(ho_succ),
         "cu_gnb.RRC.ConnReEstab.ReEstab.otherFailure": "0",
         "cu_gnb.RRC.ConnReEstab.ReEstab.sum": "0",
         "cu_gnb.RRC.ConnReEstabSetup.otherFailure": "0",
-        "cu_gnb.RRC.ConnRelease.Other": "0",
-        "cu_gnb.RRC.ConnRelease.sum": "0",
+        "cu_gnb.RRC.ConnRelease.Other": "0",  # 非無線原因釋放:無,全歸 sum
+        "cu_gnb.RRC.ConnRelease.sum": drop_s,
         "cu_gnb.RRC.SigTimeReEstab.Avg": "0",
         "cu_gnb.RRC.SigTimeReEstab.Max": "0",
         "cu_gnb.RRC.SigTimeReconfig.Avg": "0",
@@ -288,7 +288,7 @@ def _pm_record(
     rec["du_CARR.PRBUsageDLNbr"] = str(int(du_acc.get("prb_used_dl", 0)))
     rec["du_CARR.PRBUsageULNbr"] = str(int(du_acc.get("prb_used_ul", 0)))
     # 空口 delay — RLC SDU delay 當 proxy(5QI9;UL 未建模 → 0)
-    rec["du_DRB.AirIfDelayDlAvg.5QI1"] = "0"
+    rec["du_DRB.AirIfDelayDlAvg.5QI1"] = f"{cell_delay_q1_ms:.0f}"  # D:5QI1(語音)delay 轉真
     rec["du_DRB.AirIfDelayDlAvg.5QI9"] = f"{cell_delay_ms:.0f}"
     rec["du_DRB.AirIfDelayUlAvg.5QI1"] = "0"
     rec["du_DRB.AirIfDelayUlAvg.5QI9"] = "0"
@@ -317,10 +317,6 @@ class FullKpmReporter:
         tick_ms = int(du_dump.get("wall_tick_ms") or 0)
         if not du_dump:
             warnings.append("du dump_pm unreachable — du_* counters are 0")
-
-        positions = _fetch_ue_positions()
-        if not positions:
-            warnings.append("ue positions unavailable — position filled with 0")
 
         # per-cell DL 負載(0~1)— 3GPP RSRQ 的 activity factor 用(idle 鄰站干擾低)
         cell_load: dict[str, float] = {}
@@ -381,6 +377,33 @@ class FullKpmReporter:
                 d["exe_succ"] += 1
             if evt.trigger == "A3_TTT":
                 d["a3"] += 1
+
+        # P1-3(2026-08-12):RLF / RRC 重建 per-cell 計數(RlfEvent 依 source_cell)
+        rlf_per_cell: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        try:
+            from main.apps.cu_cp.models.rlf_event import RlfEvent
+            for evt in RlfEvent.objects.filter(source_cell__in=active_cell_ids):
+                d = rlf_per_cell[evt.source_cell]
+                d["rlf"] += 1
+                if evt.outcome == "DROP":
+                    d["drop"] += 1
+                elif evt.outcome == "REESTAB_WITH_CTX":
+                    d["reestab_with"] += 1
+                    d["reestab_att"] += 1
+                elif evt.outcome == "REESTAB_WITHOUT_CTX":
+                    d["reestab_without"] += 1
+                    d["reestab_att"] += 1
+        except Exception:
+            logger.exception("RLF per-cell aggregation failed")
+
+        # 2026-08-12:ConnEstab 真累計(取代現值代理)—— RrcEstabCounter 事件計數
+        estab_by_cell: dict[str, tuple[int, int]] = {}
+        try:
+            from main.apps.cu_cp.models.rrc_estab_counter import RrcEstabCounter
+            for c_ in RrcEstabCounter.objects.filter(cell_id__in=active_cell_ids):
+                estab_by_cell[c_.cell_id] = (int(c_.att), int(c_.succ))
+        except Exception:
+            logger.exception("estab counter fetch failed")
 
         host_bbu = BbuTelemetryService.snapshot_host()
 
@@ -447,7 +470,6 @@ class FullKpmReporter:
                     all_rsrp[g] = v
             ue_status_out.append({
                 "ue_id": ue.ue_id,
-                "position": positions.get(ue.ue_id, [0.0, 0.0, 0.0]),
                 "serving_gnb": serv_gnb,
                 "serving_pci": int(cell_by_id[ue.serving_cell].pci),
                 "rsrp_dbm": round(float(m.rsrp_dbm), 1),
@@ -470,21 +492,46 @@ class FullKpmReporter:
                 if (cfg.gnb_id or "unknown") != gid:
                     continue
                 conn_cnt = len(conn_per_cell.get(cfg.cell_id, []))
-                _conn_max_seen[cfg.cell_id] = max(_conn_max_seen[cfg.cell_id], conn_cnt)
+                # B/C(2026-08-12):持久高水位 + 真平均(取樣累計,CU 重啟不歸零)
+                try:
+                    from main.apps.cu_cp.services.business.cell_counters import (
+                        get_session_time, sample_conn,
+                    )
+                    conn_max_db, conn_mean_db = sample_conn(cfg.cell_id, conn_cnt)
+                    released_session_sec = get_session_time(cfg.cell_id)
+                except Exception:
+                    conn_max_db, conn_mean_db = conn_cnt, float(conn_cnt)
+                    released_session_sec = 0
+                _conn_max_seen[cfg.cell_id] = max(_conn_max_seen[cfg.cell_id], conn_max_db)
+                rows = conn_per_cell.get(cfg.cell_id, [])
                 delays = [
                     float(getattr(r["meas"], "rlc_sdu_delay_dl_ms", 0.0) or 0.0)
-                    for r in conn_per_cell.get(cfg.cell_id, [])
+                    for r in rows
                 ]
+                # D(2026-08-12):delay 按 UE 的 5QI 分桶(AirIfDelayDlAvg.5QI1 轉真)
+                d_q1 = [float(getattr(r["meas"], "rlc_sdu_delay_dl_ms", 0.0) or 0.0)
+                        for r in rows if int(getattr(r["meas"], "qos_5qi", 9) or 9) == 1]
+                delay_q1_ms = (sum(d_q1) / len(d_q1)) if d_q1 else 0.0
+                # P1-3 補(2026-08-12):SessionTime = Σ(now − created_at) 秒(本 cell CONNECTED UE)
+                session_time_sec = released_session_sec + int(sum(
+                    max(0.0, (now - r["ue"].created_at).total_seconds())
+                    for r in rows if getattr(r["ue"], "created_at", None)
+                ))
                 recs.append(_pm_record(
                     cfg,
                     now=now,
                     conn_cnt=conn_cnt,
                     conn_max=_conn_max_seen[cfg.cell_id],
                     ho=ho_per_cell.get(cfg.cell_id, {}),
+                    rlf=rlf_per_cell.get(cfg.cell_id, {}),
                     du_acc=du_gnbs.get(cfg.cell_id, {}),
                     prb_log=None,
                     cell_delay_ms=(sum(delays) / len(delays)) if delays else 0.0,
+                    cell_delay_q1_ms=delay_q1_ms,
                     cpu_temp=host_bbu["cpu_temp"],
+                    session_time_sec=session_time_sec,
+                    estab=estab_by_cell.get(cfg.cell_id, (0, 0)),
+                    conn_mean=conn_mean_db,
                 ))
             pm_out[f"gnb-{gid}"] = recs
 

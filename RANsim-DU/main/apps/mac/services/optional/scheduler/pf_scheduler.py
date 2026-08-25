@@ -43,6 +43,15 @@ logger = get_logger(__name__)
 # 詳見 docs/test_records/oai_prb_calc_evidence_2026-05-23.md
 MIN_PRB = 5
 
+# ── P0-6(2026-08-11):5QI GBR 優先權 ──────────────────────────────
+# 3GPP TS 23.501 表 5.7.4-1:5QI 1~4 為 GBR(語音/影音),須保證頻寬。
+# GBR-first 兩段式:GBR UE 先按需求配滿(受 QOS_GBR_MAX_SHARE 上限保護,
+# 防 GBR 塞爆餓死數據),剩餘 PRB 才給 best-effort UE 跑 PF。
+# env QOS_GBR_FIRST=off 可退回一視同仁(舊行為)。
+_GBR_5QIS = {1, 2, 3, 4}
+_QOS_GBR_FIRST = get_bool("QOS_GBR_FIRST", True)
+_GBR_MAX_SHARE = 0.3   # GBR 最多吃 30% 物理 PRB(語音流量小,正常遠用不到)
+
 
 @dataclass
 class _UeSchedState:
@@ -60,6 +69,35 @@ class PfScheduler:
         self.ue_state.clear()
 
     def allocate(
+        self,
+        *,
+        gnb_name: str,
+        ues_on_gnb: list[dict[str, Any]],
+        n_prb_total: int,
+        tick_ms: int = 500,
+    ) -> dict[str, int]:
+        """P0-6 wrapper:GBR(5QI 1~4)先配、best-effort 分剩池;無 GBR 時 = 原 PF。"""
+        if not ues_on_gnb:
+            return {}
+        gbr = [u for u in ues_on_gnb if int(u.get("qos_5qi") or 9) in _GBR_5QIS]
+        if not gbr or not _QOS_GBR_FIRST:
+            return self._pf_allocate(
+                gnb_name=gnb_name, ues_on_gnb=ues_on_gnb,
+                n_prb_total=n_prb_total, tick_ms=tick_ms)
+
+        be = [u for u in ues_on_gnb if int(u.get("qos_5qi") or 9) not in _GBR_5QIS]
+        gbr_pool = max(1, min(int(n_prb_total * _GBR_MAX_SHARE), n_prb_total))
+        alloc = self._pf_allocate(
+            gnb_name=f"{gnb_name}/gbr", ues_on_gnb=gbr,
+            n_prb_total=gbr_pool, tick_ms=tick_ms)
+        rest_pool = max(1, n_prb_total - sum(alloc.values()))
+        if be:
+            alloc.update(self._pf_allocate(
+                gnb_name=f"{gnb_name}/be", ues_on_gnb=be,
+                n_prb_total=rest_pool, tick_ms=tick_ms))
+        return alloc
+
+    def _pf_allocate(
         self,
         *,
         gnb_name: str,
