@@ -269,11 +269,25 @@ def indication_v10(cell_id: str | None = None,
             "nrtCapacity": {"limit": get_int("ANR_NRT_CAPACITY", 32),
                             "used": rel_qs.count()},
             "anrIntraEnabled": get_bool("ANR_INTRA_ENABLED", default=True),
+            # 兩個容器分開,各自 50 筆 —— 不是一個 ring 塞兩種事件。
+            # 理由(RIC 2026-08-25 §5 提出,我們採納):
+            #   ADD/REMOVE 量大且可丟 —— 丟了頂多稽核不完整,不影響正確性
+            #   FLAG 稀有但關鍵     —— 丟了是**正確性問題**:xApp 重啟後無從得知
+            #                          自己設過哪些旗標(旗標在 v10 不可觀測),
+            #                          孤兒旗標會讓那條關係永久呈現假的第 6 題
+            # 實測他們那台的 50 筆是「REMOVE 32 + ADD 18」一格不剩,
+            # 任何一筆 FLAG 進來會立刻被擠掉 —— 拉高上限只是把問題往後推。
             "relationChangeEvents": [
                 {"action": e.action, "targetCellGlobalId": e.target_cgi,
                  "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
                  "reason": e.detail if e.action.endswith("_REJECTED") else None}
-                for e in chg_qs[:50]],
+                for e in chg_qs.exclude(action__startswith="FLAG_")[:50]],
+            "flagChangeEvents": [
+                {"action": e.action,               # FLAG_SET / FLAG_CLEAR
+                 "targetCellGlobalId": e.target_cgi,
+                 "flag": e.detail,                 # hoBlocklist / noRemove / xnBlocklist
+                 "by": e.by, "at": e.at.isoformat()}
+                for e in chg_qs.filter(action__startswith="FLAG_")[:50]],
         },
         "kpmIndication": {
             "cellLevel": cl,
