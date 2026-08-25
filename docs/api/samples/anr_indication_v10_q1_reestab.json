@@ -1,0 +1,927 @@
+{
+  "timestamp": "2026-08-25T05:58:25.425216+00:00",
+  "granularityPeriod": "60s",
+  "e2NodeInformation": {
+    "servingCells": [
+      {
+        "ncgi": "nbr_c0",
+        "physicalCellId": 30,
+        "arfcn": 633333,
+        "radioAccessTechnology": "NR"
+      },
+      {
+        "ncgi": "src_c0",
+        "physicalCellId": 20,
+        "arfcn": 633333,
+        "radioAccessTechnology": "NR"
+      }
+    ],
+    "neighbourCellRelations": [],
+    "frequencyRelations": [],
+    "nrtCapacity": {
+      "limit": 8,
+      "used": 0
+    },
+    "anrIntraEnabled": true,
+    "relationChangeEvents": [
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n52_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-24T04:42:07.694091+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n52_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-24T04:42:07.573411+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n91_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:42:05.673357+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n51_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:42:05.552733+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "s28_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-24T04:41:57.445532+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n52_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:41:55.423098+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "s28_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-24T04:41:47.336698+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n51_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:41:45.314531+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "s25_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-24T04:24:26.276764+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n37_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:24:24.255128+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n35_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-24T04:22:06.035971+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "s25_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:22:04.009759+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n37_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:21:43.873057+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n35_c0",
+        "by": "xapp",
+        "at": "2026-08-24T04:21:43.750490+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "s25_c0",
+        "by": "xapp",
+        "at": "2026-08-23T15:29:45.477805+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "n37_c0",
+        "by": "xapp",
+        "at": "2026-08-23T15:29:25.399538+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "n35_c0",
+        "by": "xapp",
+        "at": "2026-08-23T15:29:25.135503+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "s25_c0",
+        "by": "xapp",
+        "at": "2026-08-23T15:29:25.076601+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "s25_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-23T14:25:23.663440+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n35_c0",
+        "by": "xapp",
+        "at": "2026-08-23T14:25:21.643069+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "s25_c0",
+        "by": "gnb-xn",
+        "at": "2026-08-23T14:24:53.511668+00:00",
+        "detail": "xn-reverse(step4c)",
+        "reason": null
+      },
+      {
+        "action": "ADD",
+        "targetCellGlobalId": "n37_c0",
+        "by": "xapp",
+        "at": "2026-08-23T14:24:51.490963+00:00",
+        "detail": "created",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T14:12:20.732499+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T14:12:20.667878+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T13:41:59.079960+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T13:41:59.022182+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T13:11:37.401236+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T13:11:37.344379+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T12:41:15.716313+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T12:41:15.653953+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T12:10:54.092398+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T12:10:54.028414+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T11:40:32.409601+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T11:40:32.357170+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T11:10:10.760159+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T11:10:10.700968+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T10:39:49.074916+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T10:39:49.013699+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T10:09:27.363546+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T10:09:27.296921+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T09:39:05.739874+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T09:39:05.678790+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T09:08:44.103791+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T09:08:44.043537+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T08:38:22.447696+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T08:38:22.386137+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T08:08:00.846462+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T08:08:00.783368+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c0",
+        "by": "xapp",
+        "at": "2026-08-23T07:37:39.227195+00:00",
+        "detail": "aging",
+        "reason": null
+      },
+      {
+        "action": "REMOVE",
+        "targetCellGlobalId": "gnb1_c1",
+        "by": "xapp",
+        "at": "2026-08-23T07:37:39.165871+00:00",
+        "detail": "aging",
+        "reason": null
+      }
+    ]
+  },
+  "kpmIndication": {
+    "cellLevel": {
+      "RRU.PrbTotDl.nbr_c0": {
+        "currentPct": 51.1,
+        "baselinePct": 51.1,
+        "trendLast30Min": [
+          51.1,
+          51.1,
+          51.1,
+          51.1,
+          51.1,
+          51.1
+        ]
+      },
+      "RRU.PrbTotUl.nbr_c0": {
+        "currentPct": 22.7,
+        "baselinePct": 22.7,
+        "trendLast30Min": [
+          22.7,
+          22.7,
+          22.7,
+          22.7,
+          22.7,
+          22.7
+        ]
+      },
+      "DRB.UEThpDl.nbr_c0": {
+        "currentMbps": 1.519,
+        "baselineMbps": 1.519,
+        "trendLast30Min": [
+          1.519,
+          1.519,
+          1.519,
+          1.519,
+          1.519,
+          1.519
+        ]
+      },
+      "DRB.UEThpUl.nbr_c0": {
+        "currentMbps": 0.329,
+        "baselineMbps": 0.329,
+        "trendLast30Min": [
+          0.329,
+          0.329,
+          0.329,
+          0.329,
+          0.329,
+          0.329
+        ]
+      },
+      "DRB.PdcpSduVolumeDL.nbr_c0": {
+        "currentMbit": 451.058,
+        "baselineMbit": 451.058,
+        "trendLast30Min": [
+          451.058,
+          451.058,
+          451.058,
+          451.058,
+          451.058,
+          451.058
+        ]
+      },
+      "DRB.PdcpSduVolumeUL.nbr_c0": {
+        "currentMbit": 97.665,
+        "baselineMbit": 97.665,
+        "trendLast30Min": [
+          97.665,
+          97.665,
+          97.665,
+          97.665,
+          97.665,
+          97.665
+        ]
+      },
+      "DRB.RlcSduDelayDl.nbr_c0": {
+        "currentMs": 44.579,
+        "baselineMs": 44.579,
+        "trendLast30Min": [
+          44.579,
+          44.579,
+          44.579,
+          44.579,
+          44.579,
+          44.579
+        ]
+      },
+      "RRC.ConnReEstabInboundRatePerMin.nbr_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "RLF.DetectedRate.nbr_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "RLF.DropWithoutReestablishmentRate.nbr_c0": {
+        "currentPerMin": 0.0,
+        "baselinePerMin": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "HO.IntraSys.TooEarlyRate.nbr_c0": {
+        "currentPerMin": 0.0,
+        "baselinePerMin": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "HO.IntraSys.TooLateRate.nbr_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "HO.IntraSys.ToWrongCellRate.nbr_c0": {
+        "currentPerMin": 0.0,
+        "baselinePerMin": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "RRU.PrbTotDl.src_c0": {
+        "currentPct": 7.1,
+        "baselinePct": 7.1,
+        "trendLast30Min": [
+          7.1,
+          7.1,
+          7.1,
+          7.1,
+          7.1,
+          7.1
+        ]
+      },
+      "RRU.PrbTotUl.src_c0": {
+        "currentPct": 1.6,
+        "baselinePct": 1.6,
+        "trendLast30Min": [
+          1.6,
+          1.6,
+          1.6,
+          1.6,
+          1.6,
+          1.6
+        ]
+      },
+      "DRB.UEThpDl.src_c0": {
+        "currentMbps": 0.0,
+        "baselineMbps": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "DRB.UEThpUl.src_c0": {
+        "currentMbps": 0.0,
+        "baselineMbps": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "DRB.PdcpSduVolumeDL.src_c0": {
+        "currentMbit": 0.0,
+        "baselineMbit": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "DRB.PdcpSduVolumeUL.src_c0": {
+        "currentMbit": 0.0,
+        "baselineMbit": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "DRB.RlcSduDelayDl.src_c0": {
+        "currentMs": 0.0,
+        "baselineMs": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "RRC.ConnReEstabInboundRatePerMin.src_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "RLF.DetectedRate.src_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "RLF.DropWithoutReestablishmentRate.src_c0": {
+        "currentPerMin": 0.0,
+        "baselinePerMin": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "HO.IntraSys.TooEarlyRate.src_c0": {
+        "currentPerMin": 0.0,
+        "baselinePerMin": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "HO.IntraSys.TooLateRate.src_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "HO.IntraSys.ToWrongCellRate.src_c0": {
+        "currentPerMin": 0.0,
+        "baselinePerMin": 0.0,
+        "trendLast30Min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "perNeighbourRelation": [
+      {
+        "sourceCellNcgi": "nbr_c0",
+        "targetCellGlobalId": "src_c0",
+        "MM.HoExeAttRatePerMin": 0.0,
+        "MM.HoExeSuccRatio_last50": 1.0,
+        "sampleCount_last50": 50,
+        "MM.HoPrepInterFailRatePerMin": {},
+        "MM.HoExeInterFailRatePerMin": {},
+        "MM.HoFailCumulativeSinceCreation": {},
+        "HO.IntraSys.ToWrongCellRate": 0.0,
+        "measSampleRatePerMin": 0.0,
+        "trendLast30Min_attRatePerMin": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trendLast30Min_ToWrongCell": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trendLast30Min_measSampleRatePerMin": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "sourceCellNcgi": "src_c0",
+        "targetCellGlobalId": "nbr_c0",
+        "MM.HoExeAttRatePerMin": 0.0,
+        "MM.HoExeSuccRatio_last50": 0.0,
+        "sampleCount_last50": 50,
+        "MM.HoPrepInterFailRatePerMin": {},
+        "MM.HoExeInterFailRatePerMin": {},
+        "MM.HoFailCumulativeSinceCreation": {
+          "RandomAccessProblem": 209
+        },
+        "HO.IntraSys.ToWrongCellRate": 0.0,
+        "measSampleRatePerMin": 0.0,
+        "trendLast30Min_attRatePerMin": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trendLast30Min_ToWrongCell": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trendLast30Min_measSampleRatePerMin": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ]
+  },
+  "e2MessageCopyAggregate": {
+    "measurementReportAggregate": [
+      {
+        "reportedRadioAccessTechnology": "NR",
+        "reportedArfcn": 633333,
+        "reportedPhysicalCellId": 20,
+        "sampleRatePerMin": 284.0,
+        "rsrpPercentile50Dbm": -74.6,
+        "rsrpPercentile90Dbm": -68.3,
+        "rsrpStandardDeviationDb": 3.15,
+        "servingRsrpPercentile50Dbm": -62.9,
+        "sourceCellNcgi": "nbr_c0",
+        "bySourceCell": {
+          "nbr_c0": 284.0
+        },
+        "trendLast30Min_ratePerMin": [
+          284.0,
+          284.0,
+          284.0,
+          284.0,
+          284.0,
+          284.0
+        ]
+      },
+      {
+        "reportedRadioAccessTechnology": "NR",
+        "reportedArfcn": 633333,
+        "reportedPhysicalCellId": 30,
+        "sampleRatePerMin": 312.0,
+        "rsrpPercentile50Dbm": -63.6,
+        "rsrpPercentile90Dbm": -46.9,
+        "rsrpStandardDeviationDb": 9.52,
+        "servingRsrpPercentile50Dbm": -63.3,
+        "sourceCellNcgi": "nbr_c0",
+        "bySourceCell": {
+          "nbr_c0": 14.0
+        },
+        "trendLast30Min_ratePerMin": [
+          312.0,
+          312.0,
+          312.0,
+          312.0,
+          312.0,
+          312.0
+        ]
+      }
+    ],
+    "reestablishmentInboundByPreviousPci": [
+      {
+        "cellNcgi": "nbr_c0",
+        "byPreviousPci": [
+          {
+            "previousPhysicalCellId": 20,
+            "previousArfcn": 633333,
+            "ratePerMin": 1.0
+          }
+        ]
+      },
+      {
+        "cellNcgi": "src_c0",
+        "byPreviousPci": [
+          {
+            "previousPhysicalCellId": 30,
+            "previousArfcn": 633333,
+            "ratePerMin": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  "cgiResolutionSampling": [
+    {
+      "physicalCellId": 20,
+      "arfcn": 633333,
+      "attempts": 20,
+      "results": {
+        "src_c0": 20
+      },
+      "plmnIdentity": "20895",
+      "unique": true,
+      "confusion": false
+    },
+    {
+      "physicalCellId": 30,
+      "arfcn": 633333,
+      "attempts": 20,
+      "results": {
+        "nbr_c0": 20
+      },
+      "plmnIdentity": "20895",
+      "unique": true,
+      "confusion": false
+    }
+  ],
+  "cccConfigurationEvents": [
+    {
+      "event": "O-NRCellCU-Created",
+      "globalCellId": "src_c0",
+      "observedAt": "2026-08-25T05:55:56.305200+00:00"
+    },
+    {
+      "event": "O-NRCellCU-Created",
+      "globalCellId": "nbr_c0",
+      "observedAt": "2026-08-25T05:55:56.305200+00:00"
+    }
+  ]
+}

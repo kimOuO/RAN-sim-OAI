@@ -142,6 +142,17 @@ def fetch_full_kpm() -> dict[str, Any] | None:
     return _post_sim("/api/v0.1/CU/E2/E2FullReporter/read", {})
 
 
+def fetch_anr_indication(window_min: float = 1.0) -> dict[str, Any] | None:
+    """POST /CU/E2/Anr/indication → ANR情境_v8 卷面觀測資料一包。
+
+    E2SM-ANR(ran_func 6)indication producer 用。含 RLF/MRO(P1/P2)。
+    """
+    # window_min 預設 1.0 = 60 秒收集間隔,與 v10 範例的 granularityPeriod:"60s" 一致。
+    # 先前是 10 分鐘,但 indication 卻標 60s —— 速率語意的定義域對不上。
+    # /Anr/indication 已一包含 e2NodeInformation + kpmIndication + rlfKpm + mroKpm + 量測聚合
+    return _post_sim("/api/v0.1/CU/E2/Anr/indication", {"window_min": window_min})
+
+
 def poll_indication(subscription_id: str) -> dict[str, Any] | None:
     """POST /CU/E2/Indication/poll → returns {indications: [...], count}."""
     return _post_sim("/api/v0.1/CU/E2/Indication/poll",

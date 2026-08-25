@@ -126,8 +126,11 @@ def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
             "sampleCount_last50": r.get("sampleCount_last50"),
             "MM.HoPrepInterFailRatePerMin": prep,
             "MM.HoExeInterFailRatePerMin": exe,
-            # 準備+執行合計之累計(v10 要的是總數,不是 cause 分列)
-            "MM.HoFailCumulativeSinceCreation": sum(cum.values()) if cum else 0,
+            # 依 cause 分列的累計 —— v10 第 12 題範例是 map
+            # ({"RrcReestabReq":1180,"TXnRELOCprepExpiry":96}),且其 pseudo code
+            # 用「is empty」判斷有無失敗史。先前回 int 是誤讀肆章的文字定義
+            # (「準備＋執行」指涵蓋範圍,不是要加總),RIC 2026-08-25 指出。
+            "MM.HoFailCumulativeSinceCreation": dict(cum),
             "HO.IntraSys.ToWrongCellRate": wr,
             # 第 11 題雙歸零 aging 的另一半 —— 量測面
             "measSampleRatePerMin": meas_rate.get((src, tgt), 0.0),
@@ -251,9 +254,11 @@ def indication_v10(cell_id: str | None = None,
 
     return {
         "timestamp": now.isoformat(),
-        # granularityPeriod = 量測**收集間隔**(E2SM-KPM §8.3.8),速率語意的定義域;
-        # 不是 xApp 的分析窗(window_min)。DU 的 PM window 才是它的實際來源。
-        "granularityPeriod": f"{get_int('ANR_GRANULARITY_SEC', 60)}s",
+        # granularityPeriod = 速率語意的定義域(E2SM-KPM §8.3.8)。
+        # **必須等於這批速率實際的計算窗**,否則 xApp 的「每分鐘」會對不上。
+        # 先前用獨立 env 寫死 60s,而速率其實是用 window_min(預設 10 分鐘)算的 ——
+        # 兩者各說各話,RIC 2026-08-25 指出。改為由實際窗推導,不可能再漂。
+        "granularityPeriod": f"{int(round(window_min * 60))}s",
         "e2NodeInformation": {
             "servingCells": [
                 {"ncgi": c.cell_id, "physicalCellId": c.pci,
