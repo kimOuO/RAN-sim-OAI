@@ -252,6 +252,7 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
     qs = CellConfig.objects.filter(pci=int(pci))
     matches = []
     plmns: list[str] = []
+    nci_by_ncgi: dict[str, int | None] = {}
     for c in qs:
         if arfcn is not None:
             try:
@@ -262,6 +263,13 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
                 pass
         ncgi = f"{int(c.nr_cellid):015x}" if c.nr_cellid else c.cell_id
         matches.append(ncgi)
+        # nr_cellid 欄位未種時退回平台 hash NCI(與 E2 換手 resolve_target_cell
+        # 的 to_platform_cell_id 同一對照,群組換手拿了就能用)
+        if c.nr_cellid:
+            nci_by_ncgi[ncgi] = int(c.nr_cellid)
+        else:
+            from main.apps.cu_cp.services.common.cell_id_map import to_nr_cellid
+            nci_by_ncgi[ncgi] = to_nr_cellid(c.cell_id)
         plmns.append(c.served_plmn or "")
 
     if not matches:
@@ -285,6 +293,10 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
         "plmnIdentity": plmns[0] if len(set(plmns)) == 1 and plmns else (plmns or [None])[0],
         "unique": len(matches) == 1,
         "confusion": len(matches) > 1,
+        # v10 第 5 題自動鏈:群組換手 target 要 36-bit NR Cell Identity(int)。
+        # unique 時 nrCellIdentity 直接可用;confusion 時逐候選查 byNcgi。
+        "nrCellIdentity": (nci_by_ncgi.get(matches[0]) if len(matches) == 1 else None),
+        "nrCellIdentityByNcgi": nci_by_ncgi,
     }
 
 
