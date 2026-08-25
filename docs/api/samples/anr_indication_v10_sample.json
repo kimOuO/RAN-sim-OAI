@@ -1,58 +1,26 @@
 {
-  "timestamp": "2026-08-25T05:29:15.346837+00:00",
+  "timestamp": "2026-08-25T06:37:08.705239+00:00",
   "granularityPeriod": "60s",
   "e2NodeInformation": {
     "servingCells": [
       {
-        "ncgi": "d02_c0",
-        "physicalCellId": 251,
+        "ncgi": "nbr_c0",
+        "physicalCellId": 30,
         "arfcn": 633333,
         "radioAccessTechnology": "NR"
       },
       {
-        "ncgi": "n80_c0",
-        "physicalCellId": 260,
-        "arfcn": 633333,
-        "radioAccessTechnology": "NR"
-      },
-      {
-        "ncgi": "s19_c0",
-        "physicalCellId": 240,
+        "ncgi": "src_c0",
+        "physicalCellId": 20,
         "arfcn": 633333,
         "radioAccessTechnology": "NR"
       }
     ],
-    "neighbourCellRelations": [
-      {
-        "sourceCellNcgi": "s19_c0",
-        "targetCellGlobalId": "d02_c0",
-        "targetPhysicalCellId": 251,
-        "targetArfcn": 633333,
-        "targetRadioAccessTechnology": "NR",
-        "xnX2Established": true,
-        "hoValidated": false,
-        "version": 1
-      },
-      {
-        "sourceCellNcgi": "s19_c0",
-        "targetCellGlobalId": "n80_c0",
-        "targetPhysicalCellId": 260,
-        "targetArfcn": 633333,
-        "targetRadioAccessTechnology": "NR",
-        "xnX2Established": true,
-        "hoValidated": true,
-        "version": 1
-      }
-    ],
-    "frequencyRelations": [
-      {
-        "radioAccessTechnology": "NR",
-        "arfcn": 633333
-      }
-    ],
+    "neighbourCellRelations": [],
+    "frequencyRelations": [],
     "nrtCapacity": {
       "limit": 8,
-      "used": 2
+      "used": 0
     },
     "anrIntraEnabled": true,
     "relationChangeEvents": [
@@ -460,91 +428,91 @@
   },
   "kpmIndication": {
     "cellLevel": {
-      "RRU.PrbTotDl.d02_c0": {
-        "currentPct": 79.3,
-        "baselinePct": 79.3,
+      "RRU.PrbTotDl.nbr_c0": {
+        "currentPct": 26.9,
+        "baselinePct": 26.9,
         "trendLast30Min": [
-          79.3,
-          79.3,
-          79.3,
-          79.3,
-          79.3,
-          79.3
+          26.9,
+          26.9,
+          26.9,
+          26.9,
+          26.9,
+          26.9
         ]
       },
-      "RRU.PrbTotUl.d02_c0": {
-        "currentPct": 30.7,
-        "baselinePct": 30.7,
+      "RRU.PrbTotUl.nbr_c0": {
+        "currentPct": 8.7,
+        "baselinePct": 8.7,
         "trendLast30Min": [
-          30.7,
-          30.7,
-          30.7,
-          30.7,
-          30.7,
-          30.7
+          8.7,
+          8.7,
+          8.7,
+          8.7,
+          8.7,
+          8.7
         ]
       },
-      "DRB.UEThpDl.d02_c0": {
-        "currentMbps": 1.507,
-        "baselineMbps": 1.507,
+      "DRB.UEThpDl.nbr_c0": {
+        "currentMbps": 1.411,
+        "baselineMbps": 1.411,
         "trendLast30Min": [
-          1.507,
-          1.507,
-          1.507,
-          1.507,
-          1.507,
-          1.507
+          1.411,
+          1.411,
+          1.411,
+          1.411,
+          1.411,
+          1.411
         ]
       },
-      "DRB.UEThpUl.d02_c0": {
-        "currentMbps": 0.327,
-        "baselineMbps": 0.327,
+      "DRB.UEThpUl.nbr_c0": {
+        "currentMbps": 0.29,
+        "baselineMbps": 0.29,
         "trendLast30Min": [
-          0.327,
-          0.327,
-          0.327,
-          0.327,
-          0.327,
-          0.327
+          0.29,
+          0.29,
+          0.29,
+          0.29,
+          0.29,
+          0.29
         ]
       },
-      "DRB.PdcpSduVolumeDL.d02_c0": {
-        "currentMbit": 4519.977,
-        "baselineMbit": 4519.977,
+      "DRB.PdcpSduVolumeDL.nbr_c0": {
+        "currentMbit": 268.17,
+        "baselineMbit": 268.17,
         "trendLast30Min": [
-          4519.977,
-          4519.977,
-          4519.977,
-          4519.977,
-          4519.977,
-          4519.977
+          268.17,
+          268.17,
+          268.17,
+          268.17,
+          268.17,
+          268.17
         ]
       },
-      "DRB.PdcpSduVolumeUL.d02_c0": {
-        "currentMbit": 981.905,
-        "baselineMbit": 981.905,
+      "DRB.PdcpSduVolumeUL.nbr_c0": {
+        "currentMbit": 55.109,
+        "baselineMbit": 55.109,
         "trendLast30Min": [
-          981.905,
-          981.905,
-          981.905,
-          981.905,
-          981.905,
-          981.905
+          55.109,
+          55.109,
+          55.109,
+          55.109,
+          55.109,
+          55.109
         ]
       },
-      "DRB.RlcSduDelayDl.d02_c0": {
-        "currentMs": 123.836,
-        "baselineMs": 123.836,
+      "DRB.RlcSduDelayDl.nbr_c0": {
+        "currentMs": 5.046,
+        "baselineMs": 5.046,
         "trendLast30Min": [
-          123.836,
-          123.836,
-          123.836,
-          123.836,
-          123.836,
-          123.836
+          5.046,
+          5.046,
+          5.046,
+          5.046,
+          5.046,
+          5.046
         ]
       },
-      "RRC.ConnReEstabInboundRatePerMin.d02_c0": {
+      "RRC.ConnReEstabInboundRatePerMin.nbr_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -556,7 +524,7 @@
           0.0
         ]
       },
-      "RLF.DetectedRate.d02_c0": {
+      "RLF.DetectedRate.nbr_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -568,7 +536,7 @@
           0.0
         ]
       },
-      "RLF.DropWithoutReestablishmentRate.d02_c0": {
+      "RLF.DropWithoutReestablishmentRate.nbr_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -580,7 +548,7 @@
           0.0
         ]
       },
-      "HO.IntraSys.TooEarlyRate.d02_c0": {
+      "HO.IntraSys.TooEarlyRate.nbr_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -592,7 +560,7 @@
           0.0
         ]
       },
-      "HO.IntraSys.TooLateRate.d02_c0": {
+      "HO.IntraSys.TooLateRate.nbr_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -604,7 +572,7 @@
           0.0
         ]
       },
-      "HO.IntraSys.ToWrongCellRate.d02_c0": {
+      "HO.IntraSys.ToWrongCellRate.nbr_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -616,31 +584,31 @@
           0.0
         ]
       },
-      "RRU.PrbTotDl.n80_c0": {
-        "currentPct": 0.0,
-        "baselinePct": 0.0,
+      "RRU.PrbTotDl.src_c0": {
+        "currentPct": 6.9,
+        "baselinePct": 6.9,
         "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
+          6.9,
+          6.9,
+          6.9,
+          6.9,
+          6.9,
+          6.9
         ]
       },
-      "RRU.PrbTotUl.n80_c0": {
-        "currentPct": 0.0,
-        "baselinePct": 0.0,
+      "RRU.PrbTotUl.src_c0": {
+        "currentPct": 1.5,
+        "baselinePct": 1.5,
         "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
+          1.5,
+          1.5,
+          1.5,
+          1.5,
+          1.5,
+          1.5
         ]
       },
-      "DRB.UEThpDl.n80_c0": {
+      "DRB.UEThpDl.src_c0": {
         "currentMbps": 0.0,
         "baselineMbps": 0.0,
         "trendLast30Min": [
@@ -652,7 +620,7 @@
           0.0
         ]
       },
-      "DRB.UEThpUl.n80_c0": {
+      "DRB.UEThpUl.src_c0": {
         "currentMbps": 0.0,
         "baselineMbps": 0.0,
         "trendLast30Min": [
@@ -664,7 +632,7 @@
           0.0
         ]
       },
-      "DRB.PdcpSduVolumeDL.n80_c0": {
+      "DRB.PdcpSduVolumeDL.src_c0": {
         "currentMbit": 0.0,
         "baselineMbit": 0.0,
         "trendLast30Min": [
@@ -676,7 +644,7 @@
           0.0
         ]
       },
-      "DRB.PdcpSduVolumeUL.n80_c0": {
+      "DRB.PdcpSduVolumeUL.src_c0": {
         "currentMbit": 0.0,
         "baselineMbit": 0.0,
         "trendLast30Min": [
@@ -688,7 +656,7 @@
           0.0
         ]
       },
-      "DRB.RlcSduDelayDl.n80_c0": {
+      "DRB.RlcSduDelayDl.src_c0": {
         "currentMs": 0.0,
         "baselineMs": 0.0,
         "trendLast30Min": [
@@ -700,7 +668,31 @@
           0.0
         ]
       },
-      "RRC.ConnReEstabInboundRatePerMin.n80_c0": {
+      "RRC.ConnReEstabInboundRatePerMin.src_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "RLF.DetectedRate.src_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
+        "trendLast30Min": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "RLF.DropWithoutReestablishmentRate.src_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -712,7 +704,7 @@
           0.0
         ]
       },
-      "RLF.DetectedRate.n80_c0": {
+      "HO.IntraSys.TooEarlyRate.src_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -724,199 +716,19 @@
           0.0
         ]
       },
-      "RLF.DropWithoutReestablishmentRate.n80_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
+      "HO.IntraSys.TooLateRate.src_c0": {
+        "currentPerMin": 1.0,
+        "baselinePerMin": 1.0,
         "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
         ]
       },
-      "HO.IntraSys.TooEarlyRate.n80_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "HO.IntraSys.TooLateRate.n80_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "HO.IntraSys.ToWrongCellRate.n80_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "RRU.PrbTotDl.s19_c0": {
-        "currentPct": 0.0,
-        "baselinePct": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "RRU.PrbTotUl.s19_c0": {
-        "currentPct": 0.0,
-        "baselinePct": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "DRB.UEThpDl.s19_c0": {
-        "currentMbps": 0.0,
-        "baselineMbps": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "DRB.UEThpUl.s19_c0": {
-        "currentMbps": 0.0,
-        "baselineMbps": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "DRB.PdcpSduVolumeDL.s19_c0": {
-        "currentMbit": 0.0,
-        "baselineMbit": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "DRB.PdcpSduVolumeUL.s19_c0": {
-        "currentMbit": 0.0,
-        "baselineMbit": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "DRB.RlcSduDelayDl.s19_c0": {
-        "currentMs": 0.0,
-        "baselineMs": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "RRC.ConnReEstabInboundRatePerMin.s19_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "RLF.DetectedRate.s19_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "RLF.DropWithoutReestablishmentRate.s19_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "HO.IntraSys.TooEarlyRate.s19_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "HO.IntraSys.TooLateRate.s19_c0": {
-        "currentPerMin": 0.0,
-        "baselinePerMin": 0.0,
-        "trendLast30Min": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      "HO.IntraSys.ToWrongCellRate.s19_c0": {
+      "HO.IntraSys.ToWrongCellRate.src_c0": {
         "currentPerMin": 0.0,
         "baselinePerMin": 0.0,
         "trendLast30Min": [
@@ -931,16 +743,16 @@
     },
     "perNeighbourRelation": [
       {
-        "sourceCellNcgi": "s19_c0",
-        "targetCellGlobalId": "d02_c0",
+        "sourceCellNcgi": "nbr_c0",
+        "targetCellGlobalId": "src_c0",
         "MM.HoExeAttRatePerMin": 0.0,
-        "MM.HoExeSuccRatio_last50": null,
-        "sampleCount_last50": 0,
+        "MM.HoExeSuccRatio_last50": 1.0,
+        "sampleCount_last50": 50,
         "MM.HoPrepInterFailRatePerMin": {},
         "MM.HoExeInterFailRatePerMin": {},
-        "MM.HoFailCumulativeSinceCreation": 0,
+        "MM.HoFailCumulativeSinceCreation": {},
         "HO.IntraSys.ToWrongCellRate": 0.0,
-        "measSampleRatePerMin": 299.7,
+        "measSampleRatePerMin": 0.0,
         "trendLast30Min_attRatePerMin": [
           0.0,
           0.0,
@@ -958,25 +770,27 @@
           0.0
         ],
         "trendLast30Min_measSampleRatePerMin": [
-          299.7,
-          299.7,
-          299.7,
-          299.7,
-          299.7,
-          299.7
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
         ]
       },
       {
-        "sourceCellNcgi": "s19_c0",
-        "targetCellGlobalId": "n80_c0",
+        "sourceCellNcgi": "src_c0",
+        "targetCellGlobalId": "nbr_c0",
         "MM.HoExeAttRatePerMin": 0.0,
         "MM.HoExeSuccRatio_last50": 0.0,
-        "sampleCount_last50": 40,
+        "sampleCount_last50": 50,
         "MM.HoPrepInterFailRatePerMin": {},
         "MM.HoExeInterFailRatePerMin": {},
-        "MM.HoFailCumulativeSinceCreation": 40,
+        "MM.HoFailCumulativeSinceCreation": {
+          "RandomAccessProblem": 209
+        },
         "HO.IntraSys.ToWrongCellRate": 0.0,
-        "measSampleRatePerMin": 299.7,
+        "measSampleRatePerMin": 0.0,
         "trendLast30Min_attRatePerMin": [
           0.0,
           0.0,
@@ -994,12 +808,12 @@
           0.0
         ],
         "trendLast30Min_measSampleRatePerMin": [
-          299.7,
-          299.7,
-          299.7,
-          299.7,
-          299.7,
-          299.7
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
         ]
       }
     ]
@@ -1009,99 +823,79 @@
       {
         "reportedRadioAccessTechnology": "NR",
         "reportedArfcn": 633333,
-        "reportedPhysicalCellId": 240,
-        "sampleRatePerMin": 300.0,
-        "rsrpPercentile50Dbm": -71.7,
-        "rsrpPercentile90Dbm": -70.9,
-        "rsrpStandardDeviationDb": 1.0,
-        "servingRsrpPercentile50Dbm": -69.2,
-        "sourceCellNcgi": "d02_c0",
+        "reportedPhysicalCellId": 20,
+        "sampleRatePerMin": 186.0,
+        "rsrpPercentile50Dbm": -75.5,
+        "rsrpPercentile90Dbm": -73.4,
+        "rsrpStandardDeviationDb": 1.26,
+        "servingRsrpPercentile50Dbm": -57.3,
+        "sourceCellNcgi": "nbr_c0",
         "bySourceCell": {
-          "d02_c0": 300.0
+          "nbr_c0": 186.0
         },
         "trendLast30Min_ratePerMin": [
-          300.0,
-          300.0,
-          300.0,
-          300.0,
-          300.0,
-          300.0
+          186.0,
+          186.0,
+          186.0,
+          186.0,
+          186.0,
+          186.0
         ]
       },
       {
         "reportedRadioAccessTechnology": "NR",
         "reportedArfcn": 633333,
-        "reportedPhysicalCellId": 251,
-        "sampleRatePerMin": 300.0,
-        "rsrpPercentile50Dbm": -69.2,
-        "rsrpPercentile90Dbm": -64.2,
-        "rsrpStandardDeviationDb": 3.04,
-        "servingRsrpPercentile50Dbm": -69.2,
-        "sourceCellNcgi": null,
-        "bySourceCell": {},
-        "trendLast30Min_ratePerMin": [
-          300.0,
-          300.0,
-          300.0,
-          300.0,
-          300.0,
-          300.0
-        ]
-      },
-      {
-        "reportedRadioAccessTechnology": "NR",
-        "reportedArfcn": 633333,
-        "reportedPhysicalCellId": 260,
-        "sampleRatePerMin": 300.0,
-        "rsrpPercentile50Dbm": -98.7,
-        "rsrpPercentile90Dbm": -97.9,
-        "rsrpStandardDeviationDb": 0.65,
-        "servingRsrpPercentile50Dbm": -69.2,
-        "sourceCellNcgi": "d02_c0",
+        "reportedPhysicalCellId": 30,
+        "sampleRatePerMin": 194.0,
+        "rsrpPercentile50Dbm": -57.6,
+        "rsrpPercentile90Dbm": -41.1,
+        "rsrpStandardDeviationDb": 9.35,
+        "servingRsrpPercentile50Dbm": -57.6,
+        "sourceCellNcgi": "nbr_c0",
         "bySourceCell": {
-          "d02_c0": 300.0
+          "nbr_c0": 4.0
         },
         "trendLast30Min_ratePerMin": [
-          300.0,
-          300.0,
-          300.0,
-          300.0,
-          300.0,
-          300.0
+          194.0,
+          194.0,
+          194.0,
+          194.0,
+          194.0,
+          194.0
         ]
       }
     ],
-    "reestablishmentInboundByPreviousPci": []
+    "reestablishmentInboundByPreviousPci": [
+      {
+        "cellNcgi": "nbr_c0",
+        "byPreviousPci": [
+          {
+            "previousPhysicalCellId": 20,
+            "previousArfcn": 633333,
+            "ratePerMin": 1.0
+          }
+        ]
+      }
+    ]
   },
   "cgiResolutionSampling": [
     {
-      "physicalCellId": 240,
+      "physicalCellId": 20,
       "arfcn": 633333,
       "attempts": 20,
       "results": {
-        "s19_c0": 20
+        "src_c0": 20
       },
       "plmnIdentity": "20895",
       "unique": true,
       "confusion": false
     },
     {
-      "physicalCellId": 251,
+      "physicalCellId": 30,
       "arfcn": 633333,
       "attempts": 20,
       "results": {
-        "d02_c0": 20
-      },
-      "plmnIdentity": "20895",
-      "unique": true,
-      "confusion": false
-    },
-    {
-      "physicalCellId": 260,
-      "arfcn": 633333,
-      "attempts": 20,
-      "results": {
-        "n80_c0": 20
+        "nbr_c0": 20
       },
       "plmnIdentity": "20895",
       "unique": true,
@@ -1111,18 +905,13 @@
   "cccConfigurationEvents": [
     {
       "event": "O-NRCellCU-Created",
-      "globalCellId": "s19_c0",
-      "observedAt": "2026-08-25T04:55:37.113528+00:00"
+      "globalCellId": "src_c0",
+      "observedAt": "2026-08-25T05:55:56.305200+00:00"
     },
     {
       "event": "O-NRCellCU-Created",
-      "globalCellId": "d02_c0",
-      "observedAt": "2026-08-25T04:55:37.113528+00:00"
-    },
-    {
-      "event": "O-NRCellCU-Created",
-      "globalCellId": "n80_c0",
-      "observedAt": "2026-08-25T04:55:37.113528+00:00"
+      "globalCellId": "nbr_c0",
+      "observedAt": "2026-08-25T05:55:56.305200+00:00"
     }
   ]
 }

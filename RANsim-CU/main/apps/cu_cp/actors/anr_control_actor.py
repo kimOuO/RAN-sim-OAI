@@ -227,7 +227,11 @@ def apply_son_trigger(req: dict) -> dict:
         rel.save(update_fields=[field, "version", "updated_at"])
         logger.info("ANR FLAG: %s → %s %s=%s (v%d)", source, cgi, req.get("flag"),
                     op == "set", rel.version)
-        _record_change("FLAG", source, cgi, f"{req.get('flag')}={op == 'set'}")
+        # 動作名直接帶 set/clear,並在 detail 放旗標名 —— xApp 重啟後要能只靠
+        # relationChangeEvents 重建「我設過哪些旗標」。v10 旗標不可觀測之後,
+        # 這是唯一的真相來源;記成同一個 "FLAG" 會讓 set 與 clear 分不出來
+        # (RIC 2026-08-25 §4.1 的孤兒旗標問題)。
+        _record_change(f"FLAG_{op.upper()}", source, cgi, str(req.get("flag") or ""))
         return _outcome("FLAG", source, cgi, f"FLAG_{op.upper()}", rel.version,
                         f"{req.get('flag')}={op == 'set'}")
 

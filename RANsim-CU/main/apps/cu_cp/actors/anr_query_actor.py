@@ -235,6 +235,28 @@ class AnrQueryActor:
 
     @staticmethod
     @csrf_exempt
+    @require_http_methods(["POST", "GET"])
+    def indication_v10(request):
+        """**永遠**回 v10 格式,不受 ANR_SCHEMA 影響 —— 給 RIC 端做遷移開發用。
+
+        切換是全有全無(wire 上同一時間只送一種格式),但那不該連帶把對方的
+        開發也卡住。這支讓 RIC 在我們還送 v8 的期間就能拉到即時的 v10 資料
+        做 normalizer 與離線回歸,不必等我們切、也不必靠人工傳檔案。
+        Body 可選 {cell_id, window_min}。
+        """
+        from main.apps.cu_cp.services.business.anr_kpm_v10 import indication_v10 as _v10
+        cell_id, window_min = None, 1.0
+        if request.body:
+            try:
+                b = json.loads(request.body) or {}
+                cell_id = b.get("cell_id")
+                window_min = float(b.get("window_min") or 1.0)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return success_response(_v10(cell_id, window_min), "ok")
+
+    @staticmethod
+    @csrf_exempt
     @require_http_methods(["POST"])
     def kpm(request):
         """HO 速率/成功比(cell 級 + perNeighbourRelation)。Body 可選 {window_min}。"""

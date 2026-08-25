@@ -272,6 +272,25 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
         },
     }
 
+    if style == 9 and action == 1:
+        # CONTROL Style 9 / Action 1 — MeasConfig ReportCGI(PCI+ARFCN → 全域 NCGI 解析)。
+        # ranP[1]=physicalCellId, ranP[2]=arfcn, ranP[3]=rat(選配)。CGI 由 sim 回 control-ACK outcome。
+        def _int_of(pid: int):
+            pv = params.get(pid)
+            if isinstance(pv, dict):
+                pv = pv.get("value", pv)
+            try:
+                return int(pv)
+            except (TypeError, ValueError):
+                return None
+        pci = _int_of(1)
+        arfcn = _int_of(2)
+        rat = params.get(3) or "NR"
+        logger.info("ReportCGI control decode: pci=%s arfcn=%s rat=%s", pci, arfcn, rat)
+        base["action"] = "control_reportcgi"
+        base["control_message"] = {"pci": pci, "arfcn": arfcn, "rat": rat}
+        return base
+
     if style == 3 and action == 1:
         # Handover (CCO/ES) — E2SM-RC v01.03 §8.4.5.1 Target Primary Cell ID
         # ranP[1] = Target Primary Cell ID (Structure):
@@ -496,10 +515,15 @@ def encode_rc_ran_function_description() -> bytes:
         "ric-ControlAction-List": [{
             "ric-ControlAction-ID": 1,
             "ric-ControlAction-Name": "Handover Control",
+            # ⚠️ 不能加 "ueGroup-ControlAction-Supported":我們載入的
+            # e2sm_rc_v01.03.asn **沒有這個欄位**,加了整個 RANfunction-Description
+            # 會編碼失敗並退回 empty stub(2026-08-25 實測)——比不宣告更糟。
+            # 要宣告得先升級 RC ASN.1 模組版本。見 docs/api/v10_RIC八問回覆.md §2.4。
             "ran-ControlActionParameters-List": [
                 {"ranParameter-ID": 1, "ranParameter-name": "Target Primary Cell ID"},
             ],
         }],
+        # Format 1 = 逐 UE;Format 3 = 群組(ue-Group-Definition 條件式)
         "ric-ControlHeaderFormat-Type": 1,
         "ric-ControlMessageFormat-Type": 1,
         "ric-ControlOutcomeFormat-Type": 1,

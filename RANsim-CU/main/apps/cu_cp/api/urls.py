@@ -58,7 +58,9 @@ urlpatterns = [
     path("E2/Anr/cgi_resolve", AnrQueryActor.cgi_resolve, name="e2_anr_cgi_resolve"),  # PCI→NCGI(confusion 感知)
     path("E2/Anr/rlf_kpm", AnrQueryActor.rlf_kpm, name="e2_anr_rlf_kpm"),              # P1-3 RLF/重建速率 + inbound-by-prevPci
     path("E2/Anr/mro_kpm", AnrQueryActor.mro_kpm, name="e2_anr_mro_kpm"),              # P2-1 MRO 歸因三聯速率
-    path("E2/Anr/indication", AnrQueryActor.indication, name="e2_anr_indication"),    # ran_func 6 producer 資料源(卷面全塊)
+    path("E2/Anr/indication", AnrQueryActor.indication, name="e2_anr_indication"),
+    # 永遠回 v10(不受 ANR_SCHEMA 影響)—— 給 RIC 遷移期間開發用,不必等切換
+    path("E2/Anr/indication_v10", AnrQueryActor.indication_v10, name="e2_anr_indication_v10"),    # ran_func 6 producer 資料源(卷面全塊)
     path("E2/Anr/control", AnrControlActor.control, name="e2_anr_control"),            # ↔ SONTRIG_ANR_ADD/REMOVE/FLAG
     # KPM sim-speed knob — Dashboard 切 DU tick 速度時同步通知,讓 indication producer
     # 用 sim-time 為單位算 report_period_ms,不是 wall-clock。
