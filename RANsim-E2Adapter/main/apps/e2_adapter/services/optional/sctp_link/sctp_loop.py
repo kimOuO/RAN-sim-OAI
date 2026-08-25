@@ -1466,7 +1466,16 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     # ReportCGI(Style 9/Action 1):把 sim 解出的 CGI 塞進 RIC Control Acknowledge 的 outcome。
     outcome_bytes = b""
     co = None
-    if style == 9 and action == 1 and isinstance(sim_resp, dict):
+    if (isinstance(sim_resp, dict) and sim_payload.get("action") == "handover_group"
+            and sim_resp.get("control_outcome")):
+        # HO_GROUP(Format 3):outcome 只含計數,無任何 per-UE 識別(L1)
+        import json as _json
+        co = sim_resp["control_outcome"]
+        outcome_bytes = _json.dumps(co, separators=(",", ":")).encode("utf-8")
+        logger.info("HO_GROUP outcome → grp=%s matched=%s exec=%s fail=%s result=%s",
+                    co.get("ueGroupId"), co.get("matchedUeCount"),
+                    co.get("executedCount"), co.get("failedCount"), co.get("result"))
+    elif style == 9 and action == 1 and isinstance(sim_resp, dict):
         import json as _json
         co = sim_resp.get("control_outcome", sim_resp)
         outcome_bytes = _json.dumps(co, separators=(",", ":")).encode("utf-8")

@@ -180,6 +180,8 @@ class E2ControlActor:
             if not ue_id:
                 return error_response("ue_id (or ngap_id/f1ap_id) required for style=1", status=400)
             return _handle_qos_flow_mapping(ue_id, message, ric_req_id)
+        if style == 3 and action_id == 1 and body.get("action") == "handover_group":
+            return _handle_handover_group(message, ric_req_id)
         if style == 3 and action_id == 1:
             ue_id, ue_src = resolve_ue_id(header)
             if not ue_id:
@@ -194,6 +196,8 @@ class E2ControlActor:
             if not cell_id:
                 return error_response("cell_id required for style=2 action=7 (cell on/off)", status=400)
             return _handle_cell_on_off(cell_id, message, ric_req_id)
+        if style == 9 and action_id == 1:
+            return _handle_reportcgi(message, ric_req_id)
 
         return _es_unsupported_response(style, action_id)
 
@@ -210,6 +214,37 @@ def _es_unsupported_response(style, action_id):
         f"unsupported (control_style={style}, control_action_id={action_id})",
         status=400,
         )
+
+
+def _handle_reportcgi(message, ric_req_id):
+    """E2SM-RC CONTROL Style 9/Action 1 — MeasConfig ReportCGI(PCI+ARFCN → 全域 NCGI）。
+    回傳 CGI 由 adapter 塞進 RIC Control Acknowledge 的 outcome 給 xApp。"""
+    pci = message.get("pci")
+    arfcn = message.get("arfcn")
+    if pci is None:
+        return error_response("pci required for style=9 action=1 (ReportCGI)", status=400)
+    from main.apps.cu_cp.services.business.anr_kpm import cgi_resolve
+    res = cgi_resolve(int(pci), int(arfcn) if arfcn is not None else None)
+    # res: {physicalCellId, arfcn, results:{cgi:count}, unique, confusion, ...}
+    return success_response({
+        "control_outcome": {
+            "physicalCellId": pci,
+            "arfcn": arfcn,
+            "cgi": res.get("cgi") or _first_cgi(res),
+            "plmn": res.get("plmnIdentity", ""),
+            "unique": res.get("unique"),
+            "confusion": res.get("confusion"),
+            "results": res.get("results", {}),
+        },
+    }, "ReportCGI resolved")
+
+
+def _first_cgi(res):
+    """從 cgi_resolve 的 results dict 取第一個非 FAIL 的 CGI(unique 時即答案)。"""
+    for k in (res.get("results") or {}):
+        if k and k != "FAIL":
+            return k
+    return None
 
 
 # ────────────────────────────────────────────────────────────
@@ -257,6 +292,63 @@ def _handle_qos_flow_mapping(
 # ────────────────────────────────────────────────────────────
 # (Style 3, Action 1) Handover Control — 我們擴展
 # ────────────────────────────────────────────────────────────
+
+def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) -> Any:
+    """UE Group 換手(ControlHeader Format 3,v10 第 5 題)。
+
+    群組是**條件式**不是清單:{servingCellNcgi, targetPhysicalCellId[, targetArfcn]}
+    → 「駐留於該 cell、且量測回報中看得到該 (pci[,arfcn]) 的所有 UE」。
+    由 CU 在本地解析,UE 識別不出 E2(全域限制 L1);outcome 只回計數。
+    """
+    from main.apps.cu_cp.models.measurement_log import MeasurementLog
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    from main.apps.cu_cp.services.common.timestamp_service import TimestampService
+    from datetime import timedelta
+
+    grp_id = int(message.get("ue_group_id") or 0)
+    serving = message.get("serving_cell_ncgi") or ""
+    tgt_pci = message.get("target_pci")
+    # 目標 CGI 走 ControlMessage Format 1(與逐 UE 換手同一半),resolve 共用
+    target_cell, _src = resolve_target_cell({"target_cgi": message.get("target_cgi_msg") or {},
+                                             **message})
+    if not target_cell or not serving or tgt_pci is None:
+        return error_response("handover_group requires serving_cell_ncgi, target_pci, target CGI", status=400)
+
+    # 條件解析:駐留 serving 且近 2 分鐘量測回報含 target pci 的 UE
+    win = TimestampService.now() - timedelta(minutes=2)
+    matched: set[str] = set()
+    for ue in UeContext.objects.filter(serving_cell=serving, rrc_state="CONNECTED"):
+        m = (MeasurementLog.objects.filter(ue_id=ue.ue_id, recorded_at__gte=win)
+             .order_by("-id").first())
+        for n in (getattr(m, "neighbor_cells_json", None) or []):
+            from main.apps.cu_cp.models.cell_config import CellConfig as _C
+            c = _C.objects.filter(cell_id=n.get("cell_id")).first()
+            if c is not None and int(c.pci) == int(tgt_pci):
+                matched.add(ue.ue_id)
+                break
+
+    executed = failed = 0
+    for uid in sorted(matched):
+        ho = execute_f1_handover(ue_id=uid, target_cell=target_cell, trigger="E2_RIC_CONTROL")
+        if ho and not ho.get("failed"):
+            executed += 1
+        else:
+            failed += 1
+
+    result = ("NO_MATCH" if not matched else
+              "EXECUTED" if failed == 0 else
+              "REJECTED" if executed == 0 else "PARTIAL")
+    outcome = {
+        "requestType": "HO_GROUP", "ueGroupId": grp_id,
+        "servingCellNcgi": serving,
+        "matchedUeCount": len(matched), "executedCount": executed,
+        "failedCount": failed,                      # RIC 第三輪要求:分辨部分成功
+        "targetCgi": target_cell, "result": result, "detail": "",
+    }
+    logger.info("HO_GROUP grp=%d %s→%s matched=%d exec=%d fail=%d → %s",
+                grp_id, serving, target_cell, len(matched), executed, failed, result)
+    return success_response({"control_outcome": outcome}, "handover_group processed")
+
 
 def _handle_handover(
     ue_id: str,

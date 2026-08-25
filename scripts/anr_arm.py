@@ -80,11 +80,23 @@ def q1():
 def q2():
     """缺漏鄰區(量測側偵測)。停用分支另需 env ANR_INTRA_ENABLED=false。"""
     _cut("s25_c0", "n35_c0")
+    # UE 搬回 s25 —— 佈病前 RLF 重建已把 UE 帶去 n37(坑 2:重建不看 NRT),
+    # 來源歸屬不在 s25 的話,guard 會替 n37 建關係,考點的 s25→n35 缺漏驗不到。
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(ue_id__startswith="mm").exclude(serving_cell="s25_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="s25_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 s25_c0")
     print("  ※ 停用分支:改 docker-compose ANR_INTRA_ENABLED=false 後 docker compose up -d ransim-cu")
 
 def q3():
     """深邊緣稀疏"""
     _cut("s28_c0", "n91_c0")
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(ue_id__startswith="dw").exclude(serving_cell="s28_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="s28_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 s28_c0(坑1)")
 
 def q4():
     """未知 cell"""
@@ -124,9 +136,14 @@ def q7():
     print("  ※ 必要 env:HO_FORCE_FAIL_TARGET=nbr_c0(改完 docker compose up -d ransim-cu)")
 
 def q8():
-    """跨頻:砍掉 3.5G→2.1G 整層關係"""
+    """跨頻:砍掉 3.5G→2.1G 整層關係;UE 搬回 s11(坑1,壅塞與歸屬都要在 s11)"""
     for t in ("f55_c0", "f61_c0", "f68_c0"):
         _cut("s11_c0", t)
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(ue_id__startswith="if").exclude(serving_cell="s11_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="s11_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 s11_c0")
 
 def q9():
     """NRT 容量修剪:把三個 cell 填到 used==limit,含零活動 x24_c0 與受保護 x25_c0"""

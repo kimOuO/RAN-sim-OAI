@@ -191,6 +191,37 @@ def encode_anr_ran_function_description() -> bytes:
     return json.dumps(rfd, separators=(",", ":")).encode("utf-8")
 
 
+# ── ANR Indication(sim → RIC 觀測資料;JSON payload,比照 FULLKPM)──────
+# 2026-08-12:E2SM-ANR 加 indication 方向 —— xApp 訂 func 6 後每 period 收到
+# ANR情境_v8 卷面觀測資料(e2NodeInformation + kpmIndication + RLF/MRO + 量測聚合)。
+# payload zlib 壓縮(可能大),對齊 FULLKPM 的信封:header 帶 encoding/part/parts。
+
+def encode_indication_header(timestamp_ms: int, sn: int, *,
+                             part: int = 0, parts: int = 1, raw_bytes: int = 0) -> bytes:
+    return json.dumps(
+        {"timestamp_ms": int(timestamp_ms), "sn": int(sn), "format": "DT-ANR-v1",
+         "encoding": "zlib", "part": int(part), "parts": int(parts),
+         "raw_bytes": int(raw_bytes)},
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def build_indication_payloads(anr_data: dict[str, Any], sn: int,
+                              chunk_bytes: int = 6000) -> list:
+    """anr_data(CU /E2/Anr/indication 的 data 區)→ [(hdr, msg), ...],zlib+分塊。"""
+    import zlib
+
+    raw = json.dumps(anr_data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    comp = zlib.compress(raw, 6)
+    ts = int(anr_data.get("timestamp_ms", 0)) if isinstance(anr_data, dict) else 0
+    chunks = [comp[i:i + chunk_bytes] for i in range(0, len(comp), chunk_bytes)] or [b""]
+    n = len(chunks)
+    return [
+        (encode_indication_header(ts, sn, part=i, parts=n, raw_bytes=len(raw)), chunk)
+        for i, chunk in enumerate(chunks)
+    ]
+
+
 def selftest_anr_decode() -> dict[str, Any]:
     """回歸自測:三種請求的正規化。"""
     add = _normalize_request({"requestType": "ADD", "sourceCellId": "cg0_c0",

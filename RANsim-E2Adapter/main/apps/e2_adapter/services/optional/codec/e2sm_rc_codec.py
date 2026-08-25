@@ -21,6 +21,26 @@ from __future__ import annotations
 from typing import Any
 
 from main.apps.e2_adapter.services.optional.codec.e2ap_codec import _load_runtime
+
+
+def _rc_v10_enabled() -> bool:
+    import os
+    return (os.environ.get("RC_MODULE_V10") or "off").strip().lower() in ("on", "1", "true")
+
+
+def _rc_ies():
+    """RC 結構類別的來源。
+
+    RC_MODULE_V10=on → RIC 提供的 pycrate 預編譯模組(含 ControlHeader Format 3 /
+    UE Group / ueGroup-ControlAction-Supported;共存性 2026-08-25 已實測:與執行期
+    編譯的 E2AP+KPM 同 process,KPM 三次往返位元組一致)。
+    off → 沿用執行期編譯的 e2sm_rc_v01.03(現行為,無 Format 3)。
+    只有 RC 的 E2SM 內層走這裡;E2AP 外層一律走 _load_runtime()。
+    """
+    if _rc_v10_enabled():
+        from main.apps.e2_adapter.services.optional.codec import e2sm_rc_precompiled as _pc
+        return _pc.E2SM_RC_IEs
+    return _load_runtime().E2SM_RC_IEs
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -189,7 +209,7 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
     action_id = 0
     ueid_dict: dict[str, Any] = {"kind": "unknown"}
     try:
-        ch_cls = rt.E2SM_RC_IEs.E2SM_RC_ControlHeader
+        ch_cls = _rc_ies().E2SM_RC_ControlHeader
         ch_cls.from_aper(header_bytes)
         ch_val = ch_cls.get_val()
         fmt_choice, fmt_val = ch_val.get("ric-controlHeader-formats", (None, {}))
@@ -197,13 +217,28 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
             style_type = int(fmt_val.get("ric-Style-Type", 0))
             action_id = int(fmt_val.get("ric-ControlAction-ID", 0))
             ueid_dict = _flatten_ueid(fmt_val.get("ueID", (None, {})))
+        elif fmt_choice == "controlHeader-Format3":
+            # UE Group 控制(v10 第 5 題):群組=條件式,UE 識別不外流(L1)。
+            style_type = int(fmt_val.get("ric-Style-Type", 0))
+            action_id = int(fmt_val.get("ric-ControlAction-ID", 0))
+            items = []
+            for it in (fmt_val.get("ue-Group-Definition", {})
+                       .get("ueGroupDefinitionIdentifier-LIST", []) or []):
+                items.append({
+                    "ranParameter_id": int(it.get("ranParameter-ID", 0)),
+                    "value": _unwrap_ranparameter_value(it.get("ranParameter-valueType")),
+                    "logicalOR": str(it.get("logicalOR", "false")),  # 名稱比對,勿比 0/1
+                })
+            ueid_dict = {"kind": "group",
+                         "ue_group_id": int(fmt_val.get("ue-Group-ID", 0)),
+                         "conditions": items}
     except Exception as exc:
         logger.warning("decode E2SM-RC ControlHeader failed: %s", exc)
 
     # Decode E2SM-RC ControlMessage (Format 1) — extract ranP list
     ran_params: dict[int, Any] = {}
     try:
-        cm_cls = rt.E2SM_RC_IEs.E2SM_RC_ControlMessage
+        cm_cls = _rc_ies().E2SM_RC_ControlMessage
         cm_cls.from_aper(message_bytes)
         cm_val = cm_cls.get_val()
         fmt_choice, fmt_val = cm_val.get("ric-controlMessage-formats", (None, {}))
@@ -271,6 +306,26 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
             "node": node_meid,
         },
     }
+
+    if style == 3 and action == 1 and ueid.get("kind") == "group":
+        # UE Group 換手(v10 第 5 題)—— ControlHeader Format 3。
+        # 群組=條件式,由 CU 解析符合的 UE;整條路徑不出現任何 per-UE 識別(L1)。
+        def _cond(pid):
+            for c in ueid.get("conditions", []):
+                if c.get("ranParameter_id") == pid:
+                    v = c.get("value")
+                    return v.decode() if isinstance(v, (bytes, bytearray)) else v
+            return None
+        base["action"] = "handover_group"
+        base["control_message"] = {
+            "ue_group_id": ueid.get("ue_group_id", 0),
+            # 10001=NR CGI(來源 cell)、10002=PCI(目標方向)、ARFCN 可選(缺=不限頻率)
+            "serving_cell_ncgi": _cond(10001),
+            "target_pci": _cond(10002),
+            "target_arfcn": _cond(10003),
+            "target_cgi_msg": rc_decoded.get("ran_params", {}),  # message F1 的 target CGI 原樣傳
+        }
+        return base
 
     if style == 9 and action == 1:
         # CONTROL Style 9 / Action 1 — MeasConfig ReportCGI(PCI+ARFCN → 全域 NCGI 解析)。
@@ -490,8 +545,7 @@ def encode_rc_ran_function_description() -> bytes:
       Style 3 / Action 1: Handover Control (RANParam 1=Target Primary Cell ID)
         — sim 端可接, RIC rc-probe 尚未實作 sender (STYLE3_ACTION1_HDR=b"")
     """
-    rt = _load_runtime()
-    rfd_cls = rt.E2SM_RC_IEs.E2SM_RC_RANFunctionDefinition
+    rfd_cls = _rc_ies().E2SM_RC_RANFunctionDefinition
 
     style_2_6 = {
         "ric-ControlStyle-Type": 2,
@@ -504,6 +558,8 @@ def encode_rc_ran_function_description() -> bytes:
                 {"ranParameter-ID": 2, "ranParameter-name": "Max PRB Ratio"},
                 {"ranParameter-ID": 3, "ranParameter-name": "Dedicated PRB Ratio"},
             ],
+            # v10 模組中此欄位為**必填**(每個 ControlAction 都要帶,不只 3/1)
+            **({"ueGroup-ControlAction-Supported": "false"} if _rc_v10_enabled() else {}),
         }],
         "ric-ControlHeaderFormat-Type": 1,
         "ric-ControlMessageFormat-Type": 1,
@@ -515,12 +571,16 @@ def encode_rc_ran_function_description() -> bytes:
         "ric-ControlAction-List": [{
             "ric-ControlAction-ID": 1,
             "ric-ControlAction-Name": "Handover Control",
-            # ⚠️ 不能加 "ueGroup-ControlAction-Supported":我們載入的
-            # e2sm_rc_v01.03.asn **沒有這個欄位**,加了整個 RANfunction-Description
-            # 會編碼失敗並退回 empty stub(2026-08-25 實測)——比不宣告更糟。
-            # 要宣告得先升級 RC ASN.1 模組版本。見 docs/api/v10_RIC八問回覆.md §2.4。
+            # v01.03 沒有 ueGroup 欄位,硬加會整個 RFD 編碼失敗退回 empty stub
+            # (2026-08-25 實測)—— 只在 v10 模組下宣告。
+            **({"ueGroup-ControlAction-Supported": "true"} if _rc_v10_enabled() else {}),
             "ran-ControlActionParameters-List": [
-                {"ranParameter-ID": 1, "ranParameter-name": "Target Primary Cell ID"},
+                {"ranParameter-ID": 1, "ranParameter-name": "Target Primary Cell ID",
+                 # 宣告「群組控制用 Header Format 3 + Message Format 1」——
+                 # rc-probe 從 E2 Setup 讀出該用哪組 format,不必寫死假設。
+                 **({"listOfAdditionalSupportedFormats-UEGroupControl": [
+                     {"ric-ControlHeaderFormat-Type": 3,
+                      "ric-ControlMessageFormat-Type": 1}]} if _rc_v10_enabled() else {})},
             ],
         }],
         # Format 1 = 逐 UE;Format 3 = 群組(ue-Group-Definition 條件式)
