@@ -266,6 +266,52 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
 
 # ── Map RC Control → sim CU /CU/E2/Control/request payload ──────
 
+def _extract_target_cgi(params: dict) -> dict:
+    """從 ranP 抽 Target CGI → {plmn_hex, nr_cell_id}。逐 UE 3-1 與群組 Format 3 共用同源
+    (spec structure walk + rc-probe 打包式 valueOctS fallback)。"""
+    plmn_hex = ""
+    nr_cell_id_int = 0
+
+    def _walk(node):
+        nonlocal plmn_hex, nr_cell_id_int
+        if not isinstance(node, dict):
+            return
+        t = node.get("_type")
+        if t == "valueOctS" and not plmn_hex:
+            v = node.get("value")
+            if isinstance(v, str) and len(v) == 6:
+                plmn_hex = v
+        elif t == "valueBitS" and not nr_cell_id_int:
+            v = node.get("value")
+            if isinstance(v, dict) and v.get("bits") in (36, 28):
+                nr_cell_id_int = int(v.get("int", 0))
+        elif t == "structure":
+            for child in (node.get("fields") or {}).values():
+                _walk(child)
+        elif t == "list":
+            for item in node.get("items") or []:
+                for child in (item.get("fields") or {}).values():
+                    _walk(child)
+
+    for _pv in params.values():
+        _walk(_pv)
+    if not (plmn_hex and nr_cell_id_int):
+        for _pv in params.values():
+            if isinstance(_pv, dict) and _pv.get("_type") == "valueOctS":
+                h = _pv.get("value") or ""
+                if isinstance(h, str) and len(h) >= 16:
+                    cgi = bytes.fromhex(h)[-8:]
+                    plmn_hex = plmn_hex or cgi[0:3].hex()
+                    nr_cell_id_int = nr_cell_id_int or (int.from_bytes(cgi[3:8], "big") >> 4)
+                    break
+    out = {}
+    if plmn_hex:
+        out["plmn_hex"] = plmn_hex
+    if nr_cell_id_int:
+        out["nr_cell_id"] = nr_cell_id_int
+    return out
+
+
 def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
     """Translate decoded RIC Control Request → sim CU REST payload (OAI 對齊結構).
 
@@ -314,6 +360,17 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
             for c in ueid.get("conditions", []):
                 if c.get("ranParameter_id") == pid:
                     v = c.get("value")
+                    # 解包 pycrate value 容器(第十八輪 5b-2 根因之一:原樣 dict 直傳 CU)
+                    if isinstance(v, dict):
+                        t, inner = v.get("_type"), v.get("value")
+                        if t == "valueOctS" and isinstance(inner, str):
+                            try:
+                                return bytes.fromhex(inner).decode("utf-8", "replace")
+                            except ValueError:
+                                return inner
+                        if t == "valueInt":
+                            return int(inner)
+                        v = inner
                     return v.decode() if isinstance(v, (bytes, bytearray)) else v
             return None
         base["action"] = "handover_group"
@@ -323,7 +380,9 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
             "serving_cell_ncgi": _cond(10001),
             "target_pci": _cond(10002),
             "target_arfcn": _cond(10003),
-            "target_cgi_msg": rc_decoded.get("ran_params", {}),  # message F1 的 target CGI 原樣傳
+            # 與逐 UE 3-1 同源抽取 message F1 的 target CGI(第十八輪 5b-2 根因之二:
+            # 原樣 ran_params CU 解不動)→ {plmn_hex, nr_cell_id}
+            "target_cgi_msg": _extract_target_cgi(params),
         }
         return base
 
