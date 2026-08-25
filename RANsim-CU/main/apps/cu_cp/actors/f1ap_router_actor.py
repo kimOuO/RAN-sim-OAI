@@ -399,45 +399,16 @@ class F1ApRouterActor:
             {"last_measurement_at": now, "updated_at": now},
         )
 
-        if not RrcStateMachine.can_handover(ue.rrc_state):
-            return success_response({"ue_id": ue_id, "ho_triggered": False, "reason": "not_connected"})
+        # ── 2026-08-25 移除 legacy A3 段 ──────────────────────────────
+        # 這裡原本還有**第二段** A3:自己建 PREP 事件、直接改 serving_cell,
+        # 完全繞過 execute_f1_handover —— 不看 stale-PCI / xnBlocklist /
+        # HO_FORCE_FAIL,任何換手失敗建模都擋不住它。上面那段(走 executor)
+        # 判 FAILED 之後,這段緊接著把 UE 無條件搬走 —— 第 10 題佈好病、
+        # 15 筆 CellNotAvailable 之後 UE 全體「無紀錄地」出現在 b07,就是它幹的。
+        # Q7 沒中招純屬僥倖:hoBlocklist 擋在兩段共用的 verdict 層,
+        # 而 stale-PCI 防呆只在 executor 層。A3 一律走 execute_f1_handover。
+        return success_response({"ue_id": ue_id, "processed": True}, "measurement processed")
 
-        # A3 evaluation
-        calc = A3HandoverCalculation()
-        ue_state = get_ue_state(ue_id)
-        neighbors = [(nb["cell_id"], nb["rsrp_dbm"]) for nb in d["neighbor_cells"]]
-        verdict = calc.evaluate(ue_state, ue.serving_cell or "", d["rsrp_dbm"], neighbors)
-
-        ho_payload = {"ho_triggered": False}
-        if verdict.triggered:
-            target_cell = verdict.target_cell
-            source_cell = ue.serving_cell or ""
-            ho_uuid = UUIDService.random_uuid()
-            SqlDbBusinessService.create_entity(HandoverEvent, {
-                "ho_uuid": ho_uuid,
-                "ue_id": ue_id,
-                "source_cell": source_cell,
-                "target_cell": target_cell,
-                "trigger": "A3_TTT",
-                "status": "PREP",
-                "started_at": now,
-            })
-            mod = F1apHandler.build_ue_context_modification(ue_id, target_cell)
-            DuClientBusinessService.post_ue_context_modification(mod)
-            SqlDbBusinessService.update_entity(
-                UeContext, "ue_id", ue_id,
-                {"serving_cell": target_cell, "updated_at": now},
-            )
-            ho_payload = {
-                "ho_triggered": True,
-                "ho_uuid": ho_uuid,
-                "source_cell": source_cell,
-                "target_cell": target_cell,
-                "elapsed_ms": verdict.elapsed_ms,
-            }
-            logger.info("A3 HO fired: UE %s %s → %s", ue_id, source_cell, target_cell)
-
-        return success_response(ho_payload, "measurement processed")
 
     @staticmethod
     @csrf_exempt

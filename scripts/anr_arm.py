@@ -153,6 +153,17 @@ def q10():
     """過期 PCI 對應:關係留舊 pci=205,cell 實際 233"""
     _set("s15_c0", "b07_c0")          # 先確保關係存在(值會照 cell 實際 pci)
     _set("s15_c0", "b07_c0", target_pci=205)   # 再改成過期的舊 PCI
+
+    # UE 搬回 s15 —— sim 是先跑再佈病,A3 已趁 PCI 還正確時把 UE 全換去 b07;
+    # 病是「s15 往 b07 的換手因舊 PCI 失敗」,UE 不在 s15 病就不發作
+    # (2026-08-25 佈第 10 題 fixture 時踩到:att=0、失敗全空)。
+    # 搬回後 A3 會再嘗試 → 撞 stale PCI → CellNotAvailable,失敗不改 serving,
+    # UE 留在 s15 反覆嘗試 → 失敗率持續 —— 這正是卷面要的樣貌。
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(serving_cell="b07_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="s15_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 s15_c0(A3 將反覆撞 stale PCI)")
     c = CellConfig.objects.filter(cell_id="b07_c0").first()
     print(f"  b07_c0 實際 pci={getattr(c, 'pci', None)}(應為 233)→ 對應過期成立")
 
