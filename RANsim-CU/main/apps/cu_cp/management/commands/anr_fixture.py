@@ -112,9 +112,20 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"[fixture] {i}. 等待 {w['src']}→{w['tgt']} 的 {w['action']} 累積 {need} 次 {note}")
                 hit = False
+                # preceded_by:要求該事件出現在另一種事件「之後」——
+                # 第 7 題用它精準辨認「重封」:探測必然先 FLAG_CLEAR,之後的
+                # FLAG_SET 才是重封。只數次數的話,xApp 的冪等重掛(同樣送成對
+                # FLAG_SET)會被誤認成重封,又提早清掉注入。
+                prev = w.get("preceded_by")
                 while time.time() < deadline:
-                    n = CE.objects.filter(action=w["action"], source_cell_id=w["src"],
-                                          target_cgi=w["tgt"], at__gte=t0).count()
+                    qs = CE.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"],
+                                           at__gte=t0)
+                    if prev:
+                        last_prev = qs.filter(action=prev).order_by("-id").first()
+                        n = (qs.filter(action=w["action"], id__gt=last_prev.id).count()
+                             if last_prev else 0)
+                    else:
+                        n = qs.filter(action=w["action"]).count()
                     if n >= need:
                         hit = True
                         break

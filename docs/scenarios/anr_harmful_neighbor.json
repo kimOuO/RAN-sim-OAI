@@ -72218,10 +72218,11 @@
      "action": "FLAG_SET",
      "src": "src_c0",
      "tgt": "nbr_c0",
-     "min_count": 2
+     "min_count": 1,
+     "preceded_by": "FLAG_CLEAR"
     },
     "timeout_sec": 14400,
-    "note": "等你們探測失敗後「重封」(成對 2 筆 FLAG_SET,只算本步驟開始後)→ 倍增鏈驗得到"
+    "note": "等「探測(FLAG_CLEAR)之後的重封(FLAG_SET)」—— 冪等重掛不會誤觸"
    },
    {
     "sleep_sec": 120,
