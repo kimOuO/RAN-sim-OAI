@@ -51,6 +51,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("scenario_id")
         parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--from-step", type=int, default=1,
+                            help="從第 N 步開始(補跑用,1-based)")
 
     def handle(self, *args, **opts):
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as R
@@ -74,6 +76,8 @@ class Command(BaseCommand):
         self.stdout.write(f"[fixture] {sid}:{len(steps)} 個步驟開始")
 
         for i, st in enumerate(steps, 1):
+            if i < int(opts.get("from_step") or 1):
+                continue
             note = st.get("note", "")
             if "wait_until" in st:
                 w = st["wait_until"]
@@ -100,13 +104,17 @@ class Command(BaseCommand):
                 )
                 w = st["wait_event"]
                 need = int(w.get("min_count", 1))
+                # 只算「這個步驟開始之後」的事件 —— changeEvents 表跨劇本累積,
+                # 數歷來次數會把前幾輪的 FLAG_SET 也算進去,條件一啟動就成立
+                # (2026-08-26 第 7 題實測:一開跑就提早清掉注入)。
+                t0 = TimestampService.now()
                 deadline = time.time() + float(st.get("timeout_sec", 10800))
                 self.stdout.write(
                     f"[fixture] {i}. 等待 {w['src']}→{w['tgt']} 的 {w['action']} 累積 {need} 次 {note}")
                 hit = False
                 while time.time() < deadline:
                     n = CE.objects.filter(action=w["action"], source_cell_id=w["src"],
-                                          target_cgi=w["tgt"]).count()
+                                          target_cgi=w["tgt"], at__gte=t0).count()
                     if n >= need:
                         hit = True
                         break
@@ -123,6 +131,20 @@ class Command(BaseCommand):
             if act == "relation":
                 fields = dict(st.get("set") or {})
                 fields["updated_at"] = TimestampService.now()
+                # create=true:關係不存在就先建(ANR 劇本的基準 NRT 是空的,
+                # 只 update 會靜默做白工 —— 第 7 題要「既有健康關係」當前提)
+                if st.get("create") and not R.objects.filter(
+                        source_cell_id=st["src"], target_cgi=st["tgt"]).exists():
+                    from main.apps.cu_cp.models.cell_config import CellConfig as _CC
+                    from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
+                    c = _CC.objects.filter(cell_id=st["tgt"]).first()
+                    now = TimestampService.now()
+                    R.objects.create(
+                        source_cell_id=st["src"], target_cgi=st["tgt"],
+                        target_pci=(c.pci if c else 0), target_rat="NR",
+                        target_arfcn=(nr_arfcn_from_ghz(c.frequency_ghz) if c else 633333),
+                        xn_x2_established=True, created_at=now, updated_at=now)
+                    self.stdout.write(f"[fixture] {i}. (關係不存在 → 先建 {st['src']}→{st['tgt']})")
                 n = R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).update(**fields)
                 self.stdout.write(f"[fixture] {i}. set {st['src']}→{st['tgt']} {st.get('set')} rows={n} {note}")
             elif act == "move_ues":

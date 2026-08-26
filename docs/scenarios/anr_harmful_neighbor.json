@@ -72192,7 +72192,8 @@
      "no_remove": false,
      "xn_x2_established": true
     },
-    "note": "確保關係在且未被封(病要能發作)"
+    "note": "確保關係在且未被封(病要能發作)",
+    "create": true
    },
    {
     "do": "move_ues",
