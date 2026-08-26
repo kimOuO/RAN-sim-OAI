@@ -269,6 +269,9 @@ services:
     # 核心是從全機挑最大的行程下手,等於一個容器的洩漏可以拖垮整台。
     # 設上限後最壞情況是這個容器自己被殺並重啟,其他服務不受影響。
     mem_limit: 12g
+    # 2026-08-26 OOM 自癒:被 OOM-kill 自動重啟;場景由 last_override.json 於首次
+    # compute 自動回載(sionna_operations.ensure_loaded)—— 全鏈免人工。
+    restart: on-failure
     # PID 1 的訊號語意:核心不對 PID 1 套用訊號預設動作,沒裝 handler 的 SIGTERM 被直接丟棄。
     # 本服務的 PID 1(manage.py runserver / sh -c)不處理 SIGTERM → docker stop 空等 10 秒
     # 再 SIGKILL(exit 137),連線不送 FIN / SCTP 不做 SHUTDOWN。init:true 讓 tini 當 PID 1,

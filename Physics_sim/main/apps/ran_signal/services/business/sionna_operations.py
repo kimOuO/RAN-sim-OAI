@@ -256,6 +256,15 @@ class SionnaBusinessService:
         sionna_rebuild_ms = TimestampService.now_ms() - rebuild_start_ms
 
         _release_engine(_old)
+        cls._persist_override(payload)          # OOM/重建自癒的料源
+        cls._override_restore_attempted = True  # 本進程已有現行 override,不再回載舊檔
+        try:                                    # TF 不還 OS,每次 rebuild RSS 棘輪 — 監測供 OOM 歸因
+            rss_mb = int(open("/proc/self/status").read().split("VmRSS:")[1].split()[0]) // 1024
+            logger.info("engine rebuilt: RSS=%dMB(mem_limit 前的棘輪水位)", rss_mb)
+            if rss_mb > 10240:
+                logger.warning("RSS %dMB 逼近 mem_limit —— OOM 前兆,建議擇機重啟 physics(場景會自動回載)", rss_mb)
+        except Exception:
+            pass
         return {
             "scene_id": cls._scene_id,
             "previous_scene_id": prev_scene_id,
@@ -269,10 +278,62 @@ class SionnaBusinessService:
             "geometry_source_type": geometry_type_out,
         }
 
+    # ── 2026-08-26 OOM 自癒:override 落地與回載 ──────────────────
+    # Layer 2 場景只存在記憶體,容器 OOM/重建後回到預設場景,整套模擬讀到
+    # 錯誤通道直到人工重啟場景(Q5 當天實炸)。修:apply_override 成功即把
+    # payload 落地 /app/tmp/last_override.json;首次 compute 的 lazy init
+    # 自動回載;reset_to_default 視為明確放棄 override,刪檔。
+    _OVERRIDE_STATE_PATH = "/app/tmp/last_override.json"
+    _override_restore_attempted = False
+
+    @classmethod
+    def _persist_override(cls, payload: dict[str, Any]) -> None:
+        try:
+            import json as _json
+            import os as _os
+            _os.makedirs(_os.path.dirname(cls._OVERRIDE_STATE_PATH), exist_ok=True)
+            with open(cls._OVERRIDE_STATE_PATH, "w") as f:
+                _json.dump(payload, f)
+        except Exception as exc:
+            logger.warning("persist override failed(不擋套用): %s", exc)
+
+    @classmethod
+    def _drop_persisted_override(cls) -> None:
+        try:
+            import os as _os
+            _os.remove(cls._OVERRIDE_STATE_PATH)
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            logger.warning("drop persisted override failed: %s", exc)
+
+    @classmethod
+    def ensure_loaded(cls) -> None:
+        """lazy init:預設場景 + (若有)回載重啟前的 Layer 2 override。"""
+        if cls._engine is None:
+            cls.reload_scene_config()
+        if not cls._override_restore_attempted:
+            cls._override_restore_attempted = True
+            try:
+                import json as _json
+                with open(cls._OVERRIDE_STATE_PATH) as f:
+                    payload = _json.load(f)
+            except FileNotFoundError:
+                return
+            except Exception as exc:
+                logger.warning("read persisted override failed: %s", exc)
+                return
+            try:
+                logger.info("重啟自癒:回載 Layer 2 override scene_id=%s", payload.get("scene_id"))
+                cls.apply_override(payload)
+            except Exception:
+                logger.exception("回載 override 失敗 —— 維持預設場景(需人工重推)")
+
     @classmethod
     def reset_to_default(cls) -> dict[str, Any]:
         """退回 Layer 1（scene_config.json 預設）。"""
         logger.info("reset_to_default (was scene_id=%s source=%s)", cls._scene_id, cls._source)
+        cls._drop_persisted_override()          # 明確重置=放棄 override,重啟不再回載
         return cls.reload_scene_config()
 
     # ── 內部：geometry 落地 ──────────────────────────────────────
@@ -321,8 +382,7 @@ class SionnaBusinessService:
         null_threshold_dbm: float = -120.0,
     ) -> dict[str, Any]:
         """產 per-gNB 2D RSRP 網格（對齊外部平台 spec）。"""
-        if cls._engine is None:
-            cls.reload_scene_config()
+        cls.ensure_loaded()
 
         assert cls._engine is not None
         assert cls._loaded_config is not None
@@ -365,8 +425,7 @@ class SionnaBusinessService:
     ) -> dict[str, Any]:
         """純 Sionna ray tracing；回傳 channel matrix + path gain。
         DU 拿這個結果自己跑 e2_formatter / scheduler / KPI。"""
-        if cls._engine is None:
-            cls.reload_scene_config()
+        cls.ensure_loaded()
         assert cls._engine is not None
         # 序列化 Sionna scene mutation。多 thread 同時改 scene.receivers 會 race 噴 drjit reshape error。
         with cls._engine_lock:
