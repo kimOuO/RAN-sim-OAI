@@ -43,8 +43,9 @@ type AnrData = {
     servingCells: { ncgi: string; physicalCellId: number; arfcn: number }[];
     neighbourCellRelations: {
       sourceCellNcgi: string; targetCellGlobalId: string; targetPhysicalCellId: number;
-      isHoAllowed: boolean; xnX2Established: boolean; hoValidated: boolean; version: number;
-      flags: { hoBlocklist: boolean; noRemove: boolean; xnBlocklist: boolean };
+      isHoAllowed?: boolean; xnX2Established: boolean; hoValidated: boolean; version: number;
+      // v10 起旗標不再上 E2(卷面第 12 題考點:旗標不可觀測),v8 才有
+      flags?: { hoBlocklist: boolean; noRemove: boolean; xnBlocklist: boolean };
     }[];
     relationChangeEvents: { action: string; targetCellGlobalId: string; by: string; at: string }[];
   };
@@ -52,15 +53,18 @@ type AnrData = {
     cellLevel: Record<string, any>;
     perNeighbourRelation: any[];
   };
-  rlfKpm: {
+  // v8 專屬容器 —— v10 已取消(量測併入 kpmIndication.cellLevel 扁平鍵)
+  rlfKpm?: {
     cellLevel: Record<string, { 'RLF.DetectedRate': number; 'RLF.DropWithoutReestablishmentRate': number; 'RRC.ConnReEstabInboundRatePerMin': number }>;
     reestablishmentInboundByPreviousPci: { cellNcgi: string; byPreviousPci: { previousPhysicalCellId: number; ratePerMin: number }[] }[];
   };
-  mroKpm: {
+  mroKpm?: {
     cellLevel: Record<string, any>;
     total: Record<string, number>;
   };
   e2MessageCopyAggregate: {
+    // v10:重建來源統計從 rlfKpm 搬到這裡
+    reestablishmentInboundByPreviousPci?: { cellNcgi: string; byPreviousPci: { previousPhysicalCellId: number; ratePerMin: number }[] }[];
     measurementReportAggregate: {
       reportedPhysicalCellId: number; reportedArfcn: number; sampleRatePerMin: number;
       rsrpPercentile50Dbm: number; rsrpPercentile90Dbm: number;
@@ -238,11 +242,35 @@ export default function E2Page() {
   const cells = full?.e2.flatMap((g) => g.cells) ?? [];
   const pmRecs = full ? Object.values(full.pm).flat() : [];
   const sumPm = (key: string) => pmRecs.reduce((s, r) => s + (parseInt(r[key] ?? '0', 10) || 0), 0);
-  const rlfCells = anr?.rlfKpm?.cellLevel ?? {};
-  const totalRlfRate = Object.values(rlfCells).reduce((s, v) => s + (v['RLF.DetectedRate'] || 0), 0);
-  const mroTotal = anr?.mroKpm?.total ?? {};
+  // ── v10 schema(2026-08-26 切換)──────────────────────────────
+  // v8 的 rlfKpm / mroKpm 容器已取消,量測改為 kpmIndication.cellLevel 的
+  // 扁平鍵「<指標名>.<NCGI>」+ {currentPerMin|currentPct, baseline…, trend…}。
+  // 這裡重組回 per-cell 結構,讓下面的畫面邏輯不用改寫。
+  const metricNum = (v: any): number =>
+    typeof v === 'number' ? v : (v?.currentPerMin ?? v?.currentPct ?? v?.current ?? 0);
+  const cellLevelFlat: Record<string, any> = anr?.kpmIndication?.cellLevel ?? {};
+  const byCell: Record<string, Record<string, number>> = {};
+  const netTotal: Record<string, number> = {};
+  for (const [key, val] of Object.entries(cellLevelFlat)) {
+    const i = key.lastIndexOf('.');
+    if (i < 0) continue;
+    const metric = key.slice(0, i);
+    const cell = key.slice(i + 1);
+    const n = metricNum(val);
+    (byCell[cell] ??= {})[metric] = n;
+    netTotal[metric] = (netTotal[metric] ?? 0) + n;
+  }
+  // 只留有 RLF/重建數字的 cell(v8 的 rlfKpm.cellLevel 等價物)
+  const rlfCells: Record<string, Record<string, number>> = Object.fromEntries(
+    Object.entries(byCell).filter(([, m]) =>
+      (m['RLF.DetectedRate'] ?? 0) > 0 || (m['RRC.ConnReEstabInboundRatePerMin'] ?? 0) > 0),
+  );
+  const totalRlfRate = netTotal['RLF.DetectedRate'] ?? 0;
+  const mroTotal: Record<string, number> = netTotal;
   const relations = anr?.e2NodeInformation?.neighbourCellRelations ?? [];
-  const inbound = anr?.rlfKpm?.reestablishmentInboundByPreviousPci ?? [];
+  // v10:重建來源統計搬到 e2MessageCopyAggregate 底下
+  const inbound = anr?.e2MessageCopyAggregate?.reestablishmentInboundByPreviousPci
+    ?? anr?.rlfKpm?.reestablishmentInboundByPreviousPci ?? [];
   const measAgg = anr?.e2MessageCopyAggregate?.measurementReportAggregate ?? [];
   const changeEvents = anr?.e2NodeInformation?.relationChangeEvents ?? [];
   const perRel = anr?.kpmIndication?.perNeighbourRelation ?? [];
@@ -448,14 +476,15 @@ export default function E2Page() {
                     <td className={styles.mono}>{r.sourceCellNcgi}</td>
                     <td className={styles.mono}>{r.targetCellGlobalId} <span className={styles.dim}>({r.targetPhysicalCellId})</span></td>
                     <td className={`${styles.num} ${styles.mono}`}>{r.version}</td>
-                    <td><BoolPill on={r.isHoAllowed} /></td>
+                    <td><BoolPill on={r.isHoAllowed ?? true} /></td>
                     <td><BoolPill on={r.xnX2Established} /></td>
                     <td><BoolPill on={r.hoValidated} /></td>
                     <td>
-                      {r.flags.hoBlocklist && <BoolPill on danger onText="hoBlock" />}{' '}
-                      {r.flags.noRemove && <BoolPill on danger onText="noRemove" />}{' '}
-                      {r.flags.xnBlocklist && <BoolPill on danger onText="xnBlock" />}
-                      {!r.flags.hoBlocklist && !r.flags.noRemove && !r.flags.xnBlocklist && <span className={styles.dim}>—</span>}
+                      {r.flags?.hoBlocklist && <BoolPill on danger onText="hoBlock" />}{' '}
+                      {r.flags?.noRemove && <BoolPill on danger onText="noRemove" />}{' '}
+                      {r.flags?.xnBlocklist && <BoolPill on danger onText="xnBlock" />}
+                      {!r.flags && <span className={styles.dim} title="v10 起旗標不上 E2(卷面第 12 題:旗標不可觀測)">v10 不可觀測</span>}
+                      {r.flags && !r.flags.hoBlocklist && !r.flags.noRemove && !r.flags.xnBlocklist && <span className={styles.dim}>—</span>}
                     </td>
                   </tr>
                 ))}
@@ -474,7 +503,7 @@ export default function E2Page() {
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <h3>RLF / 重建</h3>
-            <span className={`${styles.badge} ${styles.badgeTeal}`}>ANR · func 6 · rlfKpm</span>
+            <span className={`${styles.badge} ${styles.badgeTeal}`}>ANR · func 6 · kpmIndication.cellLevel</span>
           </div>
           {Object.keys(rlfCells).length === 0 ? <div className={styles.empty}>窗口內無 RLF 事件</div> : (
             Object.entries(rlfCells).map(([cell, v]) => (
@@ -502,7 +531,7 @@ export default function E2Page() {
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <h3>MRO 換手病態歸因</h3>
-            <span className={`${styles.badge} ${styles.badgeTeal}`}>ANR · func 6 · mroKpm</span>
+            <span className={`${styles.badge} ${styles.badgeTeal}`}>ANR · func 6 · kpmIndication.cellLevel</span>
           </div>
           <div className={styles.miniCard}>
             <h4>全網(window 5 min)</h4>
