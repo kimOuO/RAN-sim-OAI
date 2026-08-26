@@ -277,6 +277,15 @@ def q12():
             started_at=now - timedelta(hours=6, minutes=i),
             completed_at=now - timedelta(hours=6, minutes=i))
         mk += 1
+    # 「自關係建立以來」的累計會把早於 created_at 的事件排除 —— 關係若是剛建的,
+    # 注入的歷史失敗全都不算數(2026-08-26 實測 cum=0)。把關係的建立時間往前推
+    # 到最舊那筆失敗之前,歷史才對得上「這條曾經服務過、後來壞掉」的敘事。
+    oldest = (HandoverEvent.objects.filter(source_cell="s19_c0", target_cell="n80_c0")
+              .order_by("started_at").values_list("started_at", flat=True).first())
+    if oldest:
+        R.objects.filter(source_cell_id="s19_c0", target_cgi="n80_c0").update(
+            created_at=oldest - timedelta(hours=1))
+        print(f"  n80_c0 關係建立時間往前推到 {oldest - timedelta(hours=1):%m-%d %H:%M}(早於失敗史)")
     print(f"  n80_c0 失敗史 +{mk} 筆(共 {have + mk});d02_c0 失敗史 0 筆 ← 鑑別點")
 
     # UE 必須駐留 s19_c0 —— 真實情境裡 UE 之所以沒過去 d02,正是因為它從一開始
