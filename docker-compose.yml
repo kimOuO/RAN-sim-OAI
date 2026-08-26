@@ -101,6 +101,7 @@ services:
       # 讓 playback 把 HO 切回對應 frame。空字串 = 停推。
       OMNIVERSE_URL: "http://${SERVER_IP:-host.docker.internal}:8001"
     volumes:
+      - ./docs/scenarios:/app/docs/scenarios:ro   # 劇本內建 anr_fixture 時間軸(免人工觸發)
       - ./RANsim-CU:/app
       - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
     ports:

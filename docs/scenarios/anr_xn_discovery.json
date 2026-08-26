@@ -72172,5 +72172,49 @@
   "verify": "set 後往 n33_c0 的換手嘗試歸零(不再空轉失敗);Xn 恢復(CASE=q6_restore)後 xApp 應 clear,換手恢復。旗標本身非 E2 可觀測 —— 以行為訊號確認",
   "note": "本題會自我污染 MRO(換手失敗型),排除條件要用 handoverFailureCauseRatePerMin 不要用 mroKpm",
   "spec": "docs/anr_validation/12題劇本規格.md"
+ },
+ "anr_fixture": {
+  "_doc": "三段節奏寫進劇本:佈病 → 等 xApp 止血 → 管理面修好。修復是條件觸發(等止血後才起算),避免劇本比 xApp 早動作。",
+  "steps": [
+   {
+    "do": "relation",
+    "src": "s07_c0",
+    "tgt": "n33_c0",
+    "set": {
+     "xn_x2_established": false,
+     "xn_blocklist": false
+    },
+    "note": "佈病:Xn 傳輸斷,關係留著"
+   },
+   {
+    "do": "move_ues",
+    "prefix": "xd",
+    "to": "s07_c0",
+    "note": "坑1:把 UE 搬回來源 cell"
+   },
+   {
+    "wait_until": {
+     "src": "s07_c0",
+     "tgt": "n33_c0",
+     "field": "xn_blocklist",
+     "equals": true
+    },
+    "timeout_sec": 3600,
+    "note": "等 xApp 止血(設 xnBlocklist)"
+   },
+   {
+    "sleep_sec": 300,
+    "note": "維運排程時間 —— 管理面不會秒修"
+   },
+   {
+    "do": "relation",
+    "src": "s07_c0",
+    "tgt": "n33_c0",
+    "set": {
+     "xn_x2_established": true
+    },
+    "note": "管理面把 Xn 接好 → xApp 應自行發現並解除封鎖"
+   }
+  ]
  }
 }
