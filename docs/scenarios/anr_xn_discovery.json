@@ -72184,7 +72184,8 @@
      "xn_x2_established": false,
      "xn_blocklist": false
     },
-    "note": "佈病:Xn 傳輸斷,關係留著"
+    "note": "佈病:Xn 傳輸斷,關係留著",
+    "create": true
    },
    {
     "do": "move_ues",
@@ -72200,7 +72201,11 @@
      "equals": true
     },
     "timeout_sec": 3600,
-    "note": "等 xApp 止血(設 xnBlocklist)"
+    "note": "等 xApp 止血(設 xnBlocklist);等待期間持續把 UE 拉回來源,病徵不會自己停",
+    "maintain": {
+     "prefix": "xd",
+     "to": "s07_c0"
+    }
    },
    {
     "sleep_sec": 300,
