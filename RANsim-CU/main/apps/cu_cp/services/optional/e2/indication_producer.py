@@ -111,6 +111,15 @@ def start() -> None:
     if _thread is not None and _thread.is_alive():
         return
     _stop.clear()
+    # 層1(2026-08-26):先從 DB 回載訂閱再開 producer —— CU 重啟後訂閱直接存在,
+    # adapter 不會看到空登錄、不觸發 Y1 E2 Reset,RIC 免重訂。
+    try:
+        from main.apps.cu_cp.services.optional.e2.subscription_registry import restore_from_db
+        n = restore_from_db()
+        if n:
+            logger.info("E2 subscriptions restored from DB: %d", n)
+    except Exception as exc:
+        logger.warning("E2 subscription restore skipped: %s", exc)
     _thread = threading.Thread(target=_run_loop, daemon=True, name="e2-ind-producer")
     _thread.start()
 

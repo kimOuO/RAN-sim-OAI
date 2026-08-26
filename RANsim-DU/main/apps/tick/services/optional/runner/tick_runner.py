@@ -152,6 +152,7 @@ class TickRunner:
         self.status = TickStatus()
         # in-memory UE registry — UE info by ue_id (sinr / cell / qos)
         self._ue_registry: dict[str, dict[str, Any]] = {}
+        self._pending_rlf_reports: list[dict[str, Any]] = []   # RLF 報告重試佇列(層3防死鎖)
         # Phase A — wall_tick_ms (set_speed 改它) / sim_dt_ms (固定) 解耦。
         self._wall_tick_ms: int = max(10, min(500, get_int("SIM_TICK_MS", 500)))
         self._sim_dt_ms: int = self.SIM_DT_MS_DEFAULT
@@ -291,19 +292,37 @@ class TickRunner:
             uid = rlf["ue_id"]
             self._ue_registry.pop(uid, None)  # 停止排程這個 UE
             det.remove(uid)
-            try:
-                from main.apps.f1ap_du.services.business.cu_client_operations import (
-                    CuClientBusinessService,
-                )
-                CuClientBusinessService.post_rlf_report(rlf)
-            except Exception:
-                logger.exception("post_rlf_report failed for %s", uid)
+            # 2026-08-26 層3根因:RLF 報告在 CU 重啟窗內打失敗會被丟棄 → CU 不知道
+            # → 不觸發重建 → F1 Context Setup 永不發生 → 此 UE 永遠不回排程(死鎖)。
+            # 失敗不丟:進 pending 佇列,每 tick 重試到 CU 收到為止。
+            self._pending_rlf_reports.append(rlf)
+        self._flush_pending_rlf_reports()
 
     def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
                 self._ue_registry[ue_id]["rsrp_dbm"] = rsrp_dbm
+
+    def _flush_pending_rlf_reports(self) -> None:
+        """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
+        pending = getattr(self, "_pending_rlf_reports", None)
+        if not pending:
+            return
+        from main.apps.f1ap_du.services.business.cu_client_operations import (
+            CuClientBusinessService,
+        )
+        still = []
+        for rlf in pending:
+            try:
+                ok = CuClientBusinessService.post_rlf_report(rlf)
+            except Exception:
+                ok = False
+            if not ok:
+                still.append(rlf)
+        if still and not pending is still:
+            logger.warning("RLF 報告 %d 筆送 CU 失敗,保留重試(CU 重啟窗?)", len(still))
+        self._pending_rlf_reports = still
 
     def update_ue_serving_cell(self, ue_id: str, serving_cell: str) -> None:
         """從 F1AP UE Context Setup / Modification 收到 serving_cell 變更時呼叫。
@@ -903,6 +922,7 @@ class TickRunner:
         # 5) Periodic measurement report — 從 PM aggregator window 取平均/總和而非當下瞬時
         report_sent = False
         if self.status.tick_count % self.REPORT_EVERY_N_TICKS == 0:
+            self._flush_pending_rlf_reports()   # 層3:CU 回來後補送 RLF,解除重建死鎖
             # window 在 sim-time 軸上度量(用 _sim_dt_ms,不是 wall_tick_ms)
             tick_s = self._sim_dt_ms / 1000.0
             window_s = self.REPORT_EVERY_N_TICKS * tick_s

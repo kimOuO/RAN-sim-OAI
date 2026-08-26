@@ -245,6 +245,16 @@ class UeLifecycleManager:
 
     def _sync_from_cu(self) -> None:
         sessions = cu_client.list_sessions()
+        if sessions is None:
+            # CU 不可達(重啟/暫時斷線)→ 凍結本輪 diff,現有執行緒原樣保留。
+            # 千萬不可把失敗當空表:那會殺光執行緒再重建,重建者間歇性斷量測鏈(坑7)。
+            self._cu_down_streak = getattr(self, "_cu_down_streak", 0) + 1
+            if self._cu_down_streak in (1, 10, 60):
+                logger.warning("CU 不可達(連續 %d 次)— UE 執行緒凍結保留,等 CU 回來", self._cu_down_streak)
+            return
+        if getattr(self, "_cu_down_streak", 0):
+            logger.info("CU 恢復(斷 %d 輪)— 續用原執行緒,快照照常更新", self._cu_down_streak)
+            self._cu_down_streak = 0
         # CU 端「真實 active」: rrc_state == CONNECTED (含 traffic_profile)
         cu_set = {
             s["ue_id"]: s for s in sessions

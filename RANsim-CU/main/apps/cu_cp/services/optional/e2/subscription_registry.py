@@ -66,6 +66,7 @@ class _SubscriptionStore:
         with self._lock:
             self._subs[sub_id] = sub
             self._buffers[sub_id] = []
+        _persist_save(sub)          # 層1:跨重啟存活(失敗不擋建立)
         return sub
 
     def delete(self, subscription_id: str) -> bool:
@@ -74,6 +75,7 @@ class _SubscriptionStore:
                 return False
             del self._subs[subscription_id]
             self._buffers.pop(subscription_id, None)
+        _persist_delete(subscription_id)
         return True
 
     def get(self, subscription_id: str) -> dict[str, Any] | None:
@@ -140,6 +142,65 @@ class _SubscriptionStore:
 
 
 # 全域單例
+def _persist_save(sub: dict[str, Any]) -> None:
+    try:
+        from main.apps.cu_cp.models.e2_subscription import E2Subscription
+        E2Subscription.objects.update_or_create(
+            subscription_id=sub["subscription_id"],
+            defaults=dict(
+                service_model=sub["service_model"],
+                ran_function_id=sub["ran_function_id"],
+                action_definition=sub["action_definition"],
+                event_trigger=sub["event_trigger"],
+                ric_req_id=sub.get("ric_req_id") or {},
+                created_at_ms=sub.get("created_at_ms", 0),
+                status=sub.get("status", "active"),
+            ))
+    except Exception as exc:                      # DB 未就緒等 — 不擋 wire 行為
+        import logging; logging.getLogger(__name__).warning("E2 sub persist failed: %s", exc)
+
+
+def _persist_delete(sub_id: str) -> None:
+    try:
+        from main.apps.cu_cp.models.e2_subscription import E2Subscription
+        E2Subscription.objects.filter(subscription_id=sub_id).delete()
+    except Exception as exc:
+        import logging; logging.getLogger(__name__).warning("E2 sub unpersist failed: %s", exc)
+
+
+def restore_from_db() -> int:
+    """CU 啟動時把 DB 裡的訂閱回載進 singleton(indication producer 啟動前呼叫)。
+
+    回載後 adapter 的 sub registry poll 看到非空 → 不觸發 Y1 E2 Reset,
+    RIC 端訂閱與 sub_id 全部原樣續用,indication 下一週期自動續流。
+    """
+    try:
+        from main.apps.cu_cp.models.e2_subscription import E2Subscription
+        rows = list(E2Subscription.objects.filter(status="active"))
+    except Exception as exc:
+        import logging; logging.getLogger(__name__).warning("E2 sub restore failed: %s", exc)
+        return 0
+    n = 0
+    with _store._lock:
+        for r in rows:
+            if r.subscription_id in _store._subs:
+                continue
+            _store._subs[r.subscription_id] = {
+                "subscription_id": r.subscription_id,
+                "service_model": r.service_model,
+                "ran_function_id": r.ran_function_id,
+                "action_definition": r.action_definition,
+                "event_trigger": r.event_trigger,
+                "ric_req_id": r.ric_req_id,
+                "created_at_ms": r.created_at_ms,
+                "last_indication_at_ms": 0,
+                "status": r.status,
+            }
+            _store._buffers[r.subscription_id] = []
+            n += 1
+    return n
+
+
 _store = _SubscriptionStore()
 
 

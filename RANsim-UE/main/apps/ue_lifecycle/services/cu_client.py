@@ -12,25 +12,27 @@ logger = logging.getLogger(__name__)
 _TIMEOUT_SEC = 5.0
 
 
-def list_sessions() -> list[dict[str, Any]]:
+def list_sessions() -> list[dict[str, Any]] | None:
     """Fetch CU /Session/SessionController/list — 回傳 active UE sessions.
 
     每筆 dict 至少含: ue_id, serving_cell, rrc_state, traffic_profile (新欄位, 可能不存在)
-    """
+    失敗回 **None**(非 []):「CU 不可達」與「真的沒 UE」必須可分 ——
+    回 [] 會讓 manager 把全部執行緒判 removed 殺掉重建,重建執行緒間歇性
+    不再驅動量測鏈(2026-08-25 16:23 UE 量測流默死事故,坑7)。"""
     url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Session/SessionController/list"
     try:
         r = requests.post(url, json={}, timeout=_TIMEOUT_SEC)
     except requests.RequestException as exc:
         logger.warning("list_sessions HTTP failed: %s", exc)
-        return []
+        return None
     if not r.ok:
         logger.warning("list_sessions non-OK status %s", r.status_code)
-        return []
+        return None
     try:
         body = r.json()
     except ValueError:
         logger.warning("list_sessions returned non-JSON")
-        return []
+        return None
     # CU schema: {"data": [{ue_id, rrc_state, serving_cell, ...}, ...]}
     data = body.get("data", [])
     if isinstance(data, list):
