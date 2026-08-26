@@ -642,22 +642,28 @@ def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
             period_ms = 1000
     except Exception:
         period_ms = 1000
-    action_id = 0
-    if actions:
+    # 2026-08-26 第三十六輪:讀**全部** action(舊碼只讀 actions[0],RIC 的
+    # [0,2] 雙 action SUB 被當單 action=0 → nodeinfo producer 從未啟動)。
+    action_ids: list[int] = []
+    for act_ie in actions:
         try:
-            action_id = actions[0]["value"][1].get("ricActionID", 0)
+            aid = int(act_ie["value"][1].get("ricActionID", 0))
         except Exception:
-            action_id = 0
+            continue
+        if aid not in action_ids:
+            action_ids.append(aid)
+    if not action_ids:
+        action_ids = [0]
 
     # action_id=2 → RC_E2NODEINFO_SUBSCRIBE 語意(只在 NRT 變更時推,confirm 的載體);
-    # 其餘 action_id 維持週期性 ANR indication。用 action 區分是為了讓 xApp
-    # 可以同時訂兩種:一條看指標、一條等確認。
-    _is_nodeinfo = (action_id == 2)
-    kind = "nodeinfo" if _is_nodeinfo else "anr"
+    # 其餘 action_id 維持週期性 ANR indication。同一 SUB 可同時帶兩種:
+    # 一條看指標、一條等確認 —— 每個 action 各起一個 producer(簽名帶 action 後綴)。
+    action_id = action_ids[0]
+    _first_nodeinfo = (action_id == 2)
     sub_id = (f"anrnrt-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}"
-              if _is_nodeinfo else
+              if _first_nodeinfo else
               f"anr-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}")
-    logger.info("ANR SUB_REQ → sub_id=%s period=%dms kind=%s", sub_id, period_ms, kind)
+    logger.info("ANR SUB_REQ → sub_id=%s period=%dms actions=%s", sub_id, period_ms, action_ids)
     event_ring.record_sub_req_recv(
         sub_id=sub_id, ric_req_id=ric_req_id, ran_func_id=ran_func_id,
         metrics=["DT-ANR-JSON"], period_ms=period_ms,
@@ -665,7 +671,7 @@ def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
     try:
         resp_bytes = e2_subscription_codec.encode_ric_subscription_response(
             ric_req_id=ric_req_id, ran_function_id=ran_func_id,
-            admitted_action_ids=[action_id],
+            admitted_action_ids=action_ids,
         )
     except Exception:
         logger.exception("encode ANR SUB_RESP failed")
@@ -673,11 +679,17 @@ def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
     if not _send_sctp(sock, resp_bytes):
         logger.error("SCTP send ANR SUB_RESP failed")
         return
-    logger.info("ANR SUB_RESP sent (%d bytes)", len(resp_bytes))
-    event_ring.record_sub_resp_sent(sub_id=sub_id, admitted_action_ids=[action_id],
+    logger.info("ANR SUB_RESP sent (%d bytes) admitted=%s", len(resp_bytes), action_ids)
+    event_ring.record_sub_resp_sent(sub_id=sub_id, admitted_action_ids=action_ids,
                                      pdu_size=len(resp_bytes))
-    _start_producer(sock, sub_id, ric_req_id, ran_func_id, action_id, period_ms,
-                    producer=kind)
+    for aid in action_ids:
+        a_kind = "nodeinfo" if aid == 2 else "anr"
+        a_sub_id = (f"anrnrt-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}"
+                    if aid == 2 else
+                    f"anr-{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}")
+        _start_producer(sock, a_sub_id, ric_req_id, ran_func_id, aid, period_ms,
+                        producer=a_kind,
+                        signature_suffix=(f"-a{aid}" if len(action_ids) > 1 else ""))
 
 
 def _anr_producer_loop(sock, meta: dict) -> None:
@@ -904,9 +916,14 @@ def _fullkpm_producer_loop(sock, meta: dict) -> None:
 
 
 def _start_producer(sock, sub_id: str, ric_req_id: dict, ran_func_id: int,
-                     action_id: int, period_ms: int, producer: str = "kpm") -> None:
-    """Common helper：啟動一個 indication producer thread + 註冊到 _ACTIVE_SUBS。"""
-    sub_signature = f"{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}-{ran_func_id}"
+                     action_id: int, period_ms: int, producer: str = "kpm",
+                     signature_suffix: str = "") -> None:
+    """Common helper：啟動一個 indication producer thread + 註冊到 _ACTIVE_SUBS。
+
+    signature_suffix:同一 SUB 多 action 時讓每個 action 的 producer 各佔一格
+    (否則後者 pop 掉前者 —— 第三十六輪雙 action 需求)。"""
+    sub_signature = (f"{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}-{ran_func_id}"
+                     f"{signature_suffix}")
     with _SUBS_LOCK:
         old = _ACTIVE_SUBS.pop(sub_signature, None)
         if old:
