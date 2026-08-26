@@ -26,6 +26,9 @@ class MeasurementLog(models.Model):
     # 2026-08-12(D):UE 的 5QI → delay/thp per-5QI 分桶(AirIfDelayDlAvg.5QI1 轉真)
     qos_5qi = models.IntegerField(default=9)
     neighbor_cells_json = models.JSONField(default=list)
+    # 2026-08-26 第三十輪:量測「當時」的 serving cell。bySourceCell 歸屬曾用
+    # 查詢當下的 UeContext.serving_cell,UE 移動時整窗樣本被記到單一 cell(argmax 假象)。
+    serving_cell = models.CharField(max_length=64, default="", blank=True)
 
     recorded_at = models.DateTimeField(db_index=True)
 

@@ -183,7 +183,7 @@ def meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     # 樣本收集:pci → {"rsrp": [...], "serving_rsrp": [...]}(同報文 serving 量測)
     samples: dict[int, dict[str, list[float]]] = {}
     rows = MeasurementLog.objects.filter(recorded_at__gte=win_start).only(
-        "ue_id", "rsrp_dbm", "neighbor_cells_json", "recorded_at")
+        "ue_id", "rsrp_dbm", "neighbor_cells_json", "recorded_at", "serving_cell")
     # serving cell 需查 UeContext?量測列本身沒 serving cell id — 從鄰區补:直接
     # 把 serving 量測掛在該 UE serving cell 的 PCI 上需要 join;為避免 N+1,
     # serving 樣本以「該列 rsrp_dbm + 該 UE 當下 serving_cell」計 — 一次撈 UeContext。
@@ -193,7 +193,8 @@ def meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     n_rows = 0
     for m in rows:
         n_rows += 1
-        s_cell = serving_of.get(m.ue_id, "")
+        # 量測當時的 serving(2026-08-26 修);舊列(欄位空)退回查詢當下
+        s_cell = m.serving_cell or serving_of.get(m.ue_id, "")
         s_pci = pci_of.get(s_cell)
         if s_pci is not None:
             d = samples.setdefault(s_pci, {"rsrp": [], "serving_rsrp": []})

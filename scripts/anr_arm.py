@@ -103,9 +103,21 @@ def q4():
     _cut("s01_c0", "unk_c0")
 
 def q5():
-    """PCI 撞號 —— 病在場景本身(west_c7 / east_c7 同 pci=7),DB 不用動。"""
+    """PCI 撞號 —— 病在場景本身(west_c7 / east_c7 同 pci=7)。
+
+    v10 自動鏈(RIC 第二十九輪)加了消歧前提:來源 cell(mid_c0)的 NRT
+    必須**只含其中一顆**(owned 唯一)→ xApp 才敢下群組換手。
+    佈病:確保 mid→east_c7 在、mid→west_c7 不在;UE 搬回 mid_c0(坑1)。"""
     dup = [c.cell_id for c in CellConfig.objects.filter(pci=7)]
     print(f"  pci=7 的 cell:{dup}  {'✓ 撞號成立' if len(dup) > 1 else '✗ 劇本沒起來?'}")
+    _mk("mid_c0", "east_c7")                       # owned 唯一
+    n = R.objects.filter(source_cell_id="mid_c0", target_cgi="west_c7").delete()[0]
+    print(f"  NRT:mid→east_c7 確保存在;mid→west_c7 刪除 {n} 筆(owned 唯一成立)")
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(ue_id__startswith="cf").exclude(serving_cell="mid_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="mid_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 mid_c0")
 
 def q6():
     """Xn-C 探索失敗:關係在、Xn 不在 → TXnRELOCprepExpiry。
