@@ -61,6 +61,23 @@ class Command(BaseCommand):
         from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 
         sid = opts["scenario_id"]
+        # 互斥鎖:同時跑多個時間軸會互相干擾(2026-08-26 實測:舊的孤兒行程
+        # 先清掉了注入,新的還停在等待步驟,兩邊時序全亂)。
+        import os
+        from pathlib import Path as _P
+        lock = _P("/app/tmp/anr_fixture.lock")
+        if not opts.get("dry_run"):
+            if lock.exists():
+                try:
+                    old_pid = int(lock.read_text().strip() or 0)
+                except ValueError:
+                    old_pid = 0
+                alive = old_pid > 0 and _P(f"/proc/{old_pid}").exists()
+                if alive:
+                    self.stdout.write(f"[fixture] 已有另一個時間軸在跑(PID {old_pid}),拒絕啟動")
+                    return
+            lock.parent.mkdir(parents=True, exist_ok=True)
+            lock.write_text(str(os.getpid()))
         steps = _load_steps(sid)
         if not steps:
             self.stdout.write(f"[fixture] {sid} 沒有 anr_fixture 區塊,結束")
@@ -183,3 +200,7 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"[fixture] {i}. 未知步驟 {act},跳過")
         self.stdout.write(f"[fixture] {sid} 時間軸執行完畢")
+        try:
+            lock.unlink()
+        except (FileNotFoundError, NameError):
+            pass
