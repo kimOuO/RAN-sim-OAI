@@ -251,9 +251,13 @@ def indication_v10(cell_id: str | None = None,
     if cell_id:
         rel_qs = rel_qs.filter(source_cell_id=cell_id)
         chg_qs = chg_qs.filter(source_cell_id=cell_id)
-    # 現存 cell(含非 active 的,只要組態還在就不算殘留)
+    # 現存 cell(含非 active 的,只要組態還在就不算殘留)。
+    # 2026-08-26 第三十三輪:只按 source 過濾 —— target 可以是已消失的 cell,
+    # 那正是殭屍/回收(第 11 題)的敘事本體;原本連 target 一起濾,
+    # REMOVE/REMOVE_REJECTED(ghost target)全被吞掉,RIC 重啟回填帳本斷料。
+    # 跨劇本殘留仍由 source 過濾擋住(舊場景的 source cell 已不在)。
     _live = set(CellConfig.objects.values_list("cell_id", flat=True))
-    chg_qs = chg_qs.filter(source_cell_id__in=_live, target_cgi__in=_live)
+    chg_qs = chg_qs.filter(source_cell_id__in=_live)
 
     meas = anr_kpm.meas_aggregate(window_min)
     agg = meas.get("measurementReportAggregate") or []
@@ -301,7 +305,9 @@ def indication_v10(cell_id: str | None = None,
             # 用「cell 是否存在」而不是「切劇本就清空」:E2 重連時 cell 沒變、
             # 旗標也還在,清掉反而讓對方重建不出帳本 —— 那比殘留更糟。
             "relationChangeEvents": [
-                {"action": e.action, "targetCellGlobalId": e.target_cgi,
+                {"action": e.action,
+                 "sourceCellNcgi": e.source_cell_id,   # 第三十三輪:對齊 flag 事件
+                 "targetCellGlobalId": e.target_cgi,
                  "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
                  "reason": e.detail if e.action.endswith("_REJECTED") else None}
                 for e in chg_qs.exclude(action__startswith="FLAG_")[:50]],

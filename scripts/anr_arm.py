@@ -211,8 +211,13 @@ def q11():
     所有 cell 都落在回看窗內的假訊號(那分不出誰才是新來的)。
     """
     # 老化零活動 + 受保護條目(回收段的判斷對象與保護對象)
-    _mk("main_c0", "old_c0", pci=940); _age("main_c0", "old_c0", 30)
+    # RIC 第三十二輪 v10 判準:雙歸零(meas+att 同 0 持續 300s)→ REMOVE。
+    # old_c0(ghost)標 protected:驗 REMOVE→REJECTED_PROTECTED→SMO 不重試。
+    _mk("main_c0", "old_c0", pci=940, no_remove=True); _age("main_c0", "old_c0", 30)
     _mk("main_c0", "keep_c0", no_remove=True)
+    # 殭屍本體:main→tmp_c0 存在且雙零(tmp 在 (0,260) UE 走廊外,天然無量測)
+    _mk("main_c0", "tmp_c0")
+    print("  殭屍 main_c0→tmp_c0 已建(雙零候選);main_c0→old_c0 標 protected(拒絕路徑)")
 
     # 臨時節點:標成剛誕生,並刪掉指向它的關係讓 ANR 必須重新發現
     tmp = CellConfig.objects.filter(cell_id="tmp_c0").first()
@@ -220,9 +225,7 @@ def q11():
         print("  ⚠️ 場景沒有 tmp_c0 —— 請確認跑的是更新後的 anr_stale_relation 劇本")
     else:
         CellConfig.objects.filter(cell_id="tmp_c0").update(created_at=timezone.now())
-        n = R.objects.filter(target_cgi="tmp_c0").delete()[0]
-        n += R.objects.filter(source_cell_id="tmp_c0").delete()[0]
-        print(f"  tmp_c0 標記為剛誕生(CCC 事件);刪掉指向它的關係 {n} 筆 → 待 ANR 發現")
+        print("  tmp_c0 標記為剛誕生(CCC 事件)")
     print("  ※ 回收段判準為**雙歸零**(measSampleRatePerMin 與 att 同步為 0),不是年齡")
 
 def q12():

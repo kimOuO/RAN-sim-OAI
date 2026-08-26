@@ -126,7 +126,8 @@ class AnrQueryActor:
         if cell_id:
             change_qs = change_qs.filter(source_cell_id=cell_id)
         change_events = [
-            {"action": e.action, "targetCellGlobalId": e.target_cgi,
+            {"action": e.action, "sourceCellNcgi": e.source_cell_id,
+             "targetCellGlobalId": e.target_cgi,
              "by": e.by, "at": e.at.isoformat(), "detail": e.detail,
              "reason": e.detail if e.action.endswith("_REJECTED") else None}
             for e in change_qs[:100]
