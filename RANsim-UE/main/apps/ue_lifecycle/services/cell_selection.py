@@ -106,6 +106,9 @@ def select_cell(
         return "", -140.0
     from main.apps.ue_lifecycle.services import cu_client
     cells = cu_client.list_cells()
+    # TS 38.304 §5.2.4.1:barred cell 不得駐留(量測照收、只是不能選它)。
+    # CU 的 RRC 重建一直有排除,IDLE 選網漏了(2026-08-26 第 3 題 fixture 抓到)。
+    cells = [c for c in cells if not c.get("barred")]
     known = {c.get("ncgi") for c in cells if c.get("ncgi")}
     # 2026-08-26:physics 標籤是 "{name}#{PCI}" 不是 "#{索引}" —— PCI≠索引的場景
     # (幾乎所有 ANR 劇本)舊映射拼出不存在的 cell_id,recamp 全滅。加 PCI 反查。

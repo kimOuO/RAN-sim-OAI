@@ -90,8 +90,27 @@ def q2():
     print("  ※ 停用分支:改 docker-compose ANR_INTRA_ENABLED=false 後 docker compose up -d ransim-cu")
 
 def q3():
-    """深邊緣稀疏"""
+    """深邊緣缺鄰(2026-08-26 依卷面重佈:相對增益判準,非量能門檻)。
+
+    幾何由劇本負責(s28 零陷內的深邊緣駐點,serving −107.6、n91 +19.8dB、
+    既有鄰區更弱);佈病負責四件事:
+      ① 砍 s28→n91(缺的就是它)
+      ② 確保 s28→n51/n52 兩條「既有健康關係」在且已驗證(卷面 succ 0.97/0.96
+         的等價物;沒有它們,第 12 題稽核會把新生關係當無據封鎖)
+      ③ n91 標 barred —— UE 量得到但不得駐留/重建。少了這步,UE 一 RLF
+         就重建到 n91 上,深邊緣狀態當場消失(變成第 1 題的機轉)
+      ④ UE 搬回 s28(坑1)
+    """
     _cut("s28_c0", "n91_c0")
+    for nb in ("n51_c0", "n52_c0"):
+        _mk("s28_c0", nb, ho_validated=True)      # 既有、已驗證過的健康關係
+    n = CellConfig.objects.filter(cell_id="n91_c0").update(is_barred=True)
+    print(f"  n91_c0 標 barred(rows={n});s28→n51/n52 既有健康關係已就位")
+    from main.apps.cu_cp.models.ue_context import UeContext as _U
+    from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+    moved = sum(1 for u in _U.objects.filter(ue_id__startswith="dw").exclude(serving_cell="s28_c0")
+                if execute_f1_handover(ue_id=u.ue_id, target_cell="s28_c0", trigger="MANUAL"))
+    print(f"  已把 {moved} 台 UE 搬回 s28_c0(坑1)")
     from main.apps.cu_cp.models.ue_context import UeContext as _U
     from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
     moved = sum(1 for u in _U.objects.filter(ue_id__startswith="dw").exclude(serving_cell="s28_c0")

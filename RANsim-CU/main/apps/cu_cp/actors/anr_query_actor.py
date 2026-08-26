@@ -110,6 +110,11 @@ class AnrQueryActor:
                 "physicalCellId": c.pci,
                 "arfcn": nr_arfcn_from_ghz(c.frequency_ghz),
                 "radioAccessTechnology": "NR",
+                # 2026-08-26:UE 端選網要據此排除 barred(TS 38.304 §5.2.4.1
+                # 「UE shall not camp on a barred cell」)。CU 的重建早就排除了,
+                # UE 的 IDLE 選網卻沒有 —— 第 3 題深邊緣 fixture 因此被 UE
+                # 自己駐到 barred 的 n91 上而崩掉。
+                "barred": bool(c.is_barred),
             }
             for c in cells_qs
         ]
