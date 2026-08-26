@@ -1,0 +1,1 @@
+{"scenario": "anr_xn_discovery", "pid": 100637, "ts": 1787762363.9343424, "step": 3, "kind": "wait_until", "note": "等 xApp 止血(設 xnBlocklist);等待期間持續把 UE 拉回來源,病徵不會自己停"}

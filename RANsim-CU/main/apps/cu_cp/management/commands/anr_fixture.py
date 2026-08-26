@@ -49,7 +49,9 @@ class Command(BaseCommand):
     help = "依劇本的 anr_fixture 時間軸自動推進病徵(免人工觸發)"
 
     def add_arguments(self, parser):
-        parser.add_argument("scenario_id")
+        parser.add_argument("scenario_id", nargs="?", default="")
+        parser.add_argument("--status", action="store_true",
+                            help="只讀心跳,回報時間軸是否還活著(不啟動任何步驟)")
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--from-step", type=int, default=1,
                             help="從第 N 步開始(補跑用,1-based)")
@@ -74,6 +76,51 @@ class Command(BaseCommand):
             self.stdout.write(f"[fixture]    ↻ 維持條件:把 {moved} 台 UE 拉回 {spec['to']}")
         return _t.time()
 
+    def _beat(self, sid, step_no, kind, note=""):
+        """心跳:證明時間軸「活著」,而不是「日誌裡有行」。
+
+        2026-08-26 事故:CU 在 15:33 重啟,時間軸連同 CU 行程一起被殺,死在
+        等待步驟裡。我看日誌尾巴還有 `維持條件` 舊行,就據此回報「劇本在跑、
+        300 秒後會自動翻 xn」—— 對內對外都報了假消息,對方白等 40 分鐘。
+        日誌是「過去發生過」的證據,不是「現在還活著」的證據;要判活性就得有
+        一個會隨時間前進的欄位。
+        """
+        import json as _j, os as _o, time as _t
+        from pathlib import Path as _P
+        try:
+            _P("/app/tmp/anr_fixture.heartbeat").write_text(_j.dumps({
+                "scenario": sid, "pid": _o.getpid(), "ts": _t.time(),
+                "step": step_no, "kind": kind, "note": note,
+            }, ensure_ascii=False))
+        except OSError:
+            pass  # 心跳寫不進去不該讓時間軸掛掉
+
+    def _report_status(self):
+        """回報時間軸活性 —— 判準是心跳新鮮度 + 行程存在,兩者都要。
+
+        心跳新但行程不在(容器剛重啟)= 死;行程在但心跳舊 = 卡住。
+        兩種都不是「在跑」,而看日誌完全分不出來。
+        """
+        import json as _j, time as _t
+        from pathlib import Path as _P
+        hb = _P("/app/tmp/anr_fixture.heartbeat")
+        if not hb.exists():
+            self.stdout.write("[fixture] 無心跳檔 —— 沒有時間軸跑過(或已清空)")
+            return
+        try:
+            d = _j.loads(hb.read_text())
+        except (ValueError, OSError) as e:
+            self.stdout.write(f"[fixture] 心跳檔讀不出來:{e}")
+            return
+        age = _t.time() - float(d.get("ts") or 0)
+        proc = _P(f"/proc/{d.get('pid')}").exists()
+        alive = proc and age < 30  # POLL_SEC=5,30 秒沒動就是卡住或死了
+        self.stdout.write(
+            f"[fixture] {d.get('scenario')} 第 {d.get('step')} 步({d.get('kind')})"
+            f" {d.get('note') or ''}\n"
+            f"          心跳 {age:.0f} 秒前 · PID {d.get('pid')} {'在' if proc else '不在'}"
+            f" → {'✅ 活著' if alive else '❌ 死了/卡住 —— 不要據此推論劇本會自己往下走'}")
+
     def handle(self, *args, **opts):
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as R
         from main.apps.cu_cp.models.ue_context import UeContext
@@ -81,6 +128,9 @@ class Command(BaseCommand):
         from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 
         sid = opts["scenario_id"]
+        if opts.get("status"):
+            self._report_status()
+            return
         # 互斥鎖:同時跑多個時間軸會互相干擾(2026-08-26 實測:舊的孤兒行程
         # 先清掉了注入,新的還停在等待步驟,兩邊時序全亂)。
         import os
@@ -116,6 +166,10 @@ class Command(BaseCommand):
             if i < int(opts.get("from_step") or 1):
                 continue
             note = st.get("note", "")
+            _kind = ("wait_until" if "wait_until" in st else
+                     "wait_event" if "wait_event" in st else
+                     "sleep" if "sleep_sec" in st else st.get("do", "?"))
+            self._beat(sid, i, _kind, note)
             if "wait_until" in st:
                 w = st["wait_until"]
                 # 單欄位 {field, equals} 或多欄位 {fields:{欄位:值}} —— 成對旗標要一起等
@@ -126,6 +180,7 @@ class Command(BaseCommand):
                 _mt = 0.0
                 while time.time() < deadline:
                     _mt = self._maintain(st.get("maintain"), _mt)
+                    self._beat(sid, i, "wait_until", note)
                     rel = R.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"]).first()
                     if rel is not None and all(
                             bool(getattr(rel, k)) == bool(v) for k, v in want.items()):
@@ -159,6 +214,7 @@ class Command(BaseCommand):
                 _mt = 0.0
                 while time.time() < deadline:
                     _mt = self._maintain(st.get("maintain"), _mt)
+                    self._beat(sid, i, "wait_event", note)
                     qs = CE.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"],
                                            at__gte=t0)
                     if prev:
@@ -176,7 +232,10 @@ class Command(BaseCommand):
 
             if "sleep_sec" in st:
                 self.stdout.write(f"[fixture] {i}. 等 {st['sleep_sec']}s {note}")
-                time.sleep(float(st["sleep_sec"]))
+                _end = time.time() + float(st["sleep_sec"])
+                while time.time() < _end:  # 分段睡,長 sleep 期間仍要有心跳
+                    self._beat(sid, i, "sleep", note)
+                    time.sleep(min(POLL_SEC, max(0.1, _end - time.time())))
                 continue
 
             act = st.get("do")
