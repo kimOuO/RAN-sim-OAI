@@ -72173,5 +72173,64 @@
   "exclusion": "須排除 MRO 型(max(TooEarly,ToWrongCell)≤1.0,TooLate 不計)與壅塞型(兩端 PRB<85%)",
   "caveat": "靠 HO_FORCE_FAIL_TARGET 注入,非物理自然產生",
   "spec": "docs/anr_validation/12題劇本規格.md"
+ },
+ "anr_fixture": {
+  "_doc": "第7題三段節奏寫進劇本(RIC 第四十輪設計):佈病 → 等成對封鎖 → 跨過一次探測窗看到重封 → 才治好。第③步用『等重封』而非計時,確保 L4 的倍增鏈一定驗得到 —— 病灶若在首次探測前就好掉,只會驗到「封鎖→恢復」。",
+  "steps": [
+   {
+    "do": "inject",
+    "cell": "nbr_c0",
+    "cause": "RandomAccessProblem",
+    "note": "佈病:nbr 的隨機接取壞掉,換手到它一律在執行階段失敗"
+   },
+   {
+    "do": "relation",
+    "src": "src_c0",
+    "tgt": "nbr_c0",
+    "set": {
+     "ho_blocklist": false,
+     "no_remove": false,
+     "xn_x2_established": true
+    },
+    "note": "確保關係在且未被封(病要能發作)"
+   },
+   {
+    "do": "move_ues",
+    "prefix": "hu",
+    "to": "src_c0",
+    "note": "坑1:UE 搬回來源,A3 才會去撞"
+   },
+   {
+    "wait_until": {
+     "src": "src_c0",
+     "tgt": "nbr_c0",
+     "fields": {
+      "ho_blocklist": true,
+      "no_remove": true
+     }
+    },
+    "timeout_sec": 7200,
+    "note": "等 xApp 成對封鎖(止血)"
+   },
+   {
+    "wait_event": {
+     "action": "FLAG_SET",
+     "src": "src_c0",
+     "tgt": "nbr_c0",
+     "min_count": 4
+    },
+    "timeout_sec": 14400,
+    "note": "等跨過一次探測窗後重封(成對計 2 次/回,第 4 次=第二輪封鎖)→ 倍增鏈驗得到"
+   },
+   {
+    "sleep_sec": 120,
+    "note": "維運排程時間"
+   },
+   {
+    "do": "inject",
+    "clear": true,
+    "note": "管理面把鄰居修好 → xApp 下次探測應判定恢復"
+   }
+  ]
  }
 }

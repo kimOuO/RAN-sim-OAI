@@ -76,12 +76,37 @@ class Command(BaseCommand):
             note = st.get("note", "")
             if "wait_until" in st:
                 w = st["wait_until"]
+                # 單欄位 {field, equals} 或多欄位 {fields:{欄位:值}} —— 成對旗標要一起等
+                want = dict(w["fields"]) if "fields" in w else {w["field"]: w["equals"]}
                 deadline = time.time() + float(st.get("timeout_sec", 3600))
-                self.stdout.write(f"[fixture] {i}. 等待 {w['src']}→{w['tgt']}.{w['field']}=={w['equals']} {note}")
+                self.stdout.write(f"[fixture] {i}. 等待 {w['src']}→{w['tgt']} {want} {note}")
                 hit = False
                 while time.time() < deadline:
                     rel = R.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"]).first()
-                    if rel is not None and bool(getattr(rel, w["field"])) == bool(w["equals"]):
+                    if rel is not None and all(
+                            bool(getattr(rel, k)) == bool(v) for k, v in want.items()):
+                        hit = True
+                        break
+                    time.sleep(POLL_SEC)
+                self.stdout.write(f"[fixture] {i}. {'條件成立' if hit else '逾時(仍往下走)'}")
+                continue
+
+            if "wait_event" in st:
+                # 等某個關係上的某類事件累積到 N 次 —— 第 7 題用它等「重封」
+                # (第 2 次 FLAG_SET = xApp 探測失敗後又封回去,倍增鏈才驗得到)
+                from main.apps.cu_cp.models.nr_relation_change_event import (
+                    NrRelationChangeEvent as CE,
+                )
+                w = st["wait_event"]
+                need = int(w.get("min_count", 1))
+                deadline = time.time() + float(st.get("timeout_sec", 10800))
+                self.stdout.write(
+                    f"[fixture] {i}. 等待 {w['src']}→{w['tgt']} 的 {w['action']} 累積 {need} 次 {note}")
+                hit = False
+                while time.time() < deadline:
+                    n = CE.objects.filter(action=w["action"], source_cell_id=w["src"],
+                                          target_cgi=w["tgt"]).count()
+                    if n >= need:
                         hit = True
                         break
                     time.sleep(POLL_SEC)
@@ -105,6 +130,18 @@ class Command(BaseCommand):
                     if execute_f1_handover(ue_id=u.ue_id, target_cell=st["to"], trigger="MANUAL")
                 )
                 self.stdout.write(f"[fixture] {i}. 搬 {moved} 台 UE → {st['to']} {note}")
+            elif act == "inject":
+                # 換手失敗注入的熱開關(第 7 題):寫檔即生效、清檔即停止,不重啟容器
+                from pathlib import Path as _P
+                f = _P("/app/tmp/ho_force_fail.txt")
+                f.parent.mkdir(parents=True, exist_ok=True)
+                if st.get("clear"):
+                    f.write_text("")
+                    self.stdout.write(f"[fixture] {i}. 清掉失敗注入(鄰居被修好了){' ' + note if note else ''}")
+                else:
+                    f.write_text(f"{st['cell']},{st.get('cause', 'RandomAccessProblem')}\n")
+                    self.stdout.write(
+                        f"[fixture] {i}. 注入 {st['cell']} → {st.get('cause','RandomAccessProblem')} {note}")
             elif act == "barred":
                 from main.apps.cu_cp.models.cell_config import CellConfig
                 n = CellConfig.objects.filter(cell_id=st["cell"]).update(is_barred=bool(st.get("value", True)))
