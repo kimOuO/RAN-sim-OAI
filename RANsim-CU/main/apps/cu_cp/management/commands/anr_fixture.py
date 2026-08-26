@@ -54,6 +54,26 @@ class Command(BaseCommand):
         parser.add_argument("--from-step", type=int, default=1,
                             help="從第 N 步開始(補跑用,1-based)")
 
+
+    def _maintain(self, spec, last_ts):
+        """等待期間持續維持病徵的觀測條件(RIC 第四十八輪要求)。
+
+        閉環的固有問題:xApp 的處置會改變 UE 分布 —— 止血後沒得換手,UE 可能
+        飄到別的 cell,病徵就自己停了(今天第 7 題前兩次死鎖的原因)。等待步驟
+        每 30 秒把 UE 拉回來源 cell,確保「有人持續想換手」這個前提不消失。
+        """
+        import time as _t
+        if not spec or (_t.time() - last_ts) < 30:
+            return last_ts
+        from main.apps.cu_cp.models.ue_context import UeContext
+        from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+        moved = sum(1 for u in UeContext.objects.filter(ue_id__startswith=spec["prefix"])
+                    .exclude(serving_cell=spec["to"])
+                    if execute_f1_handover(ue_id=u.ue_id, target_cell=spec["to"], trigger="MANUAL"))
+        if moved:
+            self.stdout.write(f"[fixture]    ↻ 維持條件:把 {moved} 台 UE 拉回 {spec['to']}")
+        return _t.time()
+
     def handle(self, *args, **opts):
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as R
         from main.apps.cu_cp.models.ue_context import UeContext
@@ -103,7 +123,9 @@ class Command(BaseCommand):
                 deadline = time.time() + float(st.get("timeout_sec", 3600))
                 self.stdout.write(f"[fixture] {i}. 等待 {w['src']}→{w['tgt']} {want} {note}")
                 hit = False
+                _mt = 0.0
                 while time.time() < deadline:
+                    _mt = self._maintain(st.get("maintain"), _mt)
                     rel = R.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"]).first()
                     if rel is not None and all(
                             bool(getattr(rel, k)) == bool(v) for k, v in want.items()):
@@ -134,7 +156,9 @@ class Command(BaseCommand):
                 # FLAG_SET 才是重封。只數次數的話,xApp 的冪等重掛(同樣送成對
                 # FLAG_SET)會被誤認成重封,又提早清掉注入。
                 prev = w.get("preceded_by")
+                _mt = 0.0
                 while time.time() < deadline:
+                    _mt = self._maintain(st.get("maintain"), _mt)
                     qs = CE.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"],
                                            at__gte=t0)
                     if prev:

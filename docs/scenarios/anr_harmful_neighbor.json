@@ -36210,7 +36210,11 @@
      }
     },
     "timeout_sec": 7200,
-    "note": "等 xApp 成對封鎖(止血)"
+    "note": "等 xApp 成對封鎖(等待期間持續把 UE 拉回來源,病徵不會自己停)",
+    "maintain": {
+     "prefix": "hu",
+     "to": "src_c0"
+    }
    },
    {
     "wait_event": {
@@ -36221,7 +36225,11 @@
      "preceded_by": "FLAG_CLEAR"
     },
     "timeout_sec": 14400,
-    "note": "等「探測(FLAG_CLEAR)之後的重封(FLAG_SET)」—— 冪等重掛不會誤觸"
+    "note": "等「探測(FLAG_CLEAR)之後的重封(FLAG_SET)」—— 冪等重掛不會誤觸",
+    "maintain": {
+     "prefix": "hu",
+     "to": "src_c0"
+    }
    },
    {
     "sleep_sec": 120,
