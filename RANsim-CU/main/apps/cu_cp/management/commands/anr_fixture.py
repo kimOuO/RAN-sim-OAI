@@ -67,6 +67,7 @@ class Command(BaseCommand):
             self.stdout.write(f"[fixture] {sid} 乾跑,不執行任何動作:")
             for i, st in enumerate(steps, 1):
                 kind = ("wait_until" if "wait_until" in st else
+                        "wait_event" if "wait_event" in st else
                         "sleep" if "sleep_sec" in st else st.get("do", "?"))
                 self.stdout.write(f"   {i}. {kind:11s} {st.get('note', '')}")
             return
