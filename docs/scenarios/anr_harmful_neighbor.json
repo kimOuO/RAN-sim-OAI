@@ -72218,10 +72218,10 @@
      "action": "FLAG_SET",
      "src": "src_c0",
      "tgt": "nbr_c0",
-     "min_count": 4
+     "min_count": 2
     },
     "timeout_sec": 14400,
-    "note": "等跨過一次探測窗後重封(成對計 2 次/回,第 4 次=第二輪封鎖)→ 倍增鏈驗得到"
+    "note": "等你們探測失敗後「重封」(成對 2 筆 FLAG_SET,只算本步驟開始後)→ 倍增鏈驗得到"
    },
    {
     "sleep_sec": 120,
