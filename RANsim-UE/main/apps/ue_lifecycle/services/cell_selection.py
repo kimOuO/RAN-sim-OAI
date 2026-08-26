@@ -67,7 +67,7 @@ def measure_cells(ue_id: str, position: tuple[float, float, float]) -> dict[str,
 _LABEL_RE = re.compile(r"^(?P<gnb>.+)#(?P<idx>\d+)$")
 
 
-def to_cu_cell_id(label: str, known: set[str]) -> str:
+def to_cu_cell_id(label: str, known: set[str], by_pci: dict[int, str] | None = None) -> str:
     """Physics scene 的 gNB 標籤 → CU 的 cell_id。
 
     Physics 回 "gnb1#0",CU 認的是 "gnb1_c0" —— 兩邊命名不同源。直接拿去 attach
@@ -82,6 +82,11 @@ def to_cu_cell_id(label: str, known: set[str]) -> str:
         cand = f"{m.group('gnb')}_c{m.group('idx')}"
         if cand in known:
             return cand
+        # "#" 後綴實為 PCI(SionnaEngine tx 命名)→ 以 PCI 反查 CU cell
+        if by_pci:
+            hit = by_pci.get(int(m.group("idx")))
+            if hit:
+                return hit
     return ""
 
 
@@ -100,10 +105,18 @@ def select_cell(
     if not meas:
         return "", -140.0
     from main.apps.ue_lifecycle.services import cu_client
-    known = {c.get("ncgi") for c in cu_client.list_cells() if c.get("ncgi")}
+    cells = cu_client.list_cells()
+    known = {c.get("ncgi") for c in cells if c.get("ncgi")}
+    # 2026-08-26:physics 標籤是 "{name}#{PCI}" 不是 "#{索引}" —— PCI≠索引的場景
+    # (幾乎所有 ANR 劇本)舊映射拼出不存在的 cell_id,recamp 全滅。加 PCI 反查。
+    by_pci = {}
+    for c in cells:
+        p = c.get("physicalCellId")
+        if p is not None:
+            by_pci.setdefault(int(p), c.get("ncgi"))
     best, best_rsrp = "", -140.0
     for label, rsrp in meas.items():
-        cid = to_cu_cell_id(label, known)
+        cid = to_cu_cell_id(label, known, by_pci)
         if not cid or rsrp <= best_rsrp:
             continue
         best, best_rsrp = cid, rsrp
