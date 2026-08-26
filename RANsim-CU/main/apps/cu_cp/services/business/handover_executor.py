@@ -149,6 +149,19 @@ def execute_f1_handover(
         "started_at": now,
         "completed_at": now,
     })
+    # 2026-08-26(RIC 第三十七輪):換手成功 = 該鄰區關係已驗證(TS 38.300 §15.3.3;
+    # E2SM-RC §9.3.38 hoValidated)。此前全網恆 false,第 12 題的鑑別線是死的,
+    # 導致每條新生關係都被稽核分支指控成「無據封鎖」(今日 68 筆假陽性)。
+    #   · 單向:只設正向,反向由對端 gNB 自行驗證(同 Xn 反向自建原則)
+    #   · 持久:True 不再翻回 false —— 它是歷史事實不是即時狀態;關係刪除重建才歸零
+    #   · 不計 MANUAL:那是佈病腳本的搬移,非組網事件,計入會污染 fixture 的 hoValidated
+    if trigger != "MANUAL":
+        try:
+            from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _R
+            _R.objects.filter(source_cell_id=source_cell, target_cgi=target_cell,
+                              ho_validated=False).update(ho_validated=True, updated_at=now)
+        except Exception:
+            logger.exception("mark hoValidated failed %s→%s", source_cell, target_cell)
     try:
         DuClientBusinessService.post_ue_context_modification(
             F1apHandler.build_ue_context_modification(ue_id, target_cell),
