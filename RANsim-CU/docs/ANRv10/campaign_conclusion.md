@@ -1,0 +1,95 @@
+# E2SM-ANR v10 遷移暨十二題 Campaign 總結報告(sim 側)
+
+> 2026-08-26 · RAN DT sim 團隊 · 對應 RIC 側總結(dt-anr-xapp 0.1.0-v10 build9,2026-08-26 03:25)
+> 狀態:**v10 十二題全數在 live wire 完結**(含第 1 題污染事故後的乾淨重跑,03:24:36 收綠)
+
+## 一、Campaign 概述
+
+目標:將模擬器與 RIC xApp 的 ANR 觀測/控制介面從 v8 遷移至 **ANR情境測驗_v10** 規格,
+並以真實佈病 fixture 在 live E2 wire 上逐題驗證十二個 ANR 病徵的偵測→處置→恢復閉環。
+
+歷時 35 輪往返(2026-08-25 ~ 08-26),四個工作段:
+1. **fixture 輪**(第 8~15 輪):8 題非窗口 fixture 佈病、RIC 逐題拉真資料驗偵測
+2. **換模組窗口**(第 16~20 輪):RC 內層切 RIC 預編譯模組(`RC_MODULE_V10`),
+   Format 3(UE Group)全鏈路上線,三態(EXECUTED/PARTIAL/NO_MATCH)wire 實證
+3. **v10 切換 + 病灶生命週期輪**(第 21~33 輪):`ANR_SCHEMA=v10` 上線、
+   共存煙霧(閉環收斂 + 20 分靜默雙綠)、Q6/Q7/Q5/Q11 全循環
+4. **閉環抽驗**(第 34~35 輪):Q1/Q10 在 wire 走完 偵測→RC→NRT 回讀→行為確認
+
+## 二、十二題判定總表(sim 側證據)
+
+| 題 | 病徵 | 驗法 | sim 側關鍵證據(時戳 08-25/26 UTC)|
+|---|---|---|---|
+| 1 | 缺漏鄰區 | 閉環抽驗 | 乾淨重跑:RLF 群 03:22~03:24 → ADD 03:24:36 → SUCC=4/FAIL=0 → RLF 歸零 |
+| 2 | 換手縫隙 | fixture | s25→n35 關係剪除;PathSolver 實測窗(gap ≈ +0.1dB)|
+| 3 | 上行弱覆蓋 | fixture | 臨時 `MEAS_REPORT_MIN_RSRP_DBM=-85` 造稀疏(38.331 reportConfig 機制,驗後還原 -110)|
+| 4 | 未知鄰區 | fixture | cgi_resolve(301) 唯一解;bySourceCell 歸屬 |
+| 5 | PCI 混淆 | **全循環** | 混淆偵測 → 消歧(owned 唯一)→ Format 3 群組換手 02:09:35 EXECUTED 5/5 → twc=0 |
+| 6 | Xn TNL | **全循環** | FLAG_SET 16:07:25 止血 att 5→0 → 修 Xn → CLEAR 16:42:59 → RECOVERED 17:07:10(succ=0.9)|
+| 7 | 有害鄰居 | **全循環** | 成對 SET 17:26:58;L4 探測-重封 300→600→1200s 封頂;19:18:36 RECOVERED(流量背書)|
+| 8 | 跨頻缺層 | fixture | 3.5G→2.1G 三條關係剪除;干擾計算僅同頻(inter_freq gate)|
+| 9 | NRT 容量 | fixture | `nrtCapacity {limit, used=max, usedByCell}`;ADD_REJECTED 真形狀 |
+| 10 | 過期 PCI 重指 | 閉環抽驗 | 03:14:56 REMOVE(stale-pci)+ADD 同秒原子重指 → pci 205→233 → 失敗歸零 |
+| 11 | 殭屍關係 | **全循環** | 雙零 REMOVE 02:27:16 REMOVED;保護拒絕(REJECTED_PROTECTED)+不重試;單零不誤刪 |
+| 12 | 屬性稽核 | fixture + live 自然發生 | d02(無據封鎖,cum=0)vs n80(正當,cum=40);Q6 關係被稽核判「有失敗史不動」|
+
+## 三、本輪落地的介面/機制(sim 側)
+
+- **v10 觀測 schema**(`ANR_SCHEMA=v10`,CU 每請求讀):扁平鍵、無 rlfKpm 容器、
+  旗標不可觀測(Q12 考點)、granularityPeriod=實際計算窗
+- **`measSampleRatePerMin` per-(source,target)**:`bySourceCell` 歸屬,
+  且歸屬以「量測當時 serving」入列(`MeasurementLog.serving_cell` 新欄)
+- **Format 3(UE Group)全鏈**:adapter 解碼(logicalOR 名稱比對、條件解包、
+  target CGI 與逐 UE 同源抽取)→ CU 條件解析(駐留+近 2 分量測)→ 逐 UE 換手
+  → count-only outcome(L1:UE 識別不出 E2);三態 + target 解不開回 REJECTED
+- **事件流完備性**:`flagChangeEvents`/`relationChangeEvents` 均帶 `sourceCellNcgi`;
+  changeEvents 過濾只按 source(ghost-target 事件是 Q11 敘事本體,不得吞)
+- **`cgiResolutionSampling.nrCellIdentity`(+byNcgi)**:混淆時逐候選 NCI,
+  供 Q5 自動鏈直指 target(hash fallback 與換手 resolve 同一對照表)
+- **注入熱開關**:`tmp/ho_force_fail.txt`(寫檔即生效)取代 env 注入 ——
+  L4 計時不被容器重啟打斷,且杜絕 env 跨場撞名污染
+
+## 四、互抓 bug 帳(對帳 RIC 第三十四輪 §四)
+
+**sim 側被抓/自抓並修畢**:
+- `bySourceCell` 單 key 輪替(查詢時 serving 壓扁時間軸)→ 量測時 serving 入列
+- changeEvents ghost-target 過濾吞證據(Q11 兩謎同根)→ 只按 source 過濾
+- `relationChangeEvents` 缺 sourceCellNcgi → 補齊
+- adapter 群組分支雙缺口(條件 pycrate 容器未解包、target CGI 未走抽取)
+- CU 中場重啟 ⇒ UE manager 執行緒重建不重 camp ⇒ UE 量測流默死(坑 7)
+- `HO_FORCE_FAIL_TARGET` env 殘留污染 Q1 抽驗場(坑 8);
+  伴生自首:SUCC=99 誤報(跨場累計,坑 9:計數必界時間窗)
+- 群組 outcome 缺席(CU 跑舊碼:窗口重啟清單漏 CU)
+- 早期:legacy A3 雙路徑、nrtCapacity 語意、granularityPeriod、HoFailCumulative 型別
+
+**RIC 側被抓/自抓並修畢**(見其總結):拒後重試、幽靈 FLAG_CLEAR、
+probe 靜默假恢復、帳本歧義、_cell_nci 映射、Q8 空表早退、Q10 PRB 誤鎖等。
+
+**互驗無罪**:CU matcher(六連 NO_MATCH = mid 駐留窗僅 ~8s/趟的幾何事實)。
+
+## 五、劇本資產狀態(前端 /scenarios 頁)
+
+scenario store(omniver_backend:8001)與 `docs/scenarios/*.json` **全數一致**
+(2026-08-26 逐筆 raw_json 比對):十二題 + `anr_neutral_healthy` 共 13 筆即 v10 最終版,
+前端頁面無需更新。v10 的佈病(旗標、搬 UE、ghost 關係)由 `scripts/anr_arm.py`
+在執行期套用,不入 JSON —— 重跑任一題:起劇本 → 等 90s → `CASE=qN` → 多次取樣驗持續。
+殘留兩筆待決:`anr_recamp_test`(除錯)、`anr_veto_variant`(v8 變體)—— 可刪未刪。
+
+## 六、backlog(不擋完結,雙方認領)
+
+**sim 側**:
+1. CU 重啟 ⇒ 斷流三層根因(E2 訂閱側 / adapter polling / UE manager 不重 camp)——
+   目標「重啟後全鏈路自癒」,backlog 首位
+2. physics OOM(12g 上限)+ 重建後空場景自動重推
+3. power_dbm 接線、A3 failure backoff、標準 IndicationMessage Format 3 載體、
+   E2AP 版本差(v2.0.3 vs v3.0)文件化
+
+**RIC 側**(其 v10.1):快照新鮮度閘、A3 backoff 等。
+
+## 七、經驗結晶
+
+坑目錄擴至 9 條(記憶 `anr-scenario-arming-pitfalls`):先跑再佈病要搬 UE、
+重建不看旗標修幾何、訊號差一律 PathSolver 實測、窄窗病調 offset、
+重啟暫態等 recamp、持續性多取樣、CU 中場重啟殺量測流、env 注入跨場撞名、
+計數必界時間窗。雙向通則:「快照是結果不是歷史;事件流斷供時,
+發送日誌是第二信源;查日誌再定罪,且計數要界窗。」
