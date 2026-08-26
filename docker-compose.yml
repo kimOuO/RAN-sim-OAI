@@ -47,10 +47,8 @@ services:
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
       KPM_CALIB_ENABLE: "on"   # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
-      # 第7題(有害鄰居)注入用:指定 target 的換手一律失敗。
-      # sim 的 RSRP 模型做不出「訊號看似 OK 但接入失敗」,只能靠旗標重現。
-      # 不跑第7題時可清空 —— 但清空後第7題就驗不出來(2026-08-24 檢查踩到)。
-      HO_FORCE_FAIL_TARGET: "nbr_c0"
+      # 第7題注入已改檔案熱開關 tmp/ho_force_fail.txt(2026-08-26)。
+      # env 版曾殘留 nbr_c0 汙染 Q1 抽驗場(撞 cell 名)—— 勿再用 env 佈注入。
       MEAS_REPORT_MIN_RSRP_DBM: "-110" # 量測回報門檻(38.331 reportConfig);-110=幾乎不濾
       ANR_NRT_CAPACITY: "8"            # 卷面第9題 NRT 每 cell 容量上限假設值
       # 重建落點門檻(TS 38.331 重建須選 suitable cell)。
