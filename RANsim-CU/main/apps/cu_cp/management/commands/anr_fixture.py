@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -288,11 +289,18 @@ class Command(BaseCommand):
                     from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
                     c = _CC.objects.filter(cell_id=st["tgt"]).first()
                     now = TimestampService.now()
+                    # created_age_sec:把建立時間往前挪。新生的關係天生 cum=0、
+                    # 零換手,會同時踩到 xApp 的兩件事:新生兒寬限期(它會忽略這條
+                    # 關係),以及第 12 題稽核(cum=0 的封鎖 = 無據封鎖)。
+                    # 佈第 6 題時關係是現建的,若不回填,xApp 對它的封鎖會被自家
+                    # 稽核判成無據 —— 那是我方佈場造成的假象,不是它判錯。
+                    age = float(st.get("created_age_sec") or 0)
+                    created = now - timedelta(seconds=age) if age else now
                     R.objects.create(
                         source_cell_id=st["src"], target_cgi=st["tgt"],
                         target_pci=(c.pci if c else 0), target_rat="NR",
                         target_arfcn=(nr_arfcn_from_ghz(c.frequency_ghz) if c else 633333),
-                        xn_x2_established=True, created_at=now, updated_at=now)
+                        xn_x2_established=True, created_at=created, updated_at=now)
                     self.stdout.write(f"[fixture] {i}. (關係不存在 → 先建 {st['src']}→{st['tgt']})")
                 n = R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).update(**fields)
                 self.stdout.write(f"[fixture] {i}. set {st['src']}→{st['tgt']} {st.get('set')} rows={n} {note}")
