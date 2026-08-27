@@ -7,3 +7,4 @@
 
 劇本 JSON 在 `docs/scenarios/`(與 scenario store 同步);佈病腳本 `scripts/anr_arm.py`。
 舊路徑 docs/ANRv10、docs/anr_validation 已併入本目錄(scenario _doc 內舊引用以此為準)。
+- [已知限制與交付落差](v10/已知限制與交付落差.md) —— 卷面做不到的、RIC 面不驗的、壓縮邊界、基礎設施風險
