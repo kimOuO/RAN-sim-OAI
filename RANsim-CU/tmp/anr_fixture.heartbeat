@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 6382, "ts": 1787817525.449574, "step": 7, "kind": "sleep", "note": "低速恢復 20 分鐘:每 60 秒只搬 1 台 → 換手約 1-2 次/分。樣本窗填不滿,強制走 xApp 的瞬時恢復路徑(A1)"}
+{"scenario": "anr_missing_neighbor", "pid": 2760, "ts": 1787818552.7495816, "step": 5, "kind": "sleep", "note": "病期 10 分鐘:讓斷線重連反覆發生,RLF 升高並持續 —— 對方要從重建統計反推缺哪一條,病徵必須累積夠久"}

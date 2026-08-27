@@ -260,6 +260,15 @@ class Command(BaseCommand):
         # (env 注入跨場撞名的教訓,坑目錄第 8 條)
         from main.utils.env_loader import clear_overrides
         clear_overrides()
+        # 清掉上一場的歷史統計。
+        # 2026-08-27 第 1 題實測:清場只清了資料庫(UE / 換手 / 量測 / RLF)
+        # 與快照檔,但歷史統計活在**行程記憶體**裡,清不到 ——
+        # 於是 baseline 與 trendLast30Min 帶著 44 分鐘前上一輪的樣本,
+        # 「健康基準期」的基準其實是上一場的病期。
+        # 這是「清場」這件事一直以來的缺口:我們清得掉狀態,清不掉統計。
+        from main.apps.cu_cp.services.business.anr_history import get_store
+        get_store().reset()
+        self.stdout.write("[fixture] 已清上一場的歷史統計(baseline / trend 從此場重新累積)")
         if not R.objects.exists():
             from main.apps.cu_cp.services.business.anr_seeder import seed_from_cells
             seed_from_cells()
