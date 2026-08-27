@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 111258, "ts": 1787853959.9505174, "step": 4, "kind": "wait_until", "note": "等 xApp 止血(此時病徵已累積足夠)"}
+{"scenario": "anr_harmful_neighbor", "pid": 121747, "ts": 1787857445.482499, "step": 5, "kind": "wait_event", "note": "等「探測(FLAG_CLEAR)之後的重封(FLAG_SET)」—— 冪等重掛不會誤觸"}
