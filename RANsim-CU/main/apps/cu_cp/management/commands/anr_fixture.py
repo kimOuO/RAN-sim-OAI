@@ -214,8 +214,27 @@ class Command(BaseCommand):
                     old_pid = 0
                 alive = old_pid > 0 and _proc_alive(old_pid)
                 if alive:
-                    self.stdout.write(f"[fixture] 已有另一個時間軸在跑(PID {old_pid}),拒絕啟動")
-                    return
+                    # 同一個劇本 → 重複啟動,擋掉(續跑機制每次 CU 重啟都會呼叫)。
+                    # 不同劇本 → 換場景了,舊時間軸已經過時,接管而不是被它擋住。
+                    # 2026-08-27:前端換劇本時新場景的佈病被舊時間軸擋掉,
+                    # 場景起來了卻沒有病 —— 而日誌只說「拒絕啟動」,看起來像正常的冪等。
+                    import json as _j2
+                    prev_sid = ""
+                    try:
+                        prev_sid = _j2.loads(_P(self.PROGRESS).read_text()).get("scenario", "")
+                    except (OSError, ValueError):
+                        pass
+                    if prev_sid == sid:
+                        self.stdout.write(f"[fixture] {sid} 已在跑(PID {old_pid}),不重複啟動")
+                        return
+                    self.stdout.write(
+                        f"[fixture] 換場景:終止舊時間軸 {prev_sid or '?'}(PID {old_pid})→ 接手 {sid}")
+                    try:
+                        os.kill(old_pid, 15)
+                        time.sleep(1.0)
+                    except OSError:
+                        pass
+                    self._clear_progress()
             lock.parent.mkdir(parents=True, exist_ok=True)
             lock.write_text(str(os.getpid()))
         steps = _load_steps(sid)
