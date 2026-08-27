@@ -272,7 +272,14 @@ class Command(BaseCommand):
                     f"[fixture] {i}. 等 {st['sleep_sec']}s {note}"
                     + (f"(續跑,已過 {_elapsed:.0f}s,剩 {_remain:.0f}s)" if _elapsed else ""))
                 _end = time.time() + _remain
+                _mt = 0.0
                 while time.time() < _end:  # 分段睡,長 sleep 期間仍要有心跳
+                    # maintain 也要在 sleep 步驟生效。2026-08-27 B2 第二輪:
+                    # 我把「修復後維持 15 分鐘」宣告成 sleep 步驟,而 maintain
+                    # 當時只在 wait_until / wait_event 的迴圈裡呼叫 —— 宣告了
+                    # 卻不會執行,UE 整段留在目標側,行為確認又拿不到樣本。
+                    # 宣告與執行不一致是最難看出來的一種壞:設定檔看起來完全正確。
+                    _mt = self._maintain(st.get("maintain"), _mt)
                     self._beat(sid, i, "sleep", note)
                     time.sleep(min(POLL_SEC, max(0.1, _end - time.time())))
                 continue

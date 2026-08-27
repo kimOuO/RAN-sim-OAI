@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 112748, "ts": 1787803657.8915021, "step": 5, "kind": "relation", "note": "管理面把 Xn 接好 → xApp 應自行發現並解除封鎖"}
+{"scenario": "anr_xn_discovery", "pid": 19, "ts": 1787806525.754001, "step": 6, "kind": "sleep", "note": "修復後維持:把 UE 拉回來源,讓 xApp 有樣本可以確認恢復(否則 UE 全堆在目標側,成功率永遠推不上去)"}
