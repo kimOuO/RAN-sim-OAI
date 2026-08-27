@@ -1,1 +1,1 @@
-{"scenario": "anr_harmful_neighbor", "pid": 116078, "ts": 1787857473.1861706, "step": 5, "kind": "wait_event", "note": "等「探測(FLAG_CLEAR)之後的重封(FLAG_SET)」—— 冪等重掛不會誤觸"}
+{"scenario": "anr_missing_meas", "pid": 193419, "ts": 1787858176.1475303, "step": 8, "kind": "sleep", "note": "病期 7 分鐘:UE 在縫隙處量測持續、換手被 NRT gate 擋"}
