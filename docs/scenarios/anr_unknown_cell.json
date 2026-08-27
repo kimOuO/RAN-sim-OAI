@@ -6191,10 +6191,57 @@
   "anr_fixture": {
     "steps": [
       {
+        "do": "config",
+        "set": {
+          "ANR_HISTORY_SAMPLE_SEC": 60
+        },
+        "note": "測試壓縮"
+      },
+      {
+        "do": "relation",
+        "src": "s01_c0",
+        "tgt": "n02_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "既有健康關係一"
+      },
+      {
+        "do": "relation",
+        "src": "s01_c0",
+        "tgt": "n03_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "既有健康關係二"
+      },
+      {
         "do": "cut",
         "src": "s01_c0",
         "tgt": "unk_c0",
-        "note": "佈病:刪掉關係,讓那顆基地台變成鄰區表查無的陌生對象"
+        "note": "佈病:確保與陌生基地台之間零關係 —— unk 只出現在量測裡,鄰區表查無"
+      },
+      {
+        "do": "cell",
+        "cell": "unk_c0",
+        "set": {
+          "is_barred": true
+        },
+        "note": "unk 標禁止駐留(新站尚未開放接入):UE 量得到它、但不得駐留 —— 否則初次入網就選上最強的 unk,量測歸屬全反"
+      },
+      {
+        "do": "move_ues",
+        "prefix": "uk",
+        "to": "s01_c0",
+        "note": "UE 歸位 s01(一次性)"
+      },
+      {
+        "sleep_sec": 240,
+        "note": "觀察 4 分鐘:UE 持續量到 unk 的實體編號,反查(cgi_resolve)應得唯一解"
       }
     ]
   }
