@@ -19,3 +19,48 @@ class CuCpConfig(AppConfig):
             except Exception:
                 import logging
                 logging.exception("Failed to start E2 indication producer")
+
+            _resume_anr_fixture()
+
+
+def _resume_anr_fixture() -> None:
+    """CU 啟動時把中斷的病徵時間軸接回來。
+
+    時間軸跑在 CU 容器內,CU 重啟就跟著死。2026-08-26 第 6 題因此死在等待步驟,
+    最後由人手動補完最後一步 —— 那一輪的「無人值守」就不能算數。
+    這裡讀進度檔續跑,並把該步驟已經過的時間帶過去(否則 300 秒的維運等待
+    會在每次重啟後從頭算起,節奏就跟劇本宣告的不一樣了)。
+
+    多個 worker 都會執行 ready(),重複啟動由時間軸自己的互斥鎖擋掉,
+    這裡不另外判斷 —— 兩處各判一次,遲早會不一致。
+    """
+    import json
+    import logging
+    import os
+    import subprocess
+    import time
+
+    path = "/app/tmp/anr_fixture.progress.json"
+    try:
+        with open(path) as f:
+            p = json.load(f)
+    except (OSError, ValueError):
+        return                                  # 沒有中斷的時間軸,正常情形
+    sid = p.get("scenario")
+    step = int(p.get("step") or 1)
+    elapsed = max(0.0, time.time() - float(p.get("step_started") or 0))
+    if not sid:
+        return
+    try:
+        subprocess.Popen(
+            ["python", "/app/manage.py", "anr_fixture", sid,
+             "--from-step", str(step), "--resume-elapsed", f"{elapsed:.0f}"],
+            stdout=open("/app/tmp/fixture_resume.log", "a"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,             # 不隨這個 worker 一起被收掉
+            env={**os.environ},
+        )
+        logging.getLogger(__name__).warning(
+            "[fixture] 續跑 %s 第 %d 步(該步已過 %.0fs)", sid, step, elapsed)
+    except OSError:
+        logging.getLogger(__name__).exception("[fixture] 續跑啟動失敗")

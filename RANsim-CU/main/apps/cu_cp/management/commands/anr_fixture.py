@@ -55,6 +55,8 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--from-step", type=int, default=1,
                             help="從第 N 步開始(補跑用,1-based)")
+        parser.add_argument("--resume-elapsed", type=float, default=0.0,
+                            help="續跑時,起始步驟已經過的秒數(只影響第一個步驟的等待)")
 
 
     def _maintain(self, spec, last_ts):
@@ -75,6 +77,34 @@ class Command(BaseCommand):
         if moved:
             self.stdout.write(f"[fixture]    ↻ 維持條件:把 {moved} 台 UE 拉回 {spec['to']}")
         return _t.time()
+
+    PROGRESS = "/app/tmp/anr_fixture.progress.json"
+
+    def _save_progress(self, sid, step_no, started=None):
+        """把「跑到第幾步、這一步何時開始」寫檔,讓 CU 重啟後接得回來。
+
+        2026-08-26 第 6 題:時間軸跑在 CU 容器裡,CU 15:33 重啟就整個死在等待步驟,
+        沒有任何東西接手,最後由人手動補完最後一步 —— 那一輪因此不能算無人值守。
+        心跳只讓「死了」看得出來,要真的活下去必須有落盤與續跑。
+        """
+        import json as _j, time as _t
+        from pathlib import Path as _P
+        try:
+            _P(self.PROGRESS).write_text(_j.dumps(
+                {"scenario": sid, "step": step_no,
+                 # 續跑時要沿用原本的起算時間,不能重新戳一次 —— 否則每重啟一次
+                 # 這一步就從頭算起,連續重啟會讓 300 秒的等待永遠跑不完。
+                 # (2026-08-27 實測:第二次重啟後顯示「該步已過 6s」而非 95s)
+                 "step_started": started if started is not None else _t.time()}))
+        except OSError:
+            pass
+
+    def _clear_progress(self):
+        from pathlib import Path as _P
+        try:
+            _P(self.PROGRESS).unlink()
+        except OSError:
+            pass
 
     def _beat(self, sid, step_no, kind, note=""):
         """心跳:證明時間軸「活著」,而不是「日誌裡有行」。
@@ -162,14 +192,19 @@ class Command(BaseCommand):
             return
         self.stdout.write(f"[fixture] {sid}:{len(steps)} 個步驟開始")
 
+        _first = int(opts.get("from_step") or 1)
         for i, st in enumerate(steps, 1):
-            if i < int(opts.get("from_step") or 1):
+            if i < _first:
                 continue
             note = st.get("note", "")
             _kind = ("wait_until" if "wait_until" in st else
                      "wait_event" if "wait_event" in st else
                      "sleep" if "sleep_sec" in st else st.get("do", "?"))
             self._beat(sid, i, _kind, note)
+            # 續跑時第一個步驟要扣掉已經過的時間,否則 CU 重啟會讓等待從頭算起
+            _elapsed = float(opts.get("resume_elapsed") or 0.0) if i == _first else 0.0
+            self._save_progress(sid, i,
+                                started=(time.time() - _elapsed) if _elapsed else None)
             if "wait_until" in st:
                 w = st["wait_until"]
                 # 單欄位 {field, equals} 或多欄位 {fields:{欄位:值}} —— 成對旗標要一起等
@@ -231,8 +266,11 @@ class Command(BaseCommand):
                 continue
 
             if "sleep_sec" in st:
-                self.stdout.write(f"[fixture] {i}. 等 {st['sleep_sec']}s {note}")
-                _end = time.time() + float(st["sleep_sec"])
+                _remain = max(0.0, float(st["sleep_sec"]) - _elapsed)
+                self.stdout.write(
+                    f"[fixture] {i}. 等 {st['sleep_sec']}s {note}"
+                    + (f"(續跑,已過 {_elapsed:.0f}s,剩 {_remain:.0f}s)" if _elapsed else ""))
+                _end = time.time() + _remain
                 while time.time() < _end:  # 分段睡,長 sleep 期間仍要有心跳
                     self._beat(sid, i, "sleep", note)
                     time.sleep(min(POLL_SEC, max(0.1, _end - time.time())))
@@ -287,3 +325,4 @@ class Command(BaseCommand):
             lock.unlink()
         except (FileNotFoundError, NameError):
             pass
+        self._clear_progress()   # 正常跑完就不該再被續跑接手

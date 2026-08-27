@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 100637, "ts": 1787766235.142276, "step": 5, "kind": "relation", "note": "管理面把 Xn 接好 → xApp 應自行發現並解除封鎖"}
+{"scenario": "anr_xn_discovery", "pid": 8464, "ts": 1787795515.777236, "step": 5, "kind": "relation", "note": "管理面把 Xn 接好 → xApp 應自行發現並解除封鎖"}
