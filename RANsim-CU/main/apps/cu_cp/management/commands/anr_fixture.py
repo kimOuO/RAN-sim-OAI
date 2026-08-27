@@ -419,6 +419,61 @@ class Command(BaseCommand):
                     f.write_text(f"{st['cell']},{st.get('cause', 'RandomAccessProblem')}\n")
                     self.stdout.write(
                         f"[fixture] {i}. 注入 {st['cell']} → {st.get('cause','RandomAccessProblem')} {note}")
+            elif act == "assert":
+                # 讓劇本能質疑自己。
+                # 2026-08-27 第 1 題實測:劇本宣告了「健康基準期 3 分鐘」,
+                # 但那三分鐘每分鐘都有五台 UE 同時斷線 —— 宣告一個健康期,
+                # 不等於那三分鐘是健康的。時間軸照樣往下走,產出一輪無效資料,
+                # 而且要等對方질疑才發現。
+                #
+                # 今天所有的假通過都是同一個模式:**劇本只會往下走,不會檢查前提**。
+                # 這一步在前提不成立時大聲說出來,並依 on_fail 決定停或續。
+                from django.utils import timezone as _tz
+                from datetime import timedelta as _td
+                w = float(st.get("window_sec") or 180)
+                since = _tz.now() - _td(seconds=w)
+                checks, bad = st.get("checks") or [], []
+                for c in checks:
+                    kind = c.get("metric")
+                    if kind == "rlf_count":
+                        from main.apps.cu_cp.models.rlf_event import RlfEvent as _RLF
+                        q = _RLF.objects.filter(detected_at__gte=since)
+                        if c.get("cell"):
+                            q = q.filter(source_cell=c["cell"])
+                        got = q.count()
+                    elif kind == "ho_fail_count":
+                        from main.apps.cu_cp.models.handover_event import HandoverEvent as _HE
+                        q = _HE.objects.filter(started_at__gte=since, status="FAIL")
+                        if c.get("src"):
+                            q = q.filter(source_cell=c["src"])
+                        if c.get("tgt"):
+                            q = q.filter(target_cell=c["tgt"])
+                        got = q.count()
+                    elif kind == "relation_exists":
+                        got = int(R.objects.filter(source_cell_id=c["src"],
+                                                   target_cgi=c["tgt"]).exists())
+                    else:
+                        self.stdout.write(f"[fixture] {i}. ⚠️ assert 不認得的指標 {kind},跳過")
+                        continue
+                    lo, hi = c.get("min"), c.get("max")
+                    ok = (lo is None or got >= lo) and (hi is None or got <= hi)
+                    mark = "✅" if ok else "❌"
+                    self.stdout.write(
+                        f"[fixture] {i}. {mark} {kind}"
+                        f"{'(' + str(c.get('cell') or c.get('src') or '') + ')' if (c.get('cell') or c.get('src')) else ''}"
+                        f" = {got}(要求 {lo if lo is not None else '-'}~{hi if hi is not None else '-'},"
+                        f"近 {w:.0f}s)")
+                    if not ok:
+                        bad.append(f"{kind}={got}")
+                if bad:
+                    if (st.get("on_fail") or "abort") == "abort":
+                        self.stdout.write(
+                            f"[fixture] {i}. ⛔ 前提不成立({', '.join(bad)})→ **停止時間軸**。"
+                            f"{note} —— 不佈一個註定無效的病,比佈了再事後解釋好")
+                        break
+                    self.stdout.write(f"[fixture] {i}. ⚠️ 前提不成立({', '.join(bad)})但設定為續跑")
+                else:
+                    self.stdout.write(f"[fixture] {i}. 前提全部成立 {note}")
             elif act == "config":
                 # 執行期覆寫「其實是劇本一部分」的設定(第 2 題停用 ANR 自動建立、
                 # 第 9 題指定鄰區表容量)。這些值原本只能改環境變數,

@@ -72176,6 +72176,25 @@
         "note": "健康基準期 3 分鐘:先讓 RLF 的基準值建立起來。卷面現況是「由 0.2 升至 3.4」,沒有基準期就沒有『升』可言"
       },
       {
+        "do": "assert",
+        "window_sec": 180,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "rlf_count",
+            "cell": "src_c0",
+            "max": 2
+          },
+          {
+            "metric": "relation_exists",
+            "src": "src_c0",
+            "tgt": "nbr_c0",
+            "min": 1
+          }
+        ],
+        "note": "基準期健康度:這三分鐘的斷線要接近零、而且該有的關係要在。不成立就不佈病 —— 髒基準佈出來的病,卷面的「由 0.3 升至 3.2」無從判定"
+      },
+      {
         "do": "cut",
         "src": "src_c0",
         "tgt": "nbr_c0",

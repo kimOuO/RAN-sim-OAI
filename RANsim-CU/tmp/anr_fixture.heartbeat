@@ -1,1 +1,1 @@
-{"scenario": "anr_missing_neighbor", "pid": 2760, "ts": 1787818552.7495816, "step": 5, "kind": "sleep", "note": "病期 10 分鐘:讓斷線重連反覆發生,RLF 升高並持續 —— 對方要從重建統計反推缺哪一條,病徵必須累積夠久"}
+{"scenario": "anr_missing_neighbor", "pid": 21161, "ts": 1787818661.8281364, "step": 5, "kind": "sleep", "note": "病期 10 分鐘:讓斷線重連反覆發生,RLF 升高並持續 —— 對方要從重建統計反推缺哪一條,病徵必須累積夠久"}
