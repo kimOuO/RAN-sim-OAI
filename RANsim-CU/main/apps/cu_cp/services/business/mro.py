@@ -87,10 +87,20 @@ def mro_kpm(window_min: float = _DEFAULT_WINDOW_MIN, *, backfill: bool = True) -
     # 不處理的話:換手失敗型疾病(第6/7/10題)造成的 RLF 會被算到同 cell 上正常的
     # 換手循環頭上 → TooEarly 虛高 → 「MRO 平坦」這條排除條件永遠不成立 →
     # 病越嚴重越修不了(交叉測試輪2 實測 harmful 被自家 MRO 閘門鎖死半小時)。
+    # 2026-08-27(RIC 第五十八輪指出 cell 級與關係級對不上,查證後根因在這裡):
+    # backfill 會把被判為 ToWrongCell 的那次成功換手改寫成 status=FAIL /
+    # failure_cause=HandoverToWrongCell。於是**下一輪**跑到這裡時,那筆改寫後的事件
+    # 會被當成「更接近 RLF 的失敗嘗試」,把同一個 RLF 短路掉(continue),
+    # cell 級計數因此歸零 —— 而關係級讀的是那批改寫後的事件,仍然是 5/min。
+    # 兩邊都沒算錯,是**我方的 backfill 改變了下一輪分類的輸入**:
+    # 第一輪判出 ToWrongCell,第二輪起自己把自己排除掉。
+    # 修法:短路判斷要排除自家 backfill 造出來的 ToWrongCell —— 它不是獨立的
+    # 換手失敗,而是這條分類規則自己的產物,不能拿來否定自己。
     fails = list(
         HandoverEvent.objects.filter(status="FAIL",
                                      started_at__gte=win_start - timedelta(seconds=_T_SHORT_SEC))
         .exclude(failure_cause="")
+        .exclude(failure_cause="HandoverToWrongCell")
         .order_by("started_at")
     )
     fail_by_ue: dict[str, list[HandoverEvent]] = {}
