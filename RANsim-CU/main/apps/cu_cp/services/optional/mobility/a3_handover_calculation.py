@@ -68,6 +68,55 @@ def get_a3_config() -> A3Config:
     return _CONFIG
 
 
+_OVERRIDE_PATH = "/app/tmp/a3_override.json"
+
+
+def _persist_override() -> None:
+    """把當前 A3 組態寫檔,讓 CU 重啟後還原。
+
+    2026-08-27 中性場實測:劇本宣告 a3_enabled=true,套用後 CU 重啟一次,
+    組態回到 env 預設(false),但觀測面照樣把 a3Enabled 回報出去 ——
+    **觀測面在說謊**,而 xApp 才剛把 a3Enabled 接成第 12 題的訊號⑥。
+    A3 覆寫是劇本宣告的環境設定,不是一次性指令,它必須跟著場景活著。
+    """
+    import json
+    import os
+    import tempfile
+    try:
+        os.makedirs(os.path.dirname(_OVERRIDE_PATH), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(_OVERRIDE_PATH))
+        with os.fdopen(fd, "w") as f:
+            json.dump({"enabled": _CONFIG.enabled, "offset_db": _CONFIG.offset_db,
+                       "hys_db": _CONFIG.hys_db, "ttt_ms": _CONFIG.ttt_ms}, f)
+        os.replace(tmp, _OVERRIDE_PATH)
+    except OSError:
+        pass
+
+
+def load_persisted_override() -> bool:
+    """啟動時還原劇本套過的 A3 覆寫;沒有檔案就沿用 env 預設。"""
+    import json
+    try:
+        with open(_OVERRIDE_PATH) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return False
+    _CONFIG.enabled = bool(d.get("enabled", _CONFIG.enabled))
+    _CONFIG.offset_db = float(d.get("offset_db", _CONFIG.offset_db))
+    _CONFIG.hys_db = float(d.get("hys_db", _CONFIG.hys_db))
+    _CONFIG.ttt_ms = int(d.get("ttt_ms", _CONFIG.ttt_ms))
+    return True
+
+
+def clear_persisted_override() -> None:
+    """場景停止時清掉 —— 否則下一場會沿用上一場的 A3,是跨場污染。"""
+    import os
+    try:
+        os.remove(_OVERRIDE_PATH)
+    except OSError:
+        pass
+
+
 def set_a3_config(*, enabled: bool | None = None, offset_db: float | None = None,
                   hys_db: float | None = None, ttt_ms: int | None = None) -> A3Config:
     global _CONFIG
@@ -79,6 +128,7 @@ def set_a3_config(*, enabled: bool | None = None, offset_db: float | None = None
         _CONFIG.hys_db = float(hys_db)
     if ttt_ms is not None:
         _CONFIG.ttt_ms = int(ttt_ms)
+    _persist_override()
     return _CONFIG
 
 

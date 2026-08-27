@@ -140,6 +140,11 @@ def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
     out = []
     for r in v8_rows:
         src, tgt = r["sourceCellNcgi"], r["targetCellGlobalId"]
+        if src == tgt:
+            # 自我配對不是鄰區關係 —— 不管上游為什麼產生了它,觀測面都不該輸出。
+            # 根因已在 handover_executor 擋掉,這裡是第二層:任何新的來源
+            # (重建、量測回填)再造出自我配對時,不會又變成一條假的有害鄰居。
+            continue
         prep, exe = _split_fail_causes(r.get("handoverFailureCauseRatePerMin"))
         cum = r.get("handoverFailureCauseCumulativeSinceCreation") or {}
         att = r.get("MM.HoExeAttRatePerMin") or 0.0

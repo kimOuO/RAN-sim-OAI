@@ -20,6 +20,20 @@ class CuCpConfig(AppConfig):
                 import logging
                 logging.exception("Failed to start E2 indication producer")
 
+            try:
+                from main.apps.cu_cp.services.optional.mobility import (
+                    a3_handover_calculation as _a3,
+                )
+                if _a3.load_persisted_override():
+                    import logging
+                    c = _a3.get_a3_config()
+                    logging.getLogger(__name__).warning(
+                        "[a3] 還原劇本覆寫 enabled=%s offset=%s hys=%s",
+                        c.enabled, c.offset_db, c.hys_db)
+            except Exception:
+                import logging
+                logging.exception("Failed to restore A3 override")
+
             _resume_anr_fixture()
 
 

@@ -39,6 +39,15 @@ def execute_f1_handover(
     ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
     if ue is None:
         return None
+    # 換到自己身上不是換手,不該留下換手事件。
+    # 2026-08-27 中性場煙霧測試前抓到:UE 已經駐留在該 cell 時仍被要求 MANUAL 換手
+    # (佈場與維持條件都會無條件下指令),留下一批 source==target、卡在 PREP 的事件,
+    # 於是觀測面出現一條 h1_c0→h1_c0「關係」,成功率 0.0 —— 在 xApp 眼裡
+    # 那就是一條有害鄰居。病是我方自己造的,而且會出現在每一個中性場。
+    if ue.serving_cell == target_cell:
+        logger.debug("execute_f1_handover skipped: ue=%s 已在 %s", ue_id, target_cell)
+        return None
+
     # 防呆: target_cell 必須是 sim 註冊過的 CellConfig.cell_id, 否則 reject 不下 F1AP.
     # 之前曾經看 RU 把 Sionna scene gNB 名 (e.g., gNB_Macro_NW) leak 進 neighbors,
     # A3 評到後 trigger HO 把 UE.serving_cell 寫成 phantom, 整條 traffic pipeline 卡死.

@@ -51,3 +51,5 @@ ran-sim-protocol/_vendored/
 # Backup folders
 _legacy/__pycache__/
 RANsim-CU/tmp/anr_history.json
+RANsim-CU/tmp/a3_override.json
+RANsim-CU/tmp/anr_fixture.*
