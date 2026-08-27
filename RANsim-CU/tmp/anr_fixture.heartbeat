@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 111258, "ts": 1787852679.4707286, "step": 3, "kind": "sleep", "note": "病期最短持續 4 分鐘:UE 走到觸發區才會嘗試換手並失敗。第二輪病期只有 12 秒、一次失敗都沒產生,xApp 的持續性閘等於沒被考到"}
+{"scenario": "anr_harmful_neighbor", "pid": 116078, "ts": 1787853091.4969819, "step": 4, "kind": "wait_until", "note": "等 xApp 成對封鎖(等待期間持續把 UE 拉回來源,病徵不會自己停)"}
