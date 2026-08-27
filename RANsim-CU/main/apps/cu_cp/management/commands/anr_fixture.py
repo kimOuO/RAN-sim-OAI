@@ -201,6 +201,17 @@ class Command(BaseCommand):
         if opts.get("status"):
             self._report_status()
             return
+        # 非現行劇本的實例直接退場 —— 場景切換時 CU 重啟,各 worker 的續跑
+        # 會孵回上一個劇本的時間軸,跟新劇本接管互相殘殺。現行劇本由
+        # Fixture/start 寫入;拿不到檔案(直接 docker exec 起的舊用法)則不擋。
+        try:
+            from pathlib import Path as _Pc
+            cur = _Pc("/app/tmp/anr_fixture.current").read_text().strip()
+            if cur and sid != cur and not opts.get("dry_run"):
+                self.stdout.write(f"[fixture] {sid} 已非現行劇本(現行:{cur}),退場")
+                return
+        except OSError:
+            pass
         # 互斥鎖:同時跑多個時間軸會互相干擾(2026-08-26 實測:舊的孤兒行程
         # 先清掉了注入,新的還停在等待步驟,兩邊時序全亂)。
         import os

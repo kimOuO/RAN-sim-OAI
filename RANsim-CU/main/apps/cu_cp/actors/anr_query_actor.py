@@ -367,6 +367,12 @@ class AnrFixtureActor:
             return success_response({"scenario_id": sid, "started": False,
                                      "reason": "no anr_fixture block"}, "ok")
         try:
+            # 記錄現行劇本 —— 場景切換時 CU 會重啟,每個 worker 的續跑都會把
+            # 「上一個劇本」的時間軸孵回來,跟新劇本的接管互相殘殺
+            # (2026-08-27 實測:stale_pci 的殭屍續跑反過來殺掉 xn_discovery 的新實例)。
+            # 非現行 sid 的實例看到這個檔就自行退場。
+            with open("/app/tmp/anr_fixture.current", "w") as f:
+                f.write(sid)
             subprocess.Popen(
                 ["python", "/app/manage.py", "anr_fixture", sid],
                 stdout=open(f"/app/tmp/fixture_{sid}.log", "a"),
