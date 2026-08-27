@@ -88,12 +88,20 @@ class Command(BaseCommand):
         每 30 秒把 UE 拉回來源 cell,確保「有人持續想換手」這個前提不消失。
         """
         import time as _t
-        if not spec or (_t.time() - last_ts) < 30:
+        # interval_sec / max_ues:控制「製造多少流量」。
+        # 預設每 30 秒把全部 UE 拉回來 —— 那會一次產生 5 筆換手,對病期沒問題,
+        # 但恢復期需要**低速**流量才驗得到 xApp 的瞬時恢復路徑
+        # (樣本窗填得太快的話,舊的次數窗路徑就先成立了,新路徑永遠測不到)。
+        interval = float(spec.get("interval_sec") or 30) if spec else 30
+        if not spec or (_t.time() - last_ts) < interval:
             return last_ts
         from main.apps.cu_cp.models.ue_context import UeContext
         from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
-        moved = sum(1 for u in UeContext.objects.filter(ue_id__startswith=spec["prefix"])
-                    .exclude(serving_cell=spec["to"])
+        cands = list(UeContext.objects.filter(ue_id__startswith=spec["prefix"])
+                     .exclude(serving_cell=spec["to"]).order_by("ue_id"))
+        if spec.get("max_ues"):
+            cands = cands[:int(spec["max_ues"])]
+        moved = sum(1 for u in cands
                     if execute_f1_handover(ue_id=u.ue_id, target_cell=spec["to"], trigger="MANUAL"))
         if moved:
             self.stdout.write(f"[fixture]    ↻ 維持條件:把 {moved} 台 UE 拉回 {spec['to']}")

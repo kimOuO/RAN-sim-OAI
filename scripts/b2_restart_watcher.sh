@@ -9,7 +9,7 @@ while true; do
          | python3 -c 'import sys,json;print(json.load(sys.stdin).get("step",0))' 2>/dev/null || echo 0)
   AGE=$(docker exec ransim-cu sh -c 'cat /app/tmp/anr_fixture.progress.json 2>/dev/null' \
          | python3 -c 'import sys,json,time;print(int(time.time()-json.load(sys.stdin).get("step_started",0)))' 2>/dev/null || echo 0)
-  if [ "$STEP" = "4" ] && [ "$AGE" -ge 60 ]; then break; fi
+  if [ "$STEP" = "5" ] && [ "$AGE" -ge 60 ]; then break; fi
   sleep 5
 done
 echo "[b2] 第 4 步已過 ${AGE}s → 重啟 CU(這是刻意的一刀)"

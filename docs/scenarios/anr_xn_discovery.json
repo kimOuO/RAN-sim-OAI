@@ -36181,15 +36181,23 @@
           "xn_x2_established": false,
           "xn_blocklist": false
         },
-        "note": "佈病:Xn 傳輸斷,關係留著(建立時間回填 1 小時,避開 xApp 新生兒寬限與第12題 cum=0 稽核)",
         "create": true,
-        "created_age_sec": 3600
+        "created_age_sec": 3600,
+        "note": "佈病:Xn 傳輸斷,關係留著(建立時間回填 1 小時)"
       },
       {
         "do": "move_ues",
         "prefix": "xd",
         "to": "s07_c0",
-        "note": "坑1:把 UE 搬回來源 cell"
+        "note": "把 UE 搬回來源 cell"
+      },
+      {
+        "sleep_sec": 240,
+        "maintain": {
+          "prefix": "xd",
+          "to": "s07_c0"
+        },
+        "note": "病期最短持續 4 分鐘:UE 走到觸發區才會嘗試換手並失敗。第二輪病期只有 12 秒、一次失敗都沒產生,xApp 的持續性閘等於沒被考到"
       },
       {
         "wait_until": {
@@ -36199,15 +36207,15 @@
           "equals": true
         },
         "timeout_sec": 3600,
-        "note": "等 xApp 止血(設 xnBlocklist);等待期間持續把 UE 拉回來源,病徵不會自己停",
         "maintain": {
           "prefix": "xd",
           "to": "s07_c0"
-        }
+        },
+        "note": "等 xApp 止血(此時病徵已累積足夠)"
       },
       {
         "sleep_sec": 300,
-        "note": "維運排程時間 —— 管理面不會秒修"
+        "note": "維運排程時間 —— 管理面不會秒修(CU 重啟那一刀落在這裡)"
       },
       {
         "do": "relation",
@@ -36216,15 +36224,17 @@
         "set": {
           "xn_x2_established": true
         },
-        "note": "管理面把 Xn 接好 → xApp 應自行發現並解除封鎖"
+        "note": "管理面把 Xn 接好"
       },
       {
-        "sleep_sec": 900,
+        "sleep_sec": 1200,
         "maintain": {
           "prefix": "xd",
-          "to": "s07_c0"
+          "to": "s07_c0",
+          "interval_sec": 60,
+          "max_ues": 1
         },
-        "note": "修復後維持:把 UE 拉回來源,讓 xApp 有樣本可以確認恢復(否則 UE 全堆在目標側,成功率永遠推不上去)"
+        "note": "低速恢復 20 分鐘:每 60 秒只搬 1 台 → 換手約 1-2 次/分。樣本窗填不滿,強制走 xApp 的瞬時恢復路徑(A1)"
       }
     ]
   },
