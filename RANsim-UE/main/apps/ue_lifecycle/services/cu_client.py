@@ -195,3 +195,28 @@ def set_a3(enabled: bool, *, offset_db: float | None = None,
     except requests.RequestException as exc:
         logger.warning("set_a3 HTTP failed: %s", exc)
         return False
+
+
+def start_anr_fixture(scenario_id: str) -> bool:
+    """請 CU 起這個劇本的病徵時間軸(Anr/Fixture/start)。
+
+    在此之前時間軸得由人手動 docker exec 起 —— 「劇本會自己跑」只做到一半:
+    節奏是宣告在劇本裡的,但啟動仍然依賴外部觸發。前端 Start Sim 之後
+    要能自動佈病,這一步就得由場景套用流程負責。
+
+    沒有 anr_fixture 區塊的劇本會回 started=false,不是錯誤(多數劇本沒有)。
+    失敗不擋場景啟動:佈病失敗頂多是這一輪沒病,場景本身仍然可用。
+    """
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Anr/Fixture/start"
+    try:
+        r = requests.post(url, json={"scenario_id": scenario_id}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            logger.warning("start_anr_fixture non-OK %s: %s", r.status_code, r.text[:200])
+            return False
+        d = (r.json() or {}).get("data") or {}
+        if d.get("started"):
+            logger.info("scenario %s 病徵時間軸已啟動(%s 步)", scenario_id, d.get("steps"))
+        return bool(d.get("started"))
+    except requests.RequestException as exc:
+        logger.warning("start_anr_fixture HTTP failed: %s", exc)
+        return False

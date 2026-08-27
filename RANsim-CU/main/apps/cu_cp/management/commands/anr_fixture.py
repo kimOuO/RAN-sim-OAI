@@ -376,6 +376,78 @@ class Command(BaseCommand):
                     f.write_text(f"{st['cell']},{st.get('cause', 'RandomAccessProblem')}\n")
                     self.stdout.write(
                         f"[fixture] {i}. 注入 {st['cell']} → {st.get('cause','RandomAccessProblem')} {note}")
+            elif act == "cut":
+                # 刪關係 —— 缺漏鄰區型的病因(第 1/2/4/8 題)。
+                # 預設雙向刪:單向刪的話對端 gNB 的 Xn 反向自建會把它補回來,
+                # 病灶在幾分鐘後自己消失。
+                both = st.get("both", True)
+                n = R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).delete()[0]
+                if both:
+                    n += R.objects.filter(source_cell_id=st["tgt"], target_cgi=st["src"]).delete()[0]
+                self.stdout.write(f"[fixture] {i}. 刪關係 {st['src']}↔{st['tgt']} rows={n} {note}")
+            elif act == "cell":
+                # 改 cell 的組態欄位(pci / is_barred / created_at…)。
+                # 第 10 題改 PCI 造出過期對應、第 11 題把 created_at 設成「剛剛」
+                # 做出臨時節點的誕生事件。
+                from main.apps.cu_cp.models.cell_config import CellConfig as _CC
+                f = dict(st.get("set") or {})
+                if st.get("born_now"):
+                    f["created_at"] = TimestampService.now()
+                n = _CC.objects.filter(cell_id=st["cell"]).update(**f)
+                self.stdout.write(f"[fixture] {i}. cell {st['cell']} {f} rows={n} {note}")
+            elif act == "fill_nrt":
+                # 把某些 cell 的鄰區表灌到容量上限(第 9 題)。
+                # 逐條建 padNN 直到 used==limit;超過就砍 pad 補回來。
+                from main.apps.cu_cp.models.cell_config import CellConfig as _CC
+                from main.utils.env_loader import get_int
+                limit = int(st.get("limit") or get_int("ANR_NRT_CAPACITY", 32))
+                now = TimestampService.now()
+                for src in st["srcs"]:
+                    cur = R.objects.filter(source_cell_id=src).count()
+                    k = 0
+                    while cur < limit:
+                        k += 1
+                        R.objects.get_or_create(
+                            source_cell_id=src, target_cgi=f"pad{k:02d}_c0",
+                            defaults=dict(target_pci=900 + k, target_arfcn=633333,
+                                          target_rat="NR", xn_x2_established=True,
+                                          created_at=now, updated_at=now))
+                        cur = R.objects.filter(source_cell_id=src).count()
+                    while cur > limit:
+                        pad = R.objects.filter(source_cell_id=src,
+                                               target_cgi__startswith="pad").first()
+                        if not pad:
+                            break
+                        pad.delete()
+                        cur -= 1
+                    self.stdout.write(f"[fixture] {i}. {src} 鄰區表 {cur}/{limit} {note}")
+            elif act == "inject_history":
+                # 注入歷史換手失敗(第 12 題:「因失敗而封鎖」的憑據)。
+                # 關係的建立時間會一併往前推到最舊那筆之前 —— 累計欄位的語意是
+                # 「自關係建立以來」,關係比失敗史新的話,注入的歷史一筆都不算。
+                from main.apps.cu_cp.models.handover_event import HandoverEvent as _HE
+                from main.apps.cu_cp.services.common.uuid_service import UUIDService
+                now = TimestampService.now()
+                want = int(st.get("count") or 40)
+                cause = st.get("cause") or "RandomAccessProblem"
+                base_h = float(st.get("age_hours") or 6)
+                have = _HE.objects.filter(source_cell=st["src"], target_cell=st["tgt"]).count()
+                mk = 0
+                for k in range(max(0, want - have)):
+                    at = now - timedelta(hours=base_h, minutes=k)
+                    _HE.objects.create(
+                        ho_uuid=UUIDService.random_uuid(), ue_id=f"hist{k % 5}",
+                        source_cell=st["src"], target_cell=st["tgt"], trigger="A3_TTT",
+                        status="FAIL", failure_cause=cause, started_at=at, completed_at=at)
+                    mk += 1
+                oldest = (_HE.objects.filter(source_cell=st["src"], target_cell=st["tgt"])
+                          .order_by("started_at").values_list("started_at", flat=True).first())
+                if oldest:
+                    R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).update(
+                        created_at=oldest - timedelta(hours=1))
+                self.stdout.write(
+                    f"[fixture] {i}. 注入失敗史 {st['src']}→{st['tgt']} +{mk} 筆({cause}),"
+                    f"關係建立時間已推到失敗史之前 {note}")
             elif act == "barred":
                 from main.apps.cu_cp.models.cell_config import CellConfig
                 n = CellConfig.objects.filter(cell_id=st["cell"]).update(is_barred=bool(st.get("value", True)))

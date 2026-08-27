@@ -12,6 +12,7 @@ from main.apps.cu_cp.actors.e2_subscription_actor import E2IndicationActor, E2Su
 from main.apps.cu_cp.actors.f1ap_router_actor import F1ApRouterActor
 from main.apps.cu_cp.actors.log_actor import LogActor
 from main.apps.cu_cp.actors.handover_event_actor import HandoverEventActor
+from main.apps.cu_cp.actors.anr_query_actor import AnrFixtureActor
 from main.apps.cu_cp.actors.mobility_actor import MobilityActor
 from main.apps.cu_cp.actors.ngap_router_actor import NgapRouterActor
 from main.apps.cu_cp.actors.session_controller_actor import SessionControllerActor
@@ -69,6 +70,8 @@ urlpatterns = [
     # Logs（Dashboard /logs page 用）
     path("Logs/Ring/read", LogActor.read_ring, name="logs_ring_read"),
     # AK11: Mobility A3 runtime config (Dashboard 控制 A3 開關 + 參數)
+    # 劇本病徵時間軸:場景套用後由 scenario_driver 觸發,不再需要人手動起
+    path("Anr/Fixture/start", AnrFixtureActor.start, name="anr_fixture_start"),
     path("Mobility/A3Controller/read", MobilityActor.read_a3, name="mobility_a3_read"),
     path("Mobility/A3Controller/set",  MobilityActor.set_a3,  name="mobility_a3_set"),
     # Mobility HO event history (Dashboard HandoverMap)

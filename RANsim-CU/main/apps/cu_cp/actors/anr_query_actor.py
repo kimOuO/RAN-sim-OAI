@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+from django.http import HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -330,3 +331,48 @@ class AnrQueryActor:
             cgi_resolve(int(body["pci"]),
                         int(body["arfcn"]) if body.get("arfcn") is not None else None,
                         int(body.get("attempts") or 3)), "ok")
+
+class AnrFixtureActor:
+    """劇本病徵時間軸的啟動入口 —— 讓前端 Start Sim 之後自動佈病。
+
+    在此之前,時間軸得由人手動 `docker exec ... anr_fixture <scenario>` 起,
+    等於「劇本會自己跑」只做到一半:節奏是宣告式的,但啟動仍是外部觸發。
+    scenario_driver 套用場景後會打這支,CU 自己把時間軸拉起來。
+
+    冪等:時間軸自己有互斥鎖,重複呼叫會被它擋掉(回 already_running)。
+    """
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def start(request: HttpRequest):
+        import json as _j
+        import os
+        import subprocess
+        try:
+            body = _j.loads(request.body or b"{}")
+        except ValueError:
+            body = {}
+        sid = (body.get("scenario_id") or "").strip()
+        if not sid:
+            return error_response("scenario_id required", http_status=400)
+
+        # 沒有 anr_fixture 區塊的劇本直接回報,不要留下誤導的「已啟動」
+        from main.apps.cu_cp.management.commands.anr_fixture import _load_steps
+        try:
+            steps = _load_steps(sid)
+        except FileNotFoundError as exc:
+            return error_response("scenario not found", str(exc), http_status=404)
+        if not steps:
+            return success_response({"scenario_id": sid, "started": False,
+                                     "reason": "no anr_fixture block"}, "ok")
+        try:
+            subprocess.Popen(
+                ["python", "/app/manage.py", "anr_fixture", sid],
+                stdout=open(f"/app/tmp/fixture_{sid}.log", "a"),
+                stderr=subprocess.STDOUT, start_new_session=True, env={**os.environ})
+        except OSError as exc:
+            return error_response("spawn failed", str(exc), http_status=500)
+        logger.warning("[fixture] 場景啟動觸發時間軸:%s(%d 步)", sid, len(steps))
+        return success_response({"scenario_id": sid, "started": True,
+                                 "steps": len(steps)}, "ok")

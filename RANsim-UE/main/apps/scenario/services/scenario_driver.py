@@ -257,6 +257,16 @@ class ScenarioDriver:
         except Exception as e:  # noqa: BLE001
             logger.warning("set_a3 failed: %s", e)
 
+        # Step 2d — 病徵時間軸(劇本的 anr_fixture 區塊)。放在 A3 之後、推軌跡之前:
+        # 佈病要在 UE 開始移動前完成,否則第一段時間的觀測是健康場,
+        # xApp 會先看到一個沒有病的場景再看到病 —— 那是兩個場景不是一個。
+        try:
+            started = cu_client.start_anr_fixture(self.scenario.scenario_id)
+            if started:
+                logger.info("scenario %s 病徵時間軸已由 CU 接手", self.scenario.scenario_id)
+        except Exception as e:  # noqa: BLE001 — 佈病失敗不該擋場景啟動
+            logger.warning("start_anr_fixture failed: %s", e)
+
         # Step 3 — 推軌跡 waypoints 到 trajectory_store(UeLifecycleManager 接管 tick)
         self._push_waypoints_to_store()
 
