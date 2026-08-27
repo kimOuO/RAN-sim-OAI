@@ -202,16 +202,31 @@ class Command(BaseCommand):
             self._report_status()
             return
         # 非現行劇本的實例直接退場 —— 場景切換時 CU 重啟,各 worker 的續跑
-        # 會孵回上一個劇本的時間軸,跟新劇本接管互相殘殺。現行劇本由
-        # Fixture/start 寫入;拿不到檔案(直接 docker exec 起的舊用法)則不擋。
-        try:
-            from pathlib import Path as _Pc
-            cur = _Pc("/app/tmp/anr_fixture.current").read_text().strip()
-            if cur and sid != cur and not opts.get("dry_run"):
-                self.stdout.write(f"[fixture] {sid} 已非現行劇本(現行:{cur}),退場")
-                return
-        except OSError:
-            pass
+        # 會孵回上一個劇本的時間軸,跟新劇本接管互相殘殺。
+        # 判準:**本劇本宣告的 cell 是否存在於現場**(CellConfig 是場景套用的
+        # 直接產物,就是「現在跑的是哪個場」的真相)。原本用一個 current 檔,
+        # 但寫入方跑在 web worker 裡,worker 存在新舊碼混跑的情形,檔案內容
+        # 不可信(2026-08-28 實測:寫入靜默未生效,新劇本反被 guard 擋掉)。
+        if not opts.get("dry_run"):
+            try:
+                import json as _j2
+                for d in SCENARIO_DIRS:
+                    fp = d / f"{sid}.json"
+                    if fp.exists():
+                        spec = _j2.loads(fp.read_text(encoding="utf-8"))
+                        break
+                else:
+                    spec = {}
+                from main.apps.cu_cp.models.cell_config import CellConfig as _CC0
+                want = {f"{g['name']}_c0" for g in (spec.get("gnbs") or [])}
+                have = set(_CC0.objects.values_list("cell_id", flat=True))
+                if want and not (want & have):
+                    self.stdout.write(
+                        f"[fixture] {sid} 的 cell({sorted(want)[:3]}…)不在現場"
+                        f"(現場:{sorted(have)[:3]}…)→ 非現行劇本,退場")
+                    return
+            except Exception:  # noqa: BLE001 — 判不出來就不擋(退回舊行為)
+                pass
         # 互斥鎖:同時跑多個時間軸會互相干擾(2026-08-26 實測:舊的孤兒行程
         # 先清掉了注入,新的還停在等待步驟,兩邊時序全亂)。
         import os
