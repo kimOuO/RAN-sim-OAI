@@ -36192,7 +36192,7 @@
         "note": "把 UE 搬回來源 cell"
       },
       {
-        "sleep_sec": 240,
+        "sleep_sec": 180,
         "maintain": {
           "prefix": "xd",
           "to": "s07_c0"
@@ -36214,7 +36214,7 @@
         "note": "等 xApp 止血(此時病徵已累積足夠)"
       },
       {
-        "sleep_sec": 300,
+        "sleep_sec": 120,
         "note": "維運排程時間 —— 管理面不會秒修(CU 重啟那一刀落在這裡)"
       },
       {
@@ -36227,7 +36227,7 @@
         "note": "管理面把 Xn 接好"
       },
       {
-        "sleep_sec": 1200,
+        "sleep_sec": 420,
         "maintain": {
           "prefix": "xd",
           "to": "s07_c0",

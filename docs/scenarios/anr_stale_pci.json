@@ -72173,7 +72173,7 @@
         "note": "坑1:A3 早在編號還正確時把 UE 全換去 b07 了。搬回來,A3 才會反覆撞這個過期地址"
       },
       {
-        "sleep_sec": 300,
+        "sleep_sec": 240,
         "maintain": {
           "prefix": "sp",
           "to": "s15_c0"

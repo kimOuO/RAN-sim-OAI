@@ -72185,7 +72185,7 @@
         "note": "坑2:佈病前 RLF 重建已把 UE 帶去誘餌 n37。來源歸屬不在 s25 的話,xApp 會替 n37 建關係,考點驗不到"
       },
       {
-        "sleep_sec": 420,
+        "sleep_sec": 180,
         "maintain": {
           "prefix": "mm",
           "to": "s25_c0"
@@ -72206,7 +72206,7 @@
         "note": "再剪一次同一條關係 —— 這次 xApp 想補也補不了,考的是它會不會改成只通報"
       },
       {
-        "sleep_sec": 420,
+        "sleep_sec": 180,
         "maintain": {
           "prefix": "mm",
           "to": "s25_c0"
