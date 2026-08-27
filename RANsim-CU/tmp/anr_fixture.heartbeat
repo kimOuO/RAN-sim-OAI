@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 19, "ts": 1787810009.003157, "step": 5, "kind": "sleep", "note": "維運排程時間 —— 管理面不會秒修(CU 重啟那一刀落在這裡)"}
+{"scenario": "anr_xn_discovery", "pid": 62943, "ts": 1787811400.2132628, "step": 7, "kind": "sleep", "note": "低速恢復 20 分鐘:每 60 秒只搬 1 台 → 換手約 1-2 次/分。樣本窗填不滿,強制走 xApp 的瞬時恢復路徑(A1)"}
