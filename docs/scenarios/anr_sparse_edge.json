@@ -36201,6 +36201,13 @@
   "anr_fixture": {
     "steps": [
       {
+        "do": "config",
+        "set": {
+          "ANR_HISTORY_SAMPLE_SEC": 60
+        },
+        "note": "測試壓縮"
+      },
+      {
         "do": "cut",
         "src": "s28_c0",
         "tgt": "n91_c0",
@@ -36240,7 +36247,11 @@
         "do": "move_ues",
         "prefix": "dw",
         "to": "s28_c0",
-        "note": "坑1:把 UE 搬回深邊緣的來源 cell"
+        "note": "UE 歸位(一次性;第1題教訓:不做週期性 maintain)"
+      },
+      {
+        "sleep_sec": 300,
+        "note": "病期 5 分鐘:深邊緣駐點量測 n91(barred 不可駐留),鄰區表查無 —— 相對增益 +19.8dB 持續可見"
       }
     ]
   }
