@@ -46,6 +46,26 @@ def _load_steps(scenario_id: str) -> list[dict[str, Any]]:
     raise FileNotFoundError(f"找不到劇本 {scenario_id}.json(試過 {SCENARIO_DIRS})")
 
 
+
+def _proc_alive(pid) -> bool:
+    """行程是否真的活著 —— 殭屍不算。
+
+    2026-08-27:時間軸正常跑完後,父行程沒有回收子行程,留下 zombie。
+    zombie 仍有 /proc/<pid> 項目,所以「/proc 存在 = 活著」把**正常結束**
+    誤判成「卡住」,而 --status 的用途正是要區分這兩者。
+    判準改成讀 /proc/<pid>/status 的 State,Z 開頭視為已結束。
+    """
+    from pathlib import Path as _P
+    try:
+        st = _P(f"/proc/{int(pid)}/status").read_text()
+    except (OSError, ValueError, TypeError):
+        return False
+    for line in st.splitlines():
+        if line.startswith("State:"):
+            return not line.split()[1].startswith("Z")
+    return True
+
+
 class Command(BaseCommand):
     help = "依劇本的 anr_fixture 時間軸自動推進病徵(免人工觸發)"
 
@@ -144,13 +164,24 @@ class Command(BaseCommand):
             self.stdout.write(f"[fixture] 心跳檔讀不出來:{e}")
             return
         age = _t.time() - float(d.get("ts") or 0)
-        proc = _P(f"/proc/{d.get('pid')}").exists()
+        # 進度檔在正常結束時會被清掉 —— 用它區分「跑完」與「中途死掉」,
+        # 兩者的心跳都是舊的,但意義完全相反。
+        done = not _P(self.PROGRESS).exists()
+        proc = _proc_alive(d.get("pid"))
         alive = proc and age < 30  # POLL_SEC=5,30 秒沒動就是卡住或死了
         self.stdout.write(
             f"[fixture] {d.get('scenario')} 第 {d.get('step')} 步({d.get('kind')})"
             f" {d.get('note') or ''}\n"
             f"          心跳 {age:.0f} 秒前 · PID {d.get('pid')} {'在' if proc else '不在'}"
-            f" → {'✅ 活著' if alive else '❌ 死了/卡住 —— 不要據此推論劇本會自己往下走'}")
+            f" → {self._verdict(alive, proc, done)}")
+
+    @staticmethod
+    def _verdict(alive, proc, done):
+        if alive:
+            return "✅ 活著"
+        if done:
+            return "✅ 已正常跑完(進度檔已清)"
+        return "❌ 死了/卡住 —— 不要據此推論劇本會自己往下走"
 
     def handle(self, *args, **opts):
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as R
@@ -173,7 +204,7 @@ class Command(BaseCommand):
                     old_pid = int(lock.read_text().strip() or 0)
                 except ValueError:
                     old_pid = 0
-                alive = old_pid > 0 and _P(f"/proc/{old_pid}").exists()
+                alive = old_pid > 0 and _proc_alive(old_pid)
                 if alive:
                     self.stdout.write(f"[fixture] 已有另一個時間軸在跑(PID {old_pid}),拒絕啟動")
                     return

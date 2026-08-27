@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 19, "ts": 1787806525.754001, "step": 6, "kind": "sleep", "note": "修復後維持:把 UE 拉回來源,讓 xApp 有樣本可以確認恢復(否則 UE 全堆在目標側,成功率永遠推不上去)"}
+{"scenario": "anr_xn_discovery", "pid": 33740, "ts": 1787806893.693175, "step": 6, "kind": "sleep", "note": "修復後維持:把 UE 拉回來源,讓 xApp 有樣本可以確認恢復(否則 UE 全堆在目標側,成功率永遠推不上去)"}
