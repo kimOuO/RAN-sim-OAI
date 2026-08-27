@@ -72156,29 +72156,58 @@
   "anr_fixture": {
     "steps": [
       {
+        "do": "config",
+        "set": {
+          "ANR_HISTORY_SAMPLE_SEC": 60
+        },
+        "note": "測試壓縮"
+      },
+      {
         "do": "relation",
         "src": "s15_c0",
         "tgt": "b07_c0",
         "create": true,
         "created_age_sec": 86400,
         "set": {
+          "ho_validated": true
+        },
+        "note": "建關係(現場 pci)"
+      },
+      {
+        "sleep_sec": 120,
+        "note": "基準期:A3 自然把 UE 換去較強的 b07,換手成功"
+      },
+      {
+        "do": "assert",
+        "window_sec": 100,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "ho_fail_count",
+            "src": "s15_c0",
+            "max": 1
+          }
+        ],
+        "note": "基準期換手不該失敗"
+      },
+      {
+        "do": "relation",
+        "src": "s15_c0",
+        "tgt": "b07_c0",
+        "set": {
           "target_pci": 205
         },
-        "note": "佈病:鄰區表記著過期的編號 205,而現場的 b07 已經改成 233 —— 換手送往不存在的地址"
+        "note": "佈病:表上記 205,現場 233"
       },
       {
         "do": "move_ues",
         "prefix": "sp",
         "to": "s15_c0",
-        "note": "坑1:A3 早在編號還正確時把 UE 全換去 b07 了。搬回來,A3 才會反覆撞這個過期地址"
+        "note": "病後歸位 s15(UE 實體就在 s15 旁,強制換回不掉線)。b07 較強 → A3 每輪重試 → 每次都撞過期地址失敗 → UE 留在 s15 反覆撞,失敗率穩定 —— 順序是關鍵:歸位必須在佈病之後,否則 A3 先把人都送走"
       },
       {
-        "sleep_sec": 240,
-        "maintain": {
-          "prefix": "sp",
-          "to": "s15_c0"
-        },
-        "note": "病期維持 5 分鐘:UE 一直被拉回 s15,失敗率才會持續而不是曇花一現"
+        "sleep_sec": 300,
+        "note": "病期 5 分鐘"
       }
     ]
   }
