@@ -249,6 +249,17 @@ class Command(BaseCommand):
                         "sleep" if "sleep_sec" in st else st.get("do", "?"))
                 self.stdout.write(f"   {i}. {kind:11s} {st.get('note', '')}")
             return
+        # 佈病前先把基準鄰區表種出來。
+        # 2026-08-27 第 1 題實測:時間軸在場景套用當下就跑,而 NRT 是**延遲種**的
+        # (第一次 ANR 查詢時才 seed),於是「刪關係」刪到一個空表(rows=0),
+        # 種子稍後把關係建起來 —— 病灶等於沒佈,而日誌只寫 rows=0,看起來像
+        # 「本來就沒有這條關係」的正常情形。
+        # 舊流程沒這問題,是因為人是在場景跑起來之後才手動佈病的;
+        # 自動化把觸發點提前了,就踩到這個順序。
+        if not R.objects.exists():
+            from main.apps.cu_cp.services.business.anr_seeder import seed_from_cells
+            seed_from_cells()
+            self.stdout.write(f"[fixture] 基準鄰區表為空 → 先種({R.objects.count()} 條)")
         self.stdout.write(f"[fixture] {sid}:{len(steps)} 個步驟開始")
 
         _first = int(opts.get("from_step") or 1)
@@ -403,7 +414,12 @@ class Command(BaseCommand):
                 n = R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).delete()[0]
                 if both:
                     n += R.objects.filter(source_cell_id=st["tgt"], target_cgi=st["src"]).delete()[0]
-                self.stdout.write(f"[fixture] {i}. 刪關係 {st['src']}↔{st['tgt']} rows={n} {note}")
+                if n == 0:
+                    self.stdout.write(
+                        f"[fixture] {i}. ⚠️ 刪關係 {st['src']}↔{st['tgt']} **刪到 0 筆** —— "
+                        f"病灶可能沒佈成(關係還沒種出來?名稱打錯?){note}")
+                else:
+                    self.stdout.write(f"[fixture] {i}. 刪關係 {st['src']}↔{st['tgt']} rows={n} {note}")
             elif act == "cell":
                 # 改 cell 的組態欄位(pci / is_barred / created_at…)。
                 # 第 10 題改 PCI 造出過期對應、第 11 題把 created_at 設成「剛剛」

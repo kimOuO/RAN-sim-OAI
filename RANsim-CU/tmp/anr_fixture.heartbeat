@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 1571, "ts": 1787815585.222707, "step": 4, "kind": "wait_until", "note": "等 xApp 止血(此時病徵已累積足夠)"}
+{"scenario": "anr_xn_discovery", "pid": 109145, "ts": 1787816273.4641893, "step": 4, "kind": "wait_until", "note": "等 xApp 止血(此時病徵已累積足夠)"}
