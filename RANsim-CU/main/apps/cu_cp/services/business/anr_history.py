@@ -56,15 +56,40 @@ _SNAPSHOT_PATH = "/app/tmp/anr_history.json"
 _SNAPSHOT_MIN_INTERVAL_SEC = 60.0
 
 
+_RESET_MARK = "/app/tmp/anr_history.reset"
+
+
 class _Store:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._d: dict[str, deque[tuple[float, float]]] = {}
         self._last_snap = 0.0
+        self._seen_reset = 0.0
+
+    def _sync_reset(self) -> None:
+        """跨行程的清除。
+
+        2026-08-27:時間軸是獨立行程,它呼叫 reset() 只清得掉自己的記憶體;
+        web worker 各有一份,原封不動。於是「清場」之後觀測面仍帶著上一場的樣本,
+        而且因為那些樣本夠舊,長窗基準算得出 0.0 —— 本該是 null(沒有歷史)。
+        `0` 與 `null` 在這裡差別很大:baselineLong=0 會讓「current ≫ 長窗基準」
+        恆真,慢性病灶那一支永遠走不到,而且不會報錯。
+        用一個標記檔傳遞清除:誰清都寫時戳,各行程在讀寫前比對自己看過的時戳。
+        """
+        import os as _o
+        try:
+            m = _o.stat(_RESET_MARK).st_mtime
+        except OSError:
+            return
+        if m > self._seen_reset:
+            self._d.clear()
+            self._last_snap = 0.0
+            self._seen_reset = m
 
     def observe(self, key: str, value: float, now: float | None = None) -> None:
         now = now if now is not None else time.time()
         with self._lock:
+            self._sync_reset()
             dq = self._d.get(key)
             if dq is None:
                 dq = self._d[key] = deque(maxlen=_MAX_SAMPLES)
@@ -159,9 +184,22 @@ class _Store:
         return n
 
     def reset(self) -> None:
+        import os as _o
         with self._lock:
             self._d.clear()
             self._last_snap = 0.0
+            try:
+                _o.makedirs(_o.path.dirname(_RESET_MARK), exist_ok=True)
+                with open(_RESET_MARK, "w") as f:
+                    f.write(str(time.time()))
+                self._seen_reset = _o.stat(_RESET_MARK).st_mtime
+            except OSError:
+                pass
+            # 快照也要一起清,否則行程重啟又把舊樣本讀回來
+            try:
+                _o.remove(_SNAPSHOT_PATH)
+            except OSError:
+                pass
 
 
 _store = _Store()
