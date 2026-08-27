@@ -72173,45 +72173,75 @@
   "anr_fixture": {
     "steps": [
       {
-        "do": "cut",
-        "src": "s25_c0",
-        "tgt": "n35_c0",
-        "note": "佈病:剪掉這段訊號相當地帶真正需要的關係"
-      },
-      {
-        "do": "move_ues",
-        "prefix": "mm",
-        "to": "s25_c0",
-        "note": "坑2:佈病前 RLF 重建已把 UE 帶去誘餌 n37。來源歸屬不在 s25 的話,xApp 會替 n37 建關係,考點驗不到"
-      },
-      {
-        "sleep_sec": 180,
-        "maintain": {
-          "prefix": "mm",
-          "to": "s25_c0"
-        },
-        "note": "主線觀察 7 分鐘:xApp 應偵測缺漏並自動補上關係"
-      },
-      {
         "do": "config",
         "set": {
-          "ANR_INTRA_ENABLED": false
+          "ANR_HISTORY_SAMPLE_SEC": 60
         },
-        "note": "停用分支:把 gNB 的 ANR 自動建立功能關掉。此後 xApp 的新增請求應被拒,它只能通報管理面而不得自行寫入"
+        "note": "測試壓縮 60s/窗"
+      },
+      {
+        "do": "relation",
+        "src": "s25_c0",
+        "tgt": "n35_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "主線關係(將被剪的那條)"
+      },
+      {
+        "do": "relation",
+        "src": "n35_c0",
+        "tgt": "s25_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "反向"
+      },
+      {
+        "do": "relation",
+        "src": "s25_c0",
+        "tgt": "n37_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {},
+        "note": "誘餌:低使用量關係,卷面明令不得當根因"
+      },
+      {
+        "sleep_sec": 180,
+        "note": "健康基準期(無 maintain —— 第1題教訓)"
+      },
+      {
+        "do": "assert",
+        "window_sec": 120,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "rlf_count",
+            "cell": "s25_c0",
+            "max": 2
+          },
+          {
+            "metric": "relation_exists",
+            "src": "s25_c0",
+            "tgt": "n35_c0",
+            "min": 1
+          }
+        ],
+        "note": "基準期健康度"
       },
       {
         "do": "cut",
         "src": "s25_c0",
         "tgt": "n35_c0",
-        "note": "再剪一次同一條關係 —— 這次 xApp 想補也補不了,考的是它會不會改成只通報"
+        "note": "佈病:剪掉訊號相當地帶真正需要的關係"
       },
       {
-        "sleep_sec": 180,
-        "maintain": {
-          "prefix": "mm",
-          "to": "s25_c0"
-        },
-        "note": "停用分支觀察 7 分鐘:應只看到 ADD_REJECTED 與通報,不得出現成功的自動建立"
+        "sleep_sec": 420,
+        "note": "病期 7 分鐘:UE 在縫隙處量測持續、換手被 NRT gate 擋"
       }
     ]
   }
