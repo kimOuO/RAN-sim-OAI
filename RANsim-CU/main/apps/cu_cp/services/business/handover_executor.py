@@ -163,7 +163,14 @@ def execute_f1_handover(
     # 導致每條新生關係都被稽核分支指控成「無據封鎖」(今日 68 筆假陽性)。
     #   · 單向:只設正向,反向由對端 gNB 自行驗證(同 Xn 反向自建原則)
     #   · 持久:True 不再翻回 false —— 它是歷史事實不是即時狀態;關係刪除重建才歸零
-    #   · 不計 MANUAL:那是佈病腳本的搬移,非組網事件,計入會污染 fixture 的 hoValidated
+    #   · 不計 MANUAL —— 理由是**語意**而非測試環境(2026-08-27 RIC 第六十三輪更正):
+    #     MANUAL 換手成功其實也證明這條路可用,所以「污染 fixture」不是正確理由。
+    #     正確理由是 hoValidated 服務第 12 題的封鎖推論,而那個推論問的是
+    #     「有沒有人**想去**卻去不成」—— 屬於「使用者要不要」的問題,佈場搬 UE 不算需求。
+    #     分界線(對兩邊都適用):判準問「使用者要不要」→ MANUAL 是雜訊;
+    #                             判準問「這條路通不通」→ MANUAL 是有效實驗
+    #                             (第 6 題 Xn 恢復、第 7 題探測都採計 MANUAL)。
+    #     理由寫錯會讓下一個人在別的地方套錯,所以結論不變但理由必須改。
     if trigger != "MANUAL":
         try:
             from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _R

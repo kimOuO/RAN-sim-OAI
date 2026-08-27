@@ -137,6 +137,7 @@ def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
     meas_rate = _meas_rate_by_relation(window_min)
     # 逐關係的換錯 cell 速率(v10 新增:9.3.38 物件層級含 NRCellRelation)
     wrong = _to_wrong_cell_by_relation(window_min)
+    by_trigger = _att_by_trigger(window_min)
     out = []
     for r in v8_rows:
         src, tgt = r["sourceCellNcgi"], r["targetCellGlobalId"]
@@ -164,6 +165,10 @@ def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
             # (「準備＋執行」指涵蓋範圍,不是要加總),RIC 2026-08-25 指出。
             "MM.HoFailCumulativeSinceCreation": dict(cum),
             "HO.IntraSys.ToWrongCellRate": wr,
+            # 分項嘗試率:A3_TTT=UE 量測自然觸發、E2_RIC_CONTROL=xApp 下令、
+            # MANUAL=佈場維持機制。合計不必等於 MM.HoExeAttRatePerMin
+            # (後者只計執行段嘗試)。
+            "attByTrigger": by_trigger.get((src, tgt), {}),
             # 第 11 題雙歸零 aging 的另一半 —— 量測面
             "measSampleRatePerMin": meas_rate.get((src, tgt), 0.0),
             "trendLast30Min_attRatePerMin": _trend(f"rel.att.{key}", att),
@@ -176,6 +181,35 @@ def _per_relation_v10(window_min: float) -> list[dict[str, Any]]:
 
 def _trend(key: str, cur: float) -> list[float]:
     return metric(key, cur, "PerMin")["trendLast30Min"]
+
+
+def _att_by_trigger(window_min: float) -> dict[tuple[str, str], dict[str, float]]:
+    """逐關係的換手嘗試率,**依觸發來源分項**(RIC 第六十三輪)。
+
+    為什麼需要:我方的「維持條件」靠強制換手把 UE 拉回來源 cell,每一次都會
+    留下一筆成功的換手事件。於是佈場的動作變成 xApp 判準的輸入 —— 一條沒有
+    任何使用者自然前往的關係,在觀測面上看起來健康活躍。
+
+    不在這裡濾掉 MANUAL,是因為**它對不同題的意義相反**(RIC 的分界線):
+      問「使用者要不要」的判準(第 11 題雙歸零、第 12 題封鎖稽核)
+        → MANUAL 是雜訊,算了會讓該刪的關係永不歸零、讓被擋的關係看似沒被擋
+      問「這條路通不通」的判準(第 6 題 Xn 恢復、第 7 題有害鄰居探測)
+        → MANUAL 是有效實驗:強制換手一樣要走 Xn、一樣會遇到目標的接取問題
+    所以由消費端分題決定,我方只負責讓它可辨識。
+
+    trigger 是直接記錄的事實(這次換手由誰發起),不是推導值 —— 與 `by` 同
+    性質,不違反「事件只回放動作、不加推導欄位」的介面約定。
+    """
+    now = TimestampService.now()
+    win_start = now - timedelta(minutes=window_min)
+    out: dict[tuple[str, str], dict[str, int]] = {}
+    for src, tgt, trg in HandoverEvent.objects.filter(
+            started_at__gte=win_start).exclude(source_cell="").values_list(
+            "source_cell", "target_cell", "trigger"):
+        out.setdefault((src, tgt), {})
+        out[(src, tgt)][trg or "UNKNOWN"] = out[(src, tgt)].get(trg or "UNKNOWN", 0) + 1
+    w = max(window_min, 1e-9)
+    return {k: {t: round(n / w, 3) for t, n in v.items()} for k, v in out.items()}
 
 
 def _to_wrong_cell_by_relation(window_min: float) -> dict[tuple[str, str], float]:

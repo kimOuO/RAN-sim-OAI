@@ -194,3 +194,35 @@
     | 2026-08-18 | ANR 驗測 campaign 續(第2/3/4/9題):新增觀測欄位 **`anrIntraEnabled`**(停用時 ADD 回 `REJECTED_ANR_DISABLED`)、**`nrtCapacity{limit,used}`**(滿載回 `ADD_REJECTED`/`NRT_CAPACITY_REACHED`)、**`sourceCellNcgi`/`bySourceCell`**(量測聚合來源歸屬)、`relationChangeEvents.reason` | §5b |
     | 2026-08-18 | 行為面:**量測回報門檻** `MEAS_REPORT_MIN_RSRP_DBM`(38.331 reportConfig,原本所有 cell 照報)、**`cellBarred`** `CellConfig.is_barred`(38.331,重建改選 suitable cell,端點 `/CU/E2/Anr/set_barred`)、**Xn 反向關係自動建立**(38.300 步驟4c,延遲 `ANR_XN_SETUP_DELAY_SEC`,審計 `by="gnb-xn"`) | §5b |
     | 2026-08-18 | A3 預設由 11dB/3000ms 調為 **3dB/300ms** — 原值在 ANR 劇本不換手,先前為逼出換手用的 1.5dB/80ms 必然乒乓、污染各題排除表的「MRO 平坦」條件(TooEarly 4.0→1.6/min,HO 仍正常) | compose / A3 |
+
+### attByTrigger(2026-08-27 新增,RIC 第六十三輪)
+
+`kpmIndication.perNeighbourRelation[]` 新增 `attByTrigger` —— 逐關係的換手嘗試率
+依**觸發來源**分項:
+
+```jsonc
+"MM.HoExeAttRatePerMin": 0.5,
+"attByTrigger": {"A3_TTT": 0.517}          // UE 量測自然觸發
+"attByTrigger": {"MANUAL": 0.083}          // 佈場維持機制強制搬移
+"attByTrigger": {"E2_RIC_CONTROL": 1.2}    // xApp 下令換手
+```
+
+**為什麼需要**:sim 的「維持條件」靠強制換手把 UE 拉回來源 cell,每次都留下一筆
+成功的換手事件 —— 佈場的動作因此變成 xApp 判準的輸入,一條沒有任何使用者自然
+前往的關係在觀測面上看起來健康活躍(2026-08-27 第 6 題實錄:`n33→s07`
+succ=1.0 n=5,五筆全是 MANUAL)。
+
+**消費端規則(分題,不可一律套)**:
+
+| 判準問的是 | MANUAL | 適用題 |
+|---|---|---|
+| 使用者**要不要** | 不算 | 11(雙歸零)、12(封鎖稽核)、hoValidated |
+| 這條路**通不通** | 採計 | 6(Xn 恢復)、7(有害鄰居探測) |
+
+強制換手一樣要走 Xn、一樣會遇到目標的接取問題,所以對「通不通」它是有效實驗。
+
+**sim 側不濾**:濾掉會讓「UE 確實移動了」消失,`bySourceCell` 的歸屬也會對不上。
+`trigger` 是直接記錄的事實(誰發起的),與 `by` 同性質,不違反「事件只回放動作、
+不加推導欄位」的介面約定。
+
+**衍生的介面約定**:凡是佈場為了維持場景而產生的事件,都必須可辨識。
