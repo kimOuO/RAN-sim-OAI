@@ -72183,6 +72183,35 @@
         "prefix": "mm",
         "to": "s25_c0",
         "note": "坑2:佈病前 RLF 重建已把 UE 帶去誘餌 n37。來源歸屬不在 s25 的話,xApp 會替 n37 建關係,考點驗不到"
+      },
+      {
+        "sleep_sec": 420,
+        "maintain": {
+          "prefix": "mm",
+          "to": "s25_c0"
+        },
+        "note": "主線觀察 7 分鐘:xApp 應偵測缺漏並自動補上關係"
+      },
+      {
+        "do": "config",
+        "set": {
+          "ANR_INTRA_ENABLED": false
+        },
+        "note": "停用分支:把 gNB 的 ANR 自動建立功能關掉。此後 xApp 的新增請求應被拒,它只能通報管理面而不得自行寫入"
+      },
+      {
+        "do": "cut",
+        "src": "s25_c0",
+        "tgt": "n35_c0",
+        "note": "再剪一次同一條關係 —— 這次 xApp 想補也補不了,考的是它會不會改成只通報"
+      },
+      {
+        "sleep_sec": 420,
+        "maintain": {
+          "prefix": "mm",
+          "to": "s25_c0"
+        },
+        "note": "停用分支觀察 7 分鐘:應只看到 ADD_REJECTED 與通報,不得出現成功的自動建立"
       }
     ]
   }

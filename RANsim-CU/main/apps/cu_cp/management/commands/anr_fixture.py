@@ -256,6 +256,10 @@ class Command(BaseCommand):
         # 「本來就沒有這條關係」的正常情形。
         # 舊流程沒這問題,是因為人是在場景跑起來之後才手動佈病的;
         # 自動化把觸發點提前了,就踩到這個順序。
+        # 清掉上一場的執行期覆寫 —— 覆寫是劇本宣告的,不該跨場延續
+        # (env 注入跨場撞名的教訓,坑目錄第 8 條)
+        from main.utils.env_loader import clear_overrides
+        clear_overrides()
         if not R.objects.exists():
             from main.apps.cu_cp.services.business.anr_seeder import seed_from_cells
             seed_from_cells()
@@ -406,6 +410,14 @@ class Command(BaseCommand):
                     f.write_text(f"{st['cell']},{st.get('cause', 'RandomAccessProblem')}\n")
                     self.stdout.write(
                         f"[fixture] {i}. 注入 {st['cell']} → {st.get('cause','RandomAccessProblem')} {note}")
+            elif act == "config":
+                # 執行期覆寫「其實是劇本一部分」的設定(第 2 題停用 ANR 自動建立、
+                # 第 9 題指定鄰區表容量)。這些值原本只能改環境變數,
+                # 而改它要重啟容器 —— 重啟會殺掉時間軸、清掉量測歷史、
+                # 打斷 xApp 的計時,佈場的動作反而干擾被測系統。
+                from main.utils.env_loader import set_overrides
+                cur = set_overrides(dict(st.get("set") or {}))
+                self.stdout.write(f"[fixture] {i}. 執行期設定 {st.get('set')} → 現行 {cur} {note}")
             elif act == "cut":
                 # 刪關係 —— 缺漏鄰區型的病因(第 1/2/4/8 題)。
                 # 預設雙向刪:單向刪的話對端 gNB 的 Xn 反向自建會把它補回來,

@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 109145, "ts": 1787816273.4641893, "step": 4, "kind": "wait_until", "note": "等 xApp 止血(此時病徵已累積足夠)"}
+{"scenario": "anr_xn_discovery", "pid": 20, "ts": 1787817355.7392194, "step": 7, "kind": "sleep", "note": "低速恢復 20 分鐘:每 60 秒只搬 1 台 → 換手約 1-2 次/分。樣本窗填不滿,強制走 xApp 的瞬時恢復路徑(A1)"}

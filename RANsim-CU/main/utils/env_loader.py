@@ -17,6 +17,64 @@ load_dotenv(_BASE_DIR / ".env")
 _TRUTHY = {"1", "true", "yes", "on", "y", "t"}
 
 
+# ── 執行期覆寫 ──────────────────────────────────────────────────────────
+# 為什麼需要:有些「環境設定」其實是**劇本的一部分**(第 2 題要停用 ANR 自動建立、
+# 第 9 題要指定鄰區表容量)。放在環境變數裡的話,改一個值就得重啟容器,
+# 而重啟會殺掉正在跑的時間軸、清掉量測歷史、打斷 xApp 的計時 ——
+# 佈場的動作反而干擾了被測的系統。
+#
+# 這一層讓劇本能在運行中覆寫,不必重啟。覆寫寫在檔案而不是行程記憶體,
+# 因為讀取端散在多個 worker,各自有獨立的記憶體。
+# 用 mtime 判斷是否需要重讀,避免每次讀值都碰檔案內容。
+_OVERRIDE_PATH = Path("/app/tmp/env_override.json")
+_ov_cache: dict[str, Any] = {}
+_ov_mtime: float = -1.0
+
+
+def _overrides() -> dict[str, Any]:
+    global _ov_cache, _ov_mtime
+    try:
+        m = _OVERRIDE_PATH.stat().st_mtime
+    except OSError:
+        if _ov_mtime != -1.0:
+            _ov_cache, _ov_mtime = {}, -1.0
+        return _ov_cache
+    if m != _ov_mtime:
+        import json as _j
+        try:
+            _ov_cache = _j.loads(_OVERRIDE_PATH.read_text()) or {}
+        except (OSError, ValueError):
+            _ov_cache = {}
+        _ov_mtime = m
+    return _ov_cache
+
+
+def set_overrides(values: dict[str, Any], *, replace: bool = False) -> dict[str, Any]:
+    """劇本設定執行期覆寫。replace=True 先清掉舊的(換場景時用,防跨場污染)。"""
+    import json as _j
+    import os as _os
+    import tempfile
+    cur = {} if replace else dict(_overrides())
+    cur.update({k: v for k, v in values.items() if v is not None})
+    try:
+        _OVERRIDE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(_OVERRIDE_PATH.parent))
+        with _os.fdopen(fd, "w") as f:
+            _j.dump(cur, f)
+        _os.replace(tmp, _OVERRIDE_PATH)
+    except OSError:
+        pass
+    return cur
+
+
+def clear_overrides() -> None:
+    import os as _os
+    try:
+        _os.remove(_OVERRIDE_PATH)
+    except OSError:
+        pass
+
+
 class EnvVarMissing(RuntimeError):
     """Raised when a required env var is absent."""
 
@@ -29,6 +87,12 @@ def get_str(key: str, default: str | None = None, *, required: bool = False) -> 
 
 
 def get_int(key: str, default: int | None = None, *, required: bool = False) -> int:
+    ov = _overrides()
+    if key in ov:
+        try:
+            return int(ov[key])
+        except (TypeError, ValueError):
+            pass
     raw = os.environ.get(key)
     if raw is None or raw == "":
         if required:
@@ -55,6 +119,10 @@ def get_float(key: str, default: float | None = None, *, required: bool = False)
 
 
 def get_bool(key: str, default: bool = False) -> bool:
+    ov = _overrides()
+    if key in ov:
+        v = ov[key]
+        return bool(v) if isinstance(v, bool) else str(v).strip().lower() in _TRUTHY
     raw = os.environ.get(key)
     if raw is None:
         return default
