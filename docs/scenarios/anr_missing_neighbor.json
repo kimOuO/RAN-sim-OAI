@@ -72155,10 +72155,39 @@
   "anr_fixture": {
     "steps": [
       {
+        "do": "config",
+        "set": {
+          "ANR_HISTORY_SAMPLE_SEC": 60
+        },
+        "note": "測試壓縮:取樣改 60 秒一窗,卷面的「連續 6 窗」= 6 分鐘而非 30 分鐘。判定條件不變,只縮時間尺度"
+      },
+      {
+        "do": "move_ues",
+        "prefix": "ru",
+        "to": "src_c0",
+        "note": "UE 集中在來源 cell"
+      },
+      {
+        "sleep_sec": 180,
+        "maintain": {
+          "prefix": "ru",
+          "to": "src_c0"
+        },
+        "note": "健康基準期 3 分鐘:先讓 RLF 的基準值建立起來。卷面現況是「由 0.2 升至 3.4」,沒有基準期就沒有『升』可言"
+      },
+      {
         "do": "cut",
         "src": "src_c0",
         "tgt": "nbr_c0",
         "note": "佈病:刪掉該有的鄰居關係。UE 量得到對面卻無從換手,只能撐到斷線再重連"
+      },
+      {
+        "sleep_sec": 600,
+        "maintain": {
+          "prefix": "ru",
+          "to": "src_c0"
+        },
+        "note": "病期 10 分鐘:讓斷線重連反覆發生,RLF 升高並持續 —— 對方要從重建統計反推缺哪一條,病徵必須累積夠久"
       }
     ]
   }

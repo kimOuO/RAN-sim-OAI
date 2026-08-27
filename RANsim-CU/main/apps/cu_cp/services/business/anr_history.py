@@ -33,7 +33,19 @@ import time
 from collections import deque
 from typing import Any
 
-_SAMPLE_INTERVAL_SEC = 300.0     # 5 分鐘一窗
+# 取樣間隔改為可由劇本宣告(執行期覆寫,不必重啟)。
+# 為什麼:卷面多題的恢復基準是「連續 6 窗維持」,6 × 5 分鐘 = 30 分鐘,
+# 十二題各跑一次就是一整天。壓到 60 秒一窗後 6 窗只要 6 分鐘,
+# 而**判定邏輯完全不變** —— 仍然是連續 6 窗,只是每窗代表的實際時間變短。
+# 這與第 11 題把 6 小時雙歸零壓成 5 分鐘是同一種壓縮:縮的是時間尺度,不是條件。
+# ⚠️ 壓縮後 baseline 的「30 分鐘以前」與長窗的「4 小時以前」會跟著等比縮短,
+#    所以壓縮過的場次不能拿來當基準污染的證據。
+def _sample_interval() -> float:
+    from main.utils.env_loader import get_float as _gf
+    return float(_gf("ANR_HISTORY_SAMPLE_SEC", default=300.0))
+
+
+_SAMPLE_INTERVAL_SEC = 300.0     # 5 分鐘一窗(預設;實際取值走 _sample_interval())
 _WINDOWS = 6                     # trendLast30Min = 6 窗 = 30 分鐘
 _MAX_SAMPLES = 288               # 保 24 小時(288 × 5min),給 baseline 用
 _BASELINE_AGE_SEC = 1800.0       # 30 分鐘之前的樣本才算「歷史」
@@ -56,7 +68,7 @@ class _Store:
             dq = self._d.get(key)
             if dq is None:
                 dq = self._d[key] = deque(maxlen=_MAX_SAMPLES)
-            fresh = not (dq and (now - dq[-1][0]) < _SAMPLE_INTERVAL_SEC)
+            fresh = not (dq and (now - dq[-1][0]) < _sample_interval())
             if fresh:                       # 節流:同一窗內只留第一筆
                 dq.append((now, float(value)))
         # 落盤的節流獨立於取樣的節流:一次 indication 會依序 observe 幾十個鍵,
@@ -79,7 +91,8 @@ class _Store:
             dq = self._d.get(key)
             if not dq:
                 return round(float(current), 3)
-            old = [v for t, v in dq if (now - t) >= _BASELINE_AGE_SEC]
+            scale = _sample_interval() / 300.0
+            old = [v for t, v in dq if (now - t) >= _BASELINE_AGE_SEC * scale]
             if old:
                 return round(statistics.median(old), 3)
             return round(dq[0][1], 3)       # 還沒有夠舊的 → 用最舊一筆
@@ -96,7 +109,8 @@ class _Store:
             dq = self._d.get(key)
             if not dq:
                 return None
-            old = [v for t, v in dq if (now - t) >= _BASELINE_LONG_AGE_SEC]
+            scale = _sample_interval() / 300.0
+            old = [v for t, v in dq if (now - t) >= _BASELINE_LONG_AGE_SEC * scale]
         return round(statistics.median(old), 3) if old else None
 
     # ── 落盤 ────────────────────────────────────────────────────────────
@@ -138,7 +152,7 @@ class _Store:
         with self._lock:
             for k, pairs in data.items():
                 keep = [(float(t), float(v)) for t, v in pairs
-                        if (now - float(t)) < _MAX_SAMPLES * _SAMPLE_INTERVAL_SEC]
+                        if (now - float(t)) < _MAX_SAMPLES * _sample_interval()]
                 if keep:
                     self._d[k] = deque(keep[-_MAX_SAMPLES:], maxlen=_MAX_SAMPLES)
                     n += 1

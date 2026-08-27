@@ -108,6 +108,12 @@ def get_int(key: str, default: int | None = None, *, required: bool = False) -> 
 
 
 def get_float(key: str, default: float | None = None, *, required: bool = False) -> float:
+    ov = _overrides()
+    if key in ov:
+        try:
+            return float(ov[key])
+        except (TypeError, ValueError):
+            pass
     raw = os.environ.get(key)
     if raw is None or raw == "":
         if required:
