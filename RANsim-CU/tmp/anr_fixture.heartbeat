@@ -1,1 +1,1 @@
-{"scenario": "anr_unknown_cell", "pid": 79962, "ts": 1787849977.6038578, "step": 7, "kind": "sleep", "note": "觀察 4 分鐘:UE 持續量到 unk 的實體編號,反查(cgi_resolve)應得唯一解"}
+{"scenario": "anr_pci_confusion", "pid": 81432, "ts": 1787850141.7982464, "step": 5, "kind": "sleep", "note": "觀察 4 分鐘:UE 回報 pci=7,反查應出現兩顆(confusion=true)"}
