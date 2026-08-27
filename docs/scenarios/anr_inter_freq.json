@@ -72211,28 +72211,50 @@
   "anr_fixture": {
     "steps": [
       {
+        "do": "config",
+        "set": {
+          "ANR_HISTORY_SAMPLE_SEC": 60
+        },
+        "note": "測試壓縮"
+      },
+      {
+        "do": "relation",
+        "src": "s11_c0",
+        "tgt": "n50_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "同頻既有關係(頻率清單的 3.5G 來源)"
+      },
+      {
         "do": "cut",
         "src": "s11_c0",
         "tgt": "f55_c0",
-        "note": "佈病:剪掉低頻層第一條"
+        "note": "剪跨頻層一"
       },
       {
         "do": "cut",
         "src": "s11_c0",
         "tgt": "f61_c0",
-        "note": "剪掉第二條"
+        "note": "剪跨頻層二"
       },
       {
         "do": "cut",
         "src": "s11_c0",
         "tgt": "f68_c0",
-        "note": "剪掉第三條 —— 整層都沒有路,補一條不夠"
+        "note": "剪跨頻層三 —— 2.1G 整層無路,頻率清單只剩 3.5G"
       },
       {
         "do": "move_ues",
         "prefix": "if",
         "to": "s11_c0",
-        "note": "坑1:壅塞與來源歸屬都要在 s11"
+        "note": "UE 歸位(一次性)"
+      },
+      {
+        "sleep_sec": 240,
+        "note": "觀察:UE 在 s11 邊緣量到成批 2.1G 強 PCI,而已知頻率清單無 2.1G"
       }
     ]
   }
