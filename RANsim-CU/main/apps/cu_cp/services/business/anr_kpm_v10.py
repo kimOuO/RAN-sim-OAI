@@ -31,6 +31,27 @@ logger = get_logger(__name__)
 _PREP_CAUSES = {"TXnRELOCprepExpiry", "CellNotAvailable", "NoRadioResourcesAvailable"}
 
 
+
+def _a3_ie() -> dict:
+    """A3 換手判準的當前生效值,掛在每個 servingCell 底下。
+
+    值域語意:UE 量到 目標 - 服務 > a3Offset + hysteresis 且持續 timeToTrigger
+    才會觸發換手 —— 所以 xApp 要判「這個增益夠不夠大到該建關係」時,
+    門檻應該由這兩個值推出來,而不是寫死一個常數。
+    a3Enabled=false 時代表本場不跑自動換手(例如只用 RIC 控制換手的場景),
+    此時 xApp 不應該以「沒有換手嘗試」當作關係無用的證據。
+    """
+    from main.apps.cu_cp.services.optional.mobility.a3_handover_calculation import (
+        get_a3_config,
+    )
+    c = get_a3_config()
+    return {
+        "a3Enabled": bool(c.enabled),
+        "a3Offset": round(float(c.offset_db), 2),
+        "hysteresis": round(float(c.hys_db), 2),
+        "timeToTriggerMs": int(c.ttt_ms),
+    }
+
 def _split_fail_causes(causes: dict[str, float]) -> tuple[dict, dict]:
     """把合併的失敗原因拆成準備/執行兩支(v10 perNeighbourRelation 要分列)。
 
@@ -273,10 +294,18 @@ def indication_v10(cell_id: str | None = None,
         # 兩者各說各話,RIC 2026-08-25 指出。改為由實際窗推導,不可能再漂。
         "granularityPeriod": f"{int(round(window_min * 60))}s",
         "e2NodeInformation": {
+            # a3Offset / hysteresis(RIC 第五十六輪 B4):xApp 用它算門檻,
+            # 而不是寫死 —— 第 12 題第五訊號 max(1.0, a3Offset+hysteresis)、
+            # 第 2 題 MARGIN_HO 都要讀值。
+            # ⚠️ 誠實揭露:A3 參數在本模擬器是**全域單例**(A3Config),不是 per-cell。
+            # 這裡逐 cell 輸出只是為了對齊 xApp 的讀取位置,同一時刻各 cell 必然相同;
+            # 劇本覆寫是換掉這個全域值,不是只換某顆 cell。
             "servingCells": [
                 {"ncgi": c.cell_id, "physicalCellId": c.pci,
                  "arfcn": nr_arfcn_from_ghz(c.frequency_ghz),
-                 "radioAccessTechnology": "NR"} for c in cells],
+                 "radioAccessTechnology": "NR",
+                 "barred": bool(c.is_barred),
+                 **_a3_ie()} for c in cells],
             "neighbourCellRelations": [_relation_ie_v10(r) for r in rel_qs],
             "frequencyRelations": anr_kpm.freq_relations(),
             # limit 是 per-cell 語意(每 cell 的 NRT 條目上限),used 也必須 per-cell ——

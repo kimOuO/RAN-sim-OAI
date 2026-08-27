@@ -101,6 +101,8 @@ class AnrQueryActor:
         if not NrCellRelation.objects.exists():
             seed_from_cells()
 
+        from main.apps.cu_cp.services.business.anr_kpm_v10 import _a3_ie
+
         cells_qs = CellConfig.objects.filter(is_active=True)
         if cell_id:
             cells_qs = cells_qs.filter(cell_id=cell_id)
@@ -115,6 +117,9 @@ class AnrQueryActor:
                 # UE 的 IDLE 選網卻沒有 —— 第 3 題深邊緣 fixture 因此被 UE
                 # 自己駐到 barred 的 n91 上而崩掉。
                 "barred": bool(c.is_barred),
+                # RIC 第五十六輪 B4 —— 與 KPM 觀測面同一組欄位、同一個來源,
+                # 兩邊若各自取值,劇本覆寫時就會出現一面舊一面新。
+                **_a3_ie(),
             }
             for c in cells_qs
         ]
