@@ -302,6 +302,14 @@ class Command(BaseCommand):
                         target_arfcn=(nr_arfcn_from_ghz(c.frequency_ghz) if c else 633333),
                         xn_x2_established=True, created_at=created, updated_at=now)
                     self.stdout.write(f"[fixture] {i}. (關係不存在 → 先建 {st['src']}→{st['tgt']})")
+                # created_age_sec 也要能作用在**已存在**的關係上。
+                # 2026-08-27 實測:場景套用時 CU 會自己種出 NRT,關係因此已存在,
+                # create 分支不會走到,回填就靜默失效 —— 而「這條關係有多老」
+                # 是劇本宣告的前提,不該取決於它是誰建的。
+                age = float(st.get("created_age_sec") or 0)
+                if age:
+                    cutoff = TimestampService.now() - timedelta(seconds=age)
+                    fields.setdefault("created_at", cutoff)
                 n = R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).update(**fields)
                 self.stdout.write(f"[fixture] {i}. set {st['src']}→{st['tgt']} {st.get('set')} rows={n} {note}")
             elif act == "move_ues":
