@@ -208,15 +208,25 @@ def start_anr_fixture(scenario_id: str) -> bool:
     失敗不擋場景啟動:佈病失敗頂多是這一輪沒病,場景本身仍然可用。
     """
     url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Anr/Fixture/start"
-    try:
-        r = requests.post(url, json={"scenario_id": scenario_id}, timeout=_TIMEOUT_SEC)
-        if not r.ok:
-            logger.warning("start_anr_fixture non-OK %s: %s", r.status_code, r.text[:200])
-            return False
-        d = (r.json() or {}).get("data") or {}
-        if d.get("started"):
-            logger.info("scenario %s 病徵時間軸已啟動(%s 步)", scenario_id, d.get("steps"))
-        return bool(d.get("started"))
-    except requests.RequestException as exc:
-        logger.warning("start_anr_fixture HTTP failed: %s", exc)
-        return False
+    # 重試:場景切換時 CU 會重啟,這個呼叫常打在重啟中的 CU 上。
+    # 失敗的話「現行劇本」檔停留在上一題,連補跑都會被 guard 擋掉
+    # (2026-08-28 Q7 實測:自動佈病靜默失效,病沒佈成)。
+    # 最多等 60 秒 —— CU 重啟約 20~25 秒,60 秒還不通就是真的壞了。
+    import time as _t
+    last_exc: Exception | None = None
+    for attempt in range(6):
+        try:
+            r = requests.post(url, json={"scenario_id": scenario_id}, timeout=_TIMEOUT_SEC)
+            if r.ok:
+                d = (r.json() or {}).get("data") or {}
+                if d.get("started"):
+                    logger.info("scenario %s 病徵時間軸已啟動(%s 步,第 %d 次嘗試)",
+                                scenario_id, d.get("steps"), attempt + 1)
+                return bool(d.get("started"))
+            logger.warning("start_anr_fixture non-OK %s(第 %d 次): %s",
+                           r.status_code, attempt + 1, r.text[:150])
+        except requests.RequestException as exc:
+            last_exc = exc
+        _t.sleep(10)
+    logger.warning("start_anr_fixture 六次皆失敗: %s", last_exc)
+    return False
