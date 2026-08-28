@@ -1,1 +1,1 @@
-{"scenario": "anr_unknown_cell", "pid": 38114, "ts": 1787902047.7489524, "step": 12, "kind": "sleep", "note": "病期 5 分鐘(barred 持續執法):UE 持續量到 unk 的強訊號與實體編號,全域查無關係 —— 反查應得唯一解"}
+{"scenario": "anr_pci_confusion", "pid": 55574, "ts": 1787902894.9437635, "step": 6, "kind": "sleep", "note": "觀察 4 分鐘:UE 回報 pci=7,反查應出現兩顆(confusion=true)"}
