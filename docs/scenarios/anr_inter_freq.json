@@ -72218,6 +72218,10 @@
         "note": "測試壓縮"
       },
       {
+        "sleep_sec": 25,
+        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
+      },
+      {
         "do": "relation",
         "src": "s11_c0",
         "tgt": "n50_c0",
@@ -72256,6 +72260,7 @@
         "sleep_sec": 240,
         "note": "觀察:UE 在 s11 邊緣量到成批 2.1G 強 PCI,而已知頻率清單無 2.1G"
       }
-    ]
+    ],
+    "_boundary_note": "剪掉 s11→f* 後,f55/61/68 全域無人認識 —— 若對方 unknown 分支不以 arfcn 區分同頻/異頻,會與 interfreq 搶答(Q3/Q4 分類邊界的異頻版)。預註冊必問:unknown 對異頻候選是否讓位 interfreq"
   }
 }

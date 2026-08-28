@@ -72184,6 +72184,10 @@
         "note": "測試壓縮"
       },
       {
+        "sleep_sec": 25,
+        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
+      },
+      {
         "do": "relation",
         "src": "mid_c0",
         "tgt": "east_c7",

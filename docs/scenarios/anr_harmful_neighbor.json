@@ -36177,6 +36177,17 @@
     "_doc": "第7題三段節奏寫進劇本(RIC 第四十輪設計):佈病 → 等成對封鎖 → 跨過一次探測窗看到重封 → 才治好。第③步用『等重封』而非計時,確保 L4 的倍增鏈一定驗得到 —— 病灶若在首次探測前就好掉,只會驗到「封鎖→恢復」。",
     "steps": [
       {
+        "do": "config",
+        "set": {
+          "ANR_HISTORY_SAMPLE_SEC": 60
+        },
+        "note": "測試壓縮"
+      },
+      {
+        "sleep_sec": 25,
+        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
+      },
+      {
         "do": "inject",
         "cell": "nbr_c0",
         "cause": "RandomAccessProblem",

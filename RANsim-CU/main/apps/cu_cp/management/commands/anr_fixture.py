@@ -135,6 +135,19 @@ class Command(BaseCommand):
         except OSError:
             pass
 
+    def _enforce(self) -> None:
+        spec = getattr(self, "_enforce_spec", None) or {}
+        cells = spec.get("barred") or []
+        if not cells:
+            return
+        try:
+            from main.apps.cu_cp.models.cell_config import CellConfig as _CEF
+            n = _CEF.objects.filter(cell_id__in=cells, is_barred=False).update(is_barred=True)
+            if n:
+                self.stdout.write(f"[fixture]    ↻ 全程執法:{n} 顆 barred 被覆寫,已寫回")
+        except Exception:  # noqa: BLE001 — 執法失敗不拆時間軸
+            pass
+
     def _beat(self, sid, step_no, kind, note=""):
         """心跳:證明時間軸「活著」,而不是「日誌裡有行」。
 
@@ -264,6 +277,21 @@ class Command(BaseCommand):
             lock.parent.mkdir(parents=True, exist_ok=True)
             lock.write_text(str(os.getpid()))
         steps = _load_steps(sid)
+        # 時間軸層級執法(佈病狀態的「居住權」)。
+        # 佈病狀態全是外來戶:barred 寄居在協定管的 CellConfig 列裡,
+        # F1 upsert、場景佈建、teardown 都會「盡職地」把它修掉 ——
+        # 模擬器是為健康網路造的,佈病是在跟它的自癒機制打架。
+        # 對策不是追每個寫入者,而是宣告一次、整條時間軸持續執法:
+        # 每個等待/睡眠迴圈都把被覆寫的旗標寫回。per-step 的 enforce_barred
+        # 保留相容,這裡是全程版。
+        self._enforce_spec = {}
+        for d in SCENARIO_DIRS:
+            fp = d / f"{sid}.json"
+            if fp.exists():
+                import json as _j3
+                self._enforce_spec = (_j3.loads(fp.read_text(encoding="utf-8"))
+                                      .get("anr_fixture") or {}).get("enforce") or {}
+                break
         if not steps:
             self.stdout.write(f"[fixture] {sid} 沒有 anr_fixture 區塊,結束")
             return
@@ -324,6 +352,7 @@ class Command(BaseCommand):
                 _mt = 0.0
                 while time.time() < deadline:
                     _mt = self._maintain(st.get("maintain"), _mt)
+                    self._enforce()
                     self._beat(sid, i, "wait_until", note)
                     rel = R.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"]).first()
                     if rel is not None and all(
@@ -358,6 +387,7 @@ class Command(BaseCommand):
                 _mt = 0.0
                 while time.time() < deadline:
                     _mt = self._maintain(st.get("maintain"), _mt)
+                    self._enforce()
                     self._beat(sid, i, "wait_event", note)
                     qs = CE.objects.filter(source_cell_id=w["src"], target_cgi=w["tgt"],
                                            at__gte=t0)
@@ -401,6 +431,7 @@ class Command(BaseCommand):
                     # 卻不會執行,UE 整段留在目標側,行為確認又拿不到樣本。
                     # 宣告與執行不一致是最難看出來的一種壞:設定檔看起來完全正確。
                     _mt = self._maintain(st.get("maintain"), _mt)
+                    self._enforce()
                     self._beat(sid, i, "sleep", note)
                     time.sleep(min(POLL_SEC, max(0.1, _end - time.time())))
                 continue
