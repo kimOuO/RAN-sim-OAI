@@ -1,1 +1,1 @@
-{"scenario": "anr_xn_discovery", "pid": 101855, "ts": 1787904718.0222507, "step": 7, "kind": "sleep", "note": "恢復期 7 分鐘:每 20 秒搬 2 台 → 換手約 4-6 次/分。0.1.24 的 RECOVERED 判準是 succ_last50≥0.9 且樣本≥8(180s 窗)—— 舊版 0.1.7 的 A1 瞬時路徑已不存在,低速餵料會落 R5 SMO 而非 RECOVERED(2026-08-28 Q6 對閘發現)"}
+{"scenario": "anr_harmful_neighbor", "pid": 144096, "ts": 1787906807.089555, "step": 10, "kind": "inject", "note": "管理面把鄰居修好 → xApp 下次探測應判定恢復"}

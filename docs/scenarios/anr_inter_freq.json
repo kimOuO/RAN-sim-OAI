@@ -72146,7 +72146,7 @@
       "profile": [
         [
           0,
-          22000,
+          300,
           300
         ]
       ]
@@ -72156,7 +72156,7 @@
       "profile": [
         [
           0,
-          22000,
+          300,
           300
         ]
       ]
@@ -72166,7 +72166,7 @@
       "profile": [
         [
           0,
-          22000,
+          300,
           300
         ]
       ]
@@ -72176,7 +72176,7 @@
       "profile": [
         [
           0,
-          22000,
+          300,
           300
         ]
       ]
@@ -72186,7 +72186,7 @@
       "profile": [
         [
           0,
-          22000,
+          300,
           300
         ]
       ]
@@ -72231,6 +72231,50 @@
           "ho_validated": true
         },
         "note": "同頻既有關係(頻率清單的 3.5G 來源)"
+      },
+      {
+        "do": "relation",
+        "src": "n50_c0",
+        "tgt": "s11_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "反向預建(Q7 鐵律):缺反向=某支合法缺鄰;per-source 已知層集合只看出向,f5x→s11 不進 s11 已知集合、novel 不受影響(Q8 對閘 w 裁定)"
+      },
+      {
+        "do": "relation",
+        "src": "f55_c0",
+        "tgt": "s11_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "反向預建(Q7 鐵律):缺反向=某支合法缺鄰;per-source 已知層集合只看出向,f5x→s11 不進 s11 已知集合、novel 不受影響(Q8 對閘 w 裁定)"
+      },
+      {
+        "do": "relation",
+        "src": "f61_c0",
+        "tgt": "s11_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "反向預建(Q7 鐵律):缺反向=某支合法缺鄰;per-source 已知層集合只看出向,f5x→s11 不進 s11 已知集合、novel 不受影響(Q8 對閘 w 裁定)"
+      },
+      {
+        "do": "relation",
+        "src": "f68_c0",
+        "tgt": "s11_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "反向預建(Q7 鐵律):缺反向=某支合法缺鄰;per-source 已知層集合只看出向,f5x→s11 不進 s11 已知集合、novel 不受影響(Q8 對閘 w 裁定)"
       },
       {
         "do": "cut",
