@@ -89,7 +89,14 @@ fi
 #     env 每輪 replace(空則清),殘留覆寫不跨輪。
 PRE=$(python3 -c "
 import json;d=json.load(open('docs/scenarios/${SID}.json'))
-print(json.dumps((d.get('anr_fixture') or {}).get('pre') or {}))")
+pre=(d.get('anr_fixture') or {}).get('pre') or {}
+if pre:
+    # cells 自動從劇本 gnbs 導出 —— CellConfig 與場同生(見下方註解)
+    pre['cells']=[{'cell_id':c['cell_id'],'pci':c['pci'],
+                   'frequency_ghz':g.get('frequency_ghz',3.5),
+                   'bandwidth_mhz':g.get('bandwidth_mhz',40.0)}
+                  for g in d.get('gnbs',[]) for c in g.get('cells',[])]
+print(json.dumps(pre))")
 docker exec ransim-cu python3 /app/manage.py shell -c "
 import json
 pre=json.loads('''${PRE}''')
@@ -99,6 +106,22 @@ from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as NR
 from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from datetime import timedelta
 now=TimestampService.now()
+# CellConfig 也與場同生:pre 關係若指向「DU 尚未註冊」的 cell,scene-apply 的
+# ANR seed stale 清掃會把它們當殭屍掃掉(Q9 五輪實錄:pads 註冊最晚→關係被掃
+# →不滿載→unknown T0+31s 合法打穿)。起場前把劇本所有 cell 先 upsert 進
+# CellConfig,清掃從第一刻起就認得全員。
+cells=pre.get('cells') or []
+from main.apps.cu_cp.models.cell_config import CellConfig as CC
+from main.apps.cu_cp.services.common.uuid_service import UUIDService
+for c in cells:
+    row=CC.objects.filter(cell_id=c['cell_id']).first()
+    if row is None:
+        CC.objects.create(cell_id=c['cell_id'],cell_uuid=UUIDService.random_uuid(),
+            pci=int(c['pci']),frequency_ghz=float(c.get('frequency_ghz') or 3.5),
+            bandwidth_mhz=float(c.get('bandwidth_mhz') or 40.0),is_active=True)
+    else:
+        CC.objects.filter(pk=row.pk).update(pci=int(c['pci']),is_active=True)
+print('cells pre',len(cells))
 for r in (pre.get('relations') or []):
     age=float(r.get('age_sec') or 0)
     f=dict(r.get('set') or {})
