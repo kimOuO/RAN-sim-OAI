@@ -1,1 +1,1 @@
-{"scenario": "anr_pci_confusion", "pid": 67122, "ts": 1787903407.8853438, "step": 6, "kind": "sleep", "note": "觀察 4 分鐘:UE 回報 pci=7,反查應出現兩顆(confusion=true)"}
+{"scenario": "anr_xn_discovery", "pid": 78430, "ts": 1787904551.7281842, "step": 7, "kind": "sleep", "note": "恢復期 7 分鐘:每 20 秒搬 2 台 → 換手約 4-6 次/分。0.1.24 的 RECOVERED 判準是 succ_last50≥0.9 且樣本≥8(180s 窗)—— 舊版 0.1.7 的 A1 瞬時路徑已不存在,低速餵料會落 R5 SMO 而非 RECOVERED(2026-08-28 Q6 對閘發現)"}
