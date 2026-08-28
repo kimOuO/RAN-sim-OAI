@@ -1,1 +1,1 @@
-{"scenario": "anr_harmful_neighbor", "pid": 144096, "ts": 1787906807.089555, "step": 10, "kind": "inject", "note": "管理面把鄰居修好 → xApp 下次探測應判定恢復"}
+{"scenario": "anr_inter_freq", "pid": 158348, "ts": 1787907663.603369, "step": 12, "kind": "sleep", "note": "觀察:UE 在 s11 邊緣量到成批 2.1G 強 PCI,而已知頻率清單無 2.1G"}

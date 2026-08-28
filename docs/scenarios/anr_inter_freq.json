@@ -83,7 +83,7 @@
       ],
       "frequency_ghz": 2.1,
       "bandwidth_mhz": 20.0,
-      "power_dbm": 30.0,
+      "power_dbm": 20.0,
       "active": true,
       "cells": [
         {
@@ -102,7 +102,7 @@
       ],
       "frequency_ghz": 2.1,
       "bandwidth_mhz": 20.0,
-      "power_dbm": 30.0,
+      "power_dbm": 13.0,
       "active": true,
       "cells": [
         {
