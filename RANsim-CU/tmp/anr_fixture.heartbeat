@@ -1,1 +1,1 @@
-{"scenario": "anr_sparse_edge", "pid": 10835, "ts": 1787884127.5417273, "step": 7, "kind": "sleep", "note": "病期 5 分鐘:深邊緣駐點量測 n91(barred 不可駐留),鄰區表查無 —— 相對增益 +19.8dB 持續可見"}
+{"scenario": "anr_sparse_edge", "pid": 19528, "ts": 1787884352.8631186, "step": 9, "kind": "sleep", "note": "病期 5 分鐘:深邊緣駐點量測 n91(barred 不可駐留),鄰區表查無 —— 相對增益 +19.8dB 持續可見"}

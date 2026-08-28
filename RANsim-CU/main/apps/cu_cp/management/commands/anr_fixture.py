@@ -381,7 +381,20 @@ class Command(BaseCommand):
                     + (f"(續跑,已過 {_elapsed:.0f}s,剩 {_remain:.0f}s)" if _elapsed else ""))
                 _end = time.time() + _remain
                 _mt = 0.0
+                _barred_keep = st.get("enforce_barred") or []
                 while time.time() < _end:  # 分段睡,長 sleep 期間仍要有心跳
+                    # enforce_barred:病期持續執法。barred 旗標會被 F1 Setup 的
+                    # CellConfig upsert 週期性覆寫(2026-08-29 Q3 三輪實錄:
+                    # assert 當下 =1,一分鐘後歸零)—— 旗標是佈病狀態,
+                    # 卻存在一個被協定訊令重寫的列裡。與其追每個寫入者,
+                    # 讓時間軸每輪把它寫回去 —— 和 maintain 同理:
+                    # 病徵的前提要在整個病期持續成立,不是佈下去就算。
+                    if _barred_keep:
+                        from main.apps.cu_cp.models.cell_config import CellConfig as _CBE
+                        fixed = _CBE.objects.filter(cell_id__in=_barred_keep,
+                                                    is_barred=False).update(is_barred=True)
+                        if fixed:
+                            self.stdout.write(f"[fixture]    ↻ barred 執法:{fixed} 顆被覆寫,已寫回")
                     # maintain 也要在 sleep 步驟生效。2026-08-27 B2 第二輪:
                     # 我把「修復後維持 15 分鐘」宣告成 sleep 步驟,而 maintain
                     # 當時只在 wait_until / wait_event 的迴圈裡呼叫 —— 宣告了
