@@ -36206,6 +36206,17 @@
         "create": true
       },
       {
+        "do": "relation",
+        "src": "src_c0",
+        "tgt": "alt_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "預建 src→alt:止血後 att→0 使 causes 速率衰減、unknown 閘12 解除,alt(−78~−88dBm)高於其 −100 門檻會被合法 ADD —— 關係存在則閘3 直接 skip,結構保證靜默(Q7 對閘,RIC 建議選項1)"
+      },
+      {
         "do": "move_ues",
         "prefix": "hu",
         "to": "src_c0",
