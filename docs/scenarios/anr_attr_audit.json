@@ -15,8 +15,8 @@
   "tick_ms": 500,
   "default_serving_cell": "s19_c0",
   "a3_enabled": true,
-  "a3_offset_db": 2.0,
-  "a3_hys_db": 1.0,
+  "a3_offset_db": 1.0,
+  "a3_hys_db": 0.5,
   "a3_ttt_ms": 300,
   "gnbs": [
     {
@@ -47,7 +47,7 @@
       ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
-      "power_dbm": 35.0,
+      "power_dbm": 31.0,
       "active": true,
       "cells": [
         {
