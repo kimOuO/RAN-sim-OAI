@@ -61,6 +61,18 @@ except Exception: print('OK')" 2>/dev/null)
 done
 echo "靜默:$QUIET(嘗試 $i 次)"
 
+# 3.7 barred 與場同生:起場前預埋 fixture barred 檔(來源=劇本 enforce.barred)。
+#     第九十一輪教訓:barred 由時間軸在 T0+數十秒才設,T0→④ 的空窗一筆合法
+#     reestab→unk 就把考點資格永久取消(missing ADD 讓 pci 進 related_pa)。
+#     禁閉屬性必須在場出生前就在,病(關係/斷鏈)仍由時間軸在 ④ 佈。
+BARRED=$(python3 -c "
+import json;d=json.load(open('docs/scenarios/${SID}.json'))
+print(json.dumps((d.get('anr_fixture') or {}).get('enforce',{}).get('barred',[])))" 2>/dev/null)
+if [ -n "$BARRED" ] && [ "$BARRED" != "[]" ]; then
+  docker exec ransim-cu sh -c "printf '%s' '$BARRED' > /app/tmp/fixture_barred.json"
+  echo "預埋 barred 檔:$BARRED(與場同生)"
+fi
+
 # 4. 上傳 + 起場
 curl -s -X POST http://localhost:8001/api/v0.1/RAN/Scenario/ScenarioController/upload \
      -H 'Content-Type: application/json' --data-binary "@docs/scenarios/${SID}.json" >/dev/null

@@ -155,6 +155,15 @@ class SessionControllerActor:
         if ue is None:
             return error_response(f"unknown UE {ue_id}", status=404)
 
+        # TS 38.304:barred cell 不得駐留。這條 force-handover 是「出生安置/
+        # 補位」的第四條路徑 —— RRC 重建、A3/xApp 換手、IDLE 選網三道閘都接了,
+        # 這裡沒接就能把 UE 直接寫進 barred cell(2026-08-28 Q4 第九十一輪 RIC 指認)。
+        from main.apps.cu_cp.models.cell_config import CellConfig as _CC
+        from main.apps.cu_cp.services.common.fixture_state import is_cell_barred as _icb
+        _row = _CC.objects.filter(cell_id=target_cell).first()
+        if _icb(target_cell, bool(_row and _row.is_barred)):
+            return error_response(f"cell {target_cell} is barred (TS 38.304)", status=409)
+
         now = TimestampService.now()
         ho_uuid = UUIDService.random_uuid()
         SqlDbBusinessService.create_entity(HandoverEvent, {

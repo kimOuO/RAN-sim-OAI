@@ -78,9 +78,12 @@ class NgapRouterActor:
         # 注意：不 overwrite — 若 UE.serving_cell 已有值（HO 後 attach），尊重。
         initial_cell = ue.serving_cell or ""
         if not initial_cell:
-            cell = CellConfig.objects.filter(is_active=True).order_by("cell_id").first()
-            if cell:
-                initial_cell = cell.cell_id
+            # TS 38.304:出生安置 fallback 也不得選 barred cell(DB 旗標 OR fixture 檔)。
+            from main.apps.cu_cp.services.common.fixture_state import is_cell_barred
+            for cell in CellConfig.objects.filter(is_active=True).order_by("cell_id"):
+                if not is_cell_barred(cell.cell_id, bool(cell.is_barred)):
+                    initial_cell = cell.cell_id
+                    break
 
         SqlDbBusinessService.update_entity(
             UeContext, "ue_id", ue.ue_id,
