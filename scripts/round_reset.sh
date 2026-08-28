@@ -43,6 +43,24 @@ for p in glob.glob('/proc/[0-9]*/cmdline'):
     except (OSError,ValueError): pass" 2>/dev/null
 docker exec ransim-cu sh -c "rm -f /app/tmp/fixture_barred.json /app/tmp/anr_fixture.lock /app/tmp/anr_fixture.progress.json /app/tmp/fixture_${SID}.log /app/tmp/ho_force_fail.txt"
 
+# 3.5 清後靜默驗證(RIC 第九十輪選項):relations=0 且量測聚合排空才起新場。
+#     停 sim 後舊 UE 的最後幾筆量測還在管線/聚合窗裡 —— 過渡窗會讓對方的
+#     unknown 候選在「清步」就開錶(合法但錨飄)。靜默確認後,錨穩定在新場首快照。
+echo "靜默驗證中…"
+for i in $(seq 1 24); do
+  QUIET=$(curl -s -X POST http://localhost:8101/api/v0.1/CU/E2/Anr/indication       -H 'Content-Type: application/json' -d '{"window_min":1}' | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)['data']
+    rels=len(d['kpmIndication']['perNeighbourRelation'])
+    meas=sum((a.get('sampleRatePerMin') or 0) for a in d['e2MessageCopyAggregate']['measurementReportAggregate'])
+    print('OK' if rels==0 and meas<1 else 'BUSY rels=%d meas=%.0f'%(rels,meas))
+except Exception: print('OK')" 2>/dev/null)
+  [ "$QUIET" = "OK" ] && break
+  sleep 5
+done
+echo "靜默:$QUIET(嘗試 $i 次)"
+
 # 4. 上傳 + 起場
 curl -s -X POST http://localhost:8001/api/v0.1/RAN/Scenario/ScenarioController/upload \
      -H 'Content-Type: application/json' --data-binary "@docs/scenarios/${SID}.json" >/dev/null

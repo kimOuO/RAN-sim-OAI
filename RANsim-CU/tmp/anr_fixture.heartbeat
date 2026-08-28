@@ -1,1 +1,1 @@
-{"scenario": "anr_unknown_cell", "pid": 7428, "ts": 1787897590.2601225, "step": 10, "kind": "sleep", "note": "病期 5 分鐘(barred 持續執法):UE 持續量到 unk 的強訊號與實體編號,全域查無關係 —— 反查應得唯一解"}
+{"scenario": "anr_unknown_cell", "pid": 14793, "ts": 1787897747.187782, "step": 10, "kind": "sleep", "note": "病期 5 分鐘(barred 持續執法):UE 持續量到 unk 的強訊號與實體編號,全域查無關係 —— 反查應得唯一解"}
