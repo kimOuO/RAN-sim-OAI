@@ -532,9 +532,17 @@ class Command(BaseCommand):
                         # 2026-08-29 Q3 實測:fixture 設了 barred(rows=1),
                         # 場景佈建的 CellConfig upsert 在幾秒後把旗標覆寫回 False,
                         # 重建照常進 barred cell。宣告 ≠ 生效,佈建與佈病有競態。
+                        # 與閘同源:is_cell_barred = DB 旗標 OR fixture 檔。
+                        # 治本後 DB 旗標被抹是預期內(協定路徑照抹),閘不受影響;
+                        # assert 若只查 DB 就會對一個實際生效的 barred 喊失敗
+                        # (2026-08-28 Q4 三輪實錄:檔在、閘通、assert 誤停時間軸)。
+                        # 判準必須與被驗的閘同一個真相來源。
                         from main.apps.cu_cp.models.cell_config import CellConfig as _CB
-                        got = int(_CB.objects.filter(cell_id=c["cell"],
-                                                     is_barred=True).exists())
+                        from main.apps.cu_cp.services.common.fixture_state import (
+                            is_cell_barred as _icb,
+                        )
+                        _row = _CB.objects.filter(cell_id=c["cell"]).first()
+                        got = int(_icb(c["cell"], bool(_row and _row.is_barred)))
                     elif kind == "relation_exists":
                         got = int(R.objects.filter(source_cell_id=c["src"],
                                                    target_cgi=c["tgt"]).exists())
