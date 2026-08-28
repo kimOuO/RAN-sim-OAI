@@ -1,1 +1,1 @@
-{"scenario": "anr_pci_confusion", "pid": 55574, "ts": 1787902894.9437635, "step": 6, "kind": "sleep", "note": "觀察 4 分鐘:UE 回報 pci=7,反查應出現兩顆(confusion=true)"}
+{"scenario": "anr_pci_confusion", "pid": 67122, "ts": 1787903407.8853438, "step": 6, "kind": "sleep", "note": "觀察 4 分鐘:UE 回報 pci=7,反查應出現兩顆(confusion=true)"}
