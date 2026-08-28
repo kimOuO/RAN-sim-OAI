@@ -1,1 +1,1 @@
-{"scenario": "anr_nrt_capacity", "pid": 191174, "ts": 1787909384.87653, "step": 14, "kind": "sleep", "note": "病期 5 分鐘:量測持續供 n77(rsrp>−88, rate≥5),prune 應走 剪x24(或先撞x25被拒→換)→ ADD n77 ×3 源"}
+{"scenario": "anr_nrt_capacity", "pid": 216401, "ts": 1787909737.9153194, "step": 20, "kind": "sleep", "note": "病期 5 分鐘:量測持續供 n77(rsrp>−88, rate≥5),prune 應走 剪x24(或先撞x25被拒→換)→ ADD n77 ×3 源"}

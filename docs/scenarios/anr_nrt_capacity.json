@@ -340,6 +340,17 @@
       {
         "do": "relation",
         "src": "n60_c0",
+        "tgt": "x25_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "no_remove": true
+        },
+        "note": "受保護舊關係,**建立順序在 x24/pads 之前**:wire 列序=進場順序=修剪排序(0.1.26 (a) 裁答),保護拒絕路徑 ×3 源必被行使"
+      },
+      {
+        "do": "relation",
+        "src": "n60_c0",
         "tgt": "x24_c0",
         "create": true,
         "created_age_sec": 86400,
@@ -348,36 +359,18 @@
       },
       {
         "do": "relation",
-        "src": "n60_c0",
+        "src": "n61_c0",
         "tgt": "x25_c0",
         "create": true,
         "created_age_sec": 86400,
         "set": {
           "no_remove": true
         },
-        "note": "受保護的舊關係 —— 刪除必須被拒,逼 xApp 換下一個候選"
+        "note": "受保護舊關係,**建立順序在 x24/pads 之前**:wire 列序=進場順序=修剪排序(0.1.26 (a) 裁答),保護拒絕路徑 ×3 源必被行使"
       },
       {
         "do": "relation",
         "src": "n61_c0",
-        "tgt": "x24_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {}
-      },
-      {
-        "do": "relation",
-        "src": "n61_c0",
-        "tgt": "x25_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "no_remove": true
-        }
-      },
-      {
-        "do": "relation",
-        "src": "n62_c0",
         "tgt": "x24_c0",
         "create": true,
         "created_age_sec": 86400,
@@ -391,7 +384,16 @@
         "created_age_sec": 86400,
         "set": {
           "no_remove": true
-        }
+        },
+        "note": "受保護舊關係,**建立順序在 x24/pads 之前**:wire 列序=進場順序=修剪排序(0.1.26 (a) 裁答),保護拒絕路徑 ×3 源必被行使"
+      },
+      {
+        "do": "relation",
+        "src": "n62_c0",
+        "tgt": "x24_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {}
       },
       {
         "do": "fill_nrt",
