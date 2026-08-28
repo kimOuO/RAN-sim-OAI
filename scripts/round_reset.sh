@@ -92,10 +92,12 @@ import json;d=json.load(open('docs/scenarios/${SID}.json'))
 pre=(d.get('anr_fixture') or {}).get('pre') or {}
 if pre:
     # cells 自動從劇本 gnbs 導出 —— CellConfig 與場同生(見下方註解)
-    pre['cells']=[{'cell_id':c['cell_id'],'pci':c['pci'],
-                   'frequency_ghz':g.get('frequency_ghz',3.5),
-                   'bandwidth_mhz':g.get('bandwidth_mhz',40.0)}
-                  for g in d.get('gnbs',[]) for c in g.get('cells',[])]
+    derived=[{'cell_id':c['cell_id'],'pci':c['pci'],
+              'frequency_ghz':g.get('frequency_ghz',3.5),
+              'bandwidth_mhz':g.get('bandwidth_mhz',40.0)}
+             for g in d.get('gnbs',[]) for c in g.get('cells',[])]
+    # extra cells(如 Q11 幽靈/退役 cell,active=false):劇本 pre.cells 自帶者保留
+    pre['cells']=derived+[c for c in (pre.get('cells') or []) if c['cell_id'] not in {x['cell_id'] for x in derived}]
 print(json.dumps(pre))")
 docker exec ransim-cu python3 /app/manage.py shell -c "
 import json
@@ -118,9 +120,10 @@ for c in cells:
     if row is None:
         CC.objects.create(cell_id=c['cell_id'],cell_uuid=UUIDService.random_uuid(),
             pci=int(c['pci']),frequency_ghz=float(c.get('frequency_ghz') or 3.5),
-            bandwidth_mhz=float(c.get('bandwidth_mhz') or 40.0),is_active=True)
+            bandwidth_mhz=float(c.get('bandwidth_mhz') or 40.0),
+            is_active=bool(c.get('active',True)))
     else:
-        CC.objects.filter(pk=row.pk).update(pci=int(c['pci']),is_active=True)
+        CC.objects.filter(pk=row.pk).update(pci=int(c['pci']),is_active=bool(c.get('active',True)))
 print('cells pre',len(cells))
 for r in (pre.get('relations') or []):
     age=float(r.get('age_sec') or 0)

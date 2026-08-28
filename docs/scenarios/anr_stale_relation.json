@@ -72178,66 +72178,98 @@
   "anr_fixture": {
     "steps": [
       {
-        "do": "config",
-        "set": {
-          "ANR_HISTORY_SAMPLE_SEC": 60
-        },
-        "note": "測試壓縮"
-      },
-      {
-        "sleep_sec": 25,
-        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
-      },
-      {
-        "do": "relation",
-        "src": "main_c0",
-        "tgt": "old_c0",
-        "create": true,
-        "created_age_sec": 2592000,
-        "set": {
-          "no_remove": true
-        },
-        "note": "受保護的零活動關係 —— 驗 xApp 拒刪且不重試"
-      },
-      {
-        "do": "relation",
-        "src": "main_c0",
-        "tgt": "keep_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "no_remove": true
-        },
-        "note": "另一條受保護關係"
-      },
-      {
-        "do": "relation",
-        "src": "main_c0",
-        "tgt": "tmp_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {},
-        "note": "殭屍本體:tmp 在 UE 走廊外,天生無量測、無換手 —— 雙歸零候選"
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "relation_exists",
+            "src": "main_c0",
+            "tgt": "old_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "main_c0",
+            "tgt": "keep_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "main_c0",
+            "tgt": "tmp_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "main_c0",
+            "tgt": "gh9_c0",
+            "min": 1
+          }
+        ],
+        "note": "預建結構存活自驗(old/gh9 為 inactive CellConfig,sweep 認得不掃;RIC 幽靈判準只讀 NRT+雙零,不讀 active 旗標)"
       },
       {
         "do": "cell",
         "cell": "tmp_c0",
         "born_now": true,
-        "note": "把臨時節點標成剛誕生,讓組態面有真的誕生事件可對照(而不是靠劇本重啟的假訊號)"
-      },
-      {
-        "do": "relation",
-        "src": "main_c0",
-        "tgt": "gh9_c0",
-        "create": true,
-        "created_age_sec": 2592000,
-        "set": {},
-        "note": "殭屍本體(非保護):目標是已消失的幽靈 cell,量測與換手天然雙零 —— tmp 因走廊變動已量得到(40/分),它改當『單零不誤刪』的對照"
+        "note": "組態面誕生事件對照(RIC stale 不讀誕生事件 —— 免刪靠活動不靠年輕)"
       },
       {
         "sleep_sec": 300,
-        "note": "雙歸零觀察窗(壓縮後 5 分鐘)"
+        "note": "雙零觀察窗:gh9 90s 後應被刪(stale_removed);old 提案→拒→no_retry;tmp/keep still-used 留痕"
       }
-    ]
+    ],
+    "pre": {
+      "env": {
+        "ANR_HISTORY_SAMPLE_SEC": 60
+      },
+      "cells": [
+        {
+          "cell_id": "old_c0",
+          "pci": 88,
+          "active": false
+        },
+        {
+          "cell_id": "gh9_c0",
+          "pci": 99,
+          "active": false
+        }
+      ],
+      "relations": [
+        {
+          "src": "main_c0",
+          "tgt": "old_c0",
+          "age_sec": 2592000,
+          "pci": 88,
+          "set": {
+            "no_remove": true
+          }
+        },
+        {
+          "src": "main_c0",
+          "tgt": "keep_c0",
+          "age_sec": 86400,
+          "pci": 40,
+          "set": {
+            "no_remove": true
+          }
+        },
+        {
+          "src": "main_c0",
+          "tgt": "tmp_c0",
+          "age_sec": 86400,
+          "pci": 77,
+          "set": {}
+        },
+        {
+          "src": "main_c0",
+          "tgt": "gh9_c0",
+          "age_sec": 2592000,
+          "pci": 99,
+          "set": {}
+        }
+      ]
+    }
   }
 }
