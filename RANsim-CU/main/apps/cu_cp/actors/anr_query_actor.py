@@ -360,12 +360,12 @@ class AnrFixtureActor:
             body = {}
         sid = (body.get("scenario_id") or "").strip()
         if not sid:
-            return error_response("scenario_id required", http_status=400)
+            return error_response("scenario_id required", status=400)
         from main.apps.cu_cp.services.business.fixture_prepare import prepare
         try:
             out = prepare(sid)
         except FileNotFoundError as exc:
-            return error_response("scenario not found", str(exc), http_status=404)
+            return error_response("scenario not found", str(exc), status=404)
         return success_response(out, "prepared" if not out["errors"] else "prepared_with_errors")
 
     @staticmethod
@@ -381,14 +381,14 @@ class AnrFixtureActor:
             body = {}
         sid = (body.get("scenario_id") or "").strip()
         if not sid:
-            return error_response("scenario_id required", http_status=400)
+            return error_response("scenario_id required", status=400)
 
         # 沒有 anr_fixture 區塊的劇本直接回報,不要留下誤導的「已啟動」
         from main.apps.cu_cp.management.commands.anr_fixture import _load_steps
         try:
             steps = _load_steps(sid)
         except FileNotFoundError as exc:
-            return error_response("scenario not found", str(exc), http_status=404)
+            return error_response("scenario not found", str(exc), status=404)
         if not steps:
             return success_response({"scenario_id": sid, "started": False,
                                      "reason": "no anr_fixture block"}, "ok")
@@ -404,7 +404,7 @@ class AnrFixtureActor:
                 stdout=open(f"/app/tmp/fixture_{sid}.log", "a"),
                 stderr=subprocess.STDOUT, start_new_session=True, env={**os.environ})
         except OSError as exc:
-            return error_response("spawn failed", str(exc), http_status=500)
+            return error_response("spawn failed", str(exc), status=500)
         logger.warning("[fixture] 場景啟動觸發時間軸:%s(%d 步)", sid, len(steps))
         return success_response({"scenario_id": sid, "started": True,
                                  "steps": len(steps)}, "ok")
