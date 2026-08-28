@@ -46,20 +46,29 @@ docker exec ransim-cu sh -c "rm -f /app/tmp/fixture_barred.json /app/tmp/anr_fix
 # 3.5 清後靜默驗證(RIC 第九十輪選項):relations=0 且量測聚合排空才起新場。
 #     停 sim 後舊 UE 的最後幾筆量測還在管線/聚合窗裡 —— 過渡窗會讓對方的
 #     unknown 候選在「清步」就開錶(合法但錨飄)。靜默確認後,錨穩定在新場首快照。
-echo "靜默驗證中…"
-for i in $(seq 1 24); do
-  QUIET=$(curl -s -X POST http://localhost:8101/api/v0.1/CU/E2/Anr/indication       -H 'Content-Type: application/json' -d '{"window_min":1}' | python3 -c "
-import sys,json
+#     第九十一輪追加:光「等」不夠 —— xApp 拿上一輪 60s 聚合窗的餘料會在清後
+#     持續回寫 ADD(06:55 實錄:清完 8 條又長回來,含 n03→unk,新輪出生即死)。
+#     改成「掃 + 等」:每輪把關係掃掉,要求連續 90s(> 60s 窗)無新關係且量測
+#     排空,對手的記憶確定吐完才起場。
+echo "靜默驗證中…(掃+等,需連續 90s 乾淨)"
+STREAK=0
+for i in $(seq 1 40); do
+  QUIET=$(docker exec ransim-cu python3 /app/manage.py shell -c "
+from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as NR
+n=NR.objects.count(); NR.objects.all().delete()
+import json,urllib.request
+req=urllib.request.Request('http://localhost:8000/api/v0.1/CU/E2/Anr/indication',
+    data=json.dumps({'window_min':1}).encode(),headers={'Content-Type':'application/json'})
 try:
-    d=json.load(sys.stdin)['data']
-    rels=len(d['kpmIndication']['perNeighbourRelation'])
+    d=json.load(urllib.request.urlopen(req,timeout=8))['data']
     meas=sum((a.get('sampleRatePerMin') or 0) for a in d['e2MessageCopyAggregate']['measurementReportAggregate'])
-    print('OK' if rels==0 and meas<1 else 'BUSY rels=%d meas=%.0f'%(rels,meas))
-except Exception: print('OK')" 2>/dev/null)
-  [ "$QUIET" = "OK" ] && break
-  sleep 5
+except Exception: meas=0
+print('CLEAN' if n==0 and meas<1 else 'DIRTY rels=%d meas=%.0f'%(n,meas))" 2>/dev/null | grep -E "CLEAN|DIRTY" | tail -1)
+  if [ "$QUIET" = "CLEAN" ]; then STREAK=$((STREAK+1)); else STREAK=0; fi
+  [ "$STREAK" -ge 6 ] && break
+  sleep 15
 done
-echo "靜默:$QUIET(嘗試 $i 次)"
+echo "靜默:$QUIET(嘗試 $i 次,連續乾淨 ${STREAK}×15s)"
 
 # 3.7 barred 與場同生:起場前預埋 fixture barred 檔(來源=劇本 enforce.barred)。
 #     第九十一輪教訓:barred 由時間軸在 T0+數十秒才設,T0→④ 的空窗一筆合法
