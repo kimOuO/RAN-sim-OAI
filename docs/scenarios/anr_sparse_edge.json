@@ -36208,25 +36208,6 @@
         "note": "測試壓縮"
       },
       {
-        "sleep_sec": 25,
-        "note": "佈建沉降:場景的 CellConfig upsert 會覆寫 is_barred(競態實錄 02:24),等它寫完再佈病"
-      },
-      {
-        "do": "cell",
-        "cell": "n91_c0",
-        "set": {
-          "is_barred": true
-        },
-        "note": "n91 先標 barred(在剪關係之前):否則「n91 未 barred 且無關係」的窗裡,掉線 UE 會重建進 n91,替 Q1 外溢路徑供料 —— RIC 第七十八輪指出的時序漏洞"
-      },
-      {
-        "do": "cut",
-        "src": "s28_c0",
-        "tgt": "n91_c0",
-        "note": "佈病:只剪 s28→n91(單邊)。剪到全域為零會把病灶變成 Q4(「沒人認識它」);Q3 的語意是「s28 漏了它」—— 別的 cell 認識 n91 才對(RIC 第八十輪分類學)",
-        "both": false
-      },
-      {
         "do": "relation",
         "src": "n51_c0",
         "tgt": "n91_c0",
@@ -36235,7 +36216,7 @@
         "set": {
           "ho_validated": true
         },
-        "note": "見證關係:n51 認識 n91 → unknown/hogap 的全域「查無」測試不成立,兩支結構性靜默;sparse 的逐來源測試(s28 表裡沒有 n91)仍成立 —— 三支自動歸位,不動任何判準"
+        "note": "見證關係 n51→n91 —— **排第一**:佈病過程若有任何一刻 n91 全域無人認識,對方的快分支(first-seen 繼承 + 少量快照)會在秒級搶答(第五輪實錄 T0+8s)。見證先立,全程無這種窗"
       },
       {
         "do": "relation",
@@ -36269,6 +36250,25 @@
           "ho_validated": true
         },
         "note": "既有健康關係之二"
+      },
+      {
+        "sleep_sec": 25,
+        "note": "佈建沉降:場景的 CellConfig upsert 會覆寫 is_barred(競態實錄 02:24),等它寫完再佈病"
+      },
+      {
+        "do": "cell",
+        "cell": "n91_c0",
+        "set": {
+          "is_barred": true
+        },
+        "note": "n91 先標 barred(在剪關係之前):否則「n91 未 barred 且無關係」的窗裡,掉線 UE 會重建進 n91,替 Q1 外溢路徑供料 —— RIC 第七十八輪指出的時序漏洞"
+      },
+      {
+        "do": "cut",
+        "src": "s28_c0",
+        "tgt": "n91_c0",
+        "note": "佈病:只剪 s28→n91(單邊)。剪到全域為零會把病灶變成 Q4(「沒人認識它」);Q3 的語意是「s28 漏了它」—— 別的 cell 認識 n91 才對(RIC 第八十輪分類學)",
+        "both": false
       },
       {
         "do": "move_ues",
