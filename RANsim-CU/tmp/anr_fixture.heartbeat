@@ -1,1 +1,1 @@
-{"scenario": "anr_sparse_edge", "pid": 75060, "ts": 1787886613.8484986, "step": 12, "kind": "sleep", "note": "病期 5 分鐘:深邊緣駐點量測 n91(barred 不可駐留),鄰區表查無 —— 相對增益 +19.8dB 持續可見"}
+{"scenario": "anr_unknown_cell", "pid": 27676, "ts": 1787896448.1255293, "step": 10, "kind": "sleep", "note": "病期 5 分鐘(barred 持續執法):UE 持續量到 unk 的強訊號與實體編號,全域查無關係 —— 反查應得唯一解"}

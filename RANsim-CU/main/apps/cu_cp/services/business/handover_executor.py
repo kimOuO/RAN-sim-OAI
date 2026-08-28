@@ -82,7 +82,8 @@ def execute_f1_handover(
     # 2026-08-29 Q3 對接輪抓到:barred 原本只擋選網/重建,沒擋換手 ——
     # RIC ADD 補上關係後,A3 立刻把五台 UE 全部換進 barred 的 n91,
     # 深邊緣場景當場瓦解,hoValidated 還翻真、可能連帶觸發對方的行為類告警。
-    elif tgt is not None and getattr(tgt, "is_barred", False):
+    elif tgt is not None and __import__("main.apps.cu_cp.services.common.fixture_state",
+            fromlist=["is_cell_barred"]).is_cell_barred(tgt.cell_id, getattr(tgt, "is_barred", False)):
         fail_cause = "CellNotAvailable"
         logger.info("HO target %s is barred → CellNotAvailable(擋在執行端)", target_cell)
     elif target_rsrp is not None and float(target_rsrp) < _RA_MIN_RSRP:

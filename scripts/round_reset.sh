@@ -41,7 +41,7 @@ for p in glob.glob('/proc/[0-9]*/cmdline'):
         if 'anr_fixture' in open(p,'rb').read().decode(errors='ignore'):
             os.kill(pid,signal.SIGKILL)
     except (OSError,ValueError): pass" 2>/dev/null
-docker exec ransim-cu sh -c "rm -f /app/tmp/anr_fixture.lock /app/tmp/anr_fixture.progress.json /app/tmp/fixture_${SID}.log /app/tmp/ho_force_fail.txt"
+docker exec ransim-cu sh -c "rm -f /app/tmp/fixture_barred.json /app/tmp/anr_fixture.lock /app/tmp/anr_fixture.progress.json /app/tmp/fixture_${SID}.log /app/tmp/ho_force_fail.txt"
 
 # 4. 上傳 + 起場
 curl -s -X POST http://localhost:8001/api/v0.1/RAN/Scenario/ScenarioController/upload \

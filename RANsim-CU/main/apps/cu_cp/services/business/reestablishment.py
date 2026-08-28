@@ -46,7 +46,8 @@ def _select_suitable(ue_id: str, du_best: str, du_best_rsrp: float) -> tuple[str
     """
     def _ok(cid: str) -> bool:
         c = CellConfig.objects.filter(cell_id=cid).first()
-        return bool(c and c.is_active and not c.is_barred)
+        from main.apps.cu_cp.services.common.fixture_state import is_cell_barred
+        return bool(c and c.is_active and not is_cell_barred(c.cell_id, c.is_barred))
 
     if du_best and _ok(du_best):
         return du_best, du_best_rsrp

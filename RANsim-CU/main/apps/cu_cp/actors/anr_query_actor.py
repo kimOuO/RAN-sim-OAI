@@ -117,7 +117,7 @@ class AnrQueryActor:
                 # 「UE shall not camp on a barred cell」)。CU 的重建早就排除了,
                 # UE 的 IDLE 選網卻沒有 —— 第 3 題深邊緣 fixture 因此被 UE
                 # 自己駐到 barred 的 n91 上而崩掉。
-                "barred": bool(c.is_barred),
+                "barred": __import__("main.apps.cu_cp.services.common.fixture_state", fromlist=["is_cell_barred"]).is_cell_barred(c.cell_id, c.is_barred),
                 # RIC 第五十六輪 B4 —— 與 KPM 觀測面同一組欄位、同一個來源,
                 # 兩邊若各自取值,劇本覆寫時就會出現一面舊一面新。
                 **_a3_ie(),

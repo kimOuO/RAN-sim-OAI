@@ -682,6 +682,17 @@ class Command(BaseCommand):
             elif act == "barred":
                 from main.apps.cu_cp.models.cell_config import CellConfig
                 n = CellConfig.objects.filter(cell_id=st["cell"]).update(is_barred=bool(st.get("value", True)))
+                # 佈病狀態同時寫進自己的家(fixture_barred 檔)——
+                # DB 旗標被協定路徑抹掉也不影響閘(閘查 DB OR 檔)
+                from main.apps.cu_cp.services.common.fixture_state import (
+                    fixture_barred, set_fixture_barred,
+                )
+                cur = set(fixture_barred())
+                if bool(st.get("value", True)):
+                    cur.add(st["cell"])
+                else:
+                    cur.discard(st["cell"])
+                set_fixture_barred(sorted(cur))
                 self.stdout.write(f"[fixture] {i}. {st['cell']} barred={st.get('value', True)} rows={n} {note}")
             else:
                 self.stdout.write(f"[fixture] {i}. 未知步驟 {act},跳過")
@@ -691,3 +702,5 @@ class Command(BaseCommand):
         except (FileNotFoundError, NameError):
             pass
         self._clear_progress()   # 正常跑完就不該再被續跑接手
+        # 佈病 barred 檔隨時間軸生命期結束而清 —— 但只在「世界靜止」由
+        # round_reset 清才安全;這裡不清,交給 round_reset(第八輪順序教訓)
