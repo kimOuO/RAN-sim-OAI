@@ -131,6 +131,82 @@
           "azimuth_deg": 0
         }
       ]
+    },
+    {
+      "name": "pad01",
+      "position": [
+        7200,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 1.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 901,
+          "cell_id": "pad01_c0",
+          "azimuth_deg": 0
+        }
+      ]
+    },
+    {
+      "name": "pad02",
+      "position": [
+        7400,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 1.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 902,
+          "cell_id": "pad02_c0",
+          "azimuth_deg": 0
+        }
+      ]
+    },
+    {
+      "name": "pad03",
+      "position": [
+        7600,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 1.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 903,
+          "cell_id": "pad03_c0",
+          "azimuth_deg": 0
+        }
+      ]
+    },
+    {
+      "name": "pad04",
+      "position": [
+        7800,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 1.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 904,
+          "cell_id": "pad04_c0",
+          "azimuth_deg": 0
+        }
+      ]
     }
   ],
   "ues": [
@@ -281,159 +357,6 @@
   "anr_fixture": {
     "steps": [
       {
-        "do": "config",
-        "set": {
-          "ANR_NRT_CAPACITY": 8
-        },
-        "note": "容量上限由劇本宣告(原本只能改環境變數,改它要重啟容器 —— 而重啟會殺掉時間軸、打斷 xApp 計時)"
-      },
-      {
-        "sleep_sec": 45,
-        "note": "佈建沉降 45s:ANR seed 的 stale 清掃由 F1 Setup 觸發,T0+26s 仍在掃(Q9 二輪實錄:x24/x25 建後 0.2s 被掃)—— x24/x25 已改真 cell 治本,沉降加長是保險帶"
-      },
-      {
-        "do": "cut",
-        "src": "n60_c0",
-        "tgt": "n77_c0",
-        "note": "佈病:刪掉真正該加的新鄰居,讓它被容量擋在外面"
-      },
-      {
-        "do": "cut",
-        "src": "n61_c0",
-        "tgt": "n77_c0",
-        "note": "同上"
-      },
-      {
-        "do": "cut",
-        "src": "n62_c0",
-        "tgt": "n77_c0",
-        "note": "同上"
-      },
-      {
-        "do": "relation",
-        "src": "n60_c0",
-        "tgt": "n61_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "n6x 互聯網格預建(Q9 首輪:n61→n60 缺口讓旁觀者 n60 變『強且查無』,prune 解析到路人 → mismatch 燒 MAX_TRIES)"
-      },
-      {
-        "do": "relation",
-        "src": "n60_c0",
-        "tgt": "n62_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "n6x 互聯網格預建(Q9 首輪:n61→n60 缺口讓旁觀者 n60 變『強且查無』,prune 解析到路人 → mismatch 燒 MAX_TRIES)"
-      },
-      {
-        "do": "relation",
-        "src": "n61_c0",
-        "tgt": "n60_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "n6x 互聯網格預建(Q9 首輪:n61→n60 缺口讓旁觀者 n60 變『強且查無』,prune 解析到路人 → mismatch 燒 MAX_TRIES)"
-      },
-      {
-        "do": "relation",
-        "src": "n61_c0",
-        "tgt": "n62_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "n6x 互聯網格預建(Q9 首輪:n61→n60 缺口讓旁觀者 n60 變『強且查無』,prune 解析到路人 → mismatch 燒 MAX_TRIES)"
-      },
-      {
-        "do": "relation",
-        "src": "n62_c0",
-        "tgt": "n60_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "n6x 互聯網格預建(Q9 首輪:n61→n60 缺口讓旁觀者 n60 變『強且查無』,prune 解析到路人 → mismatch 燒 MAX_TRIES)"
-      },
-      {
-        "do": "relation",
-        "src": "n62_c0",
-        "tgt": "n61_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "n6x 互聯網格預建(Q9 首輪:n61→n60 缺口讓旁觀者 n60 變『強且查無』,prune 解析到路人 → mismatch 燒 MAX_TRIES)"
-      },
-      {
-        "do": "relation",
-        "src": "n60_c0",
-        "tgt": "x25_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "no_remove": true
-        },
-        "note": "受保護舊關係,**建立順序在 x24/pads 之前**:wire 列序=進場順序=修剪排序(0.1.26 (a) 裁答),保護拒絕路徑 ×3 源必被行使"
-      },
-      {
-        "do": "relation",
-        "src": "n60_c0",
-        "tgt": "x24_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {},
-        "note": "零活動的舊關係 —— 修剪候選"
-      },
-      {
-        "do": "relation",
-        "src": "n61_c0",
-        "tgt": "x25_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "no_remove": true
-        },
-        "note": "受保護舊關係,**建立順序在 x24/pads 之前**:wire 列序=進場順序=修剪排序(0.1.26 (a) 裁答),保護拒絕路徑 ×3 源必被行使"
-      },
-      {
-        "do": "relation",
-        "src": "n61_c0",
-        "tgt": "x24_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {}
-      },
-      {
-        "do": "relation",
-        "src": "n62_c0",
-        "tgt": "x25_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "no_remove": true
-        },
-        "note": "受保護舊關係,**建立順序在 x24/pads 之前**:wire 列序=進場順序=修剪排序(0.1.26 (a) 裁答),保護拒絕路徑 ×3 源必被行使"
-      },
-      {
-        "do": "relation",
-        "src": "n62_c0",
-        "tgt": "x24_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {}
-      },
-      {
         "do": "assert",
         "window_sec": 60,
         "on_fail": "abort",
@@ -475,17 +398,11 @@
             "min": 1
           }
         ],
-        "note": "x 條目存活自驗:stale 清掃若又贏了賽跑,在這裡停下來,不帶病進 fill"
+        "note": "預建結構存活自驗(pre 區已在起場前建;x/pads 均為真 cell,stale 掃不到)"
       },
       {
-        "do": "fill_nrt",
-        "srcs": [
-          "n60_c0",
-          "n61_c0",
-          "n62_c0"
-        ],
-        "note": "把三顆的鄰區表灌到容量上限 —— 新關係加不進去的阻斷點在容量,不在偵測",
-        "limit": 8
+        "sleep_sec": 30,
+        "note": "UE 進場與量測熱身 —— 結構先於量測,任何 watch 無從在 ④ 前開錶"
       },
       {
         "do": "attempt_add",
@@ -503,12 +420,206 @@
             "n77_c0"
           ]
         ],
-        "note": "gNB 自動 ANR 撞容量牆(真 ADD 真被拒,產生 ADD_REJECTED 事件;④=首筆事件)"
+        "note": "gNB 自動 ANR 撞容量牆;④=首筆 ADD_REJECTED"
       },
       {
         "sleep_sec": 300,
-        "note": "病期 5 分鐘:量測持續供 n77(rsrp>−88, rate≥5),prune 應走 剪x24(或先撞x25被拒→換)→ ADD n77 ×3 源"
+        "note": "病期 5 分鐘:x25 拒→x24 剪→n77 加 ×3"
       }
-    ]
+    ],
+    "pre": {
+      "env": {
+        "ANR_NRT_CAPACITY": 8,
+        "ANR_HISTORY_SAMPLE_SEC": 60
+      },
+      "relations": [
+        {
+          "src": "n60_c0",
+          "tgt": "n61_c0",
+          "age_sec": 86400,
+          "pci": 193,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "n62_c0",
+          "age_sec": 86400,
+          "pci": 195,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "n60_c0",
+          "age_sec": 86400,
+          "pci": 191,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "n62_c0",
+          "age_sec": 86400,
+          "pci": 195,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "n60_c0",
+          "age_sec": 86400,
+          "pci": 191,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "n61_c0",
+          "age_sec": 86400,
+          "pci": 193,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "x25_c0",
+          "age_sec": 86400,
+          "pci": 925,
+          "set": {
+            "no_remove": true
+          }
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "x24_c0",
+          "age_sec": 86400,
+          "pci": 924,
+          "set": {}
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "pad01_c0",
+          "age_sec": 86400,
+          "pci": 901,
+          "set": {}
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "pad02_c0",
+          "age_sec": 86400,
+          "pci": 902,
+          "set": {}
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "pad03_c0",
+          "age_sec": 86400,
+          "pci": 903,
+          "set": {}
+        },
+        {
+          "src": "n60_c0",
+          "tgt": "pad04_c0",
+          "age_sec": 86400,
+          "pci": 904,
+          "set": {}
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "x25_c0",
+          "age_sec": 86400,
+          "pci": 925,
+          "set": {
+            "no_remove": true
+          }
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "x24_c0",
+          "age_sec": 86400,
+          "pci": 924,
+          "set": {}
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "pad01_c0",
+          "age_sec": 86400,
+          "pci": 901,
+          "set": {}
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "pad02_c0",
+          "age_sec": 86400,
+          "pci": 902,
+          "set": {}
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "pad03_c0",
+          "age_sec": 86400,
+          "pci": 903,
+          "set": {}
+        },
+        {
+          "src": "n61_c0",
+          "tgt": "pad04_c0",
+          "age_sec": 86400,
+          "pci": 904,
+          "set": {}
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "x25_c0",
+          "age_sec": 86400,
+          "pci": 925,
+          "set": {
+            "no_remove": true
+          }
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "x24_c0",
+          "age_sec": 86400,
+          "pci": 924,
+          "set": {}
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "pad01_c0",
+          "age_sec": 86400,
+          "pci": 901,
+          "set": {}
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "pad02_c0",
+          "age_sec": 86400,
+          "pci": 902,
+          "set": {}
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "pad03_c0",
+          "age_sec": 86400,
+          "pci": 903,
+          "set": {}
+        },
+        {
+          "src": "n62_c0",
+          "tgt": "pad04_c0",
+          "age_sec": 86400,
+          "pci": 904,
+          "set": {}
+        }
+      ]
+    }
   }
 }

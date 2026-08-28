@@ -82,6 +82,33 @@ if [ -n "$BARRED" ] && [ "$BARRED" != "[]" ]; then
   echo "預埋 barred 檔:$BARRED(與場同生)"
 fi
 
+# 3.8 結構與場同生(Q9 四輪教訓,泛化 Q4 的 barred 同生原則):
+#     劇本 anr_fixture.pre = {env:{...}, relations:[{src,tgt,age_sec,set{}}...]}
+#     在起場前寫進 env_override 與 NRT —— 量測流起點晚於一切結構,
+#     對方任何 watch 無從在 ④ 前開錶(「不跟 persist 賽跑,直接不給賽道」)。
+#     env 每輪 replace(空則清),殘留覆寫不跨輪。
+PRE=$(python3 -c "
+import json;d=json.load(open('docs/scenarios/${SID}.json'))
+print(json.dumps((d.get('anr_fixture') or {}).get('pre') or {}))")
+docker exec ransim-cu python3 /app/manage.py shell -c "
+import json
+pre=json.loads('''${PRE}''')
+from main.utils.env_loader import set_overrides
+set_overrides(dict(pre.get('env') or {}), replace=True)
+from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as NR
+from main.apps.cu_cp.services.common.timestamp_service import TimestampService
+from datetime import timedelta
+now=TimestampService.now()
+for r in (pre.get('relations') or []):
+    age=float(r.get('age_sec') or 0)
+    f=dict(r.get('set') or {})
+    NR.objects.get_or_create(source_cell_id=r['src'],target_cgi=r['tgt'],
+        defaults=dict(target_pci=int(r.get('pci') or 0),target_arfcn=int(r.get('arfcn') or 633333),
+            target_rat='NR',xn_x2_established=True,
+            created_at=now-timedelta(seconds=age),updated_at=now,**f))
+print('pre applied', len(pre.get('relations') or []))
+" 2>/dev/null | grep -a "pre applied" || true
+
 # 4. 上傳 + 起場
 curl -s -X POST http://localhost:8001/api/v0.1/RAN/Scenario/ScenarioController/upload \
      -H 'Content-Type: application/json' --data-binary "@docs/scenarios/${SID}.json" >/dev/null
