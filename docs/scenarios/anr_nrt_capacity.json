@@ -93,6 +93,44 @@
           "barred": true
         }
       ]
+    },
+    {
+      "name": "x24",
+      "position": [
+        5000,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 1.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 924,
+          "cell_id": "x24_c0",
+          "azimuth_deg": 0
+        }
+      ]
+    },
+    {
+      "name": "x25",
+      "position": [
+        5200,
+        30,
+        0
+      ],
+      "frequency_ghz": 3.5,
+      "bandwidth_mhz": 40.0,
+      "power_dbm": 1.0,
+      "active": true,
+      "cells": [
+        {
+          "pci": 925,
+          "cell_id": "x25_c0",
+          "azimuth_deg": 0
+        }
+      ]
     }
   ],
   "ues": [
@@ -250,8 +288,8 @@
         "note": "容量上限由劇本宣告(原本只能改環境變數,改它要重啟容器 —— 而重啟會殺掉時間軸、打斷 xApp 計時)"
       },
       {
-        "sleep_sec": 25,
-        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
+        "sleep_sec": 45,
+        "note": "佈建沉降 45s:ANR seed 的 stale 清掃由 F1 Setup 觸發,T0+26s 仍在掃(Q9 二輪實錄:x24/x25 建後 0.2s 被掃)—— x24/x25 已改真 cell 治本,沉降加長是保險帶"
       },
       {
         "do": "cut",
@@ -394,6 +432,50 @@
         "create": true,
         "created_age_sec": 86400,
         "set": {}
+      },
+      {
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "relation_exists",
+            "src": "n60_c0",
+            "tgt": "x25_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "n60_c0",
+            "tgt": "x24_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "n61_c0",
+            "tgt": "x25_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "n61_c0",
+            "tgt": "x24_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "n62_c0",
+            "tgt": "x25_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "n62_c0",
+            "tgt": "x24_c0",
+            "min": 1
+          }
+        ],
+        "note": "x 條目存活自驗:stale 清掃若又贏了賽跑,在這裡停下來,不帶病進 fill"
       },
       {
         "do": "fill_nrt",
