@@ -1,1 +1,1 @@
-{"scenario": "anr_missing_meas", "pid": 193419, "ts": 1787858176.1475303, "step": 8, "kind": "sleep", "note": "病期 7 分鐘:UE 在縫隙處量測持續、換手被 NRT gate 擋"}
+{"scenario": "anr_sparse_edge", "pid": 644265, "ts": 1787883198.8817759, "step": 7, "kind": "sleep", "note": "病期 5 分鐘:深邊緣駐點量測 n91(barred 不可駐留),鄰區表查無 —— 相對增益 +19.8dB 持續可見"}
