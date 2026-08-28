@@ -6220,10 +6220,8 @@
         "note": "既有健康關係二"
       },
       {
-        "do": "cut",
-        "src": "s01_c0",
-        "tgt": "unk_c0",
-        "note": "佈病:確保與陌生基地台之間零關係 —— unk 只出現在量測裡,鄰區表查無"
+        "sleep_sec": 25,
+        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
       },
       {
         "do": "cell",
@@ -6231,7 +6229,13 @@
         "set": {
           "is_barred": true
         },
-        "note": "unk 標禁止駐留(新站尚未開放接入):UE 量得到它、但不得駐留 —— 否則初次入網就選上最強的 unk,量測歸屬全反"
+        "note": "unk 標禁止駐留(新站未開放接入)—— 擋駐留與重建,量測不擋"
+      },
+      {
+        "do": "cut",
+        "src": "s01_c0",
+        "tgt": "unk_c0",
+        "note": "確保零關係指向 unk。與 Q3 相反:這題**要**全域無人認識(分類學上正是 Q4 的定義),所以不建見證、剪雙向"
       },
       {
         "do": "move_ues",
@@ -6240,8 +6244,44 @@
         "note": "UE 歸位 s01(一次性)"
       },
       {
-        "sleep_sec": 240,
-        "note": "觀察 4 分鐘:UE 持續量到 unk 的實體編號,反查(cgi_resolve)應得唯一解"
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "wait_retry",
+        "retry_timeout_sec": 240,
+        "checks": [
+          {
+            "metric": "reestab_inbound",
+            "cell": "unk_c0",
+            "max": 0
+          }
+        ],
+        "note": "供料窗自驗:unk 零重建流入滿一個 60s 窗(Q3 教訓:聚合窗的記憶比沉降長)"
+      },
+      {
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "cell_barred",
+            "cell": "unk_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "s01_c0",
+            "tgt": "n02_c0",
+            "min": 1
+          }
+        ],
+        "note": "barred 生效自驗 + 健康關係在"
+      },
+      {
+        "sleep_sec": 300,
+        "enforce_barred": [
+          "unk_c0"
+        ],
+        "note": "病期 5 分鐘(barred 持續執法):UE 持續量到 unk 的強訊號與實體編號,全域查無關係 —— 反查應得唯一解"
       }
     ]
   }
