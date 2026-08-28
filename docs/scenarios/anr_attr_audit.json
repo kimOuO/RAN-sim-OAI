@@ -47,7 +47,7 @@
       ],
       "frequency_ghz": 3.5,
       "bandwidth_mhz": 40.0,
-      "power_dbm": 30.0,
+      "power_dbm": 35.0,
       "active": true,
       "cells": [
         {
@@ -72176,63 +72176,24 @@
   "anr_fixture": {
     "steps": [
       {
-        "do": "config",
-        "set": {
-          "ANR_HISTORY_SAMPLE_SEC": 60
-        },
-        "note": "測試壓縮"
-      },
-      {
-        "sleep_sec": 25,
-        "note": "佈建沉降(CellConfig upsert 競態,Q3 教訓)"
-      },
-      {
-        "do": "relation",
-        "src": "s19_c0",
-        "tgt": "d02_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_blocklist": true,
-          "xn_blocklist": true,
-          "ho_validated": false
-        },
-        "note": "無據封鎖:旗標跟正當那條一模一樣,差別只在它從未成功服務過、也沒有任何失敗史"
-      },
-      {
-        "do": "relation",
-        "src": "s19_c0",
-        "tgt": "n80_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_blocklist": true,
-          "xn_blocklist": true,
-          "ho_validated": true
-        },
-        "note": "正當封鎖:曾正常服務,後因劣化被封 —— xApp 不得碰"
-      },
-      {
-        "do": "relation",
-        "src": "d02_c0",
-        "tgt": "s19_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "反向預建(Q7 鐵律含非主源向)"
-      },
-      {
-        "do": "relation",
-        "src": "n80_c0",
-        "tgt": "s19_c0",
-        "create": true,
-        "created_age_sec": 86400,
-        "set": {
-          "ho_validated": true
-        },
-        "note": "反向預建(Q7 鐵律含非主源向)"
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "relation_exists",
+            "src": "s19_c0",
+            "tgt": "d02_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "s19_c0",
+            "tgt": "n80_c0",
+            "min": 1
+          }
+        ],
+        "note": "pre 結構存活自驗(旗標與場同生 —— T0→歸位空窗的 A3 嘗試被 blocklist 閘擋,att 純零)"
       },
       {
         "do": "inject_history",
@@ -72241,18 +72202,65 @@
         "count": 40,
         "cause": "RandomAccessProblem",
         "age_hours": 6,
-        "note": "n80 的失敗史 = 封鎖的憑據;d02 刻意一筆都沒有,這就是鑑別點"
+        "note": "n80 憑據(validated=true 已第一層免疫,此為第二層)"
       },
       {
         "do": "move_ues",
         "prefix": "aa",
         "to": "s19_c0",
-        "note": "坑1:A3 早把 UE 搬到 d02 了。不搬回來的話 s19 的零嘗試有『根本沒人用』的良性解釋,「強訊號卻零嘗試」的矛盾就不成立"
+        "note": "UE spawn 會落更強的 d02(+6.6dB),歸位 s19 後 A3 想去但被 blocklist 擋 → 強訊號零嘗試矛盾成立;MANUAL 排除已知。④=本步完成時刻"
       },
       {
         "sleep_sec": 300,
-        "note": "稽核觀察窗 5 分:d02(無據)應被稽核清旗/通報;n80(有憑據)不得碰;s19 強訊號零嘗試矛盾持續供證"
+        "note": "稽核觀察窗:考點=d02 指控+清旗;n80 鐵律零告警"
       }
-    ]
+    ],
+    "pre": {
+      "env": {
+        "ANR_HISTORY_SAMPLE_SEC": 60
+      },
+      "relations": [
+        {
+          "src": "s19_c0",
+          "tgt": "d02_c0",
+          "age_sec": 86400,
+          "pci": 251,
+          "set": {
+            "ho_blocklist": true,
+            "xn_blocklist": true,
+            "ho_validated": false
+          }
+        },
+        {
+          "src": "s19_c0",
+          "tgt": "n80_c0",
+          "age_sec": 86400,
+          "pci": 260,
+          "set": {
+            "ho_blocklist": true,
+            "xn_blocklist": true,
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "d02_c0",
+          "tgt": "s19_c0",
+          "age_sec": 86400,
+          "pci": 240,
+          "set": {
+            "ho_validated": true
+          }
+        },
+        {
+          "src": "n80_c0",
+          "tgt": "s19_c0",
+          "age_sec": 86400,
+          "pci": 240,
+          "set": {
+            "ho_validated": true
+          }
+        }
+      ]
+    }
   }
 }
