@@ -151,6 +151,8 @@ class Command(BaseCommand):
         # (2026-08-28 Q4 五輪實錄)—— 我方掃得掉自己的表,掃不掉對方的記憶,
         # 只能在病期持續把違規關係掃掉並留痕,讓考點資格活著。
         iso = spec.get("no_relations") or []
+        if iso and getattr(self, "_disease_phase", False):
+            iso = []  # 病期=作答期:xApp 的 ADD 即考點證據,不掃(94 輪協定)
         if iso:
             try:
                 from django.db.models import Q as _Q
@@ -427,6 +429,13 @@ class Command(BaseCommand):
                 _end = time.time() + _remain
                 _mt = 0.0
                 _barred_keep = st.get("enforce_barred") or []
+                if _barred_keep:
+                    # 病期開始:no_relations 執法到此為止(第九十四輪 RIC 條件 (a))。
+                    # Q4 的考試答案就是 xApp 的 ADD *→unk —— 病期還掃就是掃答案,
+                    # 雙方進入「ADD→掃→冷卻→ADD」消耗戰,永遠簽不了收。
+                    # 執法只該擋「出生/佈場階段」的髒寫入,不該擋病期的合法修復。
+                    self._disease_phase = True
+                    self.stdout.write("[fixture]    ↻ no_relations 執法解除(病期=作答期,xApp 寫入即證據)")
                 while time.time() < _end:  # 分段睡,長 sleep 期間仍要有心跳
                     # enforce_barred:病期持續執法。barred 旗標會被 F1 Setup 的
                     # CellConfig upsert 週期性覆寫(2026-08-29 Q3 三輪實錄:
