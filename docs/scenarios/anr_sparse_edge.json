@@ -36208,6 +36208,14 @@
         "note": "測試壓縮"
       },
       {
+        "do": "cell",
+        "cell": "n91_c0",
+        "set": {
+          "is_barred": true
+        },
+        "note": "n91 先標 barred(在剪關係之前):否則「n91 未 barred 且無關係」的窗裡,掉線 UE 會重建進 n91,替 Q1 外溢路徑供料 —— RIC 第七十八輪指出的時序漏洞"
+      },
+      {
         "do": "cut",
         "src": "s28_c0",
         "tgt": "n91_c0",
@@ -36234,14 +36242,6 @@
           "ho_validated": true
         },
         "note": "既有健康關係之二"
-      },
-      {
-        "do": "cell",
-        "cell": "n91_c0",
-        "set": {
-          "is_barred": true
-        },
-        "note": "n91 標禁止駐留:UE 量得到但不准連上。少了這步,UE 一斷線就自己連過去,深邊緣狀態當場消失"
       },
       {
         "do": "move_ues",
