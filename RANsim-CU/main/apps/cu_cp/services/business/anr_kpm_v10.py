@@ -306,7 +306,11 @@ def indication_v10(cell_id: str | None = None,
         ):
             cl[f"{name}.{n}"] = metric(f"{name}.{n}", val, unit)
 
-    rel_qs = NrCellRelation.objects.all()
+    # wire 列序必須確定:無 order_by 時 Postgres 回堆序,更新過的列會漂
+    # (Q9 七輪實錄:pre 建 [x25,x24,pads] 上了 wire 變 [pads,x24,x25],
+    # 對方修剪排序忠實吃 wire 序 → 保護條目永遠輪不到)。
+    # id 序 = 進場順序 = 佈場宣告的順序 —— 列序也是有載體的狀態。
+    rel_qs = NrCellRelation.objects.order_by("id")
     chg_qs = NrRelationChangeEvent.objects.all()
     if cell_id:
         rel_qs = rel_qs.filter(source_cell_id=cell_id)
