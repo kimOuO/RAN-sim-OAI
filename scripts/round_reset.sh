@@ -118,10 +118,13 @@ from main.apps.cu_cp.services.common.uuid_service import UUIDService
 for c in cells:
     row=CC.objects.filter(cell_id=c['cell_id']).first()
     if row is None:
+        # served_by_du_id 為 NOT NULL FK —— 借場上任一現存列的 du id 當佔位
+        _du=(CC.objects.exclude(served_by_du_id=None).values_list('served_by_du_id',flat=True).first())
         CC.objects.create(cell_id=c['cell_id'],cell_uuid=UUIDService.random_uuid(),
             pci=int(c['pci']),frequency_ghz=float(c.get('frequency_ghz') or 3.5),
             bandwidth_mhz=float(c.get('bandwidth_mhz') or 40.0),
-            is_active=bool(c.get('active',True)))
+            served_by_du_id=_du, is_active=bool(c.get('active',True)),
+            created_at=now, updated_at=now)
     else:
         CC.objects.filter(pk=row.pk).update(pci=int(c['pci']),is_active=bool(c.get('active',True)))
 print('cells pre',len(cells))
