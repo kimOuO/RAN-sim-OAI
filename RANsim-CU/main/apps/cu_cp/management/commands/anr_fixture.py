@@ -488,6 +488,14 @@ class Command(BaseCommand):
                         if c.get("tgt"):
                             q = q.filter(target_cell=c["tgt"])
                         got = q.count()
+                    elif kind == "reestab_inbound":
+                        # 供料窗自驗(RIC 第八十一輪):剪除前必須觀測到一個
+                        # 完整統計窗的零重建流入。輪與輪之間的殘局(上一輪尾巴
+                        # 的掉線)會在 60 秒聚合窗裡繼續活著 —— 沉降再長都是
+                        # 猜,「殘率已排空」要用資料證明。
+                        from main.apps.cu_cp.models.rlf_event import RlfEvent as _RE
+                        got = _RE.objects.filter(reestab_cell=c["cell"],
+                                                 detected_at__gte=since).count()
                     elif kind == "cell_barred":
                         # barred 是佈病的前提時,必須驗證它「此刻仍然生效」——
                         # 2026-08-29 Q3 實測:fixture 設了 barred(rows=1),
@@ -512,6 +520,40 @@ class Command(BaseCommand):
                         f"近 {w:.0f}s)")
                     if not ok:
                         bad.append(f"{kind}={got}")
+                if bad and (st.get("on_fail") == "wait_retry"):
+                    # 等到成立為止(帶逾時)—— 用於「殘率排空」這類時間會治好的前提
+                    _deadline = time.time() + float(st.get("retry_timeout_sec", 300))
+                    ok_all = False
+                    while time.time() < _deadline:
+                        self._beat(sid, i, "assert-wait", note)
+                        time.sleep(POLL_SEC)
+                        bad2 = []
+                        for c in checks:
+                            kind = c.get("metric")
+                            since = _tz.now() - _td(seconds=float(st.get("window_sec") or 180))
+                            if kind == "reestab_inbound":
+                                from main.apps.cu_cp.models.rlf_event import RlfEvent as _RE2
+                                got = _RE2.objects.filter(reestab_cell=c["cell"],
+                                                          detected_at__gte=since).count()
+                            elif kind == "rlf_count":
+                                from main.apps.cu_cp.models.rlf_event import RlfEvent as _RE3
+                                q = _RE3.objects.filter(detected_at__gte=since)
+                                if c.get("cell"):
+                                    q = q.filter(source_cell=c["cell"])
+                                got = q.count()
+                            else:
+                                continue
+                            lo, hi = c.get("min"), c.get("max")
+                            if not ((lo is None or got >= lo) and (hi is None or got <= hi)):
+                                bad2.append(f"{kind}={got}")
+                        if not bad2:
+                            ok_all = True
+                            break
+                    if ok_all:
+                        self.stdout.write(f"[fixture] {i}. 前提成立(等待後)✅ {note}")
+                        continue
+                    self.stdout.write(f"[fixture] {i}. ⛔ 等待逾時仍不成立 → 停止時間軸 {note}")
+                    break
                 if bad:
                     if (st.get("on_fail") or "abort") == "abort":
                         self.stdout.write(

@@ -36264,6 +36264,20 @@
         "note": "n91 先標 barred(在剪關係之前):否則「n91 未 barred 且無關係」的窗裡,掉線 UE 會重建進 n91,替 Q1 外溢路徑供料 —— RIC 第七十八輪指出的時序漏洞"
       },
       {
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "wait_retry",
+        "retry_timeout_sec": 240,
+        "checks": [
+          {
+            "metric": "reestab_inbound",
+            "cell": "n91_c0",
+            "max": 0
+          }
+        ],
+        "note": "供料窗自驗:剪除前必須有一個完整 60s 窗的 n91 零重建流入。殘率沒排空就等 —— 輪間殘局的掉線會在聚合窗裡再活 60 秒,沉降是猜、這個是證(RIC 第八十一輪處方)"
+      },
+      {
         "do": "cut",
         "src": "s28_c0",
         "tgt": "n91_c0",
