@@ -699,6 +699,28 @@ class Command(BaseCommand):
                         pad.delete()
                         cur -= 1
                     self.stdout.write(f"[fixture] {i}. {src} 鄰區表 {cur}/{limit} {note}")
+            elif act == "attempt_add":
+                # gNB 自動 ANR 出面撞容量牆(Q9,第九十x輪 w 裁定)。
+                # 0.1.25 起 xApp 發現類對滿載源一律讓位不下 ADD,而 prune 閘 1
+                # 要求 relationChangeEvents 已有 ADD_REJECTED —— 沒人撞牆就死結。
+                # 這裡走「真」ADD 路徑(apply_son_trigger),被容量拒時由該路徑
+                # 自己落 ADD_REJECTED/NRT_CAPACITY_REACHED 事件 —— 不是注入假事件,
+                # 是真實嘗試真實被拒;④ = 首筆 ADD_REJECTED 時戳。
+                from main.apps.cu_cp.actors.anr_control_actor import apply_son_trigger
+                from main.apps.cu_cp.models.cell_config import CellConfig as _CCA
+                from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
+                for _src, _tgt in st["pairs"]:
+                    row = _CCA.objects.filter(cell_id=_tgt).first()
+                    out = apply_son_trigger({
+                        "requestType": "ADD", "sourceCellId": _src,
+                        "target": {"cgi": _tgt, "pci": (row.pci if row else 0),
+                                   "arfcn": nr_arfcn_from_ghz(row.frequency_ghz) if row else 0,
+                                   "rat": "NR"},
+                    })
+                    self.stdout.write(f"[fixture] {i}. attempt_add {_src}→{_tgt}"
+                                      f" → {out.get('result')}")
+                self._beat(sid, i, "attempt_add", note)
+
             elif act == "inject_history":
                 # 注入歷史換手失敗(第 12 題:「因失敗而封鎖」的憑據)。
                 # 關係的建立時間會一併往前推到最舊那筆之前 —— 累計欄位的語意是
