@@ -345,6 +345,32 @@ class AnrFixtureActor:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def prepare(request: HttpRequest):
+        """起場前準備(round_reset 三機制的 API 化):掃+等靜默驗證、
+        pre 區結構與場同生、barred 預埋、殭屍時間軸清理。
+
+        呼叫時機:sim 已停、scene 尚未 apply(scenario_driver Step 1b.5)。
+        同步阻塞最長 ~5 分鐘(靜默驗證),呼叫端 timeout 要給足。
+        fail-loud:任何一段失敗都在 errors 列出,不靜默(Q11 三層吞錯教訓)。
+        """
+        import json as _j
+        try:
+            body = _j.loads(request.body or b"{}")
+        except ValueError:
+            body = {}
+        sid = (body.get("scenario_id") or "").strip()
+        if not sid:
+            return error_response("scenario_id required", http_status=400)
+        from main.apps.cu_cp.services.business.fixture_prepare import prepare
+        try:
+            out = prepare(sid)
+        except FileNotFoundError as exc:
+            return error_response("scenario not found", str(exc), http_status=404)
+        return success_response(out, "prepared" if not out["errors"] else "prepared_with_errors")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def start(request: HttpRequest):
         import json as _j
         import os

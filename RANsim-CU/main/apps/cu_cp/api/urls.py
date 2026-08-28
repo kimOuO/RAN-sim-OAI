@@ -72,6 +72,7 @@ urlpatterns = [
     # AK11: Mobility A3 runtime config (Dashboard 控制 A3 開關 + 參數)
     # 劇本病徵時間軸:場景套用後由 scenario_driver 觸發,不再需要人手動起
     path("Anr/Fixture/start", AnrFixtureActor.start, name="anr_fixture_start"),
+    path("Anr/Fixture/prepare", AnrFixtureActor.prepare, name="anr_fixture_prepare"),
     path("Mobility/A3Controller/read", MobilityActor.read_a3, name="mobility_a3_read"),
     path("Mobility/A3Controller/set",  MobilityActor.set_a3,  name="mobility_a3_set"),
     # Mobility HO event history (Dashboard HandoverMap)

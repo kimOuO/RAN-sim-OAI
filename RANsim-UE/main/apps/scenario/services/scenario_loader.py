@@ -100,6 +100,8 @@ class ScenarioSpec:
     # "iso" / "dipole" / "tr38901" 是 Sionna 內建可用 patterns。
     # 注意:這是 scenario-level 全局設定,sionna scene.tx_array 不支援 per-cell pattern。
     antenna_pattern: str | None = None
+    # 劇本是否帶 anr_fixture 區塊(driver 據此決定要不要跑起場前準備)
+    has_anr_fixture: bool = False
     # Optional 劇本自帶 per-cell PRB quota,start() 時自動套用(= xApp E2 Control Style2/Action6)。
     # [{"cell_id": str, "max_prb": int(0-100)}, ...]。CCO 容量受限 demo 用(c0 設 20%)。
     cell_quotas: list[dict] = None  # type: ignore[assignment]
@@ -224,6 +226,7 @@ def fetch(scenario_id: str) -> ScenarioSpec:
         # precompute_status 來自 Scenario model 本體欄位(不在 raw_json 裡)
         precompute_status=str(data.get("precompute_status") or "pending"),
         antenna_pattern=antenna_pattern,
+        has_anr_fixture=bool(raw.get("anr_fixture")),
         cell_quotas=[
             {"cell_id": str(q["cell_id"]), "max_prb": int(q.get("max_prb", 100)),
              "min_prb": int(q.get("min_prb", 0))}

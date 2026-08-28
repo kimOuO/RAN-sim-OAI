@@ -197,6 +197,23 @@ def set_a3(enabled: bool, *, offset_db: float | None = None,
         return False
 
 
+def prepare_anr_fixture(scenario_id: str) -> dict:
+    """起場前準備(Anr/Fixture/prepare)—— round_reset 三機制的 API 化。
+
+    掃+等靜默驗證(對方 60s 聚合窗排空)+ pre 區結構與場同生 + barred 預埋。
+    同步阻塞最長 ~5 分鐘,timeout 給足。回傳 CU 的完整報告 dict(含 errors);
+    HTTP 失敗回 {"errors":[...]} —— fail-loud,呼叫端要把 errors 印進日誌。
+    """
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Anr/Fixture/prepare"
+    try:
+        r = requests.post(url, json={"scenario_id": scenario_id}, timeout=360)
+        if r.ok:
+            return (r.json() or {}).get("data") or {}
+        return {"errors": [f"prepare HTTP {r.status_code}: {r.text[:200]}"]}
+    except requests.RequestException as exc:
+        return {"errors": [f"prepare HTTP failed: {exc}"]}
+
+
 def start_anr_fixture(scenario_id: str) -> bool:
     """請 CU 起這個劇本的病徵時間軸(Anr/Fixture/start)。
 

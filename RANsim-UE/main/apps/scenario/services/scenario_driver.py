@@ -205,6 +205,23 @@ class ScenarioDriver:
         # 而且 DU MAC cell 列表跟劇本對不上,本場 UE 排不進 scheduler →
         # KpmReporter 給空值(/logs 看到「沒有數值」)。endpoint 全用既有的,
         # 失敗只 warn 不擋,維持「Omniverse 沒開仍能跑 RAN sim」的容忍度。
+        # Step 1b.5 — 起場前準備(2026-08-28 十二題收官後,round_reset 三機制搬進正式路徑):
+        # 掃+等靜默驗證(xApp 60s 聚合窗排空,錨才穩在新場首快照)、pre 區結構與場同生
+        # (CellConfig→關係→容量覆寫先於一切量測 —— 出生鏈公理)、barred 預埋。
+        # 只對帶 anr_fixture 的劇本有意義;其他劇本 CU 端會快速通過(無 pre/enforce 即空操作,
+        # 掃+等仍會把上一場殘留排空 —— 這對所有劇本都是好事)。
+        # fail-loud:errors 全數落日誌(Q11 三層吞錯教訓),但不擋場景啟動。
+        try:
+            if getattr(self.scenario, "has_anr_fixture", False):
+                rep = cu_client.prepare_anr_fixture(self.scenario.scenario_id)
+                for err in (rep.get("errors") or []):
+                    logger.warning("fixture prepare error: %s", err)
+                logger.info("scenario %s 起場前準備:sweep=%s pre=%s barred=%s",
+                            self.scenario.scenario_id, rep.get("sweep"),
+                            rep.get("pre"), rep.get("barred"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("prepare_anr_fixture failed: %s", e)
+
         self._apply_scene_to_backend()
 
         # Step 2 — Setup: 確保 CU 有 traffic_profile 對應的 UE session,RLC entity 建好。
