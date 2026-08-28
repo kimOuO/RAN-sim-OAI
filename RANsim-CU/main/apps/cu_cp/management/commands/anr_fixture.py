@@ -475,6 +475,14 @@ class Command(BaseCommand):
                         if c.get("tgt"):
                             q = q.filter(target_cell=c["tgt"])
                         got = q.count()
+                    elif kind == "cell_barred":
+                        # barred 是佈病的前提時,必須驗證它「此刻仍然生效」——
+                        # 2026-08-29 Q3 實測:fixture 設了 barred(rows=1),
+                        # 場景佈建的 CellConfig upsert 在幾秒後把旗標覆寫回 False,
+                        # 重建照常進 barred cell。宣告 ≠ 生效,佈建與佈病有競態。
+                        from main.apps.cu_cp.models.cell_config import CellConfig as _CB
+                        got = int(_CB.objects.filter(cell_id=c["cell"],
+                                                     is_barred=True).exists())
                     elif kind == "relation_exists":
                         got = int(R.objects.filter(source_cell_id=c["src"],
                                                    target_cgi=c["tgt"]).exists())

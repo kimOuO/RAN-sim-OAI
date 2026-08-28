@@ -36208,6 +36208,10 @@
         "note": "測試壓縮"
       },
       {
+        "sleep_sec": 25,
+        "note": "佈建沉降:場景的 CellConfig upsert 會覆寫 is_barred(競態實錄 02:24),等它寫完再佈病"
+      },
+      {
         "do": "cell",
         "cell": "n91_c0",
         "set": {
@@ -36248,6 +36252,25 @@
         "prefix": "dw",
         "to": "s28_c0",
         "note": "UE 歸位(一次性;第1題教訓:不做週期性 maintain)"
+      },
+      {
+        "do": "assert",
+        "window_sec": 60,
+        "on_fail": "abort",
+        "checks": [
+          {
+            "metric": "cell_barred",
+            "cell": "n91_c0",
+            "min": 1
+          },
+          {
+            "metric": "relation_exists",
+            "src": "s28_c0",
+            "tgt": "n51_c0",
+            "min": 1
+          }
+        ],
+        "note": "barred 生效自驗(RIC 第七十九輪:讓『barred 生效』從宣告變成劇本自驗的前置)+ 健康關係在"
       },
       {
         "sleep_sec": 300,
