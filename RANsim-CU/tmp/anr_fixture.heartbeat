@@ -1,1 +1,0 @@
-{"scenario": "anr_nrt_capacity", "pid": 223355, "ts": 1787910411.4608014, "step": 20, "kind": "sleep", "note": "病期 5 分鐘:量測持續供 n77(rsrp>−88, rate≥5),prune 應走 剪x24(或先撞x25被拒→換)→ ADD n77 ×3 源"}

@@ -41,7 +41,7 @@ for p in glob.glob('/proc/[0-9]*/cmdline'):
         if 'anr_fixture' in open(p,'rb').read().decode(errors='ignore'):
             os.kill(pid,signal.SIGKILL)
     except (OSError,ValueError): pass" 2>/dev/null
-docker exec ransim-cu sh -c "rm -f /app/tmp/fixture_barred.json /app/tmp/anr_fixture.lock /app/tmp/anr_fixture.progress.json /app/tmp/fixture_${SID}.log /app/tmp/ho_force_fail.txt"
+docker exec ransim-cu sh -c "rm -f /app/tmp/fixture_barred.json /app/tmp/anr_fixture.lock /app/tmp/anr_fixture.progress.json /app/tmp/anr_fixture.current /app/tmp/anr_fixture.heartbeat /app/tmp/fixture_${SID}.log /app/tmp/ho_force_fail.txt"
 
 # 3.5 清後靜默驗證(RIC 第九十輪選項):relations=0 且量測聚合排空才起新場。
 #     停 sim 後舊 UE 的最後幾筆量測還在管線/聚合窗裡 —— 過渡窗會讓對方的
