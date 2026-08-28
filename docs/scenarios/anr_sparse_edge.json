@@ -36223,7 +36223,30 @@
         "do": "cut",
         "src": "s28_c0",
         "tgt": "n91_c0",
-        "note": "佈病:刪掉那條通往強鄰居的關係(缺的就是它)"
+        "note": "佈病:只剪 s28→n91(單邊)。剪到全域為零會把病灶變成 Q4(「沒人認識它」);Q3 的語意是「s28 漏了它」—— 別的 cell 認識 n91 才對(RIC 第八十輪分類學)",
+        "both": false
+      },
+      {
+        "do": "relation",
+        "src": "n51_c0",
+        "tgt": "n91_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "見證關係:n51 認識 n91 → unknown/hogap 的全域「查無」測試不成立,兩支結構性靜默;sparse 的逐來源測試(s28 表裡沒有 n91)仍成立 —— 三支自動歸位,不動任何判準"
+      },
+      {
+        "do": "relation",
+        "src": "n51_c0",
+        "tgt": "s28_c0",
+        "create": true,
+        "created_age_sec": 86400,
+        "set": {
+          "ho_validated": true
+        },
+        "note": "回填 n51→s28:堵住場內掉線流(11/分)每輪餵 Q1 一筆合法 ADD 的告警噪音"
       },
       {
         "do": "relation",
