@@ -625,6 +625,16 @@ class Command(BaseCommand):
                 if st.get("born_now"):
                     f["created_at"] = TimestampService.now()
                 n = _CC.objects.filter(cell_id=st["cell"]).update(**f)
+                # is_barred 進出時同步 fixture 檔(佈病狀態的獨立載體)——
+                # 先前只補了舊 barred 步驟,Q3/Q4 走的是這條 cell 步驟,漏了
+                if "is_barred" in f:
+                    from main.apps.cu_cp.services.common.fixture_state import (
+                        fixture_barred, set_fixture_barred,
+                    )
+                    cur = set(fixture_barred())
+                    (cur.add if f["is_barred"] else cur.discard)(st["cell"])
+                    set_fixture_barred(sorted(cur))
+                    self.stdout.write(f"[fixture]    barred 檔同步:{sorted(cur)}")
                 self.stdout.write(f"[fixture] {i}. cell {st['cell']} {f} rows={n} {note}")
             elif act == "fill_nrt":
                 # 把某些 cell 的鄰區表灌到容量上限(第 9 題)。
