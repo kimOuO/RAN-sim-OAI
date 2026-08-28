@@ -138,15 +138,30 @@ class Command(BaseCommand):
     def _enforce(self) -> None:
         spec = getattr(self, "_enforce_spec", None) or {}
         cells = spec.get("barred") or []
-        if not cells:
-            return
-        try:
-            from main.apps.cu_cp.models.cell_config import CellConfig as _CEF
-            n = _CEF.objects.filter(cell_id__in=cells, is_barred=False).update(is_barred=True)
-            if n:
-                self.stdout.write(f"[fixture]    ↻ 全程執法:{n} 顆 barred 被覆寫,已寫回")
-        except Exception:  # noqa: BLE001 — 執法失敗不拆時間軸
-            pass
+        if cells:
+            try:
+                from main.apps.cu_cp.models.cell_config import CellConfig as _CEF
+                n = _CEF.objects.filter(cell_id__in=cells, is_barred=False).update(is_barred=True)
+                if n:
+                    self.stdout.write(f"[fixture]    ↻ 全程執法:{n} 顆 barred 被覆寫,已寫回")
+            except Exception:  # noqa: BLE001 — 執法失敗不拆時間軸
+                pass
+        # no_relations:這些 cell 不得出現在任何關係的任一端。防的不是本地寫手
+        # (那些都有閘),是 xApp 拿「上一場」分支內部殘留在新場 T0+8s 就回寫 ADD
+        # (2026-08-28 Q4 五輪實錄)—— 我方掃得掉自己的表,掃不掉對方的記憶,
+        # 只能在病期持續把違規關係掃掉並留痕,讓考點資格活著。
+        iso = spec.get("no_relations") or []
+        if iso:
+            try:
+                from django.db.models import Q as _Q
+                from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _NR
+                qs = _NR.objects.filter(_Q(source_cell_id__in=iso) | _Q(target_cgi__in=iso))
+                hit = [(r.source_cell_id, r.target_cgi) for r in qs]
+                if hit:
+                    qs.delete()
+                    self.stdout.write(f"[fixture]    ↻ 全程執法:掃違規關係 {hit}")
+            except Exception:  # noqa: BLE001
+                pass
 
     def _beat(self, sid, step_no, kind, note=""):
         """心跳:證明時間軸「活著」,而不是「日誌裡有行」。
@@ -546,6 +561,11 @@ class Command(BaseCommand):
                     elif kind == "relation_exists":
                         got = int(R.objects.filter(source_cell_id=c["src"],
                                                    target_cgi=c["tgt"]).exists())
+                    elif kind == "relations_touching":
+                        # 該 cell 出現在任一端的關係總數(Q4:考點資格 = 0)
+                        from django.db.models import Q as _Q
+                        got = R.objects.filter(_Q(source_cell_id=c["cell"]) |
+                                               _Q(target_cgi=c["cell"])).count()
                     else:
                         self.stdout.write(f"[fixture] {i}. ⚠️ assert 不認得的指標 {kind},跳過")
                         continue

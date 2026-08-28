@@ -6238,6 +6238,18 @@
         "note": "確保零關係指向 unk。與 Q3 相反:這題**要**全域無人認識(分類學上正是 Q4 的定義),所以不建見證、剪雙向"
       },
       {
+        "do": "cut",
+        "src": "n03_c0",
+        "tgt": "unk_c0",
+        "note": "五輪教訓:xApp 拿上一場分支殘留在 T0+8s ADD n03→unk,只剪 s01 漏網 —— unk 全隔離"
+      },
+      {
+        "do": "cut",
+        "src": "n02_c0",
+        "tgt": "unk_c0",
+        "note": "unk 全隔離(補完)"
+      },
+      {
         "do": "move_ues",
         "prefix": "uk",
         "to": "s01_c0",
@@ -6253,9 +6265,14 @@
             "metric": "reestab_inbound",
             "cell": "unk_c0",
             "max": 0
+          },
+          {
+            "metric": "relations_touching",
+            "cell": "unk_c0",
+            "max": 0
           }
         ],
-        "note": "供料窗自驗:unk 零重建流入滿一個 60s 窗(Q3 教訓:聚合窗的記憶比沉降長)"
+        "note": "供料窗自驗:unk 零重建流入滿窗 + unk 零關係(xApp 殘留 ADD 由全程執法掃,這裡等到乾淨為止)"
       },
       {
         "do": "assert",
@@ -6286,6 +6303,9 @@
     ],
     "enforce": {
       "barred": [
+        "unk_c0"
+      ],
+      "no_relations": [
         "unk_c0"
       ]
     }
