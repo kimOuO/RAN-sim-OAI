@@ -72212,7 +72212,9 @@
         "do": "move_ues",
         "prefix": "aa",
         "to": "s19_c0",
-        "note": "④=本步完成時刻;spawn 落 d02 的 UE 在此歸位 s19"
+        "note": "④=本步完成時刻;spawn 落 d02 的 UE 在此歸位 s19",
+        "wait_for": 5,
+        "wait_timeout_sec": 180
       },
       {
         "sleep_sec": 300,

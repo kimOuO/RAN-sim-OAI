@@ -496,11 +496,24 @@ class Command(BaseCommand):
                 n = R.objects.filter(source_cell_id=st["src"], target_cgi=st["tgt"]).update(**fields)
                 self.stdout.write(f"[fixture] {i}. set {st['src']}→{st['tgt']} {st.get('set')} rows={n} {note}")
             elif act == "move_ues":
-                moved = sum(
-                    1 for u in UeContext.objects.filter(ue_id__startswith=st["prefix"]).exclude(serving_cell=st["to"])
-                    if execute_f1_handover(ue_id=u.ue_id, target_cell=st["to"], trigger="MANUAL")
-                )
-                self.stdout.write(f"[fixture] {i}. 搬 {moved} 台 UE → {st['to']} {note}")
+                # wait_for:等到至少 N 台可搬才算完成(預設 0=舊語意)。
+                # Q12 四輪實錄:pre 化讓 fixture 秒級跑到本步,spawn 還沒發生,
+                # 「搬 0 台」靜默成功 → UE 滯留錯誤 cell、④ 永不成立。
+                # 操作者不得早於操作對象出生 —— 出生鏈公理的操作版。
+                want = int(st.get("wait_for") or 0)
+                deadline = time.time() + float(st.get("wait_timeout_sec") or 180)
+                while True:
+                    moved = sum(
+                        1 for u in UeContext.objects.filter(ue_id__startswith=st["prefix"]).exclude(serving_cell=st["to"])
+                        if execute_f1_handover(ue_id=u.ue_id, target_cell=st["to"], trigger="MANUAL")
+                    )
+                    on_target = UeContext.objects.filter(
+                        ue_id__startswith=st["prefix"], serving_cell=st["to"]).count()
+                    if on_target >= want or time.time() >= deadline:
+                        break
+                    self._beat(sid, i, "move_wait", note)
+                    time.sleep(5)
+                self.stdout.write(f"[fixture] {i}. 搬 {moved} 台 UE → {st['to']}(在位 {on_target}/{want}){note}")
             elif act == "inject":
                 # 換手失敗注入的熱開關(第 7 題):寫檔即生效、清檔即停止,不重啟容器
                 from pathlib import Path as _P
