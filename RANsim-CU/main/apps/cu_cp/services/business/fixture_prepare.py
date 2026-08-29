@@ -124,7 +124,11 @@ def _apply_pre(spec: dict[str, Any], errors: list[str]) -> dict[str, int]:
 
     now = TimestampService.now()
     # cells:劇本 gnbs 全員自動導出 + pre.cells 額外項(如 inactive 幽靈)
-    derived = [{"cell_id": c["cell_id"], "pci": c["pci"],
+    # gnb 必填:pre-birth 若留 NULL,seeder 的「同 gNB 互種」會把 NULL==NULL
+    # 當同站 → 全場互種滿 mesh(Q9 複測實錄:全場→n77 被種滿、attempt_add
+    # 撞已存在變 upsert、零 ADD_REJECTED、考題死)。昨天靠 DU 註冊先補
+    # gnb_id 的競態躲過 —— 出生鏈公理第十例:欄位也要與場同生。
+    derived = [{"cell_id": c["cell_id"], "pci": c["pci"], "gnb": g.get("name") or c["cell_id"],
                 "frequency_ghz": g.get("frequency_ghz", 3.5),
                 "bandwidth_mhz": g.get("bandwidth_mhz", 40.0)}
                for g in spec.get("gnbs", []) for c in g.get("cells", [])]
@@ -144,10 +148,12 @@ def _apply_pre(spec: dict[str, Any], errors: list[str]) -> dict[str, int]:
                     frequency_ghz=float(c.get("frequency_ghz") or 3.5),
                     bandwidth_mhz=float(c.get("bandwidth_mhz") or 40.0),
                     served_by_du_id=du, is_active=bool(c.get("active", True)),
+                    gnb_id=c.get("gnb") or c["cell_id"],
                     created_at=now, updated_at=now)
             else:
                 CC.objects.filter(pk=row.pk).update(
-                    pci=int(c["pci"]), is_active=bool(c.get("active", True)))
+                    pci=int(c["pci"]), is_active=bool(c.get("active", True)),
+                    gnb_id=c.get("gnb") or c["cell_id"])
             n_cells += 1
         except Exception as e:  # noqa: BLE001
             errors.append(f"pre cell {c.get('cell_id')}: {e}")
