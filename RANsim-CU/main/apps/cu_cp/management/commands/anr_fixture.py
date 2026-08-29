@@ -329,8 +329,25 @@ class Command(BaseCommand):
         # 自動化把觸發點提前了,就踩到這個順序。
         # 清掉上一場的執行期覆寫 —— 覆寫是劇本宣告的,不該跨場延續
         # (env 注入跨場撞名的教訓,坑目錄第 8 條)
-        from main.utils.env_loader import clear_overrides
+        from main.utils.env_loader import clear_overrides, set_overrides
         clear_overrides()
+        # 但劇本 pre.env 是「本場」宣告,清掉跨場殘留後要立刻補回本場的 ——
+        # 2026-08-29 Q2 複測實錄:prepare 先寫 pre.env(ANR_INTRA_ENABLED=false),
+        # 這裡的衛生清掃 0.5 秒後把它抹掉,wire 上 intra 變回 True,考點差點死在
+        # 供料面。兩個好機制打架:衛生防上一場、pre 供本場 —— 順序上衛生必須
+        # 認得「本場宣告」。單一真相來源 = 劇本檔的 anr_fixture.pre.env。
+        try:
+            for d in SCENARIO_DIRS:
+                pp = d / f"{sid}.json"
+                if pp.exists():
+                    _pre_env = ((json.loads(pp.read_text(encoding="utf-8"))
+                                 .get("anr_fixture") or {}).get("pre") or {}).get("env") or {}
+                    if _pre_env:
+                        set_overrides(dict(_pre_env), replace=True)
+                        self.stdout.write(f"[fixture] pre.env 補回:{_pre_env}")
+                    break
+        except Exception as _e:  # noqa: BLE001 — fail-loud 但不拆時間軸
+            self.stdout.write(f"[fixture] ⚠️ pre.env 補回失敗:{_e}")
         # 清掉上一場的歷史統計。
         # 2026-08-27 第 1 題實測:清場只清了資料庫(UE / 換手 / 量測 / RLF)
         # 與快照檔,但歷史統計活在**行程記憶體**裡,清不到 ——
