@@ -72295,6 +72295,60 @@
         "note": "剪跨頻層三 —— 2.1G 整層無路,頻率清單只剩 3.5G"
       },
       {
+        "do": "cut",
+        "src": "n50_c0",
+        "tgt": "f55_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "n50_c0",
+        "tgt": "f61_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "n50_c0",
+        "tgt": "f68_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "f55_c0",
+        "tgt": "f61_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "f55_c0",
+        "tgt": "f68_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "f61_c0",
+        "tgt": "f68_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "f55_c0",
+        "tgt": "n50_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "f61_c0",
+        "tgt": "n50_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
+        "do": "cut",
+        "src": "f68_c0",
+        "tgt": "n50_c0",
+        "note": "seeder 會在 scene-apply 種跨頻網格(target_arfcn=420000 進 frequencyRelations 容器→2.1G 變已知層,考點穿幫;Q8 複測首輪實錄)—— f5x 沾邊關係全剪"
+      },
+      {
         "do": "move_ues",
         "prefix": "if",
         "to": "s11_c0",
