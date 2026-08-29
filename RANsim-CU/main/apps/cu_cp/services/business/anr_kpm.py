@@ -61,7 +61,13 @@ def _rate_and_ratio(events: list[HandoverEvent], window_min: float,
 
 
 def _cum_by_relation() -> dict[tuple[str, str], dict[str, int]]:
-    """(source, target) → {failure_cause: 累計次數} —— **真正的 since-creation 聚合**。
+    """(source, target) → {failure_cause: 累計次數} —— per-pair **全生涯**聚合。
+
+    ⚠️ 名實聲明(2026-08-29 定案):wire 欄名 *CumulativeSinceCreation* 由卷面
+    凍結不可改;實作是 per-pair 全生涯 group-by,REMOVE+ADD 重建**不會歸零**。
+    這是刻意的:RIC 閘 12 依賴「cum 不受動作抹除」防止止血自毀盾(0.1.26),
+    若改成真 since-creation 會重開那個洞。名不符實之處以本註解與
+    docs/anr/v10 報告的 Q10 註記為準 —— 對時對帳一律把它讀作「這一對的歷史總帳」。
 
     2026-08-19(交叉測試輪5 發現):原本 cumulativeSinceCreation 是從
     `HandoverEvent[:2000]` 這個「最近 2000 筆」切片算的,名字說 since-creation、

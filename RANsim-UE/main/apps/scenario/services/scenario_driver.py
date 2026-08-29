@@ -501,7 +501,9 @@ def start_scenario(
 ) -> ScenarioDriver:
     global _singleton
     with _lock:
-        if _singleton is not None and _singleton.state["running"]:
+        if _singleton is not None and (
+                _singleton.state["running"]
+                or _singleton.state.get("phase") == "preparing"):
             raise RuntimeError(
                 f"Scenario driver already running: {_singleton.scenario.scenario_id}"
             )
@@ -511,7 +513,22 @@ def start_scenario(
         _singleton = ScenarioDriver(
             spec, target_wall_tick_ms=target_wall_tick_ms, sim_speed_x=sim_speed_x,
         )
-        _singleton.start()
+        # 非同步啟動(2026-08-29):帶 anr_fixture 的劇本起場前準備(掃+等靜默
+        # 驗證)要 90 秒以上,同步跑會讓前端 Start Sim 的 HTTP 請求 client-timeout
+        # (伺服器照跑但按鈕看起來像壞了)。改背景執行,立即回應;前端本來就
+        # 輪詢 ScenarioController/status,state.phase 讓它分得出 preparing/running。
+        drv = _singleton
+        drv.state["phase"] = "preparing"
+
+        def _run():
+            try:
+                drv.start()
+                drv.state["phase"] = "running" if drv.state.get("running") else "failed"
+            except Exception:  # noqa: BLE001 — fail-loud 進日誌,phase 標 failed
+                logger.exception("scenario start failed in background")
+                drv.state["phase"] = "failed"
+
+        threading.Thread(target=_run, name="scenario-start", daemon=True).start()
     return _singleton
 
 
