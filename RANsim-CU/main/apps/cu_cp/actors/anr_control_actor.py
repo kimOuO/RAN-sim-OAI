@@ -98,6 +98,14 @@ def _establish_xn_reverse(source: str, target_cgi: str, now) -> None:
     src_cell = CellConfig.objects.filter(cell_id=source).first()
     if peer is None or src_cell is None:
         return
+    # ANR_XN_REVERSE=off:劇本可暫停 gNB Xn 反向自建(Q5 owned 唯一性保護 ——
+    # 對方 missing 的 ADD 本身不破 owned,是本反向 +2s 補出 mid→west 才破;
+    # 2026-08-28 Q5 二輪實錄,B4 fail-closed 靠考點先落袋才沒事)。預設開。
+    from main.utils.env_loader import get_bool as _gbx
+    if not _gbx("ANR_XN_REVERSE", default=True):
+        logger.info("Xn reverse suppressed by scenario (ANR_XN_REVERSE=off): %s→%s",
+                    target_cgi, source)
+        return
     # 容量檢查:gNB 自建的反向關係同樣受 NRT 上限約束,否則會把對端推爆上限
     # (第9題重驗實測:n62 因反向關係變成 9/8)。超限就不建 —— 真實 gNB 也建不了。
     from main.utils.env_loader import get_int as _gi2

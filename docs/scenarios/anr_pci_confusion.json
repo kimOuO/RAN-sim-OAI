@@ -263,6 +263,12 @@
         "sleep_sec": 240,
         "note": "觀察 4 分鐘:UE 回報 pci=7,反查應出現兩顆(confusion=true)"
       }
-    ]
+    ],
+    "pre": {
+      "env": {
+        "ANR_HISTORY_SAMPLE_SEC": 60,
+        "ANR_XN_REVERSE": false
+      }
+    }
   }
 }
