@@ -54,6 +54,19 @@ def _resume_anr_fixture() -> None:
     import subprocess
     import time
 
+    import sys
+    # 只有「伺服器行程」該續跑 —— 這個 hook 在每個 Django 行程的 ready() 都會跑,
+    # 包括 manage.py shell / 一次性命令:2026-08-29 Q5r2 實錄,prepare 自己的
+    # shell 啟動先把舊時間軸復活,清理永遠追不上復活(殭屍家族第四員:
+    # 復活鉤 vs 清理者)。shell/命令行程一律不續跑。
+    argv = " ".join(sys.argv)
+    if ("runserver" not in argv and "daphne" not in argv
+            and "runworker" not in argv and "gunicorn" not in argv
+            and "manage.py" in argv):
+        return
+    # 抑制閥:prepare 清場期間豎旗,任何行程都不得續跑
+    if os.path.exists("/app/tmp/anr_fixture.suppress"):
+        return
     path = "/app/tmp/anr_fixture.progress.json"
     try:
         with open(path) as f:

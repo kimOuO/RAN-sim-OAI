@@ -183,13 +183,21 @@ def prepare(scenario_id: str) -> dict[str, Any]:
     """起場前完整準備。呼叫時機:sim 已停、scene 尚未 apply。"""
     errors: list[str] = []
     spec = _load_scenario(scenario_id)
+    # 抑制閥先豎(復活鉤 vs 清理者:清理期間任何行程不得續跑舊時間軸)
+    Path("/app/tmp/anr_fixture.suppress").write_text("prepare")
     killed = _kill_stale_timelines()
+    time.sleep(1.0)
+    killed += _kill_stale_timelines()   # 二次收割:清理瞬間可能有復活中的行程
     _wipe_state()
     sweep = _sweep_and_wait()
     if not sweep["quiet"]:
         errors.append(f"sweep not quiet after {SWEEP_MAX_SEC}s: {sweep['last']}")
     pre = _apply_pre(spec, errors)
     barred = _seed_barred(spec)
+    try:
+        Path("/app/tmp/anr_fixture.suppress").unlink()
+    except OSError:
+        pass
     out = {"scenario": scenario_id, "killed_timelines": killed,
            "sweep": sweep, "pre": pre, "barred": barred, "errors": errors}
     logger.info("fixture prepare %s: %s", scenario_id, out)
