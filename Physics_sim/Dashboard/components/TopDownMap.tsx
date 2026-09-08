@@ -3,10 +3,10 @@
 import React, { useRef, useState, type MouseEvent as RMouseEvent } from 'react';
 import type { Building, UE } from '@/types';
 
-const SCENE_MIN = -500;
-const SCENE_MAX = 500;
+export const SCENE_MIN = -500;
+export const SCENE_MAX = 500;
 
-function toRgb(c: number[] | undefined): string {
+export function toRgb(c: number[] | undefined): string {
   if (!c || c.length < 3) return '#666';
   return `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
 }
@@ -24,14 +24,19 @@ export interface CoverageOverlayData {
   opacity?: number
 }
 
-function valToColor(val: number, min: number, max: number): string {
+export function valToRgb(val: number, min: number, max: number): [number, number, number] {
   const t = max > min ? Math.max(0, Math.min(1, (val - min) / (max - min))) : 0.5
   if (t < 0.5) {
     const s = t * 2
-    return `rgb(0,${Math.round(s * 255)},${Math.round((1 - s) * 255)})`
+    return [0, Math.round(s * 255), Math.round((1 - s) * 255)]
   }
   const s = (t - 0.5) * 2
-  return `rgb(${Math.round(s * 255)},${Math.round((1 - s) * 255)},0)`
+  return [Math.round(s * 255), Math.round((1 - s) * 255), 0]
+}
+
+export function valToColor(val: number, min: number, max: number): string {
+  const [r, g, b] = valToRgb(val, min, max)
+  return `rgb(${r},${g},${b})`
 }
 
 type DragTarget =
@@ -41,7 +46,7 @@ type DragTarget =
   | { type: 'cell'; gnbName: string; cellIdx: number }   // 分散式 cell(有自己 position 才可拖)
   | { type: 'ue'; name: string };
 
-interface Props {
+export interface Props {
   width?: number;
   height?: number;
   buildings: Building[];
@@ -64,10 +69,15 @@ interface Props {
   pathA?: [number, number] | null;
   pathB?: [number, number] | null;
   plannedPath?: [number, number][];
+  // 匯入網格(.glb)的絕對 URL。只有 3D 視圖會用；2D 俯視圖忽略它。
+  meshUrl?: string;
+  // 標記尺寸係數。gNB/UE/覆蓋圈的預設尺寸是城市尺度(公尺級塔與百公尺覆蓋)，
+  // 放進 14 m 寬的室內走廊會把場景整個蓋掉 → 室內場景傳 0.1 之類的小值。
+  markerScale?: number;
 }
 
 // 依樓高上色(對齊 3D 的 viridis 感):矮=深藍紫、高=青黃
-function footprintColor(h: number): string {
+export function footprintColor(h: number): string {
   const t = Math.max(0, Math.min(1, h / 50));
   const r = Math.round(40 + t * 180);
   const g = Math.round(50 + t * 150);

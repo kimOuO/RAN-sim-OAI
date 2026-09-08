@@ -1,4 +1,5 @@
 import { omniverseApiClient } from '@/services/api/omniverse';
+import { OMNIVERSE_API_URL } from '@/config';
 
 // OpenStreetMap → USD 地圖場景 API(Omniverse backend :8001 RAN/Map/MapController)
 
@@ -10,6 +11,9 @@ export interface MapRow {
   max_lon: number;
   max_lat: number;
   usd_path: string;
+  mesh_url: string;      // 匯入地圖才有：原始 .glb 的相對路徑（空字串 = OSM 產生的地圖）
+  indoor_mode: boolean;  // 室內掃描：天花板收起、gNB 視覺尺寸縮小
+  gnb_visual_scale: number;
   status: string;        // pending | ready | failed
   active: boolean;       // 是否為當前套用到場景的地圖
   error: string;
@@ -108,3 +112,93 @@ export const detachMap = async (): Promise<void> => {
 export const deleteMap = async (name: string): Promise<void> => {
   await omniverseApiClient.post('/api/v0.1/RAN/Map/MapController/delete', { name });
 };
+
+// ── GLB/glTF 網格匯入 ────────────────────────────────────
+export type MaterialMode = 'conservative' | 'legacy_color';
+
+export interface MaterialEvidence {
+  mode: string;
+  proven_area_pct: number;
+  fallback_area_pct: number;
+  fallback_material: string;
+  fallback_rationale: string;
+}
+
+export interface MaterialDiagnostics {
+  wood_boundary_density_pct: number;
+  wood_boundary_isolated_pct: number;
+  wood_boundary_reliable: boolean;
+  note: string;
+}
+
+export interface RadioMaterials {
+  materials: Record<string, { faces: number; area_m2: number; area_pct: number }>;
+  evidence: MaterialEvidence;
+  diagnostics: MaterialDiagnostics;
+  mitsuba?: { holes_capped: number; face_count: number; materials: Record<string, unknown> };
+  error?: string;
+}
+
+export interface GlbImportStats {
+  mesh_count: number;
+  triangle_count: number;
+  vertex_count: number;
+  material_count: number;
+  texture_count: number;
+  extent_ew_m: number;
+  extent_ns_m: number;
+  height_max_m: number;
+  usd_path: string;
+  texture_dir: string;
+  size_bytes: number;
+}
+
+export interface ImportGlbInput {
+  file: File;
+  name: string;
+  label?: string;
+  scale?: number;
+  recenter?: boolean;
+  materialMode?: MaterialMode;
+  onProgress?: (percent: number) => void;
+}
+
+/**
+ * 上傳 .glb → 後端轉成 USD 並註冊為一張地圖，之後就能用 applyMapToScene 套用。
+ * 走 multipart 而非 JSON：掃描檔動輒數十 MB，base64 會膨脹 1/3。
+ */
+export const importGlb = async ({
+  file, name, label, scale = 1, recenter = true,
+  materialMode = 'conservative', onProgress,
+}: ImportGlbInput): Promise<MapRow & {
+  import_stats: GlbImportStats;
+  radio_materials: RadioMaterials | null;
+}> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('name', name);
+  if (label) form.append('label', label);
+  form.append('scale', String(scale));
+  form.append('recenter', String(recenter));
+  form.append('material_mode', materialMode);
+
+  const res = await omniverseApiClient.post<{
+    data: MapRow & { import_stats: GlbImportStats; radio_materials: RadioMaterials | null };
+  }>(
+    '/api/v0.1/RAN/Map/MapController/import_glb',
+    form,
+    {
+      // 覆蓋 client 預設的 application/json，讓瀏覽器自己帶 multipart boundary
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000, // 大檔上傳 + 轉檔，放寬到 5 分鐘
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+      },
+    },
+  );
+  return res.data.data;
+};
+
+/** mesh_url(相對路徑)→ 可直接餵給 GLTFLoader 的絕對 URL。 */
+export const meshAbsoluteUrl = (meshUrl: string): string =>
+  meshUrl ? `${OMNIVERSE_API_URL}${meshUrl}` : '';

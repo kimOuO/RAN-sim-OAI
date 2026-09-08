@@ -6,12 +6,15 @@ import { useSceneEditor } from '@/hooks/feature/useSceneEditor';
 import { useDrawPage } from '@/hooks/feature/useDrawPage';
 import { useSimContext } from '@/components/SimProvider';
 import { TopDownMap } from '@/components/TopDownMap';
+import { Scene3D } from '@/components/Scene3D';
 import { ObjectForm } from '@/components/ObjectForm';
 import { SignalTable } from '@/components/SignalTable';
 import { SignalChart } from '@/components/SignalChart';
 import { MimoSettingsPanel } from '@/components/MimoSettingsPanel';
 import { MapGenerator } from '@/components/MapGenerator';
-import { planPath, listMaps, type PlannedPath } from '@/services/api/map';
+import { MeshImporter } from '@/components/MeshImporter';
+import { KitViewport } from '@/components/KitViewport';
+import { planPath, listMaps, meshAbsoluteUrl, type PlannedPath, type MapRow } from '@/services/api/map';
 import * as omniverseApi from '@/services/api/omniverse';
 import { initScene } from '@/services/api/scene';
 import { computeCoverage, getLoadedSceneId, type CoverageResponse } from '@/services/api/coverage';
@@ -50,6 +53,9 @@ export default function SceneEditor() {
     }
   }, [uePositions, draw.updateUEPositions]);
 
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  // Omniverse 畫面預設不並排：一開就是整個桌面串流，很吃頻寬
+  const [showKitView, setShowKitView] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<'building' | 'gnb' | 'ue'>('building');
   const [selectedObject, setSelectedObject] = useState<{
@@ -196,6 +202,23 @@ export default function SceneEditor() {
   const [planMsg, setPlanMsg] = useState('');
   const [newUeName, setNewUeName] = useState('');
 
+  // 當前 active 地圖若是匯入的網格，3D 視圖要直接把那份 .glb 畫出來
+  const [activeMeshUrl, setActiveMeshUrl] = useState('');
+  // 室內場景的 gNB/UE 標記要縮小，否則 4 m 半徑的球會把 14 m 寬的走廊整個蓋掉
+  const [markerScale, setMarkerScale] = useState(1);
+  // 當前套用的地圖 —— 用來在標題下顯示「這個場景是哪來的」
+  const [activeMap, setActiveMap] = useState<MapRow | null>(null);
+  const refreshActiveMesh = async () => {
+    try {
+      const maps = await listMaps();
+      const active = maps.find((m) => m.active) ?? null;
+      setActiveMap(active);
+      setActiveMeshUrl(meshAbsoluteUrl(active?.mesh_url ?? ''));
+      setMarkerScale(active?.indoor_mode ? 0.1 : 1);
+    } catch { setActiveMap(null); setActiveMeshUrl(''); setMarkerScale(1); }
+  };
+  useEffect(() => { refreshActiveMesh(); }, []);
+
   const activeMapName = async (): Promise<string | null> => {
     try {
       const maps = await listMaps();
@@ -341,6 +364,9 @@ export default function SceneEditor() {
       }
     : undefined;
 
+  // 2D(SVG) 與 3D(WebGL) 兩個視圖共用同一組 Props，直接換元件即可
+  const MapView = viewMode === '3d' ? Scene3D : TopDownMap;
+
   return (
     <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: selectedObject ? '280px 1fr 300px' : '280px 1fr', gap: 0 }}>
       {/* Coverage 計算中：全螢幕 overlay 阻擋互動 */}
@@ -373,7 +399,13 @@ export default function SceneEditor() {
         {/* MAP — OpenStreetMap → USD 地圖產生 + 名稱選取套用 */}
         <MapGenerator
           disabled={simRunning || coverageLoading}
-          onApplied={() => draw.refreshScene()}
+          onApplied={() => { draw.refreshScene(); refreshActiveMesh(); }}
+        />
+
+        {/* MESH — 既有 .glb 掃描/建模檔 → USD,與地圖共用同一份清單 */}
+        <MeshImporter
+          disabled={simRunning || coverageLoading}
+          onImported={() => { draw.refreshScene(); refreshActiveMesh(); }}
         />
 
         {/* UE 路徑規劃 — 點 A/B,A* 自動繞過建築(解決穿牆) */}
@@ -760,9 +792,55 @@ export default function SceneEditor() {
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {/* Canvas 區域 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', background: '#111827' }}>
-          <h1 style={{ margin: '0 0 16px 0', fontSize: '24px', fontWeight: '600' }}>
+          <h1 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: '600' }}>
             Scene Layout
           </h1>
+
+          {/* 場景來源：分辨眼前的幾何是「匯入的 GLB 掃描」還是「OSM 產生的地圖」。
+              兩者都走同一個 MapScene 清單，光看畫布分不出來。 */}
+          <div style={{ marginBottom: '16px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.7 }}>
+            {activeMap ? (
+              <>
+                <span style={{ color: '#e5e7eb', fontWeight: 600 }}>
+                  {activeMap.mesh_url ? '匯入網格' : 'OSM 地圖'}
+                </span>
+                <span>：{activeMap.name}</span>
+                {activeMap.label && activeMap.label !== activeMap.name && (
+                  <span>（{activeMap.label}）</span>
+                )}
+                <span style={{ color: '#4b5563' }}> · </span>
+                <span>
+                  {activeMap.building_count} {activeMap.mesh_url ? 'mesh' : '棟'} ·{' '}
+                  {activeMap.extent_ew_m.toFixed(1)} × {activeMap.extent_ns_m.toFixed(1)} m ·
+                  高 {activeMap.height_max_m.toFixed(1)} m
+                </span>
+                {activeMap.indoor_mode && (
+                  <span style={{ color: '#4ade80' }}>
+                    {' '}· 室內模式（標記 ×{markerScale}、gNB ×{activeMap.gnb_visual_scale}）
+                  </span>
+                )}
+                {activeMap.mesh_url && (
+                  <>
+                    <br />
+                    <span style={{ color: '#6b7280' }}>
+                      來源檔：{activeMap.mesh_url.split('/').pop()} ·{' '}
+                    </span>
+                    <a
+                      href={activeMeshUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: '#60a5fa' }}
+                    >
+                      下載 GLB
+                    </a>
+                    <span style={{ color: '#6b7280' }}> · USD：{activeMap.usd_path}</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <span>未套用地圖（場景只有手動加入的物件）</span>
+            )}
+          </div>
 
           {draw.error && (
             <div style={{
@@ -829,7 +907,57 @@ export default function SceneEditor() {
             </div>
           )}
 
-          <TopDownMap
+          {/* 2D / 3D 視圖切換 — 兩者共用同一組 props，可隨時切回 2D */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
+            {(['2d', '3d'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '11px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: '1px solid #ccc',
+                  background: viewMode === m ? '#2563eb' : '#111827',
+                  color: viewMode === m ? '#fff' : '#9ca3af',
+                }}
+              >
+                {m.toUpperCase()}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowKitView((v) => !v)}
+              style={{
+                padding: '4px 10px', fontSize: '11px', borderRadius: '4px',
+                cursor: 'pointer', border: '1px solid #ccc',
+                background: showKitView ? '#7c3aed' : '#111827',
+                color: showKitView ? '#fff' : '#9ca3af',
+              }}
+              title="在畫布旁邊並排顯示 Omniverse Kit 的實際渲染畫面"
+            >
+              Omniverse
+            </button>
+            {viewMode === '3d' && (
+              <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                左鍵旋轉視角 / 中鍵平移 / 滾輪縮放；直接拖曳物件可移動，右鍵 waypoint 刪除
+              </span>
+            )}
+          </div>
+
+          {/* 左：可互動的編輯畫布；右：Omniverse 的實際渲染結果（noVNC 串流）。
+              並排是為了「在左邊拖完物件，右邊直接看 RTX 的樣子」，
+              兩邊相機各自獨立、目前不同步。 */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: showKitView ? 'minmax(420px, 1fr) minmax(420px, 1fr)' : '1fr',
+              gap: '16px',
+              alignItems: 'start',
+            }}
+          >
+          <div>
+          <MapView
             buildings={draw.sceneConfig?.buildings ?? []}
             gnbs={draw.sceneConfig?.gnbs ?? []}
             ues={draw.sceneConfig?.ues ?? []}
@@ -849,7 +977,17 @@ export default function SceneEditor() {
             onSelectObject={setSelectedObject}
             onSelectUEIndex={draw.setSelectedUEIndex}
             coverageOverlay={coverageOverlay}
+            meshUrl={activeMeshUrl}
+            markerScale={markerScale}
           />
+          </div>
+
+          {showKitView && (
+            <div>
+              <KitViewport height={600} />
+            </div>
+          )}
+          </div>
 
           {/* Live Signal Metrics */}
           <div style={{ marginTop: '24px', borderTop: '1px solid #ddd', paddingTop: '16px' }}>

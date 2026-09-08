@@ -249,22 +249,27 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
   const handleMoveBuilding = useCallback(
     async (name: string, x: number, z: number) => {
       try {
+        const currentY = sceneConfig?.buildings?.find((b: any) => b.name === name)?.position?.[1];
         await omniverseApi.updateBuilding(name, {
-          position: [x, 0, z],
+          position: [x, currentY ?? 0, z],
         });
         await refreshScene();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to update building position');
       }
     },
-    [refreshScene]
+    [sceneConfig, refreshScene]
   );
 
   const handleMoveGnb = useCallback(
     async (name: string, x: number, z: number) => {
       try {
+        // 沿用該 gNB 目前的高度，不要寫死 30 m —— 畫布拖曳只改平面位置。
+        // 寫死的話，室內場景裡掛在 2.5 m 的小基站被拖一下就飛回 30 m 高空，
+        // 整組室內設定當場失效（2026-09-08 實際踩到）。
+        const currentY = sceneConfig?.gnbs?.find((g: any) => g.name === name)?.position?.[1];
         await omniverseApi.updateGnb(name, {
-          position: [x, 30, z],
+          position: [x, currentY ?? 30, z],
         });
         await refreshScene();
         // AK6: gNB position 改了, Sionna 也要重建 (path_gain 跟距離強相關)
@@ -277,7 +282,7 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
         setError(err instanceof Error ? err.message : 'Failed to update gNB position');
       }
     },
-    [refreshScene]
+    [sceneConfig, refreshScene]
   );
 
   // 分散式 cell(有自己 position)在畫布上被拖曳 → 更新該 cell 座標
@@ -309,8 +314,9 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
   const handleMoveUE = useCallback(
     async (name: string, x: number, z: number) => {
       try {
+        const currentY = sceneConfig?.ues?.find((u: any) => u.name === name)?.position?.[1];
         await omniverseApi.updateUe(name, {
-          position: [x, 0, z],
+          position: [x, currentY ?? 0, z],
         });
         await refreshScene();
       } catch (err) {
