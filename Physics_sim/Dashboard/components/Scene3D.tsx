@@ -744,9 +744,18 @@ function Waypoints({
   onRemoveWaypoint: Props['onRemoveWaypoint'];
   ms: number;
 }) {
+  // 劇本產生的軌跡可以有上千個點（實測 24 小時劇本每人 1478 個）。
+  // 為每個點畫一顆球 + 一個 HTML 標籤，會變成一條白牆並塞爆 DOM，
+  // 畫布直接卡住。超過門檻就只畫球、不畫編號，再多就抽樣顯示。
+  const LABEL_LIMIT = 60;
+  const HANDLE_LIMIT = 200;
+  const showLabels = waypoints.length <= LABEL_LIMIT;
+  const stride = Math.max(1, Math.ceil(waypoints.length / HANDLE_LIMIT));
+
   return (
     <>
       {waypoints.map((w, idx) => {
+        if (idx % stride !== 0) return null;
         const isDragging = dragging?.type === 'waypoint' && dragging.idx === idx;
         return (
           <group key={`wp-${idx}`}>
@@ -766,9 +775,11 @@ function Waypoints({
                 emissiveIntensity={0.4}
               />
             </mesh>
-            <Label position={[w[0], (w[1] ?? 0) + 7 * ms, w[2]]} color="#fff" size={9} weight={700}>
-              {idx + 1}
-            </Label>
+            {showLabels && (
+              <Label position={[w[0], (w[1] ?? 0) + 7 * ms, w[2]]} color="#fff" size={9} weight={700}>
+                {idx + 1}
+              </Label>
+            )}
           </group>
         );
       })}
