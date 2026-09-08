@@ -645,11 +645,15 @@ function UEs({
   selectedUEIndex,
   onSelectObject,
   onSelectUEIndex,
+  onPickUe,
+  pickedUe,
   dragging,
   tempPos,
   bindDrag,
   ms,
 }: Pick<Props, 'ues' | 'trajectories' | 'selectedUEIndex' | 'onSelectObject' | 'onSelectUEIndex'> & {
+  onPickUe?: (name: string) => void;
+  pickedUe: string | null;
   dragging: DragTarget | null;
   tempPos: TempPos;
   bindDrag: (t: DragTarget) => DragBinding;
@@ -684,6 +688,7 @@ function UEs({
                 e.stopPropagation();
                 onSelectObject?.({ type: 'ue', name: u.name });
                 onSelectUEIndex?.(idx);
+                onPickUe?.(u.name);
               }}
               {...bindDrag({ type: 'ue', name: u.name })}
             >
@@ -709,6 +714,10 @@ function UEs({
 
       {trajectories.map((t, idx) => {
         if (!t.waypoints || t.waypoints.length < 2) return null;
+        // 只畫點選中的那一條。18 個 UE x 上千個點全畫出來會糊成一片，
+        // 什麼都看不出來。
+        if (pickedUe && t.name !== pickedUe) return null;
+        if (!pickedUe) return null;
         const isSelected = idx === selectedUEIndex;
         return (
           <Line
@@ -747,8 +756,8 @@ function Waypoints({
   // 劇本產生的軌跡可以有上千個點（實測 24 小時劇本每人 1478 個）。
   // 為每個點畫一顆球 + 一個 HTML 標籤，會變成一條白牆並塞爆 DOM，
   // 畫布直接卡住。超過門檻就只畫球、不畫編號，再多就抽樣顯示。
-  const LABEL_LIMIT = 60;
-  const HANDLE_LIMIT = 200;
+  const LABEL_LIMIT = 40;
+  const HANDLE_LIMIT = 60;
   const showLabels = waypoints.length <= LABEL_LIMIT;
   const stride = Math.max(1, Math.ceil(waypoints.length / HANDLE_LIMIT));
 
@@ -768,7 +777,7 @@ function Waypoints({
               }}
               {...bindDrag({ type: 'waypoint', idx })}
             >
-              <sphereGeometry args={[3.5 * ms, 16, 12]} />
+              <sphereGeometry args={[1.4 * ms, 12, 10]} />
               <meshLambertMaterial
                 color={isDragging ? '#FFD54F' : '#4CAF50'}
                 emissive={isDragging ? '#FFD54F' : '#4CAF50'}
@@ -776,7 +785,7 @@ function Waypoints({
               />
             </mesh>
             {showLabels && (
-              <Label position={[w[0], (w[1] ?? 0) + 7 * ms, w[2]]} color="#fff" size={9} weight={700}>
+              <Label position={[w[0], (w[1] ?? 0) + 3 * ms, w[2]]} color="#fff" size={9} weight={700}>
                 {idx + 1}
               </Label>
             )}
@@ -880,6 +889,9 @@ export function Scene3D({
   const [cutHeight, setCutHeight] = useState<number | null>(2.0);
   const [tempPos, setTempPos] = useState<TempPos>(null);
   const [hovering, setHovering] = useState(false);
+  // 點過哪個 UE 才顯示它的路徑點。劇本產生的軌跡每人上千個點，
+  // 一進頁面就把預設選取者的整條路徑畫出來，會把其他 UE 整個蓋掉。
+  const [pickedUe, setPickedUe] = useState<string | null>(null);
   // 分辨「點一下」與「拖過再放開」：拖曳結束後那一發 click 不該再加 waypoint
   const movedRef = useRef(false);
   // 拖曳結束要讀當下的 tempPos，但 handler 掛在 window 上不會跟著 re-render
@@ -1010,7 +1022,7 @@ export function Scene3D({
           near: Math.max(0.01, 0.5 * ms),
           far: 5000 * Math.max(ms, 0.2),
         }}
-        onPointerMissed={() => onSelectObject?.(null)}
+        onPointerMissed={() => { onSelectObject?.(null); setPickedUe(null); }}
       >
         <color attach="background" args={['#0d0d1a']} />
         <ambientLight intensity={0.55} />
@@ -1029,6 +1041,7 @@ export function Scene3D({
               return;
             }
             onSelectObject?.(null);
+            setPickedUe(null);
             onAddWaypoint(e.point.x, e.point.z);
           }}
           onPointerDown={() => {
@@ -1084,12 +1097,14 @@ export function Scene3D({
           selectedUEIndex={selectedUEIndex}
           onSelectObject={onSelectObject}
           onSelectUEIndex={onSelectUEIndex}
+          onPickUe={setPickedUe}
+          pickedUe={pickedUe}
           dragging={dragging}
           tempPos={tempPos}
           bindDrag={bindDrag}
           ms={ms}
         />
-        {selectedUe?.waypoints && (
+        {pickedUe && selectedUe?.name === pickedUe && selectedUe?.waypoints && (
           <Waypoints
             waypoints={selectedUe.waypoints as [number, number, number][]}
             dragging={dragging}
@@ -1126,6 +1141,7 @@ export function Scene3D({
             meshOpacity,
             cutHeight,
             ms,
+            pickedUe,
           ]}
         />
       </Canvas>
