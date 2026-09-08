@@ -350,3 +350,29 @@ def batch_move_ues(
     except requests.RequestException as exc:
         logger.warning("omniverse batch_move HTTP failed: %s", exc)
         return False
+
+
+def get_scenario_park_point(scenario_id: str) -> tuple[float, float] | None:
+    """拉劇本的等候點 (x, z)。沒有 / 拉不到就回 None（= 不動可見性）。
+
+    劇本把「離場」的人停在走廊外 park_offset_m 公尺的這個點上。
+    UE 停在這裡 = 這一刻他不在場，該從畫面消失。
+    用位置判斷而不是劇本的 active 時間軸，是因為 driver 拿到的 waypoints
+    沒有時間軸，它用「距離 ÷ 速度」重算時長，原地站著的路段被壓縮掉了
+    （實測 corridor_peak_2h 劇本 7200 s，實際播完 ~3640 s，且每人不同），
+    拿時鐘推劇本秒數會跟畫面上的人對不起來。
+    """
+    if not scenario_id:
+        return None
+    url = f"{settings.OMNIVERSE_URL.rstrip('/')}/api/v0.1/RAN/Scenario/ScenarioController/read"
+    try:
+        r = _session.post(url, json={"scenario_id": scenario_id}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            return None
+        raw = (r.json().get("data") or {}).get("raw_json") or {}
+        park = (raw.get("_metadata") or {}).get("park_point")
+        if isinstance(park, (list, tuple)) and len(park) >= 2:
+            return float(park[0]), float(park[1])
+    except (requests.RequestException, ValueError, TypeError):
+        pass
+    return None

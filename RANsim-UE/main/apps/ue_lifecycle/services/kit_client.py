@@ -47,7 +47,7 @@ class _KitPositionPublisher:
         self.dropped = 0
         self.failed = 0
 
-    def publish(self, ue_id: str, x: float, y: float, z: float) -> None:
+    def publish(self, ue_id: str, x: float, y: float | None, z: float) -> None:
         """非阻塞:只寫入最新位置快照,立即返回。"""
         with self._lock:
             if ue_id in self._latest:
@@ -91,27 +91,51 @@ class _KitPositionPublisher:
 _publisher = _KitPositionPublisher()
 
 
-def _post_move(ue_id: str, x: float, y: float, z: float) -> bool:
+def _post_move(ue_id: str, x: float, y: float | None, z: float) -> bool:
     base = settings.OMNIVERSE_KIT_URL.rstrip('/')
     url = f"{base}/ue/{ue_id}/move"
+    # y=None → payload 不帶 y，Kit 的 move_ue 會保留 prim 現有的 Y。
+    # 這是刻意的：劇本 positions 的 y 是**天線高度**（慣例 1.5-1.7），
+    # 而 Kit 的 move_ue 把 y 當成**腳底高度** —— 直接把天線高度推過去，
+    # 人會整個浮在半空（實測室內走廊浮 1.7 m）。視覺層只該改平面位置。
+    body = {"x": x, "z": z} if y is None else {"x": x, "y": y, "z": z}
     try:
-        r = requests.post(url, json={"x": x, "y": y, "z": z}, timeout=_TIMEOUT_SEC)
+        r = requests.post(url, json=body, timeout=_TIMEOUT_SEC)
         return r.ok
     except requests.RequestException:
         # Kit 可能沒跑 / 正在卡 — 不算 error,下一輪推最新位置即可
         return False
 
 
-def move_ue(ue_id: str, x: float, y: float, z: float) -> bool:
-    """非阻塞節流發佈 UE 位置給 Kit(視覺化用)。永遠立即返回。"""
+def move_ue(ue_id: str, x: float, z: float, y: float | None = None) -> bool:
+    """非阻塞節流發佈 UE 位置給 Kit(視覺化用)。永遠立即返回。
+
+    y 預設 None = 不動高度。UE 走在地面上，高度由 build 時決定，
+    每 tick 只需要更新平面位置。"""
     _publisher.publish(ue_id, x, y, z)
     return True
 
 
-def move_ue_sync(ue_id: str, x: float, y: float, z: float) -> bool:
+def move_ue_sync(ue_id: str, x: float, z: float, y: float | None = None) -> bool:
     """同步推送(舊行為)。只在確實需要等 Kit 確認時使用。"""
     return _post_move(ue_id, x, y, z)
 
 
 def publisher_stats() -> dict[str, int]:
     return _publisher.stats()
+
+
+def set_ue_visible(ue_id: str, visible: bool) -> bool:
+    """切 UE 在 Kit 的可見性(視覺化用)。同步送，失敗不影響 RAN 模擬。
+
+    不走 _publisher 的節流佇列：可見性只在「進場/離場」那一刻變一次，
+    量級是每人每天數次，跟每 tick 的位置完全不同 —— 塞進 latest-wins
+    快照反而會被後續位置更新蓋掉。
+    """
+    base = settings.OMNIVERSE_KIT_URL.rstrip('/')
+    url = f"{base}/ue/{ue_id}/visible"
+    try:
+        r = requests.post(url, json={"visible": bool(visible)}, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException:
+        return False

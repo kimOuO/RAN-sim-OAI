@@ -250,6 +250,16 @@ def start_sim(
     except Exception as e:  # noqa: BLE001
         logger.warning("set_session_uuid failed: %s", e)
 
+    # 劇本等候點 — 讓 trajectory tick 能判斷誰「離場」了並把他藏起來。
+    # 每次 start_sim 都重設(含設回 None),否則換成 live 模式還會沿用上一齣戲的判準。
+    try:
+        from main.apps.ue_lifecycle.services import manager as ue_manager
+        from main.apps.ue_lifecycle.services import omniverse_client
+        park = omniverse_client.get_scenario_park_point(scenario_id)
+        ue_manager.get_manager().set_park_point(park)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("set_park_point failed: %s", e)
+
     if source == "scenario":
         if not scenario_id:
             raise ValueError("source=scenario requires scenario_id")

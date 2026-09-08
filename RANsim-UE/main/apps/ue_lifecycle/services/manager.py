@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from typing import Any
@@ -24,6 +25,10 @@ from main.apps.ue_lifecycle.services.ue_thread import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 判定「停在等候點」的半徑。劇本的 park_offset_m 是 25 m,走廊本身寬僅數公尺,
+# 2 m 容錯遠小於這個間距,不會把走廊裡的人誤判成離場。
+_PARK_RADIUS_M = 2.0
 
 
 def _now_ms() -> int:
@@ -48,10 +53,20 @@ class UeLifecycleManager:
         # 打 Omniverse 太頻繁)。N=5 → 500ms 一次,跟 sim_dt 對齊。
         self._camp_last_try_ms: dict[str, int] = {}   # 掉話 UE 上次選網時間(節流)
         self._tick_count_since_signal_ingest = 0
+        # 劇本等候點 (x, z) — 停在這裡的 UE 代表「離場」,要從 Kit 畫面消失。
+        # None = 沒有劇本(live 模式),完全不動可見性。
+        self._park_point: tuple[float, float] | None = None
+        self._last_visible: dict[str, bool] = {}
 
     def set_session_uuid(self, session_uuid: str | None) -> None:
         self._session_uuid = session_uuid
         logger.info("UeLifecycleManager session_uuid=%s", session_uuid)
+
+    def set_park_point(self, park: tuple[float, float] | None) -> None:
+        """設定劇本等候點。換 session 要重設,否則沿用上一齣戲的判準。"""
+        self._park_point = park
+        self._last_visible = {}
+        logger.info("UeLifecycleManager park_point=%s", park)
 
     def start(self) -> None:
         if self._poll_thread and self._poll_thread.is_alive():
@@ -155,8 +170,12 @@ class UeLifecycleManager:
         #       Kit 卡住時只會丟棄中間畫格,不會拖慢這個 trajectory loop。
         if positions_for_ru:
             ru_client.update_ues_batch(positions_for_ru)
-            for ue_id, x, y, z in positions_for_kit:
-                kit_client.move_ue(ue_id, x, y, z)
+            for ue_id, x, _y, z in positions_for_kit:
+                # 不傳 y：劇本的 y 是天線高度，Kit 的 move_ue 把 y 當腳底高度，
+                # 直接推過去人會浮在半空。UE 走在地面上，高度由 build 時決定，
+                # 每 tick 只需要更新平面位置。
+                kit_client.move_ue(ue_id, x, z)
+            self._sync_visibility(positions_for_kit)
 
         # ── (4) Signal history ingest(每 N 個 tick 一次,寫 signal_history + UeState)
         # Playback / KpmSummaryLine / /scenarios chart 都依賴 signal_history。
@@ -171,6 +190,35 @@ class UeLifecycleManager:
         # 每 100 tick (~10s) log 一次 traffic 累計, 避免 spam
         if injected_total > 0 and (now_ms // 1000) % 10 == 0:
             logger.debug("traffic tick injected=%d sdu", injected_total)
+
+    def _sync_visibility(
+        self, positions_for_kit: list[tuple[str, float, float, float]]
+    ) -> None:
+        """讓「離場」的人真的從畫面消失,而不是站在走廊外被看見。
+
+        判準是位置:UE 停在劇本的等候點上 = 這一刻他不在場。定義上就與畫面
+        同步,不需要把劇本的 active 時間軸對映到牆上時鐘(那個對映會失準,
+        見 omniverse_client.get_scenario_park_point 的說明)。
+
+        只在狀態「有變」時才推 Kit —— 每 tick 對 18 個人各打一發 HTTP 會把
+        Kit 的命令佇列塞爆,而進出場一天也才數次。
+        """
+        if self._park_point is None:
+            return
+        px, pz = self._park_point
+        for ue_id, x, _y, z in positions_for_kit:
+            visible = math.hypot(x - px, z - pz) > _PARK_RADIUS_M
+            if self._last_visible.get(ue_id) == visible:
+                continue
+            self._last_visible[ue_id] = visible
+            if not kit_client.set_ue_visible(ue_id, visible):
+                # 推失敗就把快取清掉,下一個 tick 會重試(不要記成已同步)
+                self._last_visible.pop(ue_id, None)
+                continue
+            n_on = sum(1 for v in self._last_visible.values() if v)
+            logger.info("visibility: %s → %s (在場 %d/%d)",
+                        ue_id, "在場" if visible else "離場",
+                        n_on, len(self._last_visible))
 
     def _ingest_signals(self, positions_for_kit: list[tuple[str, float, float, float]]) -> None:
         """每隔 N tick 從 DU 拉最新 per-UE 訊號,bundle 位置一起 POST Omniverse
