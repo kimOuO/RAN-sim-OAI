@@ -49,6 +49,8 @@ def compute_coverage_map(
     null_threshold_dbm: float = -120.0,
     include_sinr: bool = True,
     samples_per_tx: int | None = None,
+    diffraction: bool = False,
+    diffuse_reflection: bool = False,
 ) -> dict[str, Any]:
     """以 Sionna RadioMapSolver 算 coverage map，輸出對齊外部 spec。
 
@@ -110,9 +112,9 @@ def compute_coverage_map(
         max_depth=max_depth,
         los=True,
         specular_reflection=True,
-        diffuse_reflection=False,    # coverage 用，不跑 diffuse 省 VRAM
+        diffuse_reflection=diffuse_reflection,
         refraction=True,
-        diffraction=False,            # coverage 用，不跑 diffraction 省 VRAM
+        diffraction=diffraction,
     )
 
     # path_gain shape = (num_tx, H, W)

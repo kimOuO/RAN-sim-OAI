@@ -85,6 +85,8 @@ class CoverageActor:
                 include_sinr=validated["include_sinr"],
                 max_depth=validated["max_depth"],
                 null_threshold_dbm=validated["null_threshold_dbm"],
+                diffraction=validated["diffraction"],
+                diffuse_reflection=validated["diffuse_reflection"],
             )
         except MemoryError:
             logger.error("GPU OOM on coverage_map")

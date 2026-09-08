@@ -380,6 +380,8 @@ class SionnaBusinessService:
         include_sinr: bool = True,
         max_depth: int = 3,
         null_threshold_dbm: float = -120.0,
+        diffraction: bool = False,
+        diffuse_reflection: bool = False,
     ) -> dict[str, Any]:
         """產 per-gNB 2D RSRP 網格（對齊外部平台 spec）。"""
         cls.ensure_loaded()
@@ -407,6 +409,8 @@ class SionnaBusinessService:
                 max_depth=max_depth,
                 null_threshold_dbm=null_threshold_dbm,
                 include_sinr=include_sinr,
+                diffraction=diffraction,
+                diffuse_reflection=diffuse_reflection,
             )
         return result
 

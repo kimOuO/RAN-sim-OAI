@@ -57,6 +57,10 @@ class CoverageMapRequestSerializer(serializers.Serializer):
     scene_id = serializers.CharField(max_length=128)
     grid = GridSpecWriteSerializer()
     include_sinr = serializers.BooleanField(required=False, default=True)
+    # 光追效應開關。預設維持原本的「省 VRAM」設定，但室內場景需要繞射：
+    # NLOS 區域的訊號主要靠繞過門框、轉角進來，關掉會讓陰影比實際更深。
+    diffraction = serializers.BooleanField(required=False, default=False)
+    diffuse_reflection = serializers.BooleanField(required=False, default=False)
     max_depth = serializers.IntegerField(
         required=False, default=3, min_value=1, max_value=5,
         help_text="光追 bounce 次數；coverage map 建議 <=3 以免 VRAM 爆",
