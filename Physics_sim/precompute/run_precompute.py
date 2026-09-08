@@ -142,14 +142,19 @@ def run(scenario_id: str) -> int:
     sc_gnbs = raw.get("gnbs")
     sc_antenna = raw.get("antenna_pattern")
     sc_buildings = raw.get("buildings") or []
-    if sc_gnbs or sc_antenna:
+    # 劇本可以自帶 geometry_source（例如掃描模型的 mitsuba_xml_path）。
+    # 沒有的話才退回「用 buildings 方塊建 mesh」的舊行為 —— 對掃描類場景，
+    # buildings 是空的，舊行為會把整個幾何清成自由空間，算出來的 channel
+    # 完全不是室內（2026-09-08 實際踩到：走廊掃描被換成 0 棟建築的空場景）。
+    sc_geometry = raw.get("geometry_source")
+    if sc_gnbs or sc_antenna or sc_geometry:
         # geometry_source 用「劇本的 buildings」建 mesh(空 list = 只有地面 = 自由空間)。
         # 原本一律吃全域 umi_3sector.xml(6 棟樓)→ 劇本說無建築卻在都市場景裡算 channel,
         # 造成 cell 被樓遮蔽/翻轉/多徑 variance。改成劇本場景幾何才忠於劇本 + 對齊 OAI AWGN。
         override: dict = {
             "scene_id": raw.get("scene_id") or scenario_id,
             "override_mode": "full",  # 換 mesh(geometry)+ gNB + 天線
-            "geometry_source": {
+            "geometry_source": sc_geometry or {
                 "type": "buildings_json",
                 "buildings": sc_buildings,
                 "ground": raw.get("ground"),  # None → builder 用預設地面
@@ -163,7 +168,8 @@ def run(scenario_id: str) -> int:
             SionnaBusinessService.apply_override(override)
             print(
                 f"[precompute] scenario override applied: "
-                f"gnbs={len(sc_gnbs or [])} buildings={len(sc_buildings)} "
+                f"gnbs={len(sc_gnbs or [])} "
+                f"geometry={(sc_geometry or {}).get('type') or f'buildings_json({len(sc_buildings)})'} "
                 f"antenna_pattern={sc_antenna or '(scene default)'}"
             )
         except Exception as e:
