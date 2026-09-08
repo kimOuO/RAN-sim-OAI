@@ -39,6 +39,9 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
   // 目前有執行期座標的 UE —— 畫布可據此標 LIVE,一眼分得出「執行期真值」與「設定值」。
   // 兩者混在一起看不出來,正是這類 bug 難查的原因。
   const [liveUeIds, setLiveUeIds] = useState<Set<string>>(new Set());
+  // 劇本離場時段的 UE。Omniverse 那邊已經把人藏起來了,畫布也要跟著藏,
+  // 否則兩邊對不起來:3D 裡人不見了,2D/前端 3D 還把他畫在走廊盡頭。
+  const [hiddenUeIds, setHiddenUeIds] = useState<Set<string>>(new Set());
   const simRunningRef = useRef<boolean>(false);
   simRunningRef.current = !!opts?.simRunning;
 
@@ -149,6 +152,11 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
             return changed ? next : prev;
           });
           setLiveUeIds(new Set(Object.keys(live.positions)));
+          setHiddenUeIds(new Set(
+            Object.entries(live.visible ?? {})
+              .filter(([, v]) => !v)
+              .map(([name]) => name),
+          ));
         } catch { /* UE service 拉失敗 → 畫布保持現值,下次再試 */ }
         return;
       }
@@ -156,6 +164,7 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
         const ues = await omniverseApi.listUes();
         if (cancelled) return;
         setLiveUeIds((prev) => (prev.size === 0 ? prev : new Set()));
+        setHiddenUeIds((prev) => (prev.size === 0 ? prev : new Set()));
         setTrajectories((prev) => {
           if (prev.length === 0) return prev;
           const byName = new Map(ues.map(u => [u.name, u]));
@@ -527,6 +536,7 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
     trajectories,
     setTrajectories,
     liveUeIds,   // 這些 UE 的座標是執行期真值(非 DB 設定值)
+    hiddenUeIds, // 劇本此刻不在場 → 畫布不要畫(跟 Omniverse 一致)
     trafficProfiles,
     setTrafficProfile,
     loading,

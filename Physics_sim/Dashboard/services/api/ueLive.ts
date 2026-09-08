@@ -19,6 +19,8 @@ export interface LiveUeSnapshot {
   servingCells: Record<string, string>;
   /** ue_id → thread 狀態(RUNNING / STANDBY=掉話選網中 / STOPPED) */
   states: Record<string, string>;
+  /** ue_id → 是否在場。劇本的離場時段為 false,畫布要跟 Omniverse 一樣把人藏起來 */
+  visible: Record<string, boolean>;
 }
 
 interface RawThread {
@@ -26,6 +28,7 @@ interface RawThread {
   state: string;
   serving_cell?: string;
   position?: { x: number; y: number; z: number };
+  visible?: boolean;
 }
 
 export const fetchLiveUePositions = async (): Promise<LiveUeSnapshot> => {
@@ -36,10 +39,12 @@ export const fetchLiveUePositions = async (): Promise<LiveUeSnapshot> => {
   const positions: Record<string, [number, number, number]> = {};
   const servingCells: Record<string, string> = {};
   const states: Record<string, string> = {};
+  const visible: Record<string, boolean> = {};
   for (const t of d?.threads ?? []) {
+    visible[t.ue_id] = t.visible !== false;
     if (t.position) positions[t.ue_id] = [t.position.x, t.position.y, t.position.z];
     if (t.serving_cell) servingCells[t.ue_id] = t.serving_cell;
     if (t.state) states[t.ue_id] = t.state;
   }
-  return { simRunning: !!d?.sim_running, positions, servingCells, states };
+  return { simRunning: !!d?.sim_running, positions, servingCells, states, visible };
 };

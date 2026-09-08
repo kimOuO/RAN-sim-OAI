@@ -979,6 +979,7 @@ export default function SceneEditor() {
             coverageOverlay={coverageOverlay}
             meshUrl={activeMeshUrl}
             markerScale={markerScale}
+            hiddenUes={draw.hiddenUeIds}
           />
           </div>
 

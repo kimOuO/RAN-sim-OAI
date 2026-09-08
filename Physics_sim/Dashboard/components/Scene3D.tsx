@@ -651,6 +651,7 @@ function UEs({
   tempPos,
   bindDrag,
   ms,
+  hiddenUes,
 }: Pick<Props, 'ues' | 'trajectories' | 'selectedUEIndex' | 'onSelectObject' | 'onSelectUEIndex'> & {
   onPickUe?: (name: string) => void;
   pickedUe: string | null;
@@ -658,6 +659,7 @@ function UEs({
   tempPos: TempPos;
   bindDrag: (t: DragTarget) => DragBinding;
   ms: number;
+  hiddenUes?: Set<string>;
 }) {
   // 人的身高。室內 markerScale=0.1 → 1.7 m（真實身高）；
   // 城市尺度 markerScale=1 → 17 m，否則在 1000 m 的場景裡看不見
@@ -665,6 +667,9 @@ function UEs({
   return (
     <>
       {ues.map((u: any, idx: number) => {
+        // 劇本此刻不在場的人不畫 —— Omniverse 那邊已經藏起來了,
+        // 兩邊要看到同一件事。
+        if (hiddenUes?.has(u.name)) return null;
         const isSelected = idx === selectedUEIndex;
         const isDragging = dragging?.type === 'ue' && dragging.name === u.name;
         const live = trajectories.find((t) => t.name === u.name)?.position;
@@ -875,6 +880,7 @@ export function Scene3D({
   plannedPath,
   meshUrl,
   markerScale = 1,
+  hiddenUes,
 }: Props) {
   const ms = markerScale;
   // 場景尺度也跟著縮：1000 m 的格線配 25 m 一格，在 65 m 的走廊上等於沒有參考價值
@@ -1103,6 +1109,7 @@ export function Scene3D({
           tempPos={tempPos}
           bindDrag={bindDrag}
           ms={ms}
+          hiddenUes={hiddenUes}
         />
         {pickedUe && selectedUe?.name === pickedUe && selectedUe?.waypoints && (
           <Waypoints

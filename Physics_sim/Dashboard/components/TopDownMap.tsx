@@ -74,6 +74,8 @@ export interface Props {
   // 標記尺寸係數。gNB/UE/覆蓋圈的預設尺寸是城市尺度(公尺級塔與百公尺覆蓋)，
   // 放進 14 m 寬的室內走廊會把場景整個蓋掉 → 室內場景傳 0.1 之類的小值。
   markerScale?: number;
+  // 劇本此刻不在場的 UE。Omniverse 已經把人藏起來,畫布要跟著藏,兩邊才一致。
+  hiddenUes?: Set<string>;
 }
 
 // 依樓高上色(對齊 3D 的 viridis 感):矮=深藍紫、高=青黃
@@ -107,6 +109,7 @@ export function TopDownMap({
   pathA,
   pathB,
   plannedPath,
+  hiddenUes,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragging, setDragging] = useState<DragTarget | null>(null);
@@ -453,6 +456,8 @@ export function TopDownMap({
             Click on any UE switches both the trajectory edit target and the
             detail panel selection in one go. */}
         {ues.map((u, idx) => {
+          // 劇本此刻不在場的人不畫 —— 跟 Omniverse 看到的一致
+          if (hiddenUes?.has(u.name)) return null;
           const isSelected = idx === selectedUEIndex;
           const livePos = trajectories.find((t) => t.name === u.name)?.position;
           const pos = livePos ?? u.position;
@@ -604,6 +609,7 @@ export function TopDownMap({
 
       {/* Draggable UE handles */}
       {ues.map((u) => {
+        if (hiddenUes?.has(u.name)) return null;
         const px = sx(u.position[0]);
         const py = sz(u.position[2]);
         return (
