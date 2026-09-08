@@ -11,17 +11,22 @@ from rest_framework import serializers
 
 # ─── Write ───────────────────────────────────────────────────
 
+MAX_GRID_CELLS = 250_000
+
+
 class GridSpecWriteSerializer(serializers.Serializer):
     x_range = serializers.ListField(
         child=serializers.FloatField(), min_length=2, max_length=2,
         help_text="[x_min, x_max] 公尺",
     )
-    x_step = serializers.FloatField(min_value=0.5, max_value=50.0)
+    # 下限 0.05 m 是為了室內場景：走廊只有十幾公尺寬，0.5 m 一格連一扇門
+    # 都切不出兩格，門口與轉角的訊號變化會被整個平均掉。
+    x_step = serializers.FloatField(min_value=0.05, max_value=50.0)
     z_range = serializers.ListField(
         child=serializers.FloatField(), min_length=2, max_length=2,
         help_text="[z_min, z_max] 公尺",
     )
-    z_step = serializers.FloatField(min_value=0.5, max_value=50.0)
+    z_step = serializers.FloatField(min_value=0.05, max_value=50.0)
     sample_height_m = serializers.FloatField(
         required=False, default=1.5, min_value=0.1, max_value=50.0,
         help_text="UE 高度 (公尺)",
@@ -35,11 +40,15 @@ class GridSpecWriteSerializer(serializers.Serializer):
         if z_hi <= z_lo:
             raise serializers.ValidationError("z_range 順序錯: z_max <= z_min")
 
-        # 粗估格數上限，避免 VRAM OOM
+        # 粗估格數上限，避免 VRAM OOM。
+        # 從 10000 放寬到 250000：室內走廊 14 x 65 m 用 0.1 m 一格就是 91000 格，
+        # 舊上限直接把室內解析度擋死。A40 實測 3640 格耗時 395 ms，
+        # 這個量級對 RadioMapSolver 仍在合理範圍（回傳 JSON 約數 MB）。
         n_cells = ((x_hi - x_lo) / attrs["x_step"] + 1) * ((z_hi - z_lo) / attrs["z_step"] + 1)
-        if n_cells > 10000:
+        if n_cells > MAX_GRID_CELLS:
             raise serializers.ValidationError(
-                f"grid 太大: {int(n_cells)} cells；上限 10000 (建議 step 加大或 range 縮小)"
+                f"grid 太大: {int(n_cells)} cells；上限 {MAX_GRID_CELLS} "
+                "(建議 step 加大或 range 縮小)"
             )
         return attrs
 

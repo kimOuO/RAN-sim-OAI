@@ -18,6 +18,9 @@ logger = get_logger(__name__)
 # Sionna radio map plane 水平放置所需的 orientation（XZ 平面，法線 +Y）
 _HORIZONTAL_PLANE_ORIENTATION = [0.0, 0.0, math.pi / 2]
 
+# 上限：A40 上約數秒，再高只是拖時間
+_MAX_SAMPLES_PER_TX = 64_000_000
+
 
 THERMAL_NOISE_DBM_PER_HZ = -174.0
 
@@ -45,6 +48,7 @@ def compute_coverage_map(
     max_depth: int = 3,
     null_threshold_dbm: float = -120.0,
     include_sinr: bool = True,
+    samples_per_tx: int | None = None,
 ) -> dict[str, Any]:
     """以 Sionna RadioMapSolver 算 coverage map，輸出對齊外部 spec。
 
@@ -57,6 +61,9 @@ def compute_coverage_map(
         max_depth: 光追 bounce 次數（coverage 建議 <= 3 節省 VRAM）
         null_threshold_dbm: RSRP 低於此值改回 None
         include_sinr: 是否一併算每格 SINR（對 serving cell 而言）
+        samples_per_tx: 每個發射點打幾條射線。None = 依格數自動決定
+            （Sionna 預設 1e6 是給粗網格用的；室內 0.1 m 網格有 9 萬格，
+            平均每格只分到 11 條射線，結果會出現放射狀條紋與雜點）
 
     Returns:
         {
@@ -84,6 +91,13 @@ def compute_coverage_map(
     logger.info(f"[Coverage] Grid: x_range={x_range} z_range={z_range} x_step={x_step} z_step={z_step}")
     logger.info(f"[Coverage] Center: ({x_center}, {z_center}) Size: {x_size}×{z_size}")
 
+    # 取樣數要跟著格數走：每格至少 ~250 條射線才不會出現蒙地卡羅雜訊
+    # （放射狀條紋 = 射線太稀疏，格子只被少數幾條打到）。
+    n_cells = max(1, int(round(x_size / x_step)) * int(round(z_size / z_step)))
+    if samples_per_tx is None:
+        samples_per_tx = int(min(_MAX_SAMPLES_PER_TX, max(1_000_000, n_cells * 250)))
+    logger.info("[Coverage] cells=%d samples_per_tx=%d", n_cells, samples_per_tx)
+
     # Sionna size 是 (x_size, z_size) 對應水平 orientation；cell_size 同序
     solver = rt.RadioMapSolver()
     rm = solver(
@@ -92,6 +106,7 @@ def compute_coverage_map(
         orientation=_HORIZONTAL_PLANE_ORIENTATION,
         size=[x_size, z_size],
         cell_size=[x_step, z_step],
+        samples_per_tx=samples_per_tx,
         max_depth=max_depth,
         los=True,
         specular_reflection=True,
