@@ -71,12 +71,52 @@ export const listMaps = async (): Promise<MapRow[]> => {
   return res.data.data.maps;
 };
 
-export const applyMapToScene = async (
+export interface ApplyResult {
+  name: string;
+  usd_path: string;
+  gnbs: number;
+  ues: number;
+  /** 是否已把 Mitsuba 場景推給 Sionna（沒有材質分類的地圖會是 false） */
+  physics_pushed: boolean;
+  physics_error: string;
+}
+
+export const applyMapToScene = async (name: string): Promise<ApplyResult> => {
+  const res = await omniverseApiClient.post<{ data: ApplyResult }>(
+    '/api/v0.1/RAN/Map/MapController/apply_to_scene',
+    { name },
+    { timeout: 180000 },
+  );
+  return res.data.data;
+};
+
+export interface IndoorSetupResult {
+  name: string;
+  grid: { walkable_area_m2: number; cell_m: number; clearance_m: number };
+  path: { waypoint_count: number; path_length_m: number };
+  changes: {
+    ues: { name: string; to: [number, number, number]; target_height_m: number; waypoints: number }[];
+    gnbs: { name: string; to: [number, number, number]; power_dbm: number }[];
+  };
+  gnb_visual_scale: number;
+  physics_pushed: boolean;
+  physics_error: string;
+}
+
+/**
+ * 把場景切換成室內尺度：UE 降到真人身高並沿走廊巡走（A* 不穿牆）、
+ * gNB 移進室內並縮小視覺尺寸、天花板收起，同時推 Kit 與 Sionna。
+ */
+export const setupIndoor = async (
   name: string,
-): Promise<{ name: string; usd_path: string; gnbs: number; ues: number }> => {
-  const res = await omniverseApiClient.post<{
-    data: { name: string; usd_path: string; gnbs: number; ues: number };
-  }>('/api/v0.1/RAN/Map/MapController/apply_to_scene', { name });
+  opts: { ue_height_m?: number; gnb_height_m?: number; gnb_power_dbm?: number;
+          gnb_visual_scale?: number; dry_run?: boolean } = {},
+): Promise<IndoorSetupResult> => {
+  const res = await omniverseApiClient.post<{ data: IndoorSetupResult }>(
+    '/api/v0.1/RAN/Map/MapController/setup_indoor',
+    { name, ...opts },
+    { timeout: 300000 },
+  );
   return res.data.data;
 };
 

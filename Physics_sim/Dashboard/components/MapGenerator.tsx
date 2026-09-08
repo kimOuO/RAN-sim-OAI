@@ -5,6 +5,7 @@ import {
   generateMap,
   listMaps,
   applyMapToScene,
+  setupIndoor,
   detachMap,
   deleteMap,
   geocodeLandmark,
@@ -118,12 +119,38 @@ export function MapGenerator({ disabled, onApplied }: Props) {
     if (!mapName) return;
     setApplying(true); setMsg('');
     try {
-      await applyMapToScene(mapName);
-      setMsg(`✓ 已套用「${mapName}」為當前場景(原物件已清空,可再加 gNB/UE)`);
+      const r = await applyMapToScene(mapName);
+      // 這一步同時推 Kit 與 Sionna，但先前 UI 沒顯示推送結果
+      setMsg(
+        `✓ 已套用「${mapName}」到 Kit(原物件已清空,可再加 gNB/UE)。`
+        + (r.physics_pushed ? ' Sionna 光追場景已建立。'
+                            : ` ⚠ Sionna 未同步:${r.physics_error || '這張地圖沒有材質分類'}`),
+      );
       await reload();
       onApplied?.();
     } catch (e: any) {
       setMsg(`✗ 套用失敗:${e?.response?.data?.message ?? e?.message ?? e}`);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const onIndoor = async () => {
+    if (!selected) return;
+    setApplying(true); setMsg('');
+    try {
+      const r = await setupIndoor(selected);
+      setMsg(
+        `✓ 已切換為室內尺度:${r.changes.ues.length} 個 UE 沿走廊巡走`
+        + `(路徑 ${r.path.path_length_m} m,不穿牆)、${r.changes.gnbs.length} 個 gNB 移進室內`
+        + `(視覺尺寸 ×${r.gnb_visual_scale})、可走面積 ${r.grid.walkable_area_m2} m²。`
+        + (r.physics_pushed ? ' Sionna 光追場景已建立。'
+                            : ` ⚠ Sionna 未同步:${r.physics_error}`),
+      );
+      await reload();
+      onApplied?.();
+    } catch (e: any) {
+      setMsg(`✗ 室內設定失敗:${e?.response?.data?.message ?? e?.message ?? e}`);
     } finally {
       setApplying(false);
     }
@@ -233,6 +260,18 @@ export function MapGenerator({ disabled, onApplied }: Props) {
           <div style={{ fontSize: '11px', color: '#22c55e', marginTop: '6px' }}>
             ● 目前場景地圖:{activeMap.name}（{activeMap.building_count} 棟）
           </div>
+        )}
+        {/* 室內掃描才需要：把 UE 降到真人身高、gNB 移進室內、天花板收起。
+            放在地圖清單旁邊，重整頁面後仍然用得到（匯入面板的按鈕只在
+            剛匯入完的那次 session 出現）。 */}
+        {selected && maps.find((m) => m.name === selected)?.mesh_url && (
+          <button
+            style={{ ...btn('#059669', anyBusy), marginTop: '6px' }}
+            disabled={anyBusy}
+            onClick={onIndoor}
+          >
+            設為室內場景「{selected}」（UE 1.7 m、gNB 移進室內、天花板收起）
+          </button>
         )}
         <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
           {activeMap && (

@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import {
   importGlb,
   applyMapToScene,
+  setupIndoor,
   type GlbImportStats,
   type MaterialMode,
   type RadioMaterials,
@@ -100,11 +101,41 @@ export function MeshImporter({ disabled, onImported }: Props) {
     if (!importedName) return;
     setBusy(true); setMsg('');
     try {
-      await applyMapToScene(importedName);
-      setMsg(`✓ 已套用「${importedName}」為當前場景(原物件已清空,可再加 gNB/UE)`);
+      const r = await applyMapToScene(importedName);
+      // 明講 Sionna 有沒有收到 —— 這一步同時推 Kit 與 Physics，
+      // 但先前 UI 完全沒顯示，使用者不知道光追場景到底建了沒
+      setMsg(
+        `✓ 已套用「${importedName}」到 Kit（原物件已清空,可再加 gNB/UE）。`
+        + (r.physics_pushed
+            ? ' Sionna 光追場景已建立。'
+            : ` ⚠ Sionna 未同步：${r.physics_error || '這張地圖沒有材質分類'}`),
+      );
       onImported?.();
     } catch (e: any) {
       setMsg(`✗ 套用失敗:${e?.response?.data?.message ?? e?.message ?? e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onIndoor = async () => {
+    if (!importedName) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await setupIndoor(importedName);
+      const ue = r.changes.ues.length;
+      const gnb = r.changes.gnbs.length;
+      setMsg(
+        `✓ 已切換為室內尺度：${ue} 個 UE 高 ${r.changes.ues[0]?.target_height_m ?? 1.7} m `
+        + `沿走廊巡走（路徑 ${r.path.path_length_m} m,不穿牆）、`
+        + `${gnb} 個 gNB 移進室內（視覺尺寸 ×${r.gnb_visual_scale}）、`
+        + `可走面積 ${r.grid.walkable_area_m2} m²、天花板已收起。`
+        + (r.physics_pushed ? ' Sionna 光追場景已建立。'
+                            : ` ⚠ Sionna 未同步：${r.physics_error}`),
+      );
+      onImported?.();
+    } catch (e: any) {
+      setMsg(`✗ 室內設定失敗:${e?.response?.data?.message ?? e?.message ?? e}`);
     } finally {
       setBusy(false);
     }
@@ -191,9 +222,19 @@ export function MeshImporter({ disabled, onImported }: Props) {
       </button>
 
       {importedName && !busy && (
-        <button style={{ ...btn('#2563eb', anyBusy), marginTop: '8px' }} disabled={anyBusy} onClick={onApply}>
-          套用「{importedName}」到場景
-        </button>
+        <>
+          <button style={{ ...btn('#2563eb', anyBusy), marginTop: '8px' }} disabled={anyBusy} onClick={onApply}>
+            套用「{importedName}」到 Kit + Sionna
+          </button>
+          <button style={{ ...btn('#059669', anyBusy), marginTop: '6px' }} disabled={anyBusy} onClick={onIndoor}>
+            設為室內場景（UE 1.7 m、gNB 移進室內、天花板收起）
+          </button>
+          <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '5px', lineHeight: 1.6 }}>
+            兩個按鈕都會把 Mitsuba 場景推給 Sionna。室內掃描建議直接按第二個——
+            它涵蓋第一個的所有動作，並額外把 UE 降到真人身高、沿走廊規劃不穿牆的路徑、
+            把 gNB 移進室內並縮小視覺尺寸。
+          </div>
+        </>
       )}
 
       {msg && (
