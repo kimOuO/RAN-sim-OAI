@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import threading
 import time
 from typing import Any
@@ -26,9 +25,6 @@ from main.apps.ue_lifecycle.services.ue_thread import (
 
 logger = logging.getLogger(__name__)
 
-# 判定「停在等候點」的半徑。劇本的 park_offset_m 是 25 m,走廊本身寬僅數公尺,
-# 2 m 容錯遠小於這個間距,不會把走廊裡的人誤判成離場。
-_PARK_RADIUS_M = 2.0
 
 
 def _now_ms() -> int:
@@ -53,20 +49,20 @@ class UeLifecycleManager:
         # 打 Omniverse 太頻繁)。N=5 → 500ms 一次,跟 sim_dt 對齊。
         self._camp_last_try_ms: dict[str, int] = {}   # 掉話 UE 上次選網時間(節流)
         self._tick_count_since_signal_ingest = 0
-        # 劇本等候點 (x, z) — 停在這裡的 UE 代表「離場」,要從 Kit 畫面消失。
-        # None = 沒有劇本(live 模式),完全不動可見性。
-        self._park_point: tuple[float, float] | None = None
+        # 劇本在場時段 {ue: [[t0, t1], ...]}(秒)。空 = 沒有劇本(live 模式),
+        # 完全不動可見性。
+        self._active_windows: dict[str, list[list[float]]] = {}
         self._last_visible: dict[str, bool] = {}
 
     def set_session_uuid(self, session_uuid: str | None) -> None:
         self._session_uuid = session_uuid
         logger.info("UeLifecycleManager session_uuid=%s", session_uuid)
 
-    def set_park_point(self, park: tuple[float, float] | None) -> None:
-        """設定劇本等候點。換 session 要重設,否則沿用上一齣戲的判準。"""
-        self._park_point = park
+    def set_active_windows(self, windows: dict[str, list[list[float]]] | None) -> None:
+        """設定劇本在場時段。換 session 要重設,否則沿用上一齣戲的時間軸。"""
+        self._active_windows = windows or {}
         self._last_visible = {}
-        logger.info("UeLifecycleManager park_point=%s", park)
+        logger.info("UeLifecycleManager active_windows=%d ues", len(self._active_windows))
 
     def start(self) -> None:
         if self._poll_thread and self._poll_thread.is_alive():
@@ -175,7 +171,7 @@ class UeLifecycleManager:
                 # 直接推過去人會浮在半空。UE 走在地面上，高度由 build 時決定，
                 # 每 tick 只需要更新平面位置。
                 kit_client.move_ue(ue_id, x, z)
-            self._sync_visibility(positions_for_kit)
+            self._sync_visibility(traj_store, now_ms)
 
         # ── (4) Signal history ingest(每 N 個 tick 一次,寫 signal_history + UeState)
         # Playback / KpmSummaryLine / /scenarios chart 都依賴 signal_history。
@@ -191,23 +187,31 @@ class UeLifecycleManager:
         if injected_total > 0 and (now_ms // 1000) % 10 == 0:
             logger.debug("traffic tick injected=%d sdu", injected_total)
 
-    def _sync_visibility(
-        self, positions_for_kit: list[tuple[str, float, float, float]]
-    ) -> None:
-        """讓「離場」的人真的從畫面消失,而不是站在走廊外被看見。
+    def _sync_visibility(self, traj_store, now_ms: int) -> None:
+        """讓「離場」的人真的從畫面消失,而不是站在走廊盡頭被看見。
 
-        判準是位置:UE 停在劇本的等候點上 = 這一刻他不在場。定義上就與畫面
-        同步,不需要把劇本的 active 時間軸對映到牆上時鐘(那個對映會失準,
-        見 omniverse_client.get_scenario_park_point 的說明)。
+        時間軸取自 UE 自己的 trajectory(now_ms - start_at_ms),跟
+        interp_position 用的是同一個 elapsed —— 位置與可見性因此不可能各走各的。
+
+        判準不能改用位置:等候點就在走廊的兩個盡頭上,而人正常來回走也會走到
+        盡頭,用距離判斷會把走到底的人誤判成離場。
 
         只在狀態「有變」時才推 Kit —— 每 tick 對 18 個人各打一發 HTTP 會把
         Kit 的命令佇列塞爆,而進出場一天也才數次。
         """
-        if self._park_point is None:
+        if not self._active_windows:
             return
-        px, pz = self._park_point
-        for ue_id, x, _y, z in positions_for_kit:
-            visible = math.hypot(x - px, z - pz) > _PARK_RADIUS_M
+        for ue_id, windows in self._active_windows.items():
+            traj = traj_store.get(ue_id)
+            if not traj:
+                continue
+            wps = traj.get("waypoints") or []
+            total_ms = wps[-1].get("t_ms", 0) if wps else 0
+            elapsed_ms = now_ms - traj["start_at_ms"]
+            if total_ms > 0 and traj.get("mode", "loop") == "loop":
+                elapsed_ms %= total_ms
+            t = max(0.0, elapsed_ms / 1000.0)
+            visible = any(a <= t < b for a, b in windows)
             if self._last_visible.get(ue_id) == visible:
                 continue
             self._last_visible[ue_id] = visible
@@ -216,8 +220,9 @@ class UeLifecycleManager:
                 self._last_visible.pop(ue_id, None)
                 continue
             n_on = sum(1 for v in self._last_visible.values() if v)
-            logger.info("visibility: %s → %s (在場 %d/%d)",
-                        ue_id, "在場" if visible else "離場",
+            logger.info("visibility @ %02d:%02d — %s → %s (在場 %d/%d)",
+                        int(t // 3600), int((t % 3600) // 60), ue_id,
+                        "在場" if visible else "離場",
                         n_on, len(self._last_visible))
 
     def _ingest_signals(self, positions_for_kit: list[tuple[str, float, float, float]]) -> None:

@@ -115,9 +115,13 @@ def _load_live_db() -> dict[str, Any]:
         # /editor 拉軌跡:waypoints = [[x,y,z], ...] + speed_mps + loop
         wps = u.get("waypoints") or []
         if wps and len(wps) >= 2:
+            # waypoint_times = 劇本的時間軸(秒),與 waypoints 等長。有就用它,
+            # 沒有(手拉的軌跡 / 舊劇本)才退回「距離 ÷ 速度」推算。
+            times = u.get("waypoint_times") or []
             ue_waypoint_specs.append({
                 "name": name,
                 "waypoints": wps,
+                "times": times if len(times) == len(wps) else [],
                 "speed_mps": float(u.get("speed_mps") or 1.0),
                 "loop": bool(u.get("loop", True)),
             })
@@ -250,15 +254,15 @@ def start_sim(
     except Exception as e:  # noqa: BLE001
         logger.warning("set_session_uuid failed: %s", e)
 
-    # 劇本等候點 — 讓 trajectory tick 能判斷誰「離場」了並把他藏起來。
-    # 每次 start_sim 都重設(含設回 None),否則換成 live 模式還會沿用上一齣戲的判準。
+    # 劇本在場時段 — 讓 trajectory tick 能判斷誰「離場」了並把他藏起來。
+    # 每次 start_sim 都重設(含設成空),否則換成 live 模式還會沿用上一齣戲的時間軸。
     try:
         from main.apps.ue_lifecycle.services import manager as ue_manager
         from main.apps.ue_lifecycle.services import omniverse_client
-        park = omniverse_client.get_scenario_park_point(scenario_id)
-        ue_manager.get_manager().set_park_point(park)
+        ue_manager.get_manager().set_active_windows(
+            omniverse_client.get_scenario_active_windows(scenario_id))
     except Exception as e:  # noqa: BLE001
-        logger.warning("set_park_point failed: %s", e)
+        logger.warning("set_active_windows failed: %s", e)
 
     if source == "scenario":
         if not scenario_id:
@@ -333,7 +337,18 @@ def start_sim(
                 wps = [{"x": sx, "y": sy, "z": sz, "t_ms": 0}]
                 mode = "once"
             else:
-                wps = waypoints_with_speed_to_trajectory(spec["waypoints"], spec["speed_mps"])
+                times = spec.get("times") or []
+                if times:
+                    # 照劇本的時間軸走 —— 原地站著的路段才會真的站滿那段時間,
+                    # 人數起伏與離場時長才對得上劇本。
+                    wps = [
+                        {"x": float(p[0]), "y": float(p[1]), "z": float(p[2]),
+                         "t_ms": int(float(t) * 1000)}
+                        for p, t in zip(spec["waypoints"], times)
+                    ]
+                else:
+                    wps = waypoints_with_speed_to_trajectory(
+                        spec["waypoints"], spec["speed_mps"])
                 if not wps:
                     continue
                 mode = "loop" if spec["loop"] else "once"
