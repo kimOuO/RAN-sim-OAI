@@ -53,6 +53,8 @@ PROGRESS_UPDATE_EVERY = 50  # tick
 FLUSH_EVERY = 2000
 # 每 N tick 存一次進度。整段 24h 要跑十幾個小時,沒有斷點的話任何中斷都是全部重來。
 CHECKPOINT_EVERY = 10000
+# 分段結束的離開碼。外層 loop 看到這個就再開一個行程接著跑;0 才是真的做完。
+SEGMENT_EXIT_CODE = 75
 
 
 def _flush_drjit() -> int:
@@ -127,7 +129,7 @@ def _interpolate_position(
     return (positions[-1][1], positions[-1][2], positions[-1][3])
 
 
-def run(scenario_id: str, resume: bool = False) -> int:
+def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
     print(f"[precompute] start scenario_id={scenario_id}")
     _patch_status(scenario_id, precompute_status="running", precompute_progress=0.0, precompute_error="")
 
@@ -316,14 +318,29 @@ def run(scenario_id: str, resume: bool = False) -> int:
             print(f"[precompute] flush @ tick {tick_idx + 1}: RSS={rss}MB")
 
         # 斷點:存目前算到哪,被殺掉還能接
-        if (tick_idx + 1) % CHECKPOINT_EVERY == 0 and cache_3d is not None:
+        def _save_ckpt(next_tick: int) -> None:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             tmp = ckpt_path.with_suffix(".tmp.npz")
             np.savez(str(tmp), path_gain_db=cache_3d,
                      cell_names=np.array(cell_names or []),
-                     next_tick=np.int32(tick_idx + 1))
+                     next_tick=np.int32(next_tick))
             tmp.replace(ckpt_path)      # 原子換檔,避免存到一半被殺留下壞檔
+
+        if (tick_idx + 1) % CHECKPOINT_EVERY == 0 and cache_3d is not None:
+            _save_ckpt(tick_idx + 1)
             print(f"[precompute] checkpoint @ tick {tick_idx + 1}")
+
+        # 分段收工:flush 回收不掉的殘留會愈積愈快(實測每 2000 tick 從 +74MB
+        # 一路漲到 +548MB,而且還在加速),同一個行程跑不完 24 小時就會撞
+        # mem_limit。做完一段就正常結束,由外層 loop 重開一個新行程接著跑 ——
+        # 行程一結束記憶體全部還給 OS,等於每段都從乾淨狀態開始。
+        if (segment_ticks and cache_3d is not None
+                and (tick_idx + 1 - resume_from) >= segment_ticks
+                and (tick_idx + 1) < total_ticks):
+            _save_ckpt(tick_idx + 1)
+            print(f"[precompute] segment done @ tick {tick_idx + 1} "
+                  f"({(tick_idx + 1) / total_ticks * 100:.1f}%) — 交棒給下一個行程")
+            return SEGMENT_EXIT_CODE
 
     # 4. 寫 npz
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -368,5 +385,9 @@ if __name__ == "__main__":
     parser.add_argument("scenario_id", help="scenario_id from Omniverse Scenario API")
     parser.add_argument("--resume", action="store_true",
                         help="從上次的 checkpoint 接續(被 OOM/中斷後用)")
+    parser.add_argument("--segment-ticks", type=int, default=0,
+                        help=f"跑滿這麼多 tick 就存檔離開(exit {SEGMENT_EXIT_CODE}),"
+                             "讓外層 loop 重開行程把記憶體歸零。0=不分段")
     args = parser.parse_args()
-    sys.exit(run(args.scenario_id, resume=args.resume))
+    sys.exit(run(args.scenario_id, resume=args.resume,
+                 segment_ticks=args.segment_ticks))
