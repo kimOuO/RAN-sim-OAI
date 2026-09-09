@@ -46,6 +46,29 @@ OMNIVERSE_URL = os.environ.get("OMNIVERSE_URL", "http://omniver_backend:8000")
 SCENARIO_STORE_URL = os.environ.get("SCENARIO_STORE_URL") or OMNIVERSE_URL
 CACHE_DIR = Path("/app/data/channel_cache")
 PROGRESS_UPDATE_EVERY = 50  # tick
+# 每 N tick 把 DrJit 的快取配置還給 OS。compute_paths 每次都會動 scene.receivers,
+# 背後的 DrJit 緩衝不 flush 就只進不出 —— 2026-09-08 跑 corridor_24h 到 46.9%
+# (81k tick) 時 RSS 撞到 12 GB 的 mem_limit 被 OOM killer 砍掉,而且速率在
+# 撞牆前就從 3.1 t/s 掉到 1.6 t/s(GC 壓力)。engine 本身不重建,所以沒有重載成本。
+FLUSH_EVERY = 2000
+# 每 N tick 存一次進度。整段 24h 要跑十幾個小時,沒有斷點的話任何中斷都是全部重來。
+CHECKPOINT_EVERY = 10000
+
+
+def _flush_drjit() -> int:
+    """歸還 DrJit 快取,回傳目前 RSS(MB)供監測。"""
+    import gc
+    gc.collect()
+    try:
+        import drjit  # type: ignore
+        drjit.flush_malloc_cache()
+    except Exception:  # noqa: BLE001 — 沒有 drjit 或版本無此 API 就算了
+        pass
+    try:
+        return int(open("/proc/self/status").read()
+                   .split("VmRSS:")[1].split()[0]) // 1024
+    except Exception:  # noqa: BLE001
+        return -1
 
 
 def _fetch_scenario(scenario_id: str) -> dict:
@@ -104,7 +127,7 @@ def _interpolate_position(
     return (positions[-1][1], positions[-1][2], positions[-1][3])
 
 
-def run(scenario_id: str) -> int:
+def run(scenario_id: str, resume: bool = False) -> int:
     print(f"[precompute] start scenario_id={scenario_id}")
     _patch_status(scenario_id, precompute_status="running", precompute_progress=0.0, precompute_error="")
 
@@ -187,6 +210,10 @@ def run(scenario_id: str) -> int:
     t_start = time.perf_counter()
     progress_t_last = t_start
 
+    # 斷點續跑:有 checkpoint 就從上次的 tick 接下去
+    ckpt_path = CACHE_DIR / f"{scenario_id}.ckpt.npz"
+    resume_from = 0
+
     # Stationary UE optimization:UE 位置在 tolerance 內沒變 → reuse 上個 tick 的
     # path_gain,不打 Sionna。對 full_day_24hr 這類 stationary scenario 從 ~5 hr
     # GPU 降到秒級。moving UE 場景每 tick 位置都不同,filter 永遠 miss,行為不變。
@@ -195,7 +222,19 @@ def run(scenario_id: str) -> int:
     last_path_gain: dict | None = None
     sionna_call_count = 0
 
-    for tick_idx in range(total_ticks):
+    if resume and ckpt_path.exists():
+        try:
+            ck = np.load(str(ckpt_path), allow_pickle=False)
+            cache_3d = ck["path_gain_db"]
+            cell_names = [str(c) for c in ck["cell_names"]]
+            resume_from = int(ck["next_tick"])
+            print(f"[precompute] resume from tick {resume_from}/{total_ticks} "
+                  f"({resume_from / total_ticks * 100:.1f}%)")
+        except Exception as e:  # noqa: BLE001 — checkpoint 壞了就從頭跑
+            print(f"[precompute] checkpoint 讀取失敗,從頭開始: {e}")
+            resume_from = 0
+
+    for tick_idx in range(resume_from, total_ticks):
         t_sec = tick_idx * tick_ms / 1000.0
 
         # 內插 UE 位置 + 檢查是否所有 UE 都沒動
@@ -271,6 +310,21 @@ def run(scenario_id: str) -> int:
             )
             _patch_status(scenario_id, precompute_progress=pct)
 
+        # DrJit 快取歸還 —— 不做的話 RSS 只進不出,長跑必 OOM
+        if (tick_idx + 1) % FLUSH_EVERY == 0:
+            rss = _flush_drjit()
+            print(f"[precompute] flush @ tick {tick_idx + 1}: RSS={rss}MB")
+
+        # 斷點:存目前算到哪,被殺掉還能接
+        if (tick_idx + 1) % CHECKPOINT_EVERY == 0 and cache_3d is not None:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = ckpt_path.with_suffix(".tmp.npz")
+            np.savez(str(tmp), path_gain_db=cache_3d,
+                     cell_names=np.array(cell_names or []),
+                     next_tick=np.int32(tick_idx + 1))
+            tmp.replace(ckpt_path)      # 原子換檔,避免存到一半被殺留下壞檔
+            print(f"[precompute] checkpoint @ tick {tick_idx + 1}")
+
     # 4. 寫 npz
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     out_path = CACHE_DIR / f"{scenario_id}.npz"
@@ -305,11 +359,14 @@ def run(scenario_id: str) -> int:
         cache_size_bytes=int(size_bytes),
     )
     print(f"[precompute] cache_path={out_path} status=ready")
+    ckpt_path.unlink(missing_ok=True)
     return 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sionna offline precompute worker")
     parser.add_argument("scenario_id", help="scenario_id from Omniverse Scenario API")
+    parser.add_argument("--resume", action="store_true",
+                        help="從上次的 checkpoint 接續(被 OOM/中斷後用)")
     args = parser.parse_args()
-    sys.exit(run(args.scenario_id))
+    sys.exit(run(args.scenario_id, resume=args.resume))
