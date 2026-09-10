@@ -371,9 +371,16 @@ def get_scenario_active_windows(scenario_id: str) -> dict[str, list[list[float]]
         out: dict[str, list[list[float]]] = {}
         for u in raw.get("ues") or []:
             name, windows = u.get("name"), u.get("active")
-            # 沒有 active 的 UE 一律當全程在場 —— 不放進 dict 就不會被動到
-            if name and windows:
-                out[name] = [[float(a), float(b)] for a, b in windows]
+            if not name:
+                continue
+            # 「沒有 active 欄位」與「active 是空陣列」語意不同,不能混為一談:
+            #   None → 舊劇本沒有時間軸的概念 → 全程在場,不放進 dict 就不會被動到
+            #   []   → 這個 UE 在這個時窗**整段都不出現** → 必須全程隱藏
+            # 混在一起會讓切片劇本裡「這段沒出場」的人站在等候點上不動又看得見
+            # (corridor_16_24 有 3 個、corridor_00_08 有 12 個)。
+            if windows is None:
+                continue
+            out[name] = [[float(a), float(b)] for a, b in windows]
         return out
     except (requests.RequestException, ValueError, TypeError):
         return {}
