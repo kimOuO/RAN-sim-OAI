@@ -142,8 +142,12 @@ export function useDrawPage(opts?: { simRunning?: boolean }) {
             const next = prev.map((t) => {
               const p = live.positions[t.name];
               if (!p) return t;                     // 掉話/未 attach 的 UE 留在原地
-              const np: [number, number, number] = [p[0], p[1], p[2]];
-              if (np[0] !== t.position[0] || np[1] !== t.position[1] || np[2] !== t.position[2]) {
+              // 只吃平面座標,Y 保留畫布現值 —— UE/Status/read 回的 y 是**天線高度**
+              // (劇本 positions 慣例寫 1.7,給 RU/Sionna 算通道用),而畫布的
+              // StickFigure position 是**腳底**。直接照抄人會整個浮在半空 1.7 m。
+              // Kit 的 move_ue 也是同樣處理(不傳 y,保留 build 時的貼地高度)。
+              const np: [number, number, number] = [p[0], t.position[1], p[2]];
+              if (np[0] !== t.position[0] || np[2] !== t.position[2]) {
                 changed = true;
                 return { ...t, position: np };
               }
