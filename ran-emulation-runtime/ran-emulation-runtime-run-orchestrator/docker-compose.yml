@@ -1,0 +1,8 @@
+# 單獨開發用;平台整合走 XAPP_DT 根目錄的 docker-compose.yml
+services:
+  run-orchestrator:
+    build: { context: ., dockerfile: Dockerfile }
+    image: ran-emulation-runtime-run-orchestrator:local
+    env_file: .env
+    volumes: [ ".:/app", "/var/run/docker.sock:/var/run/docker.sock" ]
+    ports: [ "8302:8000" ]
