@@ -12,6 +12,8 @@ from main.apps.scene_layout.serializers.scene_serializers import SceneReadSerial
 from main.apps.scene_layout.services.business.sqldb_operations import SqlDbBusinessService
 from main.apps.scene_layout.services.common.timestamp_service import TimestampService
 from main.apps.scene_layout.services.common.uuid_service import UUIDService
+from main.apps.scene_layout.services.optional.scene_tree.scene_tree import build_scene_tree
+from main.apps.simulation_run.models.scene_run import SceneRun
 from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
@@ -111,3 +113,26 @@ class SceneReader:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(Scene, **filters)
         return success_response(SceneReadSerializer(qs, many=True).data, "ok", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def read_full_tree(request):
+        """body {scene_uuid} 或 {scene_run_uuid} → 整棵樹(見 scene_tree.build_scene_tree)。"""
+        try:
+            payload = _body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        run = None
+        if payload.get("scene_run_uuid"):
+            run = SqlDbBusinessService.get_or_none(SceneRun, "scene_run_uuid", payload["scene_run_uuid"])
+            if run is None:
+                return error_response("Not found", payload["scene_run_uuid"], 404)
+            scene = run.scene
+        elif payload.get("scene_uuid"):
+            scene = SqlDbBusinessService.get_or_none(Scene, UUID_FIELD, payload["scene_uuid"])
+            if scene is None:
+                return error_response("Not found", payload["scene_uuid"], 404)
+        else:
+            return error_response("Validation failed", {"scene_uuid|scene_run_uuid": "required"}, 400)
+        return success_response(build_scene_tree(scene, run), "ok", 200)

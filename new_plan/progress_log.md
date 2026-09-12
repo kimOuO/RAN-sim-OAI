@@ -59,3 +59,8 @@
 - **schema 修正(由 44 份劇本聯集逼出)**:`scene.{legacy_scenario_id, geometry_scene_id, geometry_source}`、`gnb.{is_active, color}`、`cell.center_frequency_ghz`(ARFCN 是 5/15 kHz raster 量化值,3.5 GHz 這種非 raster 值要保留原值才無損;arfcn 由 38.104 §5.4.2.1 推導)、`ue.{loop, speed_mps}`;`gnb.a3_*` 改 **nullable**(None = 劇本未指定 → CU env 預設;原本非空欄位造成 24 份往返不合)。
 - 驗證:`docs/scenarios/*.json` **44/44 匯入成功、44/44 往返相等**(以 loader 語意正規化後比對);Omniverse 倉庫版 `corridor_16_24`(18 UE、active 時窗)、`corridor_24h`、`anr_missing_neighbor`(anr_fixture)三份往返相等;registry 測試 OK。
 - 尚未:實際跑一次「export 出來的 JSON」讓 UE driver 跑,比 KPM(P1 驗收第二半,需先把 export 結果放進劇本倉庫或做 `SCENARIO_STORE_URL` 指向 registry —— 排 P1-3 反向工具接線)。
+### 2026-09-12 — P1-2 整棵樹 reader ✅
+- `POST /api/v0.1/Network_element_registry/Scene_layout/SceneReader/read_full_tree`,body `{scene_uuid}` 或 `{scene_run_uuid}`。
+- 形狀:`scene(+ground_material) / buildings[+default_material] / gnbs[dus[+config_template, cells[+ru{+antenna_preset}]]] / neighbor_seeds / ues[waypoints[[t,x,y,z]], traffic, active_windows[[t0,t1]]] / run{knobs{}, instances[]}`。
+- 軌跡與時窗刻意用緊湊陣列:corridor_16_24(18 UE、8846 waypoints)完整序列化是 2.7 MB / 3.4 s,緊湊後 **315 KB / 95 ms**。消費端(DU/RU/UE driver)只要數值。
+- 測試:47 個全過(含匯入 cco_20min 後檢查巢狀與 knobs)。

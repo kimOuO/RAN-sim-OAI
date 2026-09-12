@@ -10,6 +10,7 @@ urlpatterns = [
     path("SceneController/update", SceneController.update, name="scene_update"),
     path("SceneController/delete", SceneController.delete, name="scene_delete"),
     path("SceneReader/read", SceneReader.read, name="scene_read"),
+    path("SceneReader/read_full_tree", SceneReader.read_full_tree, name="scene_read_full_tree"),
     path("BuildingController/create", BuildingController.create, name="building_create"),
     path("BuildingController/update", BuildingController.update, name="building_update"),
     path("BuildingController/delete", BuildingController.delete, name="building_delete"),
