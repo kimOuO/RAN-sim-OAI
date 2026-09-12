@@ -338,7 +338,7 @@ Actor 端就是標準的 `read`(依 `backend_rule.md §4-1` 的 create/read/upda
 |---|---|---|---|
 | **P0 拍板 + 搬家** | §7 七個決策;`git mv` 成 §1 結構;compose 改路徑;建 `mgmt_platform/scene_registry` 空殼 + 全部 migration | `docker compose up` 後 `cco_20min` 照跑,KPM 與搬家前一致 | 1 週 |
 | **P1 DB 為權威** ✅ 2026-09-12 | 劇本匯入器;`read_full_tree`;舊倉庫相容端點(取代反向工具接線);`building-geometry-ingest` 從 Omniverse 複製 | 64/64 匯入往返相等;registry 為來源跑 corridor_16_24 31/32 inproc SINR 相等;GLB 逐面標籤 100% 同 Omniverse | 實際 1 天 |
-| **P2 模擬端直接吃 bundle** | CU/DU/RU/UE 啟動時讀 `SCENE_RUN_ID` → 拉 bundle,不再讀劇本 JSON;orchestrator 單 run 版(起停、健康) | 從 DB 起一個 run,不經過任何 JSON 檔 | 2–3 週 |
+| **P2 模擬端直接吃 registry** ✅ 2026-09-13 | UE 由 `read_full_tree` 組 spec(`scene_run_uuid`);orchestrator start/stop + registry 狀態機;CU 落地表 → run 級封存(archiver 執行緒) | orchestrator 起 corridor_16_24 不經 JSON,inproc SINR 與舊來源相等(差異皆 RLF 時機);封存 55 窗/45 s、0 錯 | 實際 1 天;健康輪詢留 P4 |
 | **P3 前端** | 畫布(R3F)、場景列表、資源庫、匯入頁 | 從畫布建一個場景 → 存 → 啟動 → 看 KPM,全程不碰 JSON | 3–4 週 |
 | **P4 多 run 並行** | per-run CU、E2Adapter 多 node、per-run DB schema、動態 port、cached-only 規則 | 兩個不同場景同時 cached 跑,RIC 看到兩個 E2 node,KPM 互不干擾 | 2–3 週 |
 | **P5 天線落地** | Physics 讀 bundle 的 per-cell 天線(見 `mimo_antenna_selection_plan.md` §5)、`tilt` 接到 Transmitter orientation | 改 preset 後 rank / SINR 真的變 | 2 週+ |

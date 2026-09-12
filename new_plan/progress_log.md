@@ -103,3 +103,5 @@
 - 踩到:`self._stop = Event()` 蓋掉 `Thread._stop()` 讓 `join()` 炸(`'Event' object is not callable`);`CellMeasurementLog.tick_count` 是窗內 tick 數不是絕對 tick,sim_time 要累計。
 - **驗證**:corridor_16_24 三輪。最後一輪 45 s:samples 55、handover 18(attach 的 PREP 事件)、rlf 2、polls 24、errors 0;sim_time_ms 逐窗 +1000;stop 後 registry stopped、DU 停、零模擬端 traceback。
 - 未做:`run_kpm_sample.wall_time_ms` 未填;ControlAudit 欄位對映在 RIC 通之前未驗;DU/CU 本身仍不知道 `scene_run_uuid`(P4 per-run 容器時自然解決)。
+
+## P2 完成(2026-09-13)。留給 P4 的:run_instance 健康輪詢、DU/CU 認得 scene_run_uuid、E2Adapter 多 node。下一階段 P3:兩個前端(管理畫布 + 監控)。
