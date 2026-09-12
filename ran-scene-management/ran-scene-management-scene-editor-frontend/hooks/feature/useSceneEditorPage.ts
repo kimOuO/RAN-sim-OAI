@@ -4,7 +4,7 @@ import { useAsync } from '@/hooks/base/useAsync';
 import { listAntennaPresets } from '@/services/api/presets';
 import { createCell, createDu, createGnb, createRu, updateCell, updateGnb, updateRu } from '@/services/api/networkElements';
 import { getSceneTree } from '@/services/api/scenes';
-import type { Cell, Gnb, SceneTree, Ue } from '@/types/registry';
+import type { Cell, Gnb, Ue } from '@/types/registry';
 
 export type Selection = { kind: 'gnb'; gnb: Gnb } | { kind: 'cell'; cell: Cell; gnb: Gnb } | { kind: 'ue'; ue: Ue } | { kind: 'building'; index: number } | null;
 

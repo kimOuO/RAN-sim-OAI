@@ -6,7 +6,7 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 
 export default [
   {
-    ignores: ['node_modules/', '.next/', 'dist/', 'build/', 'coverage/'],
+    ignores: ['node_modules/', '.next/', 'dist/', 'build/', 'coverage/', 'next-env.d.ts'],
   },
   {
     files: ['**/*.{ts,tsx}'],
@@ -49,5 +49,11 @@ export default [
     // frontend_rule Import Boundary:services/ 不可 import hooks/ 或 components/
     files: ['services/**/*.{ts,tsx}'],
     rules: { 'no-restricted-imports': ['error', { patterns: ['@/components/*', '@/hooks/*'] }] },
+  },
+
+  {
+    // react-three-fiber 的 JSX 是 three.js 物件屬性(position/args/emissive…),不是 DOM 屬性
+    files: ['components/scene-canvas/**/*.tsx'],
+    rules: { 'react/no-unknown-property': 'off' },
   },
 ];
