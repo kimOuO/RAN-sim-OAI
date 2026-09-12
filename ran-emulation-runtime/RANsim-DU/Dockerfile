@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 把 ran-sim-protocol 一起拷進來(以便 -e 安裝)
-# build context 預期是 /home/mitlab/XAPP_DT/(雙 repo 一起)
-COPY Physics_sim/ran-sim-protocol /opt/ran-sim-protocol
-COPY RANsim-DU /app
+# build context 預期是 XAPP_DT 根(2026-09-12 重構後協定套件在 ran-emulation-runtime/ 下)
+COPY ran-emulation-runtime/ran-emulation-runtime-interface-protocol /opt/ran-sim-protocol
+COPY ran-emulation-runtime/RANsim-DU /app
 
-RUN sed -i 's|-e /home/mitlab/XAPP_DT/Physics_sim/ran-sim-protocol|-e /opt/ran-sim-protocol|' \
+RUN sed -i 's|-e /home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol|-e /opt/ran-sim-protocol|' \
         /app/requirements/base.txt && \
     pip install --no-cache-dir -r /app/requirements/production.txt
 

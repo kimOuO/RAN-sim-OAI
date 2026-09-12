@@ -22,17 +22,18 @@ RUN sed -i 's|http://archive.ubuntu.com|http://tw.archive.ubuntu.com|g; s|http:/
 
 WORKDIR /app
 
-COPY requirements/base.txt /app/requirements/
+COPY ran-emulation-runtime/Physics_sim/requirements/base.txt /app/requirements/
 RUN pip install --upgrade pip --no-cache-dir && \
     pip install --no-cache-dir -r /app/requirements/base.txt && \
     pip install --no-cache-dir tzdata
 
-COPY . /app
+COPY ran-emulation-runtime/Physics_sim /app
+COPY ran-emulation-runtime/ran-emulation-runtime-interface-protocol /opt/ran-sim-protocol
 
 # AK8: ran-sim-protocol 在 sibling repo (CU/DU/RU 都用), Physics 也走同一個 DTO + 共用
 # rsrp_model 計算 util, 跟 RU realtime KPM 同源。editable install 讓 bind-mount 改檔
 # 立即生效, 不用 rebuild。
-RUN pip install --no-cache-dir -e /app/ran-sim-protocol/
+RUN pip install --no-cache-dir -e /opt/ran-sim-protocol/
 
 EXPOSE 8000
 

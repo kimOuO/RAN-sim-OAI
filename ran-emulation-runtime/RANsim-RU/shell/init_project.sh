@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SIBLING_PROTOCOL="${SIBLING_PROTOCOL:-/home/mitlab/XAPP_DT/Physics_sim/ran-sim-protocol}"
+SIBLING_PROTOCOL="${SIBLING_PROTOCOL:-/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol}"  # 2026-09-12:僅供本機 venv,Docker build 已不需要 _vendored
 DEST="${REPO_ROOT}/_vendored/ran-sim-protocol"
 
 if [[ ! -d "${SIBLING_PROTOCOL}" ]]; then

@@ -22,7 +22,7 @@ services:
       POSTGRES_DB: ransim_root
     volumes:
       - ransim-pgdata:/var/lib/postgresql/data
-      - ./deploy/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./docker-compose-deployment/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5433:5432"   # 5432 已被 omniver_postgres 佔用，host 用 5433；container 內部仍 5432
     healthcheck:
@@ -36,7 +36,7 @@ services:
   # ── CU（控制面 + 用戶面）───────────────────────────────────
   cu:
     build:
-      context: ./RANsim-CU
+      context: ./ran-emulation-runtime/RANsim-CU
       dockerfile: Dockerfile
     image: ransim-cu:platform
     container_name: ransim-cu
@@ -102,8 +102,8 @@ services:
       OMNIVERSE_URL: "http://${SERVER_IP:-host.docker.internal}:8001"
     volumes:
       - ./docs/scenarios:/app/docs/scenarios:ro   # 劇本內建 anr_fixture 時間軸(免人工觸發)
-      - ./RANsim-CU:/app
-      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
+      - ./ran-emulation-runtime/RANsim-CU:/app
+      - ./ran-emulation-runtime/ran-emulation-runtime-interface-protocol:/opt/ran-sim-protocol
     ports:
       - "8101:8000"
     depends_on:
@@ -118,7 +118,7 @@ services:
   du:
     build:
       context: .             # XAPP_DT 根，因為 Dockerfile COPY 用 Physics_sim/ran-sim-protocol
-      dockerfile: RANsim-DU/Dockerfile
+      dockerfile: ran-emulation-runtime/RANsim-DU/Dockerfile
     image: ransim-du:platform
     container_name: ransim-du
     environment:
@@ -205,9 +205,9 @@ services:
       PLMN_MCC: "208"
       PLMN_MNC: "95"
     volumes:
-      - ./RANsim-DU:/app
-      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
-      - ./Physics_sim/data/channel_cache:/data/channel_cache:ro   # in-process Phase1: DU 直讀 channel cache(免 per-tick HTTP)
+      - ./ran-emulation-runtime/RANsim-DU:/app
+      - ./ran-emulation-runtime/ran-emulation-runtime-interface-protocol:/opt/ran-sim-protocol
+      - ./ran-emulation-runtime/Physics_sim/data/channel_cache:/data/channel_cache:ro   # in-process Phase1: DU 直讀 channel cache(免 per-tick HTTP)
     ports:
       - "8102:8000"
     depends_on:
@@ -221,8 +221,8 @@ services:
   # ── RU（PlanarArray + Beamforming + FAPI + PhysicsClient）───
   ru:
     build:
-      context: ./RANsim-RU
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ran-emulation-runtime/RANsim-RU/Dockerfile   # root context:協定套件在 sibling 目錄
     image: ransim-ru:platform
     container_name: ransim-ru
     environment:
@@ -268,11 +268,11 @@ services:
       RU_SCENARIO_ID: "${RU_SCENARIO_ID:-}"
       RU_CACHE_DIR: "/data/channel_cache"
     volumes:
-      - ./RANsim-RU:/app
-      - ./Physics_sim/ran-sim-protocol:/opt/ran-sim-protocol
+      - ./ran-emulation-runtime/RANsim-RU:/app
+      - ./ran-emulation-runtime/ran-emulation-runtime-interface-protocol:/opt/ran-sim-protocol
       # Phase B — share channel cache parquet from physics container
       # 不再 :ro,因為 RU 自己要寫 .mode file 給 multi-worker 同步 channel mode
-      - ./Physics_sim/data:/data
+      - ./ran-emulation-runtime/Physics_sim/data:/data
     ports:
       - "8103:8000"
     depends_on:
@@ -299,8 +299,8 @@ services:
     # (RIC 端 2026-08-20 在 xApp pod 上踩到同一個坑,回報後我們自查發現同款問題。)
     init: true
     build:
-      context: ./Physics_sim
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ran-emulation-runtime/Physics_sim/Dockerfile   # root context:協定套件在 sibling 目錄
     image: ransim-physics:platform
     container_name: ransim-physics
     # scenario_store 需要 physics_db;啟動先 migrate 再跑 daphne(ran_signal 計算路徑不碰 DB)
@@ -332,9 +332,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./Physics_sim:/app
-      - ./Physics_sim/scenes:/app/scenes:ro
-      - ./deploy/scene_config.json:/mnt/srcin/scene_config.json:ro   # 平台共享 scene
+      - ./ran-emulation-runtime/Physics_sim:/app
+      - ./ran-emulation-runtime/ran-emulation-runtime-interface-protocol:/opt/ran-sim-protocol   # editable install 指向這裡
+      - ./scanned-building-assets:/app/scenes:ro
+      - ./docker-compose-deployment/scene_config.json:/mnt/srcin/scene_config.json:ro   # 平台共享 scene
       # OSM 地圖產出(USD/Mitsuba/footprints)—— 同路徑掛載,讓 Physics 能以
       # 與 backend/Kit 相同的絕對路徑載入地圖的 Mitsuba 場景(geometry_source=mitsuba_xml_path)
       - /home/mitlab/XAPP_DT/Omnivers_platform/assets/maps:/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps:ro
@@ -357,7 +358,7 @@ services:
   # 注意：Dashboard 在 Physics_sim/Dashboard/ 內，build context 指過去
   dashboard:
     build:
-      context: ./Physics_sim/Dashboard
+      context: ./ran-scene-management/ran-scene-management-scene-editor-frontend
       dockerfile: Dockerfile.dev   # dev mode → 支援 hot-reload + bind mount
     image: ransim-dashboard:dev
     container_name: ransim-dashboard
@@ -390,7 +391,7 @@ services:
       E2_ADAPTER_URL: "http://${SERVER_IP:-localhost}:8201"
       UE_URL: "http://${SERVER_IP:-localhost}:8105"
     volumes:
-      - ./Physics_sim/Dashboard:/app
+      - ./ran-scene-management/ran-scene-management-scene-editor-frontend:/app
       - /app/node_modules                              # 保留 image 內 node_modules
       - /app/.next                                     # build artifact 存在 container
     ports:
@@ -412,7 +413,7 @@ services:
     # (RIC 端 2026-08-20 在 xApp pod 上踩到同一個坑,回報後我們自查發現同款問題。)
     init: true
     build:
-      context: ./RANsim-E2Adapter
+      context: ./ran-emulation-runtime/RANsim-E2Adapter
       dockerfile: Dockerfile
     image: ransim-e2adapter:platform
     container_name: ransim-e2adapter
@@ -443,7 +444,7 @@ services:
       ASN1_SCHEMA_DIR: /app/asn1
       ADAPTER_HTTP_PORT: "8201"     # 0.0.0.0:8201 — 8000 被 Omniverse debugpy 佔用
     volumes:
-      - ./RANsim-E2Adapter:/app
+      - ./ran-emulation-runtime/RANsim-E2Adapter:/app
 
   # ── UE Container（Active UE Object — Phase A skeleton）────────
   # 跑 N UE thread，per-UE 從 CU 同步狀態。Phase A 只做 lifecycle skeleton，
@@ -456,7 +457,7 @@ services:
     # (RIC 端 2026-08-20 在 xApp pod 上踩到同一個坑,回報後我們自查發現同款問題。)
     init: true
     build:
-      context: ./RANsim-UE
+      context: ./ran-emulation-runtime/RANsim-UE
       dockerfile: Dockerfile
     image: ransim-ue:platform
     container_name: ransim-ue
@@ -490,7 +491,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./RANsim-UE:/app
+      - ./ran-emulation-runtime/RANsim-UE:/app
     ports:
       - "8105:8000"   # ransim-ue HTTP (CU=8101 / DU=8102 / RU=8103 / Physics=8104)
     depends_on:

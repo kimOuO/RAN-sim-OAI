@@ -50,8 +50,18 @@ ran-sim-protocol/_vendored/
 
 # Backup folders
 _legacy/__pycache__/
-RANsim-CU/tmp/anr_history.json
-RANsim-CU/tmp/a3_override.json
-RANsim-CU/tmp/anr_fixture.*
-RANsim-CU/tmp/env_override.json
-RANsim-CU/tmp/fixture_barred.json
+ran-emulation-runtime/RANsim-CU/tmp/anr_history.json
+ran-emulation-runtime/RANsim-CU/tmp/a3_override.json
+ran-emulation-runtime/RANsim-CU/tmp/anr_fixture.*
+ran-emulation-runtime/RANsim-CU/tmp/env_override.json
+ran-emulation-runtime/RANsim-CU/tmp/fixture_barred.json
+
+# 執行期狀態檔(2026-09-12 重構 P0-2):容器/前端執行時寫入,不進版控
+ran-scene-management/ran-scene-management-scene-editor-frontend/tsconfig.tsbuildinfo
+ran-emulation-runtime/Physics_sim/data/channel_cache/.mode
+ran-emulation-runtime/Physics_sim/data/channel_cache/*.npz
+ran-emulation-runtime/Physics_sim/tmp/
+ran-emulation-runtime/RANsim-CU/tmp/
+ran-emulation-runtime/RANsim-DU/tmp/
+ran-emulation-runtime/RANsim-RU/tmp/
+ran-emulation-runtime/RANsim-UE/tmp/

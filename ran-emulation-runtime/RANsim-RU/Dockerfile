@@ -16,14 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 共用 protocol package：build 前由 shell/init_project.sh 從 sibling 專案 rsync 到 _vendored/
-COPY ./_vendored/ran-sim-protocol /opt/ran-sim-protocol
+# 共用 protocol package(2026-09-12 重構:改 root build context 直接 COPY,不再 rsync 到 _vendored/)
+COPY ran-emulation-runtime/ran-emulation-runtime-interface-protocol /opt/ran-sim-protocol
 
-COPY requirements/ /app/requirements/
+COPY ran-emulation-runtime/RANsim-RU/requirements/ /app/requirements/
 RUN pip install --upgrade pip && \
     pip install -r /app/requirements/base.txt
 
-COPY . /app
+COPY ran-emulation-runtime/RANsim-RU /app
 
 EXPOSE 8000
 

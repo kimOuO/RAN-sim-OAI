@@ -5,4 +5,4 @@ psycopg2-binary>=2.9
 python-dotenv>=1.0
 requests>=2.31
 numpy>=1.26
--e /home/mitlab/XAPP_DT/Physics_sim/ran-sim-protocol
+-e /home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol
