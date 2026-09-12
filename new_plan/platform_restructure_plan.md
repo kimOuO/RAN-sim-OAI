@@ -677,12 +677,12 @@ Stop / 改倍速 / 起 run 全部在**管理平台**的場景列表頁(§3 第 2
 | 13 | per-run 容器形狀 | 2 個:`run-<uuid>`(supervisord 帶 du/ru/ue 三 process,共用 `/run/ipc`)+ `cu-<uuid>` |
 | 14 | 設定凍結 | **(b) `scene_run.snapshot_json`** |
 | 15 | run 級封存 | orchestrator 加 `run_telemetry_archive` app;E2Adapter 每次 snapshot 後 POST |
-| 16 | branch | 先 commit `feature/e2sm-anr` 現場,再從 `main` 開 `refactor/platform-split` |
+| 16 | branch | 現場已 commit 進 `feature/e2sm-anr`(4 commits);`main` 純粹落後 251 commit,**已快轉到 `feature/e2sm-anr`**;`refactor/platform-split` 基於同一點開出 |
 
 ### P0 起手清單(依上表)
 
-1. `feature/e2sm-anr` commit 現場(排除 tmp / cache / pptx / image)
-2. `git checkout main && git checkout -b refactor/platform-split`
+1. ~~commit 現場~~ ✅ 已做(1508385)
+2. ~~開 branch~~ ✅ `refactor/platform-split` 已在此;另:把 `tsconfig.tsbuildinfo`、`channel_cache/.mode`、`*/tmp/*` 加進 `.gitignore` 並 `git rm --cached`(它們是執行期檔案,這次切 branch 就是被它們擋住)
 3. `git mv` 成 §1 結構(六個服務沿用現名);`docker-compose-deployment/` 改路徑
 4. 建 `ran-scene-management-network-element-registry/` 骨架(照 `backend_rule` tree,五個 app,§2.3 全部 model + migration)
 5. 建 `ran-emulation-runtime-run-orchestrator/` 骨架(含 `run_telemetry_archive` app)
