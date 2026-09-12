@@ -10,6 +10,7 @@ from main.apps.cu_cp.actors.anr_control_actor import AnrControlActor
 from main.apps.cu_cp.actors.anr_query_actor import AnrQueryActor
 from main.apps.cu_cp.actors.e2_subscription_actor import E2IndicationActor, E2SubscriptionActor
 from main.apps.cu_cp.actors.f1ap_router_actor import F1ApRouterActor
+from main.apps.cu_cp.actors.telemetry_export_actor import TelemetryExportReader
 from main.apps.cu_cp.actors.log_actor import LogActor
 from main.apps.cu_cp.actors.handover_event_actor import HandoverEventActor
 from main.apps.cu_cp.actors.anr_query_actor import AnrFixtureActor
@@ -69,6 +70,7 @@ urlpatterns = [
     path("E2/KpmSpeed/read", E2KpmSpeedActor.read, name="e2_kpm_speed_read"),
     # Logs（Dashboard /logs page 用）
     path("Logs/Ring/read", LogActor.read_ring, name="logs_ring_read"),
+    path("Logs/TelemetryExportReader/read", TelemetryExportReader.read, name="logs_telemetry_export"),  # 2026-09-13 P2-3:run 封存用游標匯出
     # AK11: Mobility A3 runtime config (Dashboard 控制 A3 開關 + 參數)
     # 劇本病徵時間軸:場景套用後由 scenario_driver 觸發,不再需要人手動起
     path("Anr/Fixture/start", AnrFixtureActor.start, name="anr_fixture_start"),

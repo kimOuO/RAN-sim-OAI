@@ -96,3 +96,10 @@
 - **驗證**:orchestrator 起 `corridor_16_24`(scene_run-7de7da10…)→ registry 狀態 pending→running(started_at)→ stopped(stopped_at);`launch_request` (start, started)/(stop, stopped);tick 286、17 UE、零 traceback。inproc SINR 與先前三場交集 48 筆,2 筆不同 —— (220,p09) 與 (280,p11) 皆查證為 RLF 重建時機(p11 於 16:04:38 src→nbr,對應 tick 280)。
 - **走 registry 的直接證據**:帶不存在的 `scene_run_uuid` 起 sim → 錯誤指向 `network-element-registry:8000/.../SceneReader/read_full_tree` 404;`fetch_by_run` 亦加了 log 行。
 - 未做:P2-3 `run_telemetry_archive` 接 E2Adapter;run uuid 傳給 DU/CU。
+### 2026-09-13 — P2-3 run 級遙測封存(CU 落地表 → orchestrator)✅
+- **封存來源改為 CU,不是 E2Adapter**:E2Adapter 的 KPM 快照是 indication 驅動(RIC 有訂閱才有),RIC 不通就永遠空;CU 的 `MeasurementLog / CellMeasurementLog / HandoverEvent / RlfEvent` 每個 PM 視窗由 F1 上報落地,與 RIC 無關。§10.4 的「E2Adapter POST」改為 orchestrator 主動輪詢。
+- CU 加 `POST /api/v0.1/CU/Logs/TelemetryExportReader/read`(游標式匯出四張表;`max_only` 回最大 id)。CU 表已累積 937 萬筆量測、1243 萬筆 cell 列,archiver 啟動時用 `max_only` 定游標、只封存本 run 之後的資料。
+- orchestrator `run_telemetry_archive/services/optional/cu_archiver.py`:每 run 一條背景執行緒,每 2 s 輪詢 CU(→ `run_kpm_sample` 一窗一列:per_ue 17 UE 的 rsrp/sinr/thp/mcs/prb/delay/volume/neighbors + per_cell PRB%;`run_handover_event` 含 HO 與 RLF)與 E2Adapter ControlAudit(→ `run_control_event`,RIC 不通時為 0)。`LaunchController.start/stop` 起停它,stop 回 stats。orchestrator gunicorn 改單 worker(執行緒狀態在行程內)。
+- 踩到:`self._stop = Event()` 蓋掉 `Thread._stop()` 讓 `join()` 炸(`'Event' object is not callable`);`CellMeasurementLog.tick_count` 是窗內 tick 數不是絕對 tick,sim_time 要累計。
+- **驗證**:corridor_16_24 三輪。最後一輪 45 s:samples 55、handover 18(attach 的 PREP 事件)、rlf 2、polls 24、errors 0;sim_time_ms 逐窗 +1000;stop 後 registry stopped、DU 停、零模擬端 traceback。
+- 未做:`run_kpm_sample.wall_time_ms` 未填;ControlAudit 欄位對映在 RIC 通之前未驗;DU/CU 本身仍不知道 `scene_run_uuid`(P4 per-run 容器時自然解決)。

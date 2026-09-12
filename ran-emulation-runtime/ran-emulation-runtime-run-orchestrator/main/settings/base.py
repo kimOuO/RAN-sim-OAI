@@ -32,3 +32,7 @@ HTTP_REGISTRY_HOST = get_str("HTTP_REGISTRY_HOST", "network-element-registry")
 HTTP_REGISTRY_PORT = get_int("HTTP_REGISTRY_PORT", 8000)
 HTTP_UE_DRIVER_HOST = get_str("HTTP_UE_DRIVER_HOST", "ue")
 HTTP_UE_DRIVER_PORT = get_int("HTTP_UE_DRIVER_PORT", 8000)
+HTTP_CU_HOST = get_str("HTTP_CU_HOST", "cu")
+HTTP_CU_PORT = get_int("HTTP_CU_PORT", 8000)
+HTTP_E2ADAPTER_HOST = get_str("HTTP_E2ADAPTER_HOST", "host.docker.internal")   # e2adapter 走 host network
+HTTP_E2ADAPTER_PORT = get_int("HTTP_E2ADAPTER_PORT", 8201)

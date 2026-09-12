@@ -13,6 +13,7 @@ from main.apps.run_lifecycle.services.business.sqldb_operations import SqlDbBusi
 from main.apps.run_lifecycle.services.common.timestamp_service import TimestampService
 from main.apps.run_lifecycle.services.common.uuid_service import UUIDService
 from main.apps.run_lifecycle.services.optional import platform_clients
+from main.apps.run_telemetry_archive.services.optional import cu_archiver
 from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
@@ -162,6 +163,7 @@ class LaunchController:
                                                {"status": "started" if ok else "failed", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
             if ok:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat())
+                cu_archiver.start_archiver(run_uuid, sim_dt_ms)   # P2-3:run 期間封存 CU 落地表
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
                 return error_response("UE driver refused start", ue, 502)
@@ -194,9 +196,11 @@ class LaunchController:
             "f_scene_run_uuid": run_uuid, "action": "stop", "status": "accepted"})
         try:
             ue = platform_clients.ue_stop()
+            archive_stats = cu_archiver.stop_archiver(run_uuid)
             platform_clients.update_scene_run(run_uuid, status="stopped", stopped_at=now.isoformat())
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "stopped", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
         except Exception as exc:  # noqa: BLE001
+            logger.exception("launch stop failed run=%s", run_uuid)
             return error_response("stop failed", str(exc), 502)
-        return success_response({"scene_run_uuid": run_uuid, "ue": ue.get("data")}, "stopped", 200)
+        return success_response({"scene_run_uuid": run_uuid, "ue": ue.get("data"), "archive": archive_stats}, "stopped", 200)

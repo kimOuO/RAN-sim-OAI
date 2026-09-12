@@ -566,6 +566,12 @@ services:
       HTTP_REGISTRY_PORT: "8000"
       HTTP_UE_DRIVER_HOST: ue
       HTTP_UE_DRIVER_PORT: "8000"
+      HTTP_CU_HOST: cu
+      HTTP_CU_PORT: "8000"
+      HTTP_E2ADAPTER_HOST: host.docker.internal
+      HTTP_E2ADAPTER_PORT: "8201"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./ran-emulation-runtime/ran-emulation-runtime-run-orchestrator:/app
     ports:
