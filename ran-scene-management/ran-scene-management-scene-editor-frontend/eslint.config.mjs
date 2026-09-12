@@ -34,6 +34,7 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       ...reactPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
+      'no-undef': 'off', // TS 檔由 tsc 檢查符號;eslint 不認 DOM/Node 全域(要放在 recommended 展開之後)
       'react/react-in-jsx-scope': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
     },

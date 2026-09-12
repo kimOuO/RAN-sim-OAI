@@ -105,3 +105,15 @@
 - 未做:`run_kpm_sample.wall_time_ms` 未填;ControlAudit 欄位對映在 RIC 通之前未驗;DU/CU 本身仍不知道 `scene_run_uuid`(P4 per-run 容器時自然解決)。
 
 ## P2 完成(2026-09-13)。留給 P4 的:run_instance 健康輪詢、DU/CU 認得 scene_run_uuid、E2Adapter 多 node。下一階段 P3:兩個前端(管理畫布 + 監控)。
+
+## P3 兩個前端(開始 2026-09-13)
+
+### 2026-09-13 — P3-1 管理平台前端骨架 ✅
+- 舊 Dashboard(P0 已搬到 `…-scene-editor-frontend`)改名 `ran-scene-management-legacy-dashboard`,compose `dashboard` 指過去照跑(ANR 工作仍用它)。新前端在乾淨的 `ran-scene-management-scene-editor-frontend/`,**照 `frontend_rule` 白名單**(`app/ components/ hooks/ services/` + `config/ types/ styles/ public/`;沒有 `lib/`),eslint 加 services→hooks/components 的 import 邊界規則。
+- 資料流:`hooks/feature/*` → `services/api/*`(`listX/getX/createX/updateX/deleteX`,底層全 POST)→ `services/clients/apiClient.ts`;async 形狀 `{data,status,error,refetch}`(`hooks/base/useAsync`)。
+- 頁面:`/scenes`(卡片、每 scene 的 run 列、Start/Stop 打 orchestrator、建立/刪除)、`/scenes/[id]`(物件樹 / R3F 畫布 / 屬性面板)、`/presets`(天線 / 材質 / DU 模板表)、`/imports`(劇本 JSON 貼上匯入)。
+- 畫布物件模型照計畫 §3:**cell 是可拖節點**(拖離 gNB 位置 = DAS,放開才寫回 registry `position`)、gNB 為群組標記、UE 軌跡折線、建築方塊;`+gNB` 自動建 1 DU / 1 cell / 1 RU;cell 面板含天線 preset 下拉(寫 `ru.f_antenna_preset_uuid`)、pci / 頻率 / 頻寬 / 功率 / 方位 / **tilt**。
+- **視覺未定**:先用中性白底、單一強調色;Polycam 式的極簡室內風格等你定方向再刻。
+- 踩到:r3f 的 optional expo peer 讓 `npm install` ERESOLVE → `.npmrc legacy-peer-deps`;`@typescript-eslint` 7 + eslint 10 不相容(舊 Dashboard 同樣壞)→ eslint 9 + ts-eslint 8;`no-undef` 要放在 recommended 展開之後。
+- 驗證:`tsc --noEmit` 乾淨、`next build` 全路由通過、lint 通過、compose `scene-editor-frontend` :3011 起來(`GET /scenes` 200,dev 模式 hot reload)。**畫布互動與資料寫回尚未在瀏覽器實測**(無瀏覽器環境)—— 請開 http://<host>:3011/scenes 試:點一個 corridor 場景 → 拖 cell → 看 registry 是否更新。
+- 未做(P3-2 起):UE 軌跡/流量編輯、建築材質下拉、GLB/OSM 上傳表單、precompute 觸發、監控前端 repo。
