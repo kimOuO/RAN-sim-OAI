@@ -11,10 +11,12 @@ class Gnb(models.Model):
     plmn_mcc = models.CharField(max_length=3, default='208')
     plmn_mnc = models.CharField(max_length=3, default='95')
     position = models.JSONField(default=list)
-    a3_enabled = models.BooleanField(default=False)
-    a3_offset_db = models.FloatField(default=3.0)
-    a3_hys_db = models.FloatField(default=1.0)
-    a3_ttt_ms = models.IntegerField(default=640)
+    is_active = models.BooleanField(default=True)   # 劇本 gnbs[].active(ES 節能)
+    color = models.JSONField(null=True, blank=True)
+    a3_enabled = models.BooleanField(null=True, blank=True)   # None = 劇本未指定 → CU env 預設
+    a3_offset_db = models.FloatField(null=True, blank=True)
+    a3_hys_db = models.FloatField(null=True, blank=True)
+    a3_ttt_ms = models.IntegerField(null=True, blank=True)
     gnb_created_at = models.DateTimeField()
     gnb_updated_at = models.DateTimeField()
 

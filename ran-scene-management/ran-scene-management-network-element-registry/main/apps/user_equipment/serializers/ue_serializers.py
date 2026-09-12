@@ -12,7 +12,7 @@ class UeWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Ue
-        fields = ['name', 'antenna_height_m', 'qos_5qi', 'color', 'f_scene_uuid', 'f_antenna_preset_uuid']
+        fields = ['name', 'loop', 'speed_mps', 'antenna_height_m', 'qos_5qi', 'color', 'f_scene_uuid', 'f_antenna_preset_uuid']
 
 
 class UeReadSerializer(serializers.ModelSerializer):
@@ -21,4 +21,4 @@ class UeReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Ue
-        fields = ['id', 'ue_uuid', 'name', 'antenna_height_m', 'qos_5qi', 'color', 'f_scene_uuid', 'f_antenna_preset_uuid', 'ue_created_at', 'ue_updated_at']
+        fields = ['id', 'ue_uuid', 'name', 'loop', 'speed_mps', 'antenna_height_m', 'qos_5qi', 'color', 'f_scene_uuid', 'f_antenna_preset_uuid', 'ue_created_at', 'ue_updated_at']

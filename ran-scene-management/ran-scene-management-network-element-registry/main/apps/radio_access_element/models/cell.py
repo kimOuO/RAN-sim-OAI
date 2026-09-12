@@ -10,6 +10,9 @@ class Cell(models.Model):
     pci = models.IntegerField(default=0)
     nr_cellid = models.BigIntegerField(null=True, blank=True)
     arfcn = models.IntegerField(null=True, blank=True)
+    # 精確中心頻率(GHz)。ARFCN 是 38.104 raster 上的量化值(5/15 kHz),劇本常給非 raster 值(如 3.5 GHz),
+    # 保留原值才能無損往返;arfcn 由此推導。
+    center_frequency_ghz = models.FloatField(null=True, blank=True)
     band = models.CharField(max_length=16, default='n78')
     bandwidth_mhz = models.FloatField(default=40.0)
     position = models.JSONField(null=True, blank=True)

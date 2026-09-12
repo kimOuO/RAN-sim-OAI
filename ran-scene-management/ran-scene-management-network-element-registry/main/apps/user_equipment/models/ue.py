@@ -11,6 +11,8 @@ class Ue(models.Model):
     antenna_height_m = models.FloatField(default=1.5)
     qos_5qi = models.IntegerField(default=9)
     color = models.JSONField(default=list)
+    loop = models.BooleanField(default=False)          # 倉庫版劇本:軌跡循環
+    speed_mps = models.FloatField(null=True, blank=True)
     ue_created_at = models.DateTimeField()
     ue_updated_at = models.DateTimeField()
 

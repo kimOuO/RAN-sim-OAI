@@ -10,7 +10,7 @@ class SceneWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Scene
-        fields = ['name', 'description', 'origin_lat', 'origin_lon', 'bounds', 'f_material_uuid']
+        fields = ['name', 'legacy_scenario_id', 'geometry_scene_id', 'geometry_source', 'description', 'origin_lat', 'origin_lon', 'bounds', 'f_material_uuid']
 
 
 class SceneReadSerializer(serializers.ModelSerializer):
@@ -18,4 +18,4 @@ class SceneReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Scene
-        fields = ['id', 'scene_uuid', 'name', 'description', 'origin_lat', 'origin_lon', 'bounds', 'f_material_uuid', 'scene_created_at', 'scene_updated_at']
+        fields = ['id', 'scene_uuid', 'name', 'legacy_scenario_id', 'geometry_scene_id', 'geometry_source', 'description', 'origin_lat', 'origin_lon', 'bounds', 'f_material_uuid', 'scene_created_at', 'scene_updated_at']

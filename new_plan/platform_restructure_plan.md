@@ -199,6 +199,10 @@ erDiagram
 | `run_knob` | `id`, `scene_run` FK, `key`, `value` —— 模擬器旋鈕:`inter_freq`、初始 `cell_quotas`、`NR_TBS_SPEC_MODE` 等旗標、`scene_loss_db` |
 | `run_instance` | `id`, `scene_run` FK, `role`(cu/du/ru/ue_driver), `container_id`, `host_port`, `status`, `last_heartbeat` |
 
+### 2.4a 劇本匯入器逼出的 schema 修正(2026-09-12,P1-1)
+
+`scene.legacy_scenario_id / geometry_scene_id / geometry_source`、`gnb.is_active / color`、`cell.center_frequency_ghz`(保留非 raster 頻率,arfcn 由它推導)、`ue.loop / speed_mps`;`gnb.a3_*` 改 nullable(None = 未指定 → CU env)。詳見 progress_log P1-1。
+
 ### 2.4 新增的三個欄位(對照 `ne_and_parameters.md` 的三個「該優先補」)
 
 * **`cell.arfcn`** —— 補了它,`inter_freq` 這個假開關就能退休,同頻/異頻變成推導結果。

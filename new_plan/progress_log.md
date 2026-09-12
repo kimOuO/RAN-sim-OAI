@@ -49,3 +49,13 @@
   4. Physics 在 cached 模式 run 期間本來就不載場景(`No scene loaded yet` 正常)。
 
 ## P0 完成(2026-09-12)。下一階段 P1:DB 為權威(劇本匯入器、bundle/reader、反向工具、building_ingest 搬出 Omniverse)。
+
+## P1 DB 為權威(開始 2026-09-12)
+
+### 2026-09-12 — P1-1 劇本匯入器 + 反向匯出 ✅
+- 位置:registry `scene_layout/services/optional/scenario_import/`(`scenario_v1.py` 匯入/匯出、`roundtrip.py` 正規化比對)、actor `ScenarioImporter.import_v1 / export_v1`(POST)、management command `import_scenarios --dir … --roundtrip`。
+- 語意完全對齊 RANsim-UE `scenario_loader.fetch()`:3 元素 positions 補時間軸公式、gnb→cell 繼承(frequency/bandwidth/power)、倉庫版 flat gnb、`active` 時窗、`target_height_m`→`antenna_height_m`、`loop`/`speed_mps`。
+- 欄位對映(§5 表更新):`default_serving_cell / antenna_pattern / cell_quotas / inter_freq / discard_timer_ms / tx_power_dbm / rlc_delay_model / anr_fixture / _metadata.trigger_config` → `run_knob`(掛在匯入時建立的 draft `scene_run`);`duration_sec / tick_ms` → draft run;`a3_*` → gnb;劇本 `antenna_pattern` → 自動建 `legacy-<pattern>-1x1-V` 天線 preset 掛在每個 ru。
+- **schema 修正(由 44 份劇本聯集逼出)**:`scene.{legacy_scenario_id, geometry_scene_id, geometry_source}`、`gnb.{is_active, color}`、`cell.center_frequency_ghz`(ARFCN 是 5/15 kHz raster 量化值,3.5 GHz 這種非 raster 值要保留原值才無損;arfcn 由 38.104 §5.4.2.1 推導)、`ue.{loop, speed_mps}`;`gnb.a3_*` 改 **nullable**(None = 劇本未指定 → CU env 預設;原本非空欄位造成 24 份往返不合)。
+- 驗證:`docs/scenarios/*.json` **44/44 匯入成功、44/44 往返相等**(以 loader 語意正規化後比對);Omniverse 倉庫版 `corridor_16_24`(18 UE、active 時窗)、`corridor_24h`、`anr_missing_neighbor`(anr_fixture)三份往返相等;registry 測試 OK。
+- 尚未:實際跑一次「export 出來的 JSON」讓 UE driver 跑,比 KPM(P1 驗收第二半,需先把 export 結果放進劇本倉庫或做 `SCENARIO_STORE_URL` 指向 registry —— 排 P1-3 反向工具接線)。
