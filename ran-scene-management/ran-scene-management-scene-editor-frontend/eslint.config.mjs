@@ -43,4 +43,10 @@ export default [
       },
     },
   },
+
+  {
+    // frontend_rule Import Boundary:services/ 不可 import hooks/ 或 components/
+    files: ['services/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-imports': ['error', { patterns: ['@/components/*', '@/hooks/*'] }] },
+  },
 ];

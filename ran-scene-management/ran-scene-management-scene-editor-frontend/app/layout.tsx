@@ -1,52 +1,17 @@
-import type { Metadata } from 'next';
-import { NavBar } from '@/components/NavBar';
-import { SimProvider } from '@/components/SimProvider';
-import { ScenarioProvider } from '@/components/ScenarioProvider';
+import type { ReactNode } from 'react';
+import Link from 'next/link';
 import '@/styles/globals.css';
 
-export const dynamic = 'force-dynamic';
+export const metadata = { title: 'RAN Scene Editor' };
 
-export const metadata: Metadata = {
-  title: 'RAN Digital Twin',
-  description: 'Ray tracing-based 5G RAN simulation platform',
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const config = {
-    apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:8000',
-    omniverseUrl: process.env.OMNIVERSE_URL || 'http://localhost:8001',
-    vncUrl: process.env.VNC_URL || 'http://localhost:6080/vnc.html',
-    cuUrl: process.env.CU_URL || `http://${process.env.SERVER_IP || 'localhost'}:8101`,
-    duUrl: process.env.DU_URL || `http://${process.env.SERVER_IP || 'localhost'}:8102`,
-    ruUrl: process.env.RU_URL || `http://${process.env.SERVER_IP || 'localhost'}:8103`,
-    physicsUrl: process.env.PHYSICS_URL || `http://${process.env.SERVER_IP || 'localhost'}:8104`,
-    e2AdapterUrl: process.env.E2_ADAPTER_URL || `http://${process.env.SERVER_IP || 'localhost'}:8201`,
-    ueUrl: process.env.UE_URL || `http://${process.env.SERVER_IP || 'localhost'}:8105`,
-  };
-
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.__APP_CONFIG__=${JSON.stringify(config)};`,
-          }}
-        />
-      </head>
-      <body style={{ background: '#0b1220', color: '#cbd5e1', minHeight: '100vh' }}>
-        <SimProvider>
-          <ScenarioProvider>
-            <NavBar />
-            <main style={{ padding: '24px', background: '#0b1220', minHeight: 'calc(100vh - 60px)' }}>
-              {children}
-            </main>
-          </ScenarioProvider>
-        </SimProvider>
-      </body>
-    </html>
+    <html lang="zh-Hant"><body>
+      <nav className="topnav">
+        <Link href="/scenes" className="brand">RAN Scene Editor</Link>
+        <Link href="/scenes">場景</Link><Link href="/presets">資源庫</Link><Link href="/imports">匯入</Link>
+      </nav>
+      <main>{children}</main>
+    </body></html>
   );
 }

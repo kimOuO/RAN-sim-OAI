@@ -1,37 +1,20 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+'use client';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AsyncState, AsyncStatus } from '@/types';
 
-export function useAsync<T>(
-  asyncFn: () => Promise<T>,
-  immediate = true
-): AsyncState<T> {
+/** frontend_rule 的 async 形狀:{ data, status, error, refetch } */
+export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncState<T> {
   const [data, setData] = useState<T | null>(null);
   const [status, setStatus] = useState<AsyncStatus>('idle');
   const [error, setError] = useState<Error | null>(null);
-  const asyncFnRef = useRef(asyncFn);
-
-  useEffect(() => {
-    asyncFnRef.current = asyncFn;
-  }, [asyncFn]);
-
-  const refetch = useCallback(async () => {
+  const seq = useRef(0);
+  const run = useCallback(() => {
+    const my = ++seq.current;
     setStatus('loading');
-    setError(null);
-    try {
-      const result = await asyncFnRef.current();
-      setData(result);
-      setStatus('success');
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      setStatus('error');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (immediate) {
-      refetch();
-    }
-  }, [immediate, refetch]);
-
-  return { data, status, error, refetch };
+    fn().then((d) => { if (my === seq.current) { setData(d); setError(null); setStatus('success'); } })
+        .catch((e: unknown) => { if (my === seq.current) { setError(e instanceof Error ? e : new Error(String(e))); setStatus('error'); } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  useEffect(() => { run(); }, [run]);
+  return { data, status, error, refetch: run };
 }

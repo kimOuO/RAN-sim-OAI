@@ -1,38 +1,35 @@
 {
-  "name": "ran-sim-frontend",
+  "name": "ran-scene-management-scene-editor-frontend",
+  "version": "0.1.0",
   "private": true,
-  "version": "0.0.1",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
+    "dev": "next dev -p 3011",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint . --ext .ts,.tsx"
+    "start": "next start -p 3011",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write ."
   },
   "dependencies": {
-    "@nivo/core": "^0.99.0",
-    "@nivo/sankey": "^0.99.0",
-    "@react-three/drei": "^10.7.8",
-    "@react-three/fiber": "^9.7.0",
-    "axios": "^1.15.2",
     "next": "^15.0.3",
     "react": "^19.2.5",
-    "react-circular-progressbar": "^2.2.0",
     "react-dom": "^19.2.5",
-    "react-is": "^19.2.5",
-    "recharts": "^3.8.1",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "@react-three/fiber": "^9.7.0",
+    "@react-three/drei": "^10.7.8"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.10.0",
     "@types/node": "^20.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.4",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^10.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.5.0",
+    "@typescript-eslint/parser": "^8.5.0",
+    "eslint": "^9.10.0",
     "eslint-plugin-react": "^7.35.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "typescript": "^5.5.2"
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "typescript": "^5.5.2",
+    "prettier": "^3.3.3"
   }
 }

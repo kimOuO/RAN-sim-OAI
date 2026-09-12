@@ -1,173 +1,29 @@
-/*
- * Dark theme — RAN ops 統一風格。
- * Tokens（component 用 inline style 時可參考）：
- *   bg:        #0b1220 (page)
- *   card:      #111827
- *   panel:     #1f2937
- *   border:    #374151
- *   text:      #cbd5e1
- *   muted:     #6b7280
- *   accent CU: #3b82f6 / DU: #10b981 / RU: #f59e0b / RIC: #a855f7
- *   ok / warn / fail: #10b981 / #f59e0b / #ef4444
- */
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body, #__next {
-  width: 100%;
-  height: 100%;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #0b1220;
-  color: #cbd5e1;
-}
-
-a {
-  color: #60a5fa;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-button {
-  font-family: inherit;
-  cursor: pointer;
-  border: 1px solid #374151;
-  background-color: #1f2937;
-  color: #cbd5e1;
-  border-radius: 4px;
-  padding: 8px 16px;
-  font-size: 14px;
-  transition: background-color 0.15s, border-color 0.15s;
-}
-
-button:hover:not(:disabled) {
-  background-color: #334155;
-  border-color: #475569;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background-color: #3b82f6;
-  color: #fff;
-  border-color: #3b82f6;
-}
-.btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
-  border-color: #2563eb;
-}
-
-.btn-secondary {
-  background-color: #475569;
-  color: #fff;
-  border-color: #475569;
-}
-.btn-secondary:hover:not(:disabled) {
-  background-color: #64748b;
-  border-color: #64748b;
-}
-
-.btn-danger {
-  background-color: #dc2626;
-  color: #fff;
-  border-color: #dc2626;
-}
-.btn-danger:hover:not(:disabled) {
-  background-color: #b91c1c;
-  border-color: #b91c1c;
-}
-
-input, textarea, select {
-  font-family: inherit;
-  font-size: 14px;
-  padding: 8px;
-  border: 1px solid #374151;
-  border-radius: 4px;
-  background-color: #1f2937;
-  color: #cbd5e1;
-}
-
-input::placeholder, textarea::placeholder {
-  color: #6b7280;
-}
-
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-.error {
-  background-color: #1f2937;
-  color: #fca5a5;
-  padding: 12px;
-  border: 1px solid #7f1d1d;
-  border-radius: 4px;
-  margin: 16px 0;
-}
-
-.loading {
-  text-align: center;
-  padding: 32px;
-  color: #6b7280;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: transparent;
-  color: #cbd5e1;
-}
-
-th, td {
-  padding: 12px;
-  text-align: left;
-  border-bottom: 1px solid #1f2937;
-}
-
-th {
-  background-color: #1f2937;
-  font-weight: 600;
-  color: #cbd5e1;
-}
-
-tr:hover {
-  background-color: #1f2937;
-}
-
-/* Scrollbar — 深色化 */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: #0b1220;
-}
-::-webkit-scrollbar-thumb {
-  background: #374151;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
-
-/* react-circular-progressbar — keep dark trail */
-.CircularProgressbar-trail {
-  stroke: #1f2937 !important;
-}
+:root { --paper: #f4f3f0; --ink: #1e1e1c; --muted: #6b6a66; --line: #d9d6cf; --accent: #c2410c; --sel: #fff2ea; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font: 14px/1.5 ui-sans-serif, system-ui, "Noto Sans TC", sans-serif; }
+a { color: inherit; }
+.topnav { display: flex; gap: 18px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: #fff; }
+.topnav .brand { font-weight: 700; margin-right: 12px; }
+main { min-height: calc(100vh - 44px); }
+.page { padding: 20px 24px; max-width: 1200px; }
+.pagehead { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.pagehead h1 { margin: 0 12px 0 0; }
+input, select, textarea, button { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+button.danger { color: #9f1d1d; } button.wide { width: 100%; margin-top: 8px; } button.mini { padding: 1px 6px; font-size: 12px; margin-left: 6px; }
+.muted { color: var(--muted); } .err { color: #9f1d1d; } .msg { color: var(--accent); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 16px; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.card h2 { margin: 0; font-size: 17px; } .card footer { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.runs { display: flex; flex-direction: column; gap: 4px; } .run { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.pill { padding: 0 8px; border-radius: 10px; background: #eee; font-size: 12px; } .run.running .pill { background: #dcfce7; } .run.failed .pill { background: #fee2e2; }
+.editor { display: grid; grid-template-columns: 280px 1fr 320px; height: calc(100vh - 44px); }
+.editor .left { border-right: 1px solid var(--line); padding: 12px; overflow: auto; background: #fff; }
+.editor .center { position: relative; } .editor .center canvas { display: block; }
+.panel { border-left: 1px solid var(--line); padding: 14px; overflow: auto; background: #fff; }
+.panel label { display: grid; grid-template-columns: 120px 1fr; gap: 8px; align-items: center; margin: 6px 0; } .panel label span { color: var(--muted); font-size: 12px; }
+.actions { display: flex; gap: 8px; margin-top: 10px; }
+.tree h3 { margin: 4px 0; } .tree .node { margin: 8px 0; } .tree .row { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 4px 6px; border-radius: 4px; }
+.tree .row.sub { padding-left: 22px; } .tree .row.sel { background: var(--sel); } .tree .row.head { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0 20px; background: #fff; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 13px; } th { color: var(--muted); font-weight: 600; }
+textarea { width: 100%; font-family: ui-monospace, monospace; }

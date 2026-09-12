@@ -1,16 +1,13 @@
-# React + Vite
+# ran-scene-management-scene-editor-frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+管理平台前端(Next.js App Router,TypeScript strict,react-three-fiber)。規範:`Omnivers_platform/frontend_rule.md`;設計:`new_plan/platform_restructure_plan.md` §3、§9.2。
+**只做場景編輯與啟動;監控在 `ran-emulation-runtime-run-monitor-frontend`。** 舊 Dashboard 保留於 `../ran-scene-management-legacy-dashboard`(ANR 工作仍用它)。
 
-Currently, two official plugins are available:
+| 路由 | 用途 |
+|---|---|
+| `/scenes` | 場景列表(卡片、active runs、Start / Stop / Precompute) |
+| `/scenes/[id]` | 3D 編輯器:物件樹 / 畫布(gNB 群組、cell 可拖、UE 軌跡、建築)/ 屬性面板 |
+| `/presets` | 資源庫:天線 preset、材質、DU 模板 |
+| `/imports` | 劇本 JSON / GLB / OSM 匯入 |
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+資料存取一律 `hooks/feature/*` → `services/api/*` → `services/clients/registryClient.ts`(全 POST,對齊 backend_rule §7)。
