@@ -683,7 +683,7 @@ Stop / 改倍速 / 起 run 全部在**管理平台**的場景列表頁(§3 第 2
 
 1. ~~commit 現場~~ ✅ 已做(1508385)
 2. ~~開 branch~~ ✅ `refactor/platform-split` 已在此;另:把 `tsconfig.tsbuildinfo`、`channel_cache/.mode`、`*/tmp/*` 加進 `.gitignore` 並 `git rm --cached`(它們是執行期檔案,這次切 branch 就是被它們擋住)
-3. `git mv` 成 §1 結構(六個服務沿用現名);`docker-compose-deployment/` 改路徑
-4. 建 `ran-scene-management-network-element-registry/` 骨架(照 `backend_rule` tree,五個 app,§2.3 全部 model + migration)
-5. 建 `ran-emulation-runtime-run-orchestrator/` 骨架(含 `run_telemetry_archive` app)
-6. 驗收:`docker compose up` → `cco_20min` 照跑,KPM 與搬家前一致
+3. ~~git mv~~ ✅ 97e73ea / ee625be
+4. ~~registry 骨架~~ ✅ d5f39ea
+5. ~~orchestrator 骨架~~ ✅ 4fa6984
+6. ~~驗收~~ ✅ 以 `corridor_16_24` 驗(cco_20min 不在倉庫);雙路徑 SINR 一致、零 traceback。細節見 progress_log P0-6

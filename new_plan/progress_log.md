@@ -37,3 +37,15 @@
 - `scene_run` 本體在 registry;此處只存 `f_scene_run_uuid` CharField(跨 repo,backend_rule §12-2)。settings 已預留 `HTTP_REGISTRY_HOST/PORT`(§8-2)。
 - 驗證:makemigrations 4 model、check 無問題、test OK、smoke(POST 一筆 kpm sample → 以 `f_scene_run_uuid` 讀回)通過。
 - 映像重建完成:`ransim-du:platform`、`ransim-ru:platform`、`ransim-physics:platform`(root build context + `/opt/ran-sim-protocol`);Physics 內 sionna-rt 2.1.0 / mitsuba 3.9.1。
+### 2026-09-12 — P0-6 驗收:搬家後舊流程照跑 ✅
+- `docker compose up -d` 9 個容器全 Up(postgres healthy)。DU/RU/Physics 三個重建映像內 `import ran_sim_protocol` 正常(DU/RU 由 entrypoint 從 `/opt` mount 重灌;Physics editable 指向 `/opt`)。
+- 跑 `corridor_16_24`(cached、2×、sim_dt 500)三次,每次 80–110 s 牆鐘:DU tick 212 / 264 / 304,達成倍速 ≈1.43×;18 UE attach、17 進 DU registry;流量注入後 `ues_with_bo=8`;DU→CU `measurement_report` / `cell_measurement_report` 200 OK;CU/DU/RU/UE/Physics **零 Traceback**。
+- **兩條獨立 SINR 路徑一致**(`[DU_SINR_CMP]` http_sinr == inproc_sinr,例 p03 29.87 / p12 28.98 / p13 12.51)→ RU 的 HTTP cache 路徑與 DU 直讀 cache 路徑搬家後都解析到同一個 npz。
+- DU `dump_pm.ue_latest` 17 筆(serving / sinr / rsrp / neighbors)。多數 UE SINR ≈ −77 dB 是**劇本設計**:npz 內 p01@tick250 對 `nbr` −66 dB、對 `src` −144 dB,而預設 attach 在 `src`(ANR/換手測試前置狀態),與搬家無關。
+- **未達成 / 已知**:
+  1. 沒有搬家前的 KPM 位元級基準可比(當時未擷取);以上述「雙路徑一致 + 零 traceback + 數值可由 npz 解釋」作為 P0 的一致性證據。
+  2. E2Adapter `KpmSnapshot` 為空:對 RIC 10.3.0.71 的 SCTP 被 reset(外部),無訂閱就不 collect —— 搬家前 `connected:false` 亦然。
+  3. `cco_20min` 不在 Omniverse 劇本倉庫(倉庫只有 corridor_* 與 anr_*),故改用 `corridor_16_24` 驗收。
+  4. Physics 在 cached 模式 run 期間本來就不載場景(`No scene loaded yet` 正常)。
+
+## P0 完成(2026-09-12)。下一階段 P1:DB 為權威(劇本匯入器、bundle/reader、反向工具、building_ingest 搬出 Omniverse)。
