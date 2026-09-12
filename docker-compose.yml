@@ -476,6 +476,9 @@ services:
       OMNIVERSE_KIT_URL: "http://${SERVER_IP:-localhost}:8080"
       # Phase B B.4 — scenario driver fetch scenario JSON from Omniverse
       OMNIVERSE_URL: "http://${SERVER_IP:-host.docker.internal}:8001"
+      # 劇本倉庫來源(2026-09-12 P1-3):預設 Omniverse;切到 registry 用
+      #   SCENARIO_STORE_URL=http://network-element-registry:8000 docker compose up -d --force-recreate ue
+      SCENARIO_STORE_URL: "${SCENARIO_STORE_URL:-http://${SERVER_IP:-host.docker.internal}:8001}"
       # Tick 週期
       UE_TRAJECTORY_PERIOD_MS: "100"
       # AC5 — 原 80 ms ≥ HO_TTT_MS 60 ms,A3 觸發條件量不到第二次。降到 40 ms 留 buffer。
@@ -511,6 +514,63 @@ services:
     networks:
       - ransim-net
 
+
+  # ── 管理平台:網元登錄(2026-09-12 重構 P1)──
+  network-element-registry:
+    build:
+      context: ./ran-scene-management/ran-scene-management-network-element-registry
+      dockerfile: Dockerfile
+    image: ran-scene-management-network-element-registry:platform
+    container_name: ran-network-element-registry
+    environment:
+      DJANGO_SETTINGS_MODULE: main.settings.local
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: scene_registry_db
+      DB_USER: ransim
+      DB_PASSWORD: "ransim"
+    volumes:
+      - ./ran-scene-management/ran-scene-management-network-element-registry:/app
+      - ./docs/scenarios:/app/docs/scenarios:ro   # import_scenarios --dir 用
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8301:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ransim-net
+
+  # ── 模擬平台:執行編排 + run 級遙測封存(2026-09-12 重構 P0-5)──
+  run-orchestrator:
+    build:
+      context: ./ran-emulation-runtime/ran-emulation-runtime-run-orchestrator
+      dockerfile: Dockerfile
+    image: ran-emulation-runtime-run-orchestrator:platform
+    container_name: ran-run-orchestrator
+    environment:
+      DJANGO_SETTINGS_MODULE: main.settings.local
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: run_orchestrator_db
+      DB_USER: ransim
+      DB_PASSWORD: "ransim"
+      HTTP_REGISTRY_HOST: network-element-registry
+      HTTP_REGISTRY_PORT: "8000"
+    volumes:
+      - ./ran-emulation-runtime/ran-emulation-runtime-run-orchestrator:/app
+    ports:
+      - "8302:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ransim-net
 
 volumes:
   ransim-pgdata:
