@@ -65,3 +65,6 @@ ran-emulation-runtime/RANsim-CU/tmp/
 ran-emulation-runtime/RANsim-DU/tmp/
 ran-emulation-runtime/RANsim-RU/tmp/
 ran-emulation-runtime/RANsim-UE/tmp/
+
+# 產生的 Mitsuba 場景檔(原 Physics_sim/scenes 規則,隨搬家移到根目錄)
+scanned-building-assets/*.xml
