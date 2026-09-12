@@ -64,3 +64,10 @@
 - 形狀:`scene(+ground_material) / buildings[+default_material] / gnbs[dus[+config_template, cells[+ru{+antenna_preset}]]] / neighbor_seeds / ues[waypoints[[t,x,y,z]], traffic, active_windows[[t0,t1]]] / run{knobs{}, instances[]}`。
 - 軌跡與時窗刻意用緊湊陣列:corridor_16_24(18 UE、8846 waypoints)完整序列化是 2.7 MB / 3.4 s,緊湊後 **315 KB / 95 ms**。消費端(DU/RU/UE driver)只要數值。
 - 測試:47 個全過(含匯入 cco_20min 後檢查巢狀與 knobs)。
+### 2026-09-12 — P1-3 反向工具接線:UE driver 不改一行改吃 registry ✅
+- registry 提供**舊劇本倉庫同路徑同形狀**的相容端點 `POST /api/v0.1/RAN/Scenario/ScenarioController/read|list`(`legacy_scenario_store_actor.py`,標明過渡用、P2 刪;URL 故意不照 backend_rule §7-1)。回傳 `raw_json` = `export_scenario()`,`precompute_status` 由 draft run 的 mode 推(cached→ready),`cache_path` 沿用匯入值。
+- `import_scenarios --from-store <URL>`:把 Omniverse 倉庫的劇本連同 precompute 狀態一併匯入。registry postgres 現有 **64 份(44 檔案 + 20 倉庫版,0 失敗,往返全對)**,去重後 49 個 scenario_id。
+- 根 compose 新增 `network-element-registry`(:8301,DB `scene_registry_db`)與 `run-orchestrator`(:8302,DB `run_orchestrator_db`);`postgres-init.sql` 加兩個 DB(現有 volume 已手動 CREATE)。UE 的 `SCENARIO_STORE_URL` 可切換,**預設維持 Omniverse**(行為不變)。
+- 踩到兩個坑:(1) bind mount `.:/app` 蓋掉映像的 chmod → host 檔要有執行位元(已 chmod 並進版控);(2) 我把 env 加到 CU 區塊而非 UE,第一次「驗收」其實還在讀 Omniverse —— 交集全等是假的,已重做。
+- **驗收**:`SCENARIO_STORE_URL=http://network-element-registry:8000` 重建 UE 後跑 `corridor_16_24`:18/18 attach、tick 332、零 traceback。與 Omniverse 來源那場以 (tick, ue) 交集比 `inproc_sinr`:**32 筆中 31 筆相等**;唯一差異 (tick 220, p09) 9.78 vs −23.49 查證為 p09 在 15:01:19–15:02:01 經歷 RLF→重建(src_c0→src→nbr→src),tick 220 落在 nbr→src 切換點 —— T310 依牆鐘觸發的既有非決定性,與來源無關。`http_sinr` 欄不納入比對(已知 1-tick callback 落差)。
+- 未做:P1-4 `building_ingest` 從 Omniverse backend 搬出(GLB 分割/材質分類/Mitsuba、OSM geocode/generate)。
