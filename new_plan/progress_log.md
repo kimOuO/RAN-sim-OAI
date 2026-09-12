@@ -71,3 +71,19 @@
 - 踩到兩個坑:(1) bind mount `.:/app` 蓋掉映像的 chmod → host 檔要有執行位元(已 chmod 並進版控);(2) 我把 env 加到 CU 區塊而非 UE,第一次「驗收」其實還在讀 Omniverse —— 交集全等是假的,已重做。
 - **驗收**:`SCENARIO_STORE_URL=http://network-element-registry:8000` 重建 UE 後跑 `corridor_16_24`:18/18 attach、tick 332、零 traceback。與 Omniverse 來源那場以 (tick, ue) 交集比 `inproc_sinr`:**32 筆中 31 筆相等**;唯一差異 (tick 220, p09) 9.78 vs −23.49 查證為 p09 在 15:01:19–15:02:01 經歷 RLF→重建(src_c0→src→nbr→src),tick 220 落在 nbr→src 切換點 —— T310 依牆鐘觸發的既有非決定性,與來源無關。`http_sinr` 欄不納入比對(已知 1-tick callback 落差)。
 - 未做:P1-4 `building_ingest` 從 Omniverse backend 搬出(GLB 分割/材質分類/Mitsuba、OSM geocode/generate)。
+### 2026-09-12 — P1-4 building-geometry-ingest 從 Omniverse 複製出來 ✅
+- 新 repo `ran-scene-management/ran-scene-management-building-geometry-ingest/`(:8303,DB `building_ingest_db`),兩個 app:
+  - `scan_mesh_ingest`:`glb_reader`(自 `glb_to_usd.py` 抽出 1–282 行純 numpy 部分)→ `scan_material_classifier` → `scan_segmentation` / `scan_openings` / `scan_segment_render.plane_basis` → `glb_to_mitsuba`;表 `scan_asset`。
+  - `osm_footprint_ingest`:`nominatim_client` → `overpass_client` → `osm_to_mitsuba`(自 `osm_to_usd.py` 去掉 `write_usd/_viridis/_make_band_materials`);表 `osm_map_asset`。
+- **零 USD/pxr 依賴**;依賴只有 numpy / shapely / mapbox_earcut / Pillow。產物落 `scanned-building-assets/{scan,osm}/`(已 .gitignore)。Omniverse 側原樣保留(決策:並存到退場)。
+- `attach_to_scene` 跨 repo 呼叫 registry `BuildingController/create`,只傳 uuid(backend_rule §12-2)。
+- **與原版的刻意差異(兩處)**:(1) `osm_to_mitsuba` 的 footprints 路徑手動剝 `.mitsuba.xml`(`with_suffix` 只換最後一個副檔名);(2) classifier evidence 的 `round()` 只對數值做 —— 原版在 structural pass 失敗時會 `round(str)` 炸掉並**蓋掉真正的錯誤**(Omniverse 原碼同樣有此問題)。
+- 複製時漏掉的 lazy import 模組靠實跑抓出:`scan_openings`、`scan_segment_render`、`MATERIAL_MAP` 常數(被 drop() 連同相鄰 def 吞掉)、`_write_ply` 跨 app 引用。生成腳本存 scratchpad,可重跑。
+- **驗證**:
+  - GLB:`scan_20260906.orig.glb`(26.7 MB,90,726 面)→ 逐面材質標籤與 Omniverse 側現成結果 **100.000% 相同**,ruleset 9、structural_pass True、buckets 完全一致(wall 433.4 / slanted 159.2 / floor_ceiling 474.7 / wood 68.2 m²),材質 94.67% concrete / 5.33% wood。
+  - OSM:台科大附近 600 m 框 → Overpass 9 s → 331 棟 → Mitsuba XML + footprints。
+  - attach_to_scene → registry `building` 一列(source=glb_scan、geometry_ref、materials_npz 正確),刪 scene 時 CASCADE 帶走。
+  - 容器內 8 個測試 OK(含不連網的 OSM 擠出、GLB 讀取、bbox 正規化)。
+- 未做:前端用的 GLB/glTF 輸出(決策:等 P3 需要再加);`import_glb` 為同步呼叫(26.7 MB 約 10 s),大檔要改背景 job 留 P3。
+
+## P1 完成(2026-09-12)。下一階段 P2:模擬端直接吃 registry(CU/DU/RU/UE 啟動讀 `read_full_tree`,不再讀劇本 JSON;orchestrator 單 run 版;`run_telemetry_archive` 接 E2Adapter)。

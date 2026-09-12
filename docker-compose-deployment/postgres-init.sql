@@ -7,3 +7,4 @@ CREATE DATABASE physics_db OWNER ransim;
 -- 2026-09-12 重構:管理平台 registry 與模擬平台 orchestrator
 CREATE DATABASE scene_registry_db OWNER ransim;
 CREATE DATABASE run_orchestrator_db OWNER ransim;
+CREATE DATABASE building_ingest_db OWNER ransim;

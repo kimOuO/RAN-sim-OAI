@@ -572,6 +572,36 @@ services:
     networks:
       - ransim-net
 
+  # ── 管理平台:建築幾何匯入(2026-09-12 重構 P1-4;自 Omniverse backend 複製,不含 USD)──
+  building-geometry-ingest:
+    build:
+      context: ./ran-scene-management/ran-scene-management-building-geometry-ingest
+      dockerfile: Dockerfile
+    image: ran-scene-management-building-geometry-ingest:platform
+    container_name: ran-building-geometry-ingest
+    environment:
+      DJANGO_SETTINGS_MODULE: main.settings.local
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: building_ingest_db
+      DB_USER: ransim
+      DB_PASSWORD: "ransim"
+      SCANNED_ASSETS_DIR: /app/assets
+      HTTP_REGISTRY_HOST: network-element-registry
+      HTTP_REGISTRY_PORT: "8000"
+    volumes:
+      - ./ran-scene-management/ran-scene-management-building-geometry-ingest:/app
+      - ./scanned-building-assets:/app/assets
+    ports:
+      - "8303:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ransim-net
+
 volumes:
   ransim-pgdata:
 

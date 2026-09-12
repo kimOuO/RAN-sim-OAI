@@ -68,3 +68,7 @@ ran-emulation-runtime/RANsim-UE/tmp/
 
 # 產生的 Mitsuba 場景檔(原 Physics_sim/scenes 規則,隨搬家移到根目錄)
 scanned-building-assets/*.xml
+
+# 幾何匯入產物(GLB / npz / Mitsuba / footprints):執行期資料,不進版控
+scanned-building-assets/scan/
+scanned-building-assets/osm/

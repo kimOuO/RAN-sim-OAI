@@ -1,0 +1,8 @@
+# 單獨開發用;平台整合走 XAPP_DT 根目錄的 docker-compose.yml
+services:
+  building-geometry-ingest:
+    build: { context: ., dockerfile: Dockerfile }
+    image: ran-scene-management-building-geometry-ingest:local
+    env_file: .env
+    volumes: [ ".:/app", "../../scanned-building-assets:/app/assets" ]
+    ports: [ "8303:8000" ]
