@@ -173,12 +173,31 @@ services:
       # 2026-06-17 清 fudge:原 10(=9.43%)是對「被污染的舊 OAI 200K(PrbDl 9.1%)」調的;
       # 乾淨 OAI 是 2.5~7.4% 隨 load 動 → 降到 2(物理最小 grant),讓 demand 主導。原值 10。
       SLOT_OP_PRB_FLOOR: "2"
-      # k0 = SDU 到達後可被排程前的 pipeline 等待(slot 數;×0.5ms)。
-      # 2026-06-17 清 fudge:原 load-adaptive 3→44(=22ms)是對污染的 es 21.8ms 調的,
-      # 害 delay 平釘 ~23ms。乾淨 OAI 是 1~4ms。釘成物理值 2(=1ms PDCCH→PDSCH),
-      # 讓 load 相關性由佇列排隊物理自然產生。原值 MIN=3/MAX=44。
-      SLOT_K0_MIN: "2"
-      SLOT_K0_MAX: "2"
+      # 排程 pipeline 延遲(slot 數;×0.5ms)= SDU 到達後可被排上 PDSCH 前的等待。
+      # ⚠ 非 3GPP TS 38.214 §5.1.2.1 的 K0(那是 DCI→PDSCH 的 slot 偏移,NR 常見 0)。
+      # 本值聚合 gNB 排程處理 + PDCCH 組裝/解碼 + UE N1(38.214 §5.3),
+      # 標定自 OAI 實測「乾淨 1~4ms」→ 取 2(=1ms)。屬有標定依據的抽象參數。
+      # 2026-06-17 清 fudge:原 load-adaptive 3→44(=22ms)是對污染的 es 21.8ms 調的。
+      # 2026-09-11 正名:SLOT_K0_* → SLOT_PIPELINE_SLOTS_*(舊名仍可用,程式有 fallback)。
+      SLOT_PIPELINE_SLOTS_MIN: "2"
+      SLOT_PIPELINE_SLOTS_MAX: "2"
+      # ── 2026-09-11 規範對齊(全部預設 off,開啟前務必重跑 OAI 對照)──────────
+      # NR_TBS_SPEC_MODE:TBS/資源計算改走 38.214 §5.1.3.2 的 N_RE
+      #   (12×N_symb − N_DMRS − N_oh,min 156)+ TDD special slot 依 6/14 加權。
+      #   修掉「slot engine 每-slot 容量比 scheduler 預算高 38.9%」的對帳落差:
+      #     舊 scheduler 165,888 / 舊 slot engine 230,400 → 規範值 196,114(兩端一致)。
+      #   影響:scheduler 容量 +18.2%、slot engine −14.9% → delay 會變大。
+      NR_TBS_SPEC_MODE: "off"
+      # NR_MIMO_LAYERS_ENABLED:TBS 乘 MIMO 層數 ν(38.214 §5.1.3.2)。
+      #   目前 rank 只進 KPM 顯示、不影響吞吐;開啟後多天線增益才會真的出現。
+      #   會連動啟用等功率分配(每層 SINR −10log10(ν)),否則層數等於免費容量。
+      NR_MIMO_LAYERS_ENABLED: "off"
+      # NR_EESM_ENABLED:多分量 SINR 壓成純量時改用 EESM(β 表見 eesm.py,
+      #   出處 arXiv:2001.10309 Table II / ns-3 5G-LENA)。off = 線性域算術平均(舊)。
+      NR_EESM_ENABLED: "off"
+      # BLER 曲線:已換成 OAI 官方 NR AWGN link-level 曲線(MCS 0~28,2086 點)。
+      #   舊的 4-MCS 手工錨點表保留在 bler_curve.legacy.csv,要回退就改指這個檔。
+      SIM_BLER_CURVE_PATH: "/app/main/apps/phy_high/data/bler_curve.csv"
       # UL ACK 改物理 delayed-ACK(修高載 UL 過度放大);linear=舊 0.024 線性。
       UL_ACK_MODEL: "delayed_ack"
       # 對齊 sim CU globalE2node-ID — DU 用同一組 PLMN 衍生 cell.served_plmn,
@@ -287,6 +306,13 @@ services:
     # scenario_store 需要 physics_db;啟動先 migrate 再跑 daphne(ran_signal 計算路徑不碰 DB)
     command: sh -c "python3 manage.py migrate --noinput && daphne main.asgi:application -b 0.0.0.0 -p 8000"
     environment:
+      # TS 38.215 §5.1.1:RSRP 為 per-port 量(功率線性平均,接收分集下不取各分支之和)。
+      # off = 舊行為:path_gain 對 (rx_ant, tx_ant) 元素對加總 —— 僅在 1x1 陣列下正確。
+      # 陣列一旦放大,加總會讓 path_gain 隨元素數膨脹(2x2 gNB + 1x2 UE ≈ +9 dB),
+      # 那是「元素數量」不是波束成形增益 = 早期記載的 antenna gain 雙重計算。
+      # 1x1 下開關兩者等價(除以 1),故預設 off 不影響既有 npz cache 與校正結果。
+      # 啟用多天線陣列前必須打開。詳見 docs/architecture/mimo_antenna_selection_plan.md §2
+      PHY_PATH_GAIN_PER_PORT: "off"
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"

@@ -17,6 +17,7 @@ from ran_sim_protocol.physics import (
     UeSpec,
 )
 
+from main.utils.env_loader import get_int, get_str
 from main.apps.antenna.models.antenna_config import AntennaConfig
 from main.apps.antenna.models.cell import Cell
 from main.apps.antenna.models.ue_position import UePosition
@@ -80,16 +81,27 @@ def build_tx_config() -> TxConfig:
 
 
 def build_rx_config() -> RxConfig:
-    """UE 端天線配置：暫用跟 gNB 一樣的 array（之後可以擴成獨立 UE array）。"""
+    """UE 端天線配置。
+
+    2026-09-11:原本硬編 rows=1/cols=1(註解自承「先給單天線版本」),使 H 恆為
+    1×N → SVD rank 恆為 1 → 多天線與空間多工完全無法出現。改為可由環境變數指定,
+    為天線選擇研究預留。
+
+    ⚠ 目前 Physics 的 `path_solver_actor` 仍會**忽略** rx_config/tx_config
+      (陣列在 init_scene 階段 baked-in),所以本設定尚不會生效。
+      打通計畫見 docs/architecture/mimo_antenna_selection_plan.md §3。
+    """
     array = latest_antenna_array()
     if array is None:
         raise ValueError("AntennaConfig not set; call /update_antenna first")
-    # UE 通常用更小的 array — 先給單天線版本
     ue_array = AntennaArrayConfig(
-        rows=1,
-        cols=1,
-        polarization="V" if array.polarization in ("V", "H") else "VH",
-        pattern="dipole",
+        rows=get_int("UE_ARRAY_ROWS", 1),
+        cols=get_int("UE_ARRAY_COLS", 1),
+        polarization=get_str(
+            "UE_ARRAY_POLARIZATION",
+            "V" if array.polarization in ("V", "H") else "VH",
+        ),
+        pattern=get_str("UE_ARRAY_PATTERN", "dipole"),
     )
     return RxConfig(antenna_array=ue_array)
 

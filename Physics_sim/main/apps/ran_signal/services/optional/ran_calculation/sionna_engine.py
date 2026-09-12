@@ -5,6 +5,15 @@
 
 鐵則 14-5：Service 不處理 HTTP，不做業務決策——只輸出數字。
 """
+
+import os
+
+# TS 38.215 §5.1.1:RSRP 為 per-port 量(功率線性平均,接收分集下不取各分支之和)。
+# off = 舊行為:對 (rx_ant, tx_ant) 元素對加總,僅在 1x1 陣列下與 per-port 等價。
+# 啟用多天線陣列前必須打開,否則 path_gain 會被元素數污染。詳見 compute_paths 內註解。
+_PATH_GAIN_PER_PORT = (os.environ.get("PHY_PATH_GAIN_PER_PORT", "off").strip().lower()
+                       in ("on", "true", "1", "yes"))
+
 import math
 from typing import Any
 
@@ -314,6 +323,30 @@ class SionnaEngine:
                     # 舊行為：incoherent 能量和（無 fast fading，靜態 RSRP）
                     combined = np.sum(coeffs, axis=-1)
                     pg = float(np.sum(np.abs(coeffs) ** 2))
+
+                # ── per-port 正規化(PHY_PATH_GAIN_PER_PORT)────────────────
+                # 問題:上面的 pg 是對整個 (rx_ant, tx_ant) 矩陣的元素對「加總」。
+                #   1x1 陣列時剛好 = 單一元素,看不出問題;一旦陣列變大,pg 會隨
+                #   元素對數目線性膨脹(2x2 gNB + 1x2 UE → 8 對 → 約 +9 dB),
+                #   RSRP/SINR 整體上移 —— 但那不是波束成形增益,只是把「元素數量」
+                #   當成了「接收功率」。這就是 docs 早期記載的 antenna gain 雙重計算。
+                #
+                # 規範:3GPP TS 38.215 §5.1.1 定義 SS-RSRP 為承載參考訊號之 RE 的
+                #   功率「線性平均」,且明訂在接收分集下回報值以個別接收分支為準,
+                #   並非各分支功率之和 → RSRP 是 per-port 量,不隨陣列元素數放大。
+                #
+                # 正確的增益分工:
+                #   * path_gain / RSRP  → per-port 平均(本正規化)
+                #   * 波束成形陣列增益  → 由 RU 的 codebook precoder W 作用在 H 上產生,
+                #                        只計一次(main/apps/beamforming/)
+                #   * 空間多工增益      → 由 H 的 SVD rank 產生(TBS × ν)
+                #
+                # 預設 off,維持現有 1x1 數值與既有 npz cache/校正結果完全一致;
+                # 要啟用多天線陣列前必須先打開,否則 path_gain 會被元素數污染。
+                if _PATH_GAIN_PER_PORT:
+                    n_pairs = int(combined.size) if hasattr(combined, "size") else 1
+                    if n_pairs > 1:
+                        pg /= float(n_pairs)
 
                 tx_name = tx_names[tx_j]   # e.g. "gnb4#0", "gnb4#1"
                 per_ue[tx_name] = pg       # per-cell — 不再聚合到 gnb_name

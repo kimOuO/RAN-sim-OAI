@@ -47,14 +47,14 @@ _SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False)
 # 反事實 res_op 完整修法參數(待校的現象學值):
 _SLOT_CADENCE_PERIOD = get_int("SLOT_CADENCE_PERIOD", 40)   # 改動二 baseline 排程節奏
 _SLOT_OP_PRB_FLOOR = get_int("SLOT_OP_PRB_FLOOR", 12)       # MIN_PRB 地板(低載 UE 不被餓死,= OAI 空 cell 大方給)
-# load-adaptive baseline:k0(pipeline baseline)隨「本 tick 到達流量」從 min→max 縮放。
-# 2026-06-10 修:load 信號從 bo(buffer 占用)改成 arrival_bytes(到達流量)——
-#   bo 在 normal-1(195k)/normal-2(16k)都因快排空而≈0,分不開;arrival_bytes 才能分辨。
-#   K0_MIN 降到 3(=1.5ms 地板,讓低載相位掉得下去對齊 OAI normal-2 1.5/cco 0.74),
-#   K0_MAX 提到 44(=22ms,對齊 es 21.8 高載)。
-_SLOT_K0_MIN = get_int("SLOT_K0_MIN", 3)
-_SLOT_K0_MAX = get_int("SLOT_K0_MAX", 44)
-_SLOT_K0_ARR_REF = get_int("SLOT_K0_ARR_REF", 20000)  # 到達流量(bytes/tick)在此飽和到 K0_MAX
+# 排程 pipeline 延遲(slot 數)。⚠ 非 3GPP K0(見 slot_loop.SlotParams.sched_pipeline_slots)。
+# 2026-06-17 清 fudge:原 load-adaptive 3→44(=22ms)是對污染的 es 21.8ms 調的,害 delay
+# 平釘 ~23ms。乾淨 OAI 是 1~4ms → 釘成 2(=1ms),讓 load 相關性由佇列排隊物理自然產生。
+# MIN==MAX 時 load-adaptive 內插恆等於該值(= 目前部署狀態)。
+# 環境變數:優先讀 SLOT_PIPELINE_SLOTS_{MIN,MAX};未設則回退舊名 SLOT_K0_{MIN,MAX}。
+_SLOT_PIPE_MIN = get_int("SLOT_PIPELINE_SLOTS_MIN", get_int("SLOT_K0_MIN", 2))
+_SLOT_PIPE_MAX = get_int("SLOT_PIPELINE_SLOTS_MAX", get_int("SLOT_K0_MAX", 2))
+_SLOT_PIPE_ARR_REF = get_int("SLOT_PIPELINE_ARR_REF", get_int("SLOT_K0_ARR_REF", 20000))
 # #2 RLC discardTimer:SDU 等超過此 sim-ms 丟棄(過載封頂延遲,對齊真機)。0=關。
 # 設遠高於已對齊的 12-22ms delay(預設 300ms 不影響正常,只封頂過載的數十秒假延遲)。
 _SLOT_DISCARD_TIMER_MS = get_int("SLOT_DISCARD_TIMER_MS", 300)
@@ -104,7 +104,7 @@ _DU_RU_INPROCESS = get_bool("DU_RU_INPROCESS", False)
 # slot 引擎正式接管 delay KPM(退掉 /30):on 時 RLC delay 走 slot 引擎(現役 PRB 已由 scheduler 改操作點)
 # + cadence,不再用 calib /30。配 pf_scheduler 的 SLOT_ENGINE_TAKEOVER 一起(同 flag),PRB/throughput/delay 自洽。
 _SLOT_ENGINE_TAKEOVER = get_bool("SLOT_ENGINE_TAKEOVER", False)
-# SLOT_OAI_DELAY_SCOPE:DRB.RlcSduDelayDl 量測範圍對齊 OAI(到達→首次被服務,扣 K0,不含傳輸)。
+# SLOT_OAI_DELAY_SCOPE:DRB.RlcSduDelayDl 量測範圍對齊 OAI(到達→首次被服務,扣 pipeline 延遲,不含傳輸)。
 # 預設 off=舊 completion scope;on=OAI scope(同-tick 排空記 0 → delay==0% 往 OAI 靠)。
 _SLOT_OAI_DELAY_SCOPE = get_bool("SLOT_OAI_DELAY_SCOPE", False)
 from main.utils.logger import get_logger
@@ -819,7 +819,7 @@ class TickRunner:
         # 4b-shadow) slot_loop:shadow 只 log;takeover 時用 res 輸出接管 RLC delay KPM(退 /30)
         if _SLOT_ENGINE_SHADOW or _SLOT_ENGINE_TAKEOVER:
             import math
-            from main.apps.mac.services.optional.link_adaptation.mcs_table import TDD_DL_SLOT_RATIO
+            from main.apps.mac.services.optional.link_adaptation import nr_resources
             from main.apps.mac.services.optional.slot_engine.slot_loop import (
                 SlotEngineState, SlotParams, avg_delay_ms, simulate_sdu_delays,
                 _eff_for_mcs, _mcs_at_op_point,
@@ -842,24 +842,27 @@ class TickRunner:
                 st_op = self._slot_states_op.setdefault(uid, SlotEngineState())
                 # Phase1 反事實:若 scheduler 改用操作點 MCS 算 PRB 需求,會給多少 PRB
                 op_eff = _eff_for_mcs(_mcs_at_op_point(sinr, 0.1))
-                bytes_per_prb = 144.0 * op_eff * 2000.0 * 0.80 * TDD_DL_SLOT_RATIO * tick_s / 8.0
+                bytes_per_prb = nr_resources.bytes_per_prb_tick(
+                    op_eff, tick_s, n_layers=ue.get("rank", 1),
+                )
                 bo = bo_by_ue.get(uid, 0)
                 prb_now = rb_alloc_global.get(uid, 0)
                 prb_demand = math.ceil(bo / bytes_per_prb) if bytes_per_prb > 0 else prb_now
                 prb_op = max(1, prb_demand, _SLOT_OP_PRB_FLOOR)  # 操作點 demand 套 MIN_PRB 地板
-                # load-adaptive baseline:k0 隨「本 tick 到達流量」縮放(低載→1.5ms地板,重載→22ms;
+                # load-adaptive baseline:pipeline 延遲隨「本 tick 到達流量」縮放(低載→1.5ms地板,重載→22ms;
                 # 用 arrival_bytes 而非 bo,才能分辨 normal-1 195k vs normal-2 16k——兩者 bo 都≈0)
                 _arrival_bytes = sum(b for (_a, b) in arrivals)
-                _k0 = int(_SLOT_K0_MIN + (_SLOT_K0_MAX - _SLOT_K0_MIN) * min(1.0, _arrival_bytes / max(_SLOT_K0_ARR_REF, 1)))
+                _pipe_slots = int(_SLOT_PIPE_MIN + (_SLOT_PIPE_MAX - _SLOT_PIPE_MIN) * min(1.0, _arrival_bytes / max(_SLOT_PIPE_ARR_REF, 1)))
                 try:
-                    # takeover 時 res 用真實已分配 PRB(scheduler 已改操作點)+ load-adaptive k0 baseline → 接管 delay KPM
+                    # takeover 時 res 用真實已分配 PRB(scheduler 已改操作點)+ load-adaptive pipeline baseline → 接管 delay KPM
                     res = simulate_sdu_delays(
                         sdus=arrivals, mean_sinr_db=sinr, n_prb=prb_now,
                         sim_dt_ms=self._sim_dt_ms, state=st,
                         params=SlotParams(
                             seed=self.status.tick_count,
-                            sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive k0
-                            k0_slots=(_k0 if _SLOT_ENGINE_TAKEOVER else 2),
+                            sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive pipeline 延遲
+                            sched_pipeline_slots=(_pipe_slots if _SLOT_ENGINE_TAKEOVER else 2),
+                            n_layers=ue.get("rank", 1),
                             discard_timer_ms=(_SLOT_DISCARD_TIMER_MS if _SLOT_ENGINE_TAKEOVER else 0),
                             oai_delay_scope=_SLOT_OAI_DELAY_SCOPE,
                         ),
@@ -868,7 +871,8 @@ class TickRunner:
                         sdus=arrivals, mean_sinr_db=sinr, n_prb=prb_op,
                         sim_dt_ms=self._sim_dt_ms, state=st_op,
                         params=SlotParams(seed=self.status.tick_count,
-                                          sched_period_slots=_SLOT_CADENCE_PERIOD),
+                                          sched_period_slots=_SLOT_CADENCE_PERIOD,
+                                          n_layers=ue.get("rank", 1)),
                     )
                 except Exception as e:  # shadow 絕不可擋 tick
                     logger.warning("[SLOT_SHADOW] sim failed ue=%s: %s", uid, e)

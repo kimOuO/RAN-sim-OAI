@@ -15,6 +15,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from main.apps.mac.services.optional.link_adaptation import eesm, nr_resources
 from main.apps.mac.services.optional.link_adaptation.mcs_table import (
     TDD_DL_SLOT_RATIO,
     mcs_to_throughput_mbps,
@@ -114,21 +115,27 @@ class PfScheduler:
         prb_needed: dict[str, int] = {}
         for ue in ues_on_gnb:
             uid = ue["id"]
+            # 多層等功率分配後的每層 SINR(NR_MIMO_LAYERS_ENABLED=off 時 == ue["sinr_db"])
+            # 用區域變數,不就地改 ue dict —— allocate() 會對 GBR/BE 兩段分別呼叫,
+            # 就地改會讓同一個 UE 被套兩次。
+            sinr_eff = eesm.effective_sinr_for_layers(
+                ue["sinr_db"], ue.get("rank", 1),
+            )
             retx_eff = 1.0   # 1 = 不打折(舊行為)
             if _SCHED_MCS_CONSISTENT:
                 # 操作點 MCS:挑首傳 BLER≤10% 的最高 MCS(跟 slot 引擎同源,真實鏈路可達)
                 from main.apps.mac.services.optional.slot_engine.slot_loop import (
                     _eff_for_mcs, _mcs_at_op_point,
                 )
-                mcs = _mcs_at_op_point(ue["sinr_db"], 0.1)
+                mcs = _mcs_at_op_point(sinr_eff, 0.1)
                 bps_re = _eff_for_mcs(mcs)
                 if _SCHED_RETX_AWARE:
                     # 用 slot 引擎同一個 BLER:期望需傳 1/(1-BLER) 次才成功 → 容量 ×(1-BLER)
                     from main.apps.mac.services.optional.slot_engine.bler_table import bler
-                    b = bler(mcs, ue["sinr_db"])
+                    b = bler(mcs, sinr_eff)
                     retx_eff = max(0.05, 1.0 - float(b))
             else:
-                mcs, bps_re = sinr_to_mcs(ue["sinr_db"])
+                mcs, bps_re = sinr_to_mcs(sinr_eff)
             inst_rates[uid] = mcs_to_throughput_mbps(
                 mcs=mcs, bps_re=bps_re, n_rb=n_prb_total,
             )
@@ -143,12 +150,12 @@ class PfScheduler:
                 # MCS 0 (SINR < -6 dB) — bps_re=0, 給 1 PRB 試送
                 prb_needed[uid] = 1
             else:
-                # 直接 float 計算, 不走 mcs_to_throughput_mbps() 避免 int() 截 0
-                # 對齊原公式: re_per_slot = 1 PRB × 12 subcarrier × 12 symbol = 144
-                # bits/sec = re_per_slot × bps_re × slots_per_sec × overhead × tdd_dl_ratio
-                # 常數見 mcs_table.mcs_to_throughput_mbps: slots_per_sec=2000, overhead=0.80
-                bits_per_prb_per_sec = 144.0 * bps_re * 2000.0 * 0.80 * TDD_DL_SLOT_RATIO
-                bytes_per_prb = bits_per_prb_per_sec * tick_s / 8.0
+                # 直接 float 計算, 不走 mcs_to_throughput_mbps() 避免 int() 截 0。
+                # 資源常數集中在 nr_resources(38.214 §5.1.3.2 + OAI band78 TDD)。
+                # NR_TBS_SPEC_MODE=off 時回傳與舊式完全相同的值,行為不變。
+                bytes_per_prb = nr_resources.bytes_per_prb_tick(
+                    bps_re, tick_s, n_layers=ue.get("rank", 1),
+                )
                 # retx-aware:扣掉 BLER,為重傳預留 PRB(retx_eff=1 時 = 舊行為)
                 prb_needed[uid] = max(1, math.ceil(buf_bytes / (bytes_per_prb * retx_eff)))
             # slot 引擎接管:有 buffer 的 UE 套低載地板(不被餓死,= OAI 空 cell 大方給)

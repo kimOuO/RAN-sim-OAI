@@ -23,6 +23,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
+from main.apps.mac.services.optional.link_adaptation import eesm, nr_resources
 from main.apps.mac.services.optional.link_adaptation.mcs_table import _SINR_TO_MCS
 from main.apps.mac.services.optional.slot_engine.bler_table import bler
 
@@ -66,7 +67,15 @@ class SlotParams:
     # TDD pattern:一個 period 內哪些 slot 是 DL(True=DL)。band78 DDDDDDDSUU:
     # 7 DL + 1 special(當半 DL) + 2 UL,period=10 slot。
     tdd_dl_mask: tuple[bool, ...] = (True, True, True, True, True, True, True, True, False, False)
-    k0_slots: int = 2          # 排程 pipeline:arrival 後幾 slot 才能被排(PDCCH→PDSCH+處理)
+    # 排程 pipeline 延遲(slot 數):SDU 到達後幾個 slot 才可能被排上 PDSCH。
+    # ⚠ 這【不是】3GPP TS 38.214 §5.1.2.1 的 K0(K0 是 DCI 所在 slot 到 PDSCH slot 的偏移,
+    #    由 pdsch-TimeDomainAllocationList 配置,NR 常見值為 0)。這裡聚合了:
+    #      gNB 內部排程處理 + PDCCH 組裝/解碼 + UE 處理時間(38.214 §5.3 的 N1)
+    #    值 2(=1ms @ μ=1)標定自 OAI 實測「乾淨 1~4ms」區間,屬有標定依據的抽象參數,
+    #    非規範引用值。舊名 k0_slots 已改名以免誤引規範。
+    sched_pipeline_slots: int = 2
+    n_layers: int = 1          # MIMO 層數(rank)。TBS ∝ ν(38.214 §5.1.3.2);
+                               # 需 NR_MIMO_LAYERS_ENABLED=on 才生效(見 nr_resources)。
     harq_rtt_slots: int = 4    # HARQ retx 間隔(NACK→retx)
     fading_std_db: float = 2.0 # per-slot fast-fading 標準差
     re_per_prb_slot: int = 144 # 12 subcarrier × 12 symbol
@@ -113,10 +122,18 @@ class SlotResult:
     dropped_bytes: int = 0  # #2 discardTimer:被丟棄的 byte 數
 
 
-def _tbs_bytes_per_slot(mcs: int, bps_re: float, n_prb: int, params: SlotParams) -> int:
-    """一個 slot、n_prb 個 PRB、此 MCS 能傳幾 byte。"""
-    re = n_prb * params.re_per_prb_slot
-    bits = re * bps_re
+def _tbs_bytes_per_slot(mcs: int, bps_re: float, n_prb: int, params: SlotParams,
+                        *, slot_weight: float = 1.0, n_layers: int = 1) -> int:
+    """一個 slot、n_prb 個 PRB、此 MCS 能傳幾 byte。
+
+    改走 nr_resources(38.214 §5.1.3.2):RE 數扣 DMRS/xOverhead、乘層數 ν,
+    並依 slot_weight 反映 special slot 只有部分符號可用於 DL。
+    NR_TBS_SPEC_MODE=off 時,nr_resources 回傳舊常數(144 RE × 0.80)且 slot_weight
+    恆為 1.0/0.0 → 與舊行為完全相同。
+    """
+    bits = nr_resources.bits_per_prb_slot(
+        bps_re, n_layers, legacy_overhead=False,
+    ) * n_prb * slot_weight
     return int(bits / 8)
 
 
@@ -142,6 +159,8 @@ def simulate_sdu_delays(
     """
     p = params or SlotParams()
     st = state if state is not None else SlotEngineState()
+    # 多層時每層分到的功率下降 → 每層 SINR 下降(NR_MIMO_LAYERS_ENABLED=off 時無作用)
+    mean_sinr_db = eesm.effective_sinr_for_layers(mean_sinr_db, p.n_layers)
     rng = random.Random(p.seed)
     n_slots = max(1, int(round(sim_dt_ms / p.slot_ms)))
     period = len(p.tdd_dl_mask)
@@ -176,7 +195,7 @@ def simulate_sdu_delays(
     last_active = None  # 最後「實際服務(傳輸或 retx 佔用)」的 slot → server-free cursor 用
     for s in range(start, end):
         # 把到期的 SDU 放進 queue(eligible = arrival + K0,PDSCH pipeline;不再 per-SDU 對齊 occasion)
-        while pi < len(pending) and pending[pi].arrival_abs_slot + p.k0_slots <= s:
+        while pi < len(pending) and pending[pi].arrival_abs_slot + p.sched_pipeline_slots <= s:
             queue.append(pending[pi])
             pi += 1
 
@@ -189,7 +208,13 @@ def simulate_sdu_delays(
                 res.dropped_sdus += 1
                 res.dropped_bytes += d.bytes_remaining
 
-        if not p.tdd_dl_mask[s % period]:
+        # TDD 容量權重:spec 模式下 special slot 只有 6/14 個符號可用於 DL(非整格)。
+        # legacy 模式沿用原本的布林遮罩,行為不變。
+        if nr_resources.TBS_SPEC_MODE:
+            slot_w = nr_resources.dl_slot_weight(s)
+        else:
+            slot_w = 1.0 if p.tdd_dl_mask[s % period] else 0.0
+        if slot_w <= 0.0:
             continue  # 非 DL slot
 
         # retx 佔用:若這 slot 被先前 NACK 排了 retx,容量先給 retx(簡化:整 slot 佔掉)
@@ -216,7 +241,8 @@ def simulate_sdu_delays(
         # BLER 改用 inst SINR(實際通道含 fading)評估 → 失敗率自然在 target 附近湧現
         mcs = _mcs_at_op_point(mean_sinr_db, p.target_bler)
         bps_re = _eff_for_mcs(mcs)
-        tbs = _tbs_bytes_per_slot(mcs, bps_re, n_prb, p)
+        tbs = _tbs_bytes_per_slot(mcs, bps_re, n_prb, p,
+                                  slot_weight=slot_w, n_layers=p.n_layers)
         if tbs <= 0:
             continue
 
@@ -229,7 +255,7 @@ def simulate_sdu_delays(
             # 對齊 OAI waited_time(到達→MAC取走,不含 K0/傳輸)。每 SDU 只記一次。
             if p.oai_delay_scope and not sdu.served:
                 sdu.served = True
-                res.delays_ms.append(max(0.0, (s - sdu.arrival_abs_slot - p.k0_slots) * p.slot_ms))
+                res.delays_ms.append(max(0.0, (s - sdu.arrival_abs_slot - p.sched_pipeline_slots) * p.slot_ms))
             take = min(sdu.bytes_remaining, tbs - drained)
             sdu.bytes_remaining -= take
             drained += take
