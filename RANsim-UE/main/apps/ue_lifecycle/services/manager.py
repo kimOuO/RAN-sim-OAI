@@ -53,10 +53,18 @@ class UeLifecycleManager:
         # 完全不動可見性。
         self._active_windows: dict[str, list[list[float]]] = {}
         self._last_visible: dict[str, bool] = {}
+        # 天線高度 {ue: 公尺}。waypoints 的 y 是腳底高度(視覺層要的),
+        # 推給 RU/Sionna 時要加上這個值 —— 少了它等於把人埋在地板裡算通道。
+        self._antenna_h: dict[str, float] = {}
 
     def set_session_uuid(self, session_uuid: str | None) -> None:
         self._session_uuid = session_uuid
         logger.info("UeLifecycleManager session_uuid=%s", session_uuid)
+
+    def set_antenna_heights(self, heights: dict[str, float] | None) -> None:
+        """設定每個 UE 的天線高度(相對腳底)。換 session 要重設。"""
+        self._antenna_h = heights or {}
+        logger.info("UeLifecycleManager antenna_heights=%d ues", len(self._antenna_h))
 
     def set_active_windows(self, windows: dict[str, list[list[float]]] | None) -> None:
         """設定劇本在場時段。換 session 要重設,否則沿用上一齣戲的時間軸。"""
@@ -146,14 +154,20 @@ class UeLifecycleManager:
             else:
                 # No trajectory — use current static position (default 0,0,0)
                 x, y, z = ue.position if ue.position else (0.0, 0.0, 0.0)
+            # 無線電要的是**天線位置**,不是腳底位置。waypoints 的 y 被歸零成
+            # 腳底高度是為了視覺層(Kit 把 y 當腳底),直接拿去算通道等於把人
+            # 埋進地板 —— 實測室內走廊 RSRP 掉到 -139 dBm,UE 一直掉話重駐留。
             positions_for_ru.append({
-                "id": ue_id, "position": {"x": x, "y": y, "z": z},
+                "id": ue_id,
+                "position": {"x": x, "y": y + self._antenna_h.get(ue_id, 0.0), "z": z},
             })
             positions_for_kit.append((ue_id, x, y, z))
 
             # ── (2) 掉話中:自己選網,訊號回來就重新發起連線(TS 38.304 + 38.331)
             if camping:
-                self._try_recamp(ue_id, (x, y, z), now_ms)
+                # 選網也要用天線位置,跟推給 RU 的同一個座標
+                self._try_recamp(
+                    ue_id, (x, y + self._antenna_h.get(ue_id, 0.0), z), now_ms)
                 continue          # 掉話中沒有承載,不得灌流量
             try:
                 injected_total += ue.traffic_gen.tick()
@@ -433,11 +447,17 @@ class UeLifecycleManager:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return {
-                "sim_running": self.sim_running,
-                "thread_count": len(self._threads),
-                "threads": [t.status() for t in self._threads.values()],
-            }
+            threads = [t.status() for t in self._threads.values()]
+        # 前端 Scene Layout 讀這支拿即時位置,可見性也一起帶出去 ——
+        # 否則 Omniverse 裡離場的人消失了,前端卻還把他畫在走廊盡頭。
+        # 沒有劇本(live 模式)時 _last_visible 是空的,一律 True。
+        for t in threads:
+            t["visible"] = self._last_visible.get(t.get("ue_id"), True)
+        return {
+            "sim_running": self.sim_running,
+            "thread_count": len(threads),
+            "threads": threads,
+        }
 
 
 _singleton: UeLifecycleManager | None = None

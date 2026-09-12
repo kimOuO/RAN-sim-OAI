@@ -124,6 +124,10 @@ def _load_live_db() -> dict[str, Any]:
                 "times": times if len(times) == len(wps) else [],
                 "speed_mps": float(u.get("speed_mps") or 1.0),
                 "loop": bool(u.get("loop", True)),
+                # 天線高度。waypoints 的 y 是**腳底高度**(視覺層要的),
+                # 無線電要的是天線位置 —— 差 1.7 m 在室內是天與地的差別。
+                "antenna_h": (float(u["target_height_m"])
+                              if u.get("target_height_m") is not None else 0.0),
             })
         else:
             # 無軌跡的 UE:推「單點靜止軌跡」= 它的設定位置。
@@ -263,6 +267,12 @@ def start_sim(
             omniverse_client.get_scenario_active_windows(scenario_id))
     except Exception as e:  # noqa: BLE001
         logger.warning("set_active_windows failed: %s", e)
+    # 天線高度每次 start 都先清掉,live 模式不會沿用上一齣戲的值
+    try:
+        from main.apps.ue_lifecycle.services import manager as ue_manager
+        ue_manager.get_manager().set_antenna_heights({})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("reset antenna_heights failed: %s", e)
 
     if source == "scenario":
         if not scenario_id:
@@ -330,6 +340,7 @@ def start_sim(
         store = get_traj_store()
         start_at_ms = int(_time.time() * 1000)
         traj_pushed = 0
+        antenna_h: dict[str, float] = {}
         for spec in bundle["ue_waypoint_specs"]:
             if spec.get("static_pos"):
                 # 無軌跡 UE → 單點靜止軌跡(interp len==1 直接回傳該點)
@@ -357,6 +368,13 @@ def start_sim(
                 traj_pushed += 1
             except ValueError as e:
                 logger.warning("trajectory_store.set ue=%s failed: %s", spec["name"], e)
+            antenna_h[spec["name"]] = float(spec.get("antenna_h") or 0.0)
+
+        try:
+            from main.apps.ue_lifecycle.services import manager as ue_manager
+            ue_manager.get_manager().set_antenna_heights(antenna_h)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("set_antenna_heights failed: %s", e)
 
         # (DU Tick 已在 attach 之前啟動 — 見上方 TickRunner registry 清空順序說明)
 
