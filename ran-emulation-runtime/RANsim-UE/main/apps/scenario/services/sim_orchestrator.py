@@ -233,8 +233,12 @@ def start_sim(
     scenario_id: str = "",
     speed_x: float = 1.0,
     sim_dt_ms: int = 500,
+    scene_run_uuid: str = "",
 ) -> dict[str, Any]:
     """Unified sim start entry.
+
+    2026-09-13 P2:給 scene_run_uuid 時,劇本/在場時段/scenario_id 全部從 registry 整棵樹來,
+    不經劇本 JSON;scenario_id 可留空(由樹的 legacy_scenario_id 補上)。
 
     Returns:
         {source, applied_steps, attach_summary, errors?, scenario_state?}
@@ -260,11 +264,17 @@ def start_sim(
 
     # 劇本在場時段 — 讓 trajectory tick 能判斷誰「離場」了並把他藏起來。
     # 每次 start_sim 都重設(含設成空),否則換成 live 模式還會沿用上一齣戲的時間軸。
+    _run_spec = None
+    if scene_run_uuid:
+        from main.apps.scenario.services.scenario_loader import fetch_by_run
+        _run_spec = fetch_by_run(scene_run_uuid)
+        scenario_id = scenario_id or _run_spec.scenario_id
     try:
         from main.apps.ue_lifecycle.services import manager as ue_manager
         from main.apps.ue_lifecycle.services import omniverse_client
         ue_manager.get_manager().set_active_windows(
-            omniverse_client.get_scenario_active_windows(scenario_id))
+            _run_spec.active_windows if _run_spec is not None
+            else omniverse_client.get_scenario_active_windows(scenario_id))
     except Exception as e:  # noqa: BLE001
         logger.warning("set_active_windows failed: %s", e)
     # 天線高度每次 start 都先清掉,live 模式不會沿用上一齣戲的值
@@ -275,17 +285,18 @@ def start_sim(
         logger.warning("reset antenna_heights failed: %s", e)
 
     if source == "scenario":
-        if not scenario_id:
-            raise ValueError("source=scenario requires scenario_id")
+        if not scenario_id and not scene_run_uuid:
+            raise ValueError("source=scenario requires scenario_id or scene_run_uuid")
         _ = _load_scenario(scenario_id)
         target_wall_tick_ms = max(10, min(500, int(round(sim_dt_ms / max(speed_x, 0.01)))))
         drv = scenario_driver.start_scenario(
             scenario_id, target_wall_tick_ms=target_wall_tick_ms,
-            sim_speed_x=float(speed_x),
+            sim_speed_x=float(speed_x), scene_run_uuid=scene_run_uuid,
         )
         return {
             "source": "scenario",
             "scenario_id": scenario_id,
+            "scene_run_uuid": scene_run_uuid,
             "speed_x": speed_x,
             "speed_broadcast": speed_broadcast,
             "session_uuid": session_uuid,

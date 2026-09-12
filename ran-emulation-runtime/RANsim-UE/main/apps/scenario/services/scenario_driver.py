@@ -19,7 +19,7 @@ import time
 from typing import Any
 
 from main.apps.scenario.services.scenario_loader import (
-    ScenarioSpec, fetch, interpolate_position, positions_to_waypoints,
+    ScenarioSpec, fetch, fetch_by_run, interpolate_position, positions_to_waypoints,
 )
 from main.apps.scenario.services.scene_apply import SceneApplyService
 from main.apps.scenario.services.ue_attach import UeAttachService
@@ -498,6 +498,7 @@ def start_scenario(
     scenario_id: str,
     target_wall_tick_ms: int = 500,
     sim_speed_x: float | None = None,
+    scene_run_uuid: str = "",
 ) -> ScenarioDriver:
     global _singleton
     with _lock:
@@ -507,7 +508,8 @@ def start_scenario(
             raise RuntimeError(
                 f"Scenario driver already running: {_singleton.scenario.scenario_id}"
             )
-        spec = fetch(scenario_id)
+        # 2026-09-13 P2:有 scene_run_uuid 就從 registry 整棵樹組 spec;否則走劇本倉庫(舊路徑保留)
+        spec = fetch_by_run(scene_run_uuid) if scene_run_uuid else fetch(scenario_id)
         if spec.total_ticks == 0:
             raise ValueError(f"Scenario {scenario_id} has zero ticks")
         _singleton = ScenarioDriver(

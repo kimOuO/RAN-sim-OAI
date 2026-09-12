@@ -49,9 +49,11 @@ class SimController:
         scenario_id = payload.get("scenario_id") or ""
         speed_x = float(payload.get("speed_x") or 1.0)
         sim_dt_ms = int(payload.get("sim_dt_ms") or 500)
+        scene_run_uuid = str(payload.get("scene_run_uuid") or "")   # 2026-09-13 P2:registry 直讀
         try:
             result = sim_orchestrator.start_sim(
                 source, scenario_id=scenario_id, speed_x=speed_x, sim_dt_ms=sim_dt_ms,
+                scene_run_uuid=scene_run_uuid,
             )
         except ValueError as e:
             return _err(str(e), status=400)

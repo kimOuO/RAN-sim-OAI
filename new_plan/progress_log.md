@@ -87,3 +87,12 @@
 - 未做:前端用的 GLB/glTF 輸出(決策:等 P3 需要再加);`import_glb` 為同步呼叫(26.7 MB 約 10 s),大檔要改背景 job 留 P3。
 
 ## P1 完成(2026-09-12)。下一階段 P2:模擬端直接吃 registry(CU/DU/RU/UE 啟動讀 `read_full_tree`,不再讀劇本 JSON;orchestrator 單 run 版;`run_telemetry_archive` 接 E2Adapter)。
+
+## P2 模擬端直接吃 registry(開始 2026-09-13)
+
+### 2026-09-13 — P2-1 orchestrator 單 run 版 + P2-2 UE 從 registry 整棵樹組 spec ✅
+- UE:`scenario_loader.fetch_by_run(scene_run_uuid)` 打 registry `read_full_tree` 組 `ScenarioSpec`,欄位語意與 `fetch()` 逐項相同(scenario_id 取 `legacy_scenario_id` 供 RU cache 檔名;precompute_status 由 run.mode 推;在場時段從樹帶出,不再打 Omniverse)。`start_scenario / start_sim / SimController.start` 加 `scene_run_uuid`;**沒帶時走舊路徑,劇本倉庫相容端點保留**。env `REGISTRY_URL`。
+- orchestrator:`LaunchController.start`(registry `read_full_tree` 驗證 scene 完整性 → 記 `launch_request` → 打 UE `SimController/start{scene_run_uuid}` → registry `SceneRunController/update status=running`)、`stop`(UE stop → status=stopped)。P2 仍共用 CU/DU/RU 容器;P4 改 spawn。env `HTTP_UE_DRIVER_HOST/PORT`。
+- **驗證**:orchestrator 起 `corridor_16_24`(scene_run-7de7da10…)→ registry 狀態 pending→running(started_at)→ stopped(stopped_at);`launch_request` (start, started)/(stop, stopped);tick 286、17 UE、零 traceback。inproc SINR 與先前三場交集 48 筆,2 筆不同 —— (220,p09) 與 (280,p11) 皆查證為 RLF 重建時機(p11 於 16:04:38 src→nbr,對應 tick 280)。
+- **走 registry 的直接證據**:帶不存在的 `scene_run_uuid` 起 sim → 錯誤指向 `network-element-registry:8000/.../SceneReader/read_full_tree` 404;`fetch_by_run` 亦加了 log 行。
+- 未做:P2-3 `run_telemetry_archive` 接 E2Adapter;run uuid 傳給 DU/CU。

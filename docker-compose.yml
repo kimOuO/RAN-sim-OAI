@@ -479,6 +479,8 @@ services:
       # 劇本倉庫來源(2026-09-12 P1-3):預設 Omniverse;切到 registry 用
       #   SCENARIO_STORE_URL=http://network-element-registry:8000 docker compose up -d --force-recreate ue
       SCENARIO_STORE_URL: "${SCENARIO_STORE_URL:-http://${SERVER_IP:-host.docker.internal}:8001}"
+      # 2026-09-13 P2:registry 直讀(SimController/start 帶 scene_run_uuid 時走 read_full_tree)
+      REGISTRY_URL: "http://network-element-registry:8000"
       # Tick 週期
       UE_TRAJECTORY_PERIOD_MS: "100"
       # AC5 — 原 80 ms ≥ HO_TTT_MS 60 ms,A3 觸發條件量不到第二次。降到 40 ms 留 buffer。
@@ -562,6 +564,8 @@ services:
       DB_PASSWORD: "ransim"
       HTTP_REGISTRY_HOST: network-element-registry
       HTTP_REGISTRY_PORT: "8000"
+      HTTP_UE_DRIVER_HOST: ue
+      HTTP_UE_DRIVER_PORT: "8000"
     volumes:
       - ./ran-emulation-runtime/ran-emulation-runtime-run-orchestrator:/app
     ports:

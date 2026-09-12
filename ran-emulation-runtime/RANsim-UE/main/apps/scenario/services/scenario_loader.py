@@ -5,13 +5,17 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+import logging
 import requests
 
 
 OMNIVERSE_URL = os.environ.get("OMNIVERSE_URL", "http://host.docker.internal:8001")
 # 劇本/場景來源切換:預設沿用 Omniverse;設 SCENARIO_STORE_URL(如 Physics :8104)
 # 即可讓 sim 脫離 Omniverse。端點與回應形狀相同,只換 base URL。
+logger = logging.getLogger(__name__)
 SCENARIO_STORE_URL = os.environ.get("SCENARIO_STORE_URL") or OMNIVERSE_URL
+# 2026-09-13 P2:registry 直讀(read_full_tree)。設了才啟用 fetch_by_run;未設則只能走上面的劇本倉庫。
+REGISTRY_URL = os.environ.get("REGISTRY_URL", "")
 
 
 @dataclass
@@ -119,6 +123,9 @@ class ScenarioSpec:
     # RLC delay 模式:'calib'(÷30 對齊 OAI 低 delay)| 'subtick'(誠實佇列延遲)。
     # CCO 要 subtick 壅塞 delay 才爬得過 500ms 門檻;OAI 對照劇本用 calib。
     rlc_delay_model: str = "calib"
+    # 2026-09-13 P2:registry 直讀時,在場時段直接從樹帶出(不再另打劇本倉庫)。
+    active_windows: dict | None = None
+    scene_run_uuid: str = ""
     # 劇本 _metadata.trigger_config:dashboard 觸發門檻的單一來源(改劇本→前端自動跟)。
     # 不解讀內容,原樣透傳給前端 evaluator(key 對齊前端 TRIGGER_THRESHOLDS)。
     trigger_config: dict | None = None
@@ -341,3 +348,89 @@ def positions_to_waypoints(positions: list[list[float]]) -> list[dict[str, float
     ]
 
 
+def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
+    """2026-09-13 P2:從 registry `SceneReader/read_full_tree` 組 ScenarioSpec —— 不經劇本 JSON。
+
+    欄位語意與 fetch() 逐項相同(含 positions 已由 registry 匯入時正規化為 [t,x,y,z]、
+    gnb 層級 frequency/bandwidth/power = 第一個 cell、a3 None = 未指定)。
+    scenario_id 取 scene.legacy_scenario_id(RU cache npz 檔名靠它)。
+    """
+    if not REGISTRY_URL:
+        raise RuntimeError("REGISTRY_URL not set; cannot fetch scene_run from registry")
+    r = requests.post(
+        f"{REGISTRY_URL.rstrip('/')}/api/v0.1/Network_element_registry/Scene_layout/SceneReader/read_full_tree",
+        json={"scene_run_uuid": scene_run_uuid}, timeout=30,
+    )
+    r.raise_for_status()
+    body = r.json()
+    if not body.get("success"):
+        raise RuntimeError(f"registry read_full_tree failed: {body}")
+    t = body["data"]
+    scene, run = t["scene"], t.get("run") or {}
+    logger.info("spec from registry read_full_tree: run=%s scene=%s (%d gnb / %d ue)",
+                scene_run_uuid, scene.get("legacy_scenario_id") or scene.get("name"), len(t.get("gnbs") or []), len(t.get("ues") or []))
+    knobs = run.get("knobs") or {}
+    duration = float(run.get("duration_sec") or 0.0)
+
+    ues = [UeScenarioRow(name=str(u["name"]), positions=[[float(x) for x in w] for w in (u.get("waypoints") or [])])
+           for u in t.get("ues") or []]
+    traffic = [TrafficScenarioRow(ue_name=str(u["name"]), profile=list(tr.get("schedule") or []))
+               for u in t.get("ues") or [] for tr in (u.get("traffic") or [])]
+    gnbs: list[GnbScenarioRow] = []
+    a3: dict = {}
+    for g in t.get("gnbs") or []:
+        cells: list[CellScenarioRow] = []
+        f0 = bw0 = p0 = None
+        for du in g.get("dus") or []:
+            for c in du.get("cells") or []:
+                f = c.get("center_frequency_ghz"); bw = c.get("bandwidth_mhz"); pw = c.get("power_dbm")
+                if f0 is None:
+                    f0, bw0, p0 = f, bw, pw
+                pos = c.get("position")
+                cells.append(CellScenarioRow(
+                    cell_id=str(c["name"]), pci=int(c.get("pci") or 0), azimuth_deg=float(c.get("azimuth_deg") or 0.0),
+                    position=(float(pos[0]), float(pos[1]), float(pos[2])) if pos else None,
+                    frequency_ghz=(float(f) if (f is not None and f != f0) else None),
+                    bandwidth_mhz=(float(bw) if (bw is not None and bw != bw0) else None),
+                ))
+        pos = g.get("position") or [0.0, 0.0, 0.0]
+        gnbs.append(GnbScenarioRow(
+            name=str(g["name"]), position=(float(pos[0]), float(pos[1]), float(pos[2])),
+            frequency_ghz=float(f0 if f0 is not None else 3.5), bandwidth_mhz=float(bw0 if bw0 is not None else 40.0),
+            power_dbm=float(p0 if p0 is not None else 23.0), active=bool(g.get("is_active", True)),
+            color=tuple(g.get("color") or [0.2, 0.8, 0.4]),  # type: ignore[arg-type]
+            target_height_m=None, cells=cells,
+        ))
+        if not a3:
+            a3 = {k: g.get(k) for k in ("a3_enabled", "a3_offset_db", "a3_hys_db", "a3_ttt_ms")}
+    buildings = [BuildingScenarioRow(
+        name=str(b["name"]), position=tuple(float(x) for x in (b.get("position") or [0, 0, 0])),  # type: ignore[arg-type]
+        size=tuple(float(x) for x in b["size"]) if b.get("size") else None,  # type: ignore[arg-type]
+        color=None, rotation_xyz_deg=tuple(float(x) for x in b["rotation"]) if b.get("rotation") else None,  # type: ignore[arg-type]
+        material=str((b.get("default_material") or {}).get("key") or ""), target_height_m=None,
+    ) for b in t.get("buildings") or []]
+    windows = {str(u["name"]): [[float(a), float(b)] for a, b in (u.get("active_windows") or [])]
+               for u in t.get("ues") or [] if u.get("active_windows")}
+    return ScenarioSpec(
+        scenario_id=str(scene.get("legacy_scenario_id") or scene.get("name") or scene_run_uuid),
+        scene_id=str(scene.get("geometry_scene_id") or ""),
+        duration_sec=duration, tick_ms=int(run.get("sim_dt_ms") or 500),
+        ues=ues, traffic=traffic,
+        default_serving_cell=str(knobs.get("default_serving_cell") or "gnb1_cell0"),
+        gnbs=gnbs, buildings=buildings,
+        precompute_status="ready" if run.get("mode") == "cached" else "pending",
+        antenna_pattern=(str(knobs["antenna_pattern"]) if knobs.get("antenna_pattern") else None),
+        has_anr_fixture=bool(knobs.get("anr_fixture")),
+        cell_quotas=[{"cell_id": str(q["cell_id"]), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
+                     for q in (knobs.get("cell_quotas") or []) if q.get("cell_id")],
+        inter_freq=bool(knobs.get("inter_freq", False)),
+        discard_timer_ms=int(knobs.get("discard_timer_ms", 300)),
+        tx_power_dbm=float(knobs.get("tx_power_dbm", 23.0)),
+        a3_enabled=(None if a3.get("a3_enabled") is None else bool(a3["a3_enabled"])),
+        a3_offset_db=(None if a3.get("a3_offset_db") is None else float(a3["a3_offset_db"])),
+        a3_hys_db=(None if a3.get("a3_hys_db") is None else float(a3["a3_hys_db"])),
+        a3_ttt_ms=(None if a3.get("a3_ttt_ms") is None else int(a3["a3_ttt_ms"])),
+        rlc_delay_model=str(knobs.get("rlc_delay_model") or "calib"),
+        trigger_config=(knobs.get("trigger_config") or None),
+        active_windows=windows, scene_run_uuid=scene_run_uuid,
+    )
