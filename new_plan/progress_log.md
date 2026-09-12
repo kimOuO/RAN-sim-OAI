@@ -117,3 +117,24 @@
 - 踩到:r3f 的 optional expo peer 讓 `npm install` ERESOLVE → `.npmrc legacy-peer-deps`;`@typescript-eslint` 7 + eslint 10 不相容(舊 Dashboard 同樣壞)→ eslint 9 + ts-eslint 8;`no-undef` 要放在 recommended 展開之後。
 - 驗證:`tsc --noEmit` 乾淨、`next build` 全路由通過、lint 通過、compose `scene-editor-frontend` :3011 起來(`GET /scenes` 200,dev 模式 hot reload)。**畫布互動與資料寫回尚未在瀏覽器實測**(無瀏覽器環境)—— 請開 http://<host>:3011/scenes 試:點一個 corridor 場景 → 拖 cell → 看 registry 是否更新。
 - 未做(P3-2 起):UE 軌跡/流量編輯、建築材質下拉、GLB/OSM 上傳表單、precompute 觸發、監控前端 repo。
+
+## P3-2 監控前端骨架(2026-09-13)
+
+**做了什麼**
+- 新系統 `ran-emulation-runtime/ran-emulation-runtime-run-monitor-frontend`(Next.js 15 App Router、TS strict、同 scene-editor 工具鏈與 eslint 邊界規則),compose service `run-monitor-frontend` → **:3012**。
+- **零控制**:services 只有 `*Reader/read`,沒有任何 start/stop/update 呼叫(§10.5)。
+- 路由:`/runs`(run 清單,3 s 輪詢;DU 達成倍速)、`/runs/[id]`(① Full KPM per-cell + 可展 per-UE、② RIC 命令 + 命令前後 5 窗 PrbTotDl 對照、③ cell 狀態、④ E2 面(SCTP 連線/E2 node/設定→達成倍速)、換手/RLF、設定快照、起停紀錄,後三者預設收合)、`/compare`(最多 4 run,PrbTotDl 依 sim-time 對齊)、`/runs/[id]/playback`(視窗 slider)、`/runs/[id]/events`(run/HO/RLF/RIC 合併事件流)。
+- 資料來源:registry `SceneRunReader`/`SceneReader`;orchestrator `RunKpmSampleReader`/`RunHandoverEventReader`/`RunControlEventReader`/`LaunchRequestReader`;DU `Tick/TickController/read`;E2Adapter `Status/AdapterStatusReader/read`。
+- 圖表用內建 SVG `Sparkline`,不拉圖表庫(之後套深色工程風時再決定是否換)。
+- `apiClient` 同時接受 `{success:true}`(registry/orchestrator)與 `{status:"success"}`(DU/RU 舊信封)。
+
+**驗證**
+- typecheck / lint 乾淨;`next build` 成功。
+- 容器 `ran-run-monitor-frontend` 起來後 `/runs` `/compare` `/runs/<id>` `/runs/<id>/events` `/runs/<id>/playback` 皆 200(用已封存 run `scene_run-7de7da10…`,55 視窗)。
+- 瀏覽器實測(10.3.0.217:3012)尚未做,與 :3011 一起等使用者測。
+
+**未做 / 待辦**
+- ② 的「命令前後對照」目前只比 PrbTotDl 平均;RIC 尚未連線所以 control_event 為空,等 P4 再對照真資料調欄位。
+- ④ 的 DU/E2 狀態是全域讀(目前一個 DU),P4 多 run 後要改成依 run 的 container 讀。
+- `wall_time_ms` 封存仍為 0(orchestrator 待補)。
+- 兩個前端的深色工程風(下一步,一起套)。
