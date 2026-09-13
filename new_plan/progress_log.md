@@ -194,3 +194,27 @@
 - Full KPM 覆蓋:per-cell 新增 UL 吞吐、RLC SDU delay、平均 MCS;UE 細節新增 Thp UL、PDCP volume DL/UL 時序,以及 rank、5QI、PRB、鄰區 RSRP/RSRQ 列。至此 KPM 的每個欄位都有圖或位置。
 
 **驗證**:migrate + seed OK;registry 讀回模板 OK;兩前端 typecheck/lint 乾淨;headless 截圖(dashboard 圓環板、gNB 模板列、天線分頁、網路元件 gNB 模板頁)。gNB 模板「套用 / 存成」按鈕有 confirm/prompt,未在 headless 走完,請使用者實測。
+
+## P4-1 per-run 容器(2026-09-13)
+
+**做了什麼**
+- orchestrator 掛 `/var/run/docker.sock` + `docker` SDK;`PER_RUN_ENABLED=on`(compose 預設 on,可關回共用模式)。
+- `run_lifecycle/services/optional/per_run_template.json`:由 `docker compose config` 產生的 cu/du/ru/ue 容器規格(image、env、bind mount 絕對路徑),host 名與 DB 名以 `{cu}` `{db_cu}` 佔位。
+- `container_spawner.py`:`spawn(run, mode)` 建三個 DB `cu_<rid>/du_<rid>/ru_<rid>`(rid = uuid 後 8 碼)→ 起四個容器 `<role>-<rid>`(同 `ransim-net`,容器內 8000 → host 隨機 port,label `ransim.scene_run_uuid`)→ CU `GNB_ID_HEX` 每 run 不同、RU `RU_CHANNEL_MODE` 依 run.mode、env `SCENE_RUN_UUID`;`wait_healthy`(四個 HTTP 讀端點,最多 300 s);`teardown` 停+刪容器、DROP DB;`live_run_exists` 實作「live 同時最多 1 個」。
+- `health_monitor.py`:每 run 一條 thread,每 5 s 看容器狀態 + HTTP → registry `run_instance.status / last_heartbeat`。
+- `LaunchController.start`:validate → spawn → 寫 `run_instance`(role/container_id/host_port)→ 等健康 → UE driver(per-run 的 `ue-<rid>`)start → 狀態 running → archiver 指到 `cu-<rid>`;失敗自動 teardown。`stop`:UE stop(容器死了也照清)→ archiver stop → health stop → teardown → run_instance stopped → run stopped。
+- UE loader 防呆:`default_serving_cell` 不在場景 cell 裡就退回第一個 cell 並 warning(舊劇本 corridor 寫 `src_c0` 但 cell 叫 `src` → 之前 UE 掛在幽靈 cell 上,CU 出現假 serving cell、DU PRB 永遠 0;監控頁看到的「其他 / src_c0」就是它)。
+- 監控前端:讀 registry `run_instance`,有 host_port 就打該 run 的 DU/UE(`NEXT_PUBLIC_RUNTIME_HOST`),沒有就退回共用;RAN 執行狀況面板列出四個容器的 port / 狀態 / 心跳。
+
+**驗證**
+- corridor_16_24 per-run 起停:四容器 ~10 s 就緒(DB 新建 + migrate),run_instance 四列 running、心跳每 5 s 更新;stop 後容器移除、DB drop。
+- **兩個 run 同時跑**(corridor_16_24 + corridor_00_08,皆 cached):各自 DU tick 獨立、封存各自視窗、cell 集合互不污染;host load ~2.0,每組 8 容器合計 < 500 MB。
+- 幽靈 cell 修正後 per_cell 只剩 `src / nbr`;corridor_16_24 的 UE 在 5700 s 前不在場 → 開場 RLF 屬預期(T310,之後由 UE 端 re-camp 回來)。
+- 監控頁截圖:per-run 容器列、DU tick、UE driver 進度均來自 `-49117e33` 這組。
+
+**已知 / 待辦(P4-2 起)**
+- **E2Adapter 仍指向共用 CU(:8101)**:RIC 看不到 per-run CU;要做多 E2 node 多 SCTP(先驗證 RIC 接受同 IP 多 node;目前 RIC 10.3.0.71 連線被 reset,無法驗)。
+- CU `start_anr_fixture` 找 `/app/docs/scenarios/<id>.json` 404(corridor 系列 JSON 不在 docs/scenarios,只在 registry legacy store)→ CU 該改走 registry shim。
+- 第二個 run 達成倍速 0.47×(設定 1×)需查(RU 2 個 gunicorn sync worker?)。
+- 共用的 cu/du/ru/ue compose 服務仍在(legacy Dashboard 用);之後可拿掉。
+- UDS/msgpack 傳輸(§11 決策②)未動。

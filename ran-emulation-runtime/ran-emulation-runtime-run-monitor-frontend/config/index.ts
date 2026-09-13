@@ -3,6 +3,8 @@ export const ORCHESTRATOR_API = `${process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL
 export const DU_API = `${process.env.NEXT_PUBLIC_DU_BASE_URL ?? 'http://localhost:8102'}/api/v0.1/DU`;
 export const UE_API = `${process.env.NEXT_PUBLIC_UE_BASE_URL ?? 'http://localhost:8105'}/api/v0.1/UE`;
 export const E2ADAPTER_API = `${process.env.NEXT_PUBLIC_E2ADAPTER_BASE_URL ?? 'http://localhost:8201'}/api/v0.1/E2Adapter`;
+/** per-run 容器對外的 host(orchestrator 動態配 host port,寫在 registry run_instance) */
+export const RUNTIME_HOST = process.env.NEXT_PUBLIC_RUNTIME_HOST ?? 'localhost';
 export const POLL_MS = 3000;
 /** 時間範圍選項(視窗數;1 視窗 = 1 s sim-time)。0 = 全部 */
 export const RANGE_OPTIONS = [{ label: '1m', windows: 60 }, { label: '5m', windows: 300 }, { label: '15m', windows: 900 }, { label: '全部', windows: 0 }] as const;

@@ -12,7 +12,9 @@ from main.apps.run_lifecycle.serializers.launch_request_serializers import Launc
 from main.apps.run_lifecycle.services.business.sqldb_operations import SqlDbBusinessService
 from main.apps.run_lifecycle.services.common.timestamp_service import TimestampService
 from main.apps.run_lifecycle.services.common.uuid_service import UUIDService
-from main.apps.run_lifecycle.services.optional import platform_clients
+from django.conf import settings
+
+from main.apps.run_lifecycle.services.optional import container_spawner, health_monitor, platform_clients
 from main.apps.run_telemetry_archive.services.optional import cu_archiver
 from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
@@ -157,18 +159,41 @@ class LaunchController:
             UUID_FIELD: UUIDService.generate_uuid("launch_request"), "launch_request_created_at": now, "launch_request_updated_at": now,
             "f_scene_run_uuid": run_uuid, "action": "start", "mode": str(run.get("mode") or "cached"), "speed_x": speed_x, "status": "accepted"})
         try:
-            ue = platform_clients.ue_start(run_uuid, speed_x, sim_dt_ms)
+            ue_host = None; cu_host = None; instances: dict[str, dict] = {}
+            if settings.PER_RUN_ENABLED:
+                mode = str(run.get("mode") or "cached")
+                if mode == "live" and container_spawner.live_run_exists(run_uuid):
+                    raise RuntimeError("live 模式同時只允許 1 個 run(Physics/GPU 共用);請用 cached 或先停另一個 live run")
+                # 舊的 run_instance 列清掉(重跑)
+                for old in platform_clients.list_run_instances(run_uuid):
+                    platform_clients.delete_run_instance(old["run_instance_uuid"])
+                spawned = container_spawner.spawn(run_uuid, mode)
+                for role, info in spawned.items():
+                    r = platform_clients.create_run_instance(run_uuid, role, info["container_id"], info["host_port"])
+                    instances[role] = {**info, "run_instance_uuid": (r.get("data") or {}).get("run_instance_uuid")}
+                health = container_spawner.wait_healthy({r: i["name"] for r, i in instances.items()})
+                if not all(health.values()):
+                    raise RuntimeError(f"per-run 容器未就緒: {health}")
+                ue_host = instances["ue"]["name"]; cu_host = instances["cu"]["name"]
+                health_monitor.start_monitor(run_uuid, instances)
+            ue = platform_clients.ue_start(run_uuid, speed_x, sim_dt_ms, host=ue_host)
             ok = bool(ue.get("success"))
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "started" if ok else "failed", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
             if ok:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat())
-                cu_archiver.start_archiver(run_uuid, sim_dt_ms)   # P2-3:run 期間封存 CU 落地表
+                cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
                 return error_response("UE driver refused start", ue, 502)
         except Exception as exc:  # noqa: BLE001
             logger.exception("launch start failed run=%s", run_uuid)
+            if settings.PER_RUN_ENABLED:
+                health_monitor.stop_monitor(run_uuid)
+                try:
+                    container_spawner.teardown(run_uuid)
+                except Exception:  # noqa: BLE001
+                    logger.exception("teardown after failed start %s", run_uuid)
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD), {"status": "failed", "detail": {"error": str(exc)}})
             try:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(exc)[:500])
@@ -176,7 +201,7 @@ class LaunchController:
                 pass
             return error_response("launch failed", str(exc), 502)
         logger.info("run %s started (speed %.2fx, sim_dt %d)", run_uuid, speed_x, sim_dt_ms)
-        return success_response({"scene_run_uuid": run_uuid, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms, "ue": ue.get("data")}, "started", 201)
+        return success_response({"scene_run_uuid": run_uuid, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms, "ue": ue.get("data"), "instances": {r: {k: v for k, v in i.items() if k != "run_instance_uuid"} for r, i in instances.items()}}, "started", 201)
 
     @staticmethod
     @csrf_exempt
@@ -195,12 +220,22 @@ class LaunchController:
             UUID_FIELD: UUIDService.generate_uuid("launch_request"), "launch_request_created_at": now, "launch_request_updated_at": now,
             "f_scene_run_uuid": run_uuid, "action": "stop", "status": "accepted"})
         try:
-            ue = platform_clients.ue_stop()
+            ue_host = container_spawner.names_for(run_uuid)["ue"] if settings.PER_RUN_ENABLED else None
+            try:
+                ue = platform_clients.ue_stop(host=ue_host)
+            except Exception as exc:  # noqa: BLE001
+                ue = {"success": False, "message": f"ue_stop: {exc}"}   # 容器可能已死;照樣往下清
             archive_stats = cu_archiver.stop_archiver(run_uuid)
+            containers = None
+            if settings.PER_RUN_ENABLED:
+                health_monitor.stop_monitor(run_uuid)
+                containers = container_spawner.teardown(run_uuid)
+                for inst in platform_clients.list_run_instances(run_uuid):
+                    platform_clients.update_run_instance(inst["run_instance_uuid"], status="stopped")
             platform_clients.update_scene_run(run_uuid, status="stopped", stopped_at=now.isoformat())
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "stopped", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
         except Exception as exc:  # noqa: BLE001
             logger.exception("launch stop failed run=%s", run_uuid)
             return error_response("stop failed", str(exc), 502)
-        return success_response({"scene_run_uuid": run_uuid, "ue": ue.get("data"), "archive": archive_stats}, "stopped", 200)
+        return success_response({"scene_run_uuid": run_uuid, "ue": ue.get("data"), "archive": archive_stats, "containers": containers}, "stopped", 200)

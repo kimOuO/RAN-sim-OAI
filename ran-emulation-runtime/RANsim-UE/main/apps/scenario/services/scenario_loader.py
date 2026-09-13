@@ -411,12 +411,21 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     ) for b in t.get("buildings") or []]
     windows = {str(u["name"]): [[float(a), float(b)] for a, b in (u.get("active_windows") or [])]
                for u in t.get("ues") or [] if u.get("active_windows")}
+    # default_serving_cell 必須是樹裡真的有的 cell;舊劇本常寫 "<gnb>_c0" 但 cell 叫 "<gnb>",
+    # 掛到不存在的 cell 會在 CU 生出幽靈 serving cell(2026-09-13 P4-1 發現)。不在樹裡就退回第一個 cell。
+    cell_names = [c.cell_id for g in gnbs for c in g.cells]
+    default_serving = str(knobs.get("default_serving_cell") or "")
+    if default_serving not in cell_names:
+        fallback = cell_names[0] if cell_names else "gnb1_cell0"
+        if default_serving:
+            logger.warning("[scene_run %s] default_serving_cell=%r 不在場景 cell %s 裡,改用 %r", scene_run_uuid, default_serving, cell_names, fallback)
+        default_serving = fallback
     return ScenarioSpec(
         scenario_id=str(scene.get("legacy_scenario_id") or scene.get("name") or scene_run_uuid),
         scene_id=str(scene.get("geometry_scene_id") or ""),
         duration_sec=duration, tick_ms=int(run.get("sim_dt_ms") or 500),
         ues=ues, traffic=traffic,
-        default_serving_cell=str(knobs.get("default_serving_cell") or "gnb1_cell0"),
+        default_serving_cell=default_serving,
         gnbs=gnbs, buildings=buildings,
         precompute_status="ready" if run.get("mode") == "cached" else "pending",
         antenna_pattern=(str(knobs["antenna_pattern"]) if knobs.get("antenna_pattern") else None),

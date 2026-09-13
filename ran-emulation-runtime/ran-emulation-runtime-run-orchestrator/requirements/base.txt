@@ -4,3 +4,4 @@ django-cors-headers>=4.3
 psycopg2-binary>=2.9
 python-dotenv>=1.0
 gunicorn>=21.2
+docker>=7.0

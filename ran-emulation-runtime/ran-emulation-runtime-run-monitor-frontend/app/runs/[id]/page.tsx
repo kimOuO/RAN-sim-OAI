@@ -54,7 +54,7 @@ export default function RunDashboardPage() {
         <Panel title="RLC SDU delay DL · per cell 平均" sub="DRB.RlcSduDelayDl" span={4}><TimeSeriesChart series={p.charts.rlcDelay} yMin={0} xLabels={p.xLabels} /></Panel>
         <Panel title="平均 MCS · per cell" span={4}><TimeSeriesChart series={p.charts.mcs} yMin={0} yMax={28} xLabels={p.xLabels} /></Panel>
         <Panel title="每 cell UE 數" span={4}><TimeSeriesChart series={p.charts.ueCount} yMin={0} xLabels={p.xLabels} digits={0} /></Panel>
-        <Panel title="RAN 模擬執行狀況" sub="UE driver / DU / E2" span={6}><RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} /></Panel>
+        <Panel title="RAN 模擬執行狀況" sub={p.perRun ? 'per-run 容器 · UE driver / DU / E2' : '共用容器 · UE driver / DU / E2'} span={6}><RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} instances={p.instances} /></Panel>
         <Panel title="換手 / RLF · 每分鐘" span={3}><ColumnChart groups={[{ name: 'HO', color: STATUS.good, cols: p.eventBars.ho.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }, { name: 'RLF', color: STATUS.critical, cols: p.eventBars.rlf.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }]} /></Panel>
         <Panel title="SINR 分布(當下)" sub={`${p.ueRows.length} UE`} span={3}><ColumnChart groups={[{ name: 'UE', color: 'var(--cyan)', cols: p.sinrHist.map((b) => ({ label: `${b.x0}`, value: b.n })) }]} unit=" UE" /></Panel>
         <Panel title="UE 逐一觀測" sub="SINR 走勢 + serving cell 色帶,點選看全指標" span={12} table={rawTable}>

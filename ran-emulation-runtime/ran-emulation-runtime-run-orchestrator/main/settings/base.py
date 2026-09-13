@@ -36,3 +36,9 @@ HTTP_CU_HOST = get_str("HTTP_CU_HOST", "cu")
 HTTP_CU_PORT = get_int("HTTP_CU_PORT", 8000)
 HTTP_E2ADAPTER_HOST = get_str("HTTP_E2ADAPTER_HOST", "host.docker.internal")   # e2adapter 走 host network
 HTTP_E2ADAPTER_PORT = get_int("HTTP_E2ADAPTER_PORT", 8201)
+
+# P4-1 per-run 容器(docker SDK;需掛 /var/run/docker.sock)
+PER_RUN_ENABLED = get_bool("PER_RUN_ENABLED", False)
+PER_RUN_NETWORK = get_str("PER_RUN_NETWORK", "ransim-net")
+PER_RUN_PG_ADMIN_DB = get_str("PER_RUN_PG_ADMIN_DB", "ransim_root")
+PER_RUN_HEALTH_SEC = get_int("PER_RUN_HEALTH_SEC", 5)

@@ -4,7 +4,8 @@ import { POLL_MS, RANGE_OPTIONS, UE_METRICS } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
 import { usePolling } from '@/hooks/base/usePolling';
 import { listControlEvents, listHandoverEvents, listKpmSamples, listLaunchRequests } from '@/services/api/archive';
-import { getDuTick, getE2AdapterStatus, getRun, getSceneTree, getUeDriverStatus, listDuCells, listScenes } from '@/services/api/runs';
+import { DU_API, UE_API } from '@/config';
+import { getDuTick, getE2AdapterStatus, getRun, getSceneTree, getUeDriverStatus, listDuCells, listRunInstances, listScenes, runtimeBase } from '@/services/api/runs';
 import { allCells, allUes, bucketEvents, cellColorMap, cellSeries, groupCellsByGnb, histogram, latestUes, mean, meanMcsByCell, meanRlcDelayByCell, meanSinrByCell, prbDl, prbUl, thpDlByCell, thpUlByCell, ueCountByCell, ueSeries, ueServingStrip } from '@/hooks/feature/kpmDerive';
 import type { KpmSample } from '@/types/telemetry';
 
@@ -17,9 +18,12 @@ export function useRunDashboardPage(runUuid: string) {
   const hos = useAsync(() => listHandoverEvents(runUuid), [runUuid]);
   const ctrls = useAsync(() => listControlEvents(runUuid), [runUuid]);
   const launches = useAsync(() => listLaunchRequests(runUuid), [runUuid]);
-  const tick = useAsync(getDuTick, []); const e2 = useAsync(getE2AdapterStatus, []); const ueDrv = useAsync(getUeDriverStatus, []); const duCells = useAsync(listDuCells, []);
+  const instances = useAsync(() => listRunInstances(runUuid), [runUuid]);
+  const duBase = runtimeBase((instances.data ?? []).find((i) => i.role === 'du'), DU_API, 'DU');
+  const ueBase = runtimeBase((instances.data ?? []).find((i) => i.role === 'ue'), UE_API, 'UE');
+  const tick = useAsync(() => getDuTick(duBase), [duBase]); const e2 = useAsync(getE2AdapterStatus, []); const ueDrv = useAsync(() => getUeDriverStatus(ueBase), [ueBase]); const duCells = useAsync(() => listDuCells(duBase), [duBase]);
   const live = run.data?.status === 'running';
-  const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); ueDrv.refetch(); }, [run, samples, hos, ctrls, tick, e2, ueDrv]);
+  const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); ueDrv.refetch(); instances.refetch(); }, [run, samples, hos, ctrls, tick, e2, ueDrv, instances]);
   usePolling(refetchAll, POLL_MS, live);
 
   const [range, setRange] = useState<number>(RANGE_OPTIONS[1].windows);
@@ -67,6 +71,6 @@ export function useRunDashboardPage(runUuid: string) {
     run: run.data, sceneName: (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid)?.legacy_scenario_id ?? '', status: run.status, error: run.error,
     all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
     handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], commandImpact, launches: launches.data ?? [],
-    duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, live, range, setRange, selectedWindow, setSelectedWindow,
+    duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, instances: instances.data ?? [], perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,
   };
 }
