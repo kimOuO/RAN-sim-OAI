@@ -308,7 +308,7 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
@@ -316,6 +316,8 @@ class TickRunner:
             # RU 由 H 的 SVD 回報的 RI(2026-09-13 P5-3 之前從沒寫進 registry → 層數永遠 1)
             if rank is not None:
                 self._ue_registry[ue_id]["rank"] = max(1, min(4, int(rank)))
+            # RU 由 H 奇異值算的每層 SINR(P5-4);None = 舊 RU,排程端退回等功率近似
+            self._ue_registry[ue_id]["sinr_layers"] = list(sinr_layers) if sinr_layers else None
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -881,6 +883,7 @@ class TickRunner:
                             sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive pipeline 延遲
                             sched_pipeline_slots=(_pipe_slots if _SLOT_ENGINE_TAKEOVER else 2),
                             n_layers=ue.get("rank", 1),
+                            sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl"),
                             discard_timer_ms=(_SLOT_DISCARD_TIMER_MS if _SLOT_ENGINE_TAKEOVER else 0),
                             oai_delay_scope=_SLOT_OAI_DELAY_SCOPE,
                         ),
@@ -890,7 +893,8 @@ class TickRunner:
                         sim_dt_ms=self._sim_dt_ms, state=st_op,
                         params=SlotParams(seed=self.status.tick_count,
                                           sched_period_slots=_SLOT_CADENCE_PERIOD,
-                                          n_layers=ue.get("rank", 1)),
+                                          n_layers=ue.get("rank", 1),
+                                          sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl")),
                     )
                 except Exception as e:  # shadow 絕不可擋 tick
                     logger.warning("[SLOT_SHADOW] sim failed ue=%s: %s", uid, e)

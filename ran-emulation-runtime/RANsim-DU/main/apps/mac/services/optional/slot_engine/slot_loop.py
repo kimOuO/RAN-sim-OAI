@@ -74,6 +74,8 @@ class SlotParams:
     #    值 2(=1ms @ μ=1)標定自 OAI 實測「乾淨 1~4ms」區間,屬有標定依據的抽象參數,
     #    非規範引用值。舊名 k0_slots 已改名以免誤引規範。
     sched_pipeline_slots: int = 2
+    sinr_layers: tuple[float, ...] | None = None   # RU 回的每層 SINR(P5-4);None → 等功率近似
+    mcs_hint: int | None = None
     n_layers: int = 1          # MIMO 層數(rank)。TBS ∝ ν(38.214 §5.1.3.2);
                                # 需 NR_MIMO_LAYERS_ENABLED=on 才生效(見 nr_resources)。
     harq_rtt_slots: int = 4    # HARQ retx 間隔(NACK→retx)
@@ -160,7 +162,7 @@ def simulate_sdu_delays(
     p = params or SlotParams()
     st = state if state is not None else SlotEngineState()
     # 多層時每層分到的功率下降 → 每層 SINR 下降(NR_MIMO_LAYERS_ENABLED=off 時無作用)
-    mean_sinr_db = eesm.effective_sinr_for_layers(mean_sinr_db, p.n_layers)
+    mean_sinr_db = eesm.effective_sinr_for_layers(mean_sinr_db, p.n_layers, sinr_layers=p.sinr_layers, mcs=p.mcs_hint)
     rng = random.Random(p.seed)
     n_slots = max(1, int(round(sim_dt_ms / p.slot_ms)))
     period = len(p.tdd_dl_mask)

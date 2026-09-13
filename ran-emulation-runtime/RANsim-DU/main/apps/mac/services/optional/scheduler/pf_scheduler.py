@@ -119,7 +119,7 @@ class PfScheduler:
             # 用區域變數,不就地改 ue dict —— allocate() 會對 GBR/BE 兩段分別呼叫,
             # 就地改會讓同一個 UE 被套兩次。
             sinr_eff = eesm.effective_sinr_for_layers(
-                ue["sinr_db"], ue.get("rank", 1),
+                ue["sinr_db"], ue.get("rank", 1), sinr_layers=ue.get("sinr_layers"), mcs=ue.get("mcs_dl"),
             )
             retx_eff = 1.0   # 1 = 不打折(舊行為)
             if _SCHED_MCS_CONSISTENT:

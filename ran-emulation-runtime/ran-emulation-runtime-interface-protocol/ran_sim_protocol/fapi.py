@@ -59,6 +59,9 @@ class CqiIndication:
     cqi: int       # 0~15
     rank: int = 1  # 1~4
     pmi: int = 0   # UE 推薦的 PMI
+    # 每層 SINR(dB,長度 = rank;由 H 的奇異值推:第 i 層 = 總 SINR − 10log10(rank) + 20log10(σi/σ1))。
+    # 空 list = 舊 RU 沒帶,DU 退回等功率近似(每層 −10log10 rank)。2026-09-13 P5-4。
+    sinr_per_layer_db: list[float] = field(default_factory=list)
     # RSRP from path_gain (RU 端 dl_tti_pipeline 算)；
     # 預設 -200 表示未填（保持 backward compat），DU 收到 -200 會用估算 fallback。
     rsrp_dbm: float = -200.0

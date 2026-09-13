@@ -324,3 +324,10 @@
 - per-run DU env `NR_MIMO_LAYERS_ENABLED=on`(TBS × ν,每層等功率分配 → 每層 SINR −3 dB)。
 - 整條鏈驗證(live,anr_nrt_capacity):registry 掛 2×2 cross gNB preset + 1×2 cross UE preset → KPM `mimo_rank=2`(5/5 UE,之前 1×1 基準全是 1)。吞吐沒明顯變:這個場景 UE 幾乎沒流量(thp 0–1 Mb/s)、SINR 2–9 dB 兩層各 −3 dB 也撐不起高 MCS —— 要看多層增益得用高流量、高 SINR 的場景。
 - 仍未做(§5 第 7 項):RU 回 per-layer SINR 陣列 → DU 做完整 EESM;目前每層 SINR 是等功率分配的近似。
+
+## P5-4 每層 SINR + EESM(計畫 §5 第 7 項,2026-09-13)
+
+- 協定 `CqiIndication.sinr_per_layer_db`(空 = 舊 RU,DU 退回等功率近似)。
+- RU:由未預編碼 H 的奇異值算每層 SINR:第 i 層 = 總 SINR − 10log10(rank) + 20log10(σi/σ1)。
+- DU:serializer / actor / registry(`ue["sinr_layers"]`)接下來;`eesm.effective_sinr_for_layers(sinr, n, sinr_layers, mcs)` 有每層值就 `combine_db`(EESM,β 依目前 MCS,無 MCS 用 10)壓成等效 SINR,否則等功率近似;pf_scheduler 與 slot engine(`SlotParams.sinr_layers / mcs_hint`)兩個呼叫點都接上。DU 每 50 筆多層 cqi 印一次 INFO。
+- 實測(live,2×2 cross + 1×2 cross):`cp0 rank=2 sinr=6.0 layers=[2.97, −1.83]`、`cp4 sinr=1.7 layers=[−1.34, −4.49]` —— 第二層比第一層弱 ~4.8 dB,與自由空間 cross-pol 的第二奇異值 −4.7 dB 一致;KPM rank=2。

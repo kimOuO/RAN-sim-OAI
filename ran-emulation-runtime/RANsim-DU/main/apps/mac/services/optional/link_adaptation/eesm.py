@@ -121,7 +121,7 @@ def equal_power_split_db(sinr_db: float, n_layers: int) -> float:
     return sinr_db - 10.0 * math.log10(float(n))
 
 
-def effective_sinr_for_layers(sinr_db: float, n_layers: int) -> float:
+def effective_sinr_for_layers(sinr_db: float, n_layers: int, sinr_layers=None, mcs: int | None = None) -> float:
     """rank 生效時,把「單層等效 SINR」還原成等功率分配後的每層 SINR。
 
     RU 回報的 SINR 未考慮發射功率要分給多層。若直接拿它配上 TBS×ν,等於憑空多送
@@ -134,4 +134,9 @@ def effective_sinr_for_layers(sinr_db: float, n_layers: int) -> float:
     from main.apps.mac.services.optional.link_adaptation import nr_resources
     if not nr_resources.MIMO_LAYERS_ENABLED:
         return sinr_db
-    return equal_power_split_db(sinr_db, n_layers)
+    n = max(1, int(n_layers))
+    # P5-4:RU 有回每層 SINR 就做 EESM(β 依目前 MCS;沒 MCS 用中間值 10)壓成一個等效 SINR,
+    # 弱層會把等效值往下拉 —— 這才能分出「第二層其實很弱、不該開兩層」。
+    if sinr_layers and len(sinr_layers) >= n and n > 1:
+        return combine_db(list(sinr_layers)[:n], int(mcs) if mcs is not None else 10)
+    return equal_power_split_db(sinr_db, n)

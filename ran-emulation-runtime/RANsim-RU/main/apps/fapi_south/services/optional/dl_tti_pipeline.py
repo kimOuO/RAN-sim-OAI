@@ -494,6 +494,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             sinr_db -= _SINR_INTERFERENCE_PENALTY_DB
 
         # rank:有 H matrix 就走 SVD(支援 MIMO),沒有就 rank=1(SISO)
+        sinr_per_layer: list[float] = []
         if H_raw is None:
             rank = 1
         else:
@@ -504,6 +505,11 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 # 會永遠回報 DU 現在給的層數 → rank 卡在 1(2026-09-13 P5-3 實測)。上限 min(rx_ant, tx_ant, 4)。
                 rank = min(sinr_estimator.estimate_rank(H), int(min(H.shape)), 4) if H.size else 1
                 _ = H_eff
+                # 每層 SINR:等功率分 rank 層,第 i 層相對第 1 層差 20log10(σi/σ1)(P5-4)
+                if sinr_db != -float("inf") and H.size:
+                    _s = np.linalg.svd(H, compute_uv=False)
+                    _s1 = float(_s[0]) if _s.size and float(_s[0]) > 0 else 1.0
+                    sinr_per_layer = [float(sinr_db) - 10.0 * math.log10(rank) + 20.0 * math.log10(max(float(_s[i]), 1e-12) / _s1) for i in range(int(rank))]
             except codebook.CodebookError as exc:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
                 rank = 1
@@ -523,6 +529,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             sinr_db=float(sinr_db) if sinr_db != -float("inf") else -100.0,
             cqi=int(cqi),
             rank=int(rank),
+            sinr_per_layer_db=[round(v, 2) for v in sinr_per_layer],
             pmi=int(pdu.pmi),
             rsrp_dbm=rsrp_dbm,
             serving_cell=serving_label,
