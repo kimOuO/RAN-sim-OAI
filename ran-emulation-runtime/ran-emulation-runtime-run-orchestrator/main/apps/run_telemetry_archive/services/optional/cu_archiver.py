@@ -34,6 +34,15 @@ def _post(url: str, body: dict, timeout: float = 20.0) -> dict:
         return json.loads(resp.read())
 
 
+def _control_items(data: Any) -> list[dict]:
+    """E2Adapter ControlAuditReader 回 {"commands": [...], "count": n}(舊版曾是 list)。"""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return list(data.get("commands") or [])
+    return []
+
+
 def _stamp(prefix: str) -> dict[str, Any]:
     now = TimestampService.now()
     return {f"{prefix}_uuid": UUIDService.generate_uuid(prefix), f"{prefix}_created_at": now, f"{prefix}_updated_at": now}
@@ -62,7 +71,7 @@ class RunArchiver(threading.Thread):
         self.cursor = dict(_post(self._cu, {"max_only": True})["data"]["cursor"])
         try:
             e = _post(self._e2, {}, timeout=5.0)["data"]
-            self.control_seq = max([int(x.get("seq", 0)) for x in (e if isinstance(e, list) else [])] or [0])
+            self.control_seq = max([int(x.get("seq", 0)) for x in _control_items(e)] or [0])
         except Exception:  # noqa: BLE001
             self.control_seq = 0
 
@@ -103,13 +112,17 @@ class RunArchiver(threading.Thread):
             logger.warning("archiver CU poll failed run=%s: %s", self.run_uuid, exc)
         try:
             e = _post(self._e2, {}, timeout=5.0)["data"]
-            for x in (e if isinstance(e, list) else []):
+            for x in _control_items(e):
                 if int(x.get("seq", 0)) <= self.control_seq:
                     continue
                 self.control_seq = int(x.get("seq", 0))
+                # adapter 的稽核列:command(sim action)/ result(落地目標,例 cell id)/ acked / rttMs / failure
+                outcome = "ACK" if x.get("acked") else ("FAIL" if x.get("failure") else "pending")
                 DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid,
-                    "at_sim_ms": 0, "source": str(x.get("source") or "ric"), "action_type": str(x.get("kind") or x.get("action") or "control"),
-                    "target": str(x.get("target") or ""), "outcome": str(x.get("outcome") or x.get("status") or "unknown"), "detail": x})
+                    "at_sim_ms": self.ticks_so_far * self.sim_dt_ms, "source": f"ric/{x.get('ranFuncName') or 'RC'}",
+                    "action_type": str(x.get("command") or x.get("kind") or "control")[:32],
+                    "target": str(x.get("result") or x.get("target") or "")[:128], "outcome": outcome,
+                    "landing_latency_ms": (int(round(float(x["rttMs"]))) if x.get("rttMs") is not None else None), "detail": x})
                 self.stats["control"] += 1
         except Exception:  # noqa: BLE001 — E2Adapter/RIC 不通是常態,不算錯
             pass

@@ -292,3 +292,11 @@
 - 對時:我方 06:34:29/39/49 UTC 送三個 Setup(000e00/e01/e02),RIC 端 e2mgr 記 06:07:29/39/49(其時鐘慢 27 分),但標 CONNECTED 在 06:12:47/06:13(≈5 分鐘後);我方 adapter 等 Setup Response 只等 30 s 就關 association、5 分鐘後重連 → Response 回到已不存在的 association。
 - 改:`E2_SETUP_RESPONSE_TIMEOUT_SEC`(env,per-run 與共用皆 600)、`SCTP_BACKOFF_*` 縮到 20 s;adapter 收 SIGTERM 先送 E2 Reset、shutdown SCTP 再結束(`graceful_shutdown`),對應 RIC 要求的「先 Removal/Reset 再關關聯再停容器」;association 關閉時記 log。
 - 06:44:40 / 06:44:41 / 06:45:3x 重連後,**三條 association 同時 ESTABLISHED 持續 >9 分鐘**(`/proc/net/sctp/assocs` state 3,lport 49749/34211/47478 → 36422),Setup 各送一次,但到 06:53:50 仍無 Setup Response(pdu_recv 0)。球在 RIC 端:請他們在這三條活著的關聯上核對 association↔ranName 綁定與 Response 是否送出。
+
+## P4-7 多 E2 node 三方驗證通過(2026-09-13)
+
+- RIC 端根因是他們的 rtmgr 推不到 e2mgr(RMR 路由表空 → Setup Response 建好送不出),07:09 修 rtmgr 後:三個 node 同時 CONNECTED、E2T associatedRanList 三個、對三個 meid 各發 REPORTCGI 控制 state=0 + ACK。
+- 我方 07:15:41 / 07:15:41 / 07:16:20 UTC 收到 `E2 Setup outcome=successfulOutcome accepted=[2,3,4,6,5]`(e01 / e02 / 共用 e00);07:16:36 三邊各收一筆 `RICcontrolRequest style=9 (REPORTCGI)`,`RIC_CONTROL_ACK sent`,adapter 稽核記 `result=e01:nbr`(帶 run 標籤的 cell)、rtt 14 ms。三條 SCTP association 持續 ESTABLISHED。
+- 修 archiver:E2Adapter `ControlAuditReader` 回 `{commands:[…]}` 不是 list,之前一筆都封存不到;現在對映 command→action_type、result→target、acked→ACK、rttMs→landing_latency_ms。既有 seq=1 那筆在 prime 之前,不回補;下一筆控制起會進 `run_control_event`(監控頁「RIC 命令」面板)。
+- orchestrator 啟動時自動接回 status=running 的 run 的 archiver / 健康輪詢(以前重啟 orchestrator 會丟)。
+- 結論:P4 的驗收條件「兩個不同場景同時跑、RIC 看到兩個 E2 node、KPM/控制互不干擾」達成。剩:共用 cu/du/ru/ue/e2adapter(000e00)退場時機、E2 Removal(目前用 E2 Reset + 關 SCTP 收尾)。
