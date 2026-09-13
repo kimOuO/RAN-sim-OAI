@@ -36,6 +36,8 @@ _IE_ID_RANfunctionItem = 8
 _PROC_CODE_E2_SETUP = 1
 # E2 Reset procedureCode (E2AP §9.3.7 / id-Reset)
 _PROC_CODE_E2_RESET = 3
+# E2 Removal procedureCode (E2AP v2 §8.3.9 / id-E2removal;本 schema 定義為 13)
+_PROC_CODE_E2_REMOVAL = 13
 
 
 # Process-local TransactionID counter (1..255 wrap)
@@ -476,6 +478,21 @@ def encode_e2_reset_request(cause_misc: str = "om-intervention") -> bytes:
 
     pdu_value = ("initiatingMessage", initiating_msg_value)
     pdu_cls.set_val(pdu_value)
+    return pdu_cls.to_aper()
+
+
+def encode_e2_removal_request() -> bytes:
+    """Encode E2 Removal Request → APER bytes(E2AP v2.0 §9.1.1.x)。唯一 IE:TransactionID(id=49, reject)。
+
+    語意是「E2 node 要下線,請 RIC 把我從 R-NIB / E2T 清單移除」;跟 Reset(連線重來但我還在)不同。
+    場景 stop 時送這個,RIC 端才不會留下 DISCONNECTED 殘留(2026-09-13,RIC 端要求的收尾順序)。"""
+    rt = _load_runtime()
+    pdu_cls = rt.E2AP_PDU_Descriptions.E2AP_PDU
+    ie_transaction = {"id": _IE_ID_TransactionID, "criticality": "reject", "value": ("TransactionID", _next_transaction_id())}
+    pdu_cls.set_val(("initiatingMessage", {
+        "procedureCode": _PROC_CODE_E2_REMOVAL, "criticality": "reject",
+        "value": ("E2RemovalRequest", {"protocolIEs": [ie_transaction]}),
+    }))
     return pdu_cls.to_aper()
 
 

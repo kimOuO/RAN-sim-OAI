@@ -421,8 +421,31 @@ def graceful_shutdown(reason: str = "om-intervention") -> None:
         return
     try:
         _stop_all_indication_threads()
-        _send_e2_reset(sock, reason=f"shutdown:{reason}")
-        time.sleep(0.5)
+        # 優先送 E2 Removal(正式「下線」,RIC 端會移除節點);RIC 不支援或編碼失敗就退回 E2 Reset
+        proc = get_str("E2_SHUTDOWN_PROCEDURE", "removal").lower()
+        sent_removal = False
+        if proc == "removal":
+            try:
+                from main.apps.e2_adapter.services.optional.codec import e2ap_codec
+                pdu = e2ap_codec.encode_e2_removal_request()
+                sent_removal = _send_sctp(sock, pdu)
+                logger.info("E2 Removal Request sent (%d bytes)", len(pdu))
+                # 等 Removal Response 最多 2 s(有就記,沒有也照關)
+                import select as _select
+                r, _, _ = _select.select([sock], [], [], 2.0)
+                if r:
+                    data = sock.recv(_RECV_BUF)
+                    if data:
+                        try:
+                            d = e2ap_codec.decode_e2ap_pdu(data)
+                            logger.info("E2 Removal reply: %s", str(d)[:160])
+                        except Exception:  # noqa: BLE001
+                            logger.info("E2 Removal reply (undecoded, %d bytes)", len(data))
+            except Exception:  # noqa: BLE001
+                logger.exception("E2 Removal failed, fall back to E2 Reset")
+        if not sent_removal:
+            _send_e2_reset(sock, reason=f"shutdown:{reason}")
+        time.sleep(0.3)
         try:
             sock.shutdown(socket.SHUT_RDWR)
         except Exception:
