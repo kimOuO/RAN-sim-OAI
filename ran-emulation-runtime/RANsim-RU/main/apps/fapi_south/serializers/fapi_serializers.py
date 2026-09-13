@@ -23,6 +23,7 @@ class DlTtiRequestSerializer(serializers.Serializer):
     sfn = serializers.IntegerField(min_value=0, max_value=1023)
     slot = serializers.IntegerField(min_value=0, max_value=159)
     pdus = _PduSerializer(many=True)
+    cell_ul_load = serializers.DictField(child=serializers.FloatField(min_value=0.0, max_value=1.0), required=False, default=dict)   # P6
 
 
 class UlTtiRequestSerializer(serializers.Serializer):

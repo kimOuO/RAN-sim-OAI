@@ -768,6 +768,7 @@ class TickRunner:
             mcs_map=mcs_map,
             tbs_map=tbs_map,
             cell_id_map=cell_id_map,
+            cell_ul_load=getattr(self, "_cell_ul_load_last", {}),   # P6:上一 tick 每 cell UL PRB 負載 → RU 算上行干擾
         )
         # in-process Step3:in-process mode 下 SINR 已自算,dl_tti 只供 RU 端 KPM/viz → 改非阻塞
         # (fire-and-forget thread),不再 gate tick loop → 解放 tick 粒度(可縮 sim_dt)。
@@ -795,6 +796,7 @@ class TickRunner:
             TDD_UL_SLOT_RATIO as _UL_RATIO,
         )
         _ul_tick_s = self._sim_dt_ms / 1000.0
+        _cell_ul_prb_now: dict[str, int] = {}
         for ue in ues_for_measurement:
             uid = ue["id"]
             actual_dl = actual_drained_map.get(uid, 0)
@@ -823,6 +825,8 @@ class TickRunner:
             _ul_drained, _prb_ul = ul_buffer.drain(uid, _ul_cap, _ul_bytes_per_prb)
             # cell-level UL PRB(補 prb_pct_ul 缺口):把 per-UE UL PRB 累進該 cell
             pm.accumulate_cell_ul(ue["serving_cell"], _prb_ul)
+            _cell_ul_prb_now[ue["serving_cell"]] = _cell_ul_prb_now.get(ue["serving_cell"], 0) + int(_prb_ul)
+            self._cell_ul_load_last = {c: min(1.0, n / float(prb_per_cell or 106)) for c, n in _cell_ul_prb_now.items()}
             pm.accumulate_ue(
                 gnb_name=ue["serving_cell"],
                 ue_id=uid,

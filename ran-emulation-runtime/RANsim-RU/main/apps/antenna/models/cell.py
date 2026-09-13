@@ -13,6 +13,7 @@ class Cell(models.Model):
     pci = models.IntegerField(db_index=True)
     azimuth_deg = models.FloatField(default=0.0)
     tilt_deg = models.FloatField(default=0.0)   # 機械下傾,正 = 往下(P5,進 Sionna orientation)
+    ul_load = models.FloatField(default=0.0)    # 上一 tick UL PRB 負載 0–1(DU 經 dl_tti 推來;P6 上行干擾用)
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
 

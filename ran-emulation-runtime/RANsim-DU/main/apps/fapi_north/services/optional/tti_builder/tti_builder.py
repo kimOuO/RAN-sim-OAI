@@ -24,6 +24,7 @@ def build_dl_tti(
     tbs_map: dict[str, int] | None = None,
     harq_map: dict[str, int] | None = None,
     cell_id_map: dict[str, str] | None = None,
+    cell_ul_load: dict[str, float] | None = None,
 ) -> DlTtiRequest:
     pmi_map = pmi_map or {}
     rank_map = rank_map or {}
@@ -58,7 +59,7 @@ def build_dl_tti(
             ),
         )
         prb_cursor_by_cell[cell] = prb_cursor + prb_count
-    return DlTtiRequest(sfn=sfn, slot=slot, pdus=pdus)
+    return DlTtiRequest(sfn=sfn, slot=slot, pdus=pdus, cell_ul_load=dict(cell_ul_load or {}))
 
 
 def build_ul_tti(

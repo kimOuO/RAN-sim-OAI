@@ -41,6 +41,9 @@ class DlTtiRequest:
     sfn: int       # 0~1023
     slot: int      # 0~19 (numerology=1)
     pdus: list[DlPduConfig] = field(default_factory=list)
+    # 每 cell 上一 tick 的 UL PRB 負載 0–1(P6):RU 算鄰 cell UE 對我 gNB 的上行干擾時當「同 PRB 碰撞機率」。
+    # 空 dict = 舊 DU,RU 退回 env RU_UL_NEIGHBOR_LOAD。
+    cell_ul_load: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

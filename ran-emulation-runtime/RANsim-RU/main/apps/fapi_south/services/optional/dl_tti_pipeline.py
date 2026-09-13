@@ -68,7 +68,15 @@ def _ul_tx_power_per_prb_dbm(pg_serv_linear: float) -> float:
     return min(_UL_PCMAX_DBM - 10.0 * math.log10(max(_UL_M_REF_PRB, 1.0)), _UL_P0_DBM + _UL_ALPHA * pl_db)
 
 
-def _compute_ul_sinr_db(ul_ctx: dict, cell_to_freq: dict, inter_freq: bool) -> dict[str, float]:
+def _build_cell_to_ul_load_map() -> dict[str, float]:
+    try:
+        from main.apps.antenna.models.cell import Cell
+        return {c.name: float(c.ul_load) for c in Cell.objects.all()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _compute_ul_sinr_db(ul_ctx: dict, cell_to_freq: dict, inter_freq: bool, cell_ul_load: dict | None = None) -> dict[str, float]:
     """每個 UE 的上行 SINR@其 serving gNB。
     ul_ctx[ue] = {serving: cell_id, serving_tx: tx_name, pg_serv: linear, pg: {tx_name: linear}}
     干擾 = Σ 其他 cell 的 UE_v:P_v × pg(v → 我的 serving tx) × ρ;inter_freq 時只算同頻 cell。"""
@@ -91,7 +99,9 @@ def _compute_ul_sinr_db(ul_ctx: dict, cell_to_freq: dict, inter_freq: bool) -> d
             pg_v_to_me = cv["pg"].get(c["serving_tx"])
             if not isinstance(pg_v_to_me, (int, float)) or pg_v_to_me <= 0:
                 continue
-            interf_mw += 10.0 ** ((ptx[v] + 10.0 * math.log10(pg_v_to_me)) / 10.0) * _UL_NEIGHBOR_LOAD
+            rho = (cell_ul_load or {}).get(cv["serving"])
+            rho = float(rho) if rho is not None else _UL_NEIGHBOR_LOAD   # DU 有推負載就用真的,否則 env 常數
+            interf_mw += 10.0 ** ((ptx[v] + 10.0 * math.log10(pg_v_to_me)) / 10.0) * rho
         out[u] = 10.0 * math.log10(sig_mw / (noise_mw + interf_mw))
     return out
 
@@ -583,7 +593,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         ))
     # P6:上行 SINR(整批一起算,干擾要看別的 UE)
     try:
-        ul = _compute_ul_sinr_db(ul_ctx, cell_to_freq, _read_inter_freq())
+        ul = _compute_ul_sinr_db(ul_ctx, cell_to_freq, _read_inter_freq(), _build_cell_to_ul_load_map())
         for ind in out:
             if ind.ue_id in ul:
                 ind.ul_sinr_db = round(ul[ind.ue_id], 2)
