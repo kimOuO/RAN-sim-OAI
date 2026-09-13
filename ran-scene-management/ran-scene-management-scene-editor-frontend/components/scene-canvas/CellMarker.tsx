@@ -33,13 +33,13 @@ export function CellMarker({ cell, gnb, color, position, selected, onSelect, onM
         onPointerUp={(e) => { e.stopPropagation(); if (drag) { onMoved(drag); setDrag(null); } }}
       >
         <cylinderGeometry args={[CANVAS.cellMarkerRadius, CANVAS.cellMarkerRadius, 0.6, 24]} />
-        <meshStandardMaterial color={c} emissive={selected ? c : '#000'} emissiveIntensity={selected ? 0.5 : 0} />
+        <meshStandardMaterial color={c} emissive={c} emissiveIntensity={selected ? 0.9 : 0.35} />
       </mesh>
       <mesh position={[Math.sin(az) * 2, 0.3, -Math.cos(az) * 2]} rotation={[0, -az, 0]}>
         <boxGeometry args={[0.25, 0.25, 4]} />
         <meshStandardMaterial color={c} />
       </mesh>
-      <Text position={[0, 1.6, 0]} fontSize={0.8} color="#222" anchorX="center">{`${gnb.name} / ${cell.name}  pci ${cell.pci}`}</Text>
+      <Text position={[0, 1.6, 0]} fontSize={0.8} color="#ffffff" outlineWidth={0.05} outlineColor="#0b0f14" anchorX="center">{`${gnb.name} / ${cell.name}  pci ${cell.pci}`}</Text>
     </group>
   );
 }

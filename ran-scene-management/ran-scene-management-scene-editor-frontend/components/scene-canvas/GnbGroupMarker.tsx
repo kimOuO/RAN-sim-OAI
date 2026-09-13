@@ -13,9 +13,9 @@ export function GnbGroupMarker({ gnb, color, selected, onSelect }: Props) {
     <group position={[p[0], p[1], p[2]]} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
       <mesh position={[0, 4, 0]}>
         <cylinderGeometry args={[0.15, 0.3, 8, 12]} />
-        <meshStandardMaterial color={c} emissive={selected ? c : '#000'} emissiveIntensity={selected ? 0.6 : 0} />
+        <meshStandardMaterial color={c} emissive={c} emissiveIntensity={selected ? 1 : 0.4} />
       </mesh>
-      <Text position={[0, 9, 0]} fontSize={1} color="#111" anchorX="center">{gnb.name}</Text>
+      <Text position={[0, 9, 0]} fontSize={1} color="#ffffff" outlineWidth={0.06} outlineColor="#0b0f14" anchorX="center">{gnb.name}</Text>
     </group>
   );
 }

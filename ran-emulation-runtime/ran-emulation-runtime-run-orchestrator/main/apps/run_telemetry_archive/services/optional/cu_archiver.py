@@ -48,8 +48,10 @@ class RunArchiver(threading.Thread):
         self._stop_evt = threading.Event()   # 不可叫 _stop:會蓋掉 Thread._stop() 讓 join() 炸
         self.cursor: dict[str, int] = {}
         self.control_seq = 0
-        self.window_index = 0
-        self.ticks_so_far = 0   # CellMeasurementLog.tick_count 是「窗內 tick 數」,累計才是 sim-time
+        # 同一 run 若被再次 start,接在既有視窗後面,不從 0 重算(否則 window_index / sim_time 重複)
+        last = RunKpmSample.objects.filter(f_scene_run_uuid=scene_run_uuid).order_by("-window_index").first()
+        self.window_index = (last.window_index + 1) if last else 0
+        self.ticks_so_far = (last.sim_time_ms // self.sim_dt_ms) if last else 0   # CellMeasurementLog.tick_count 是「窗內 tick 數」,累計才是 sim-time
         self.stats = {"samples": 0, "handover": 0, "rlf": 0, "control": 0, "polls": 0, "errors": 0}
         self._cu = f"http://{settings.HTTP_CU_HOST}:{settings.HTTP_CU_PORT}/api/v0.1/CU/Logs/TelemetryExportReader/read"
         self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"
@@ -123,7 +125,8 @@ class RunArchiver(threading.Thread):
         for c in cells:
             w = (c.get("recorded_at") or "")[:19]
             by_win[w]["per_cell"][c["cell_id"]] = {k: c.get(k) for k in ("prb_pct_dl", "prb_pct_ul", "window_seconds")}
-            by_win[w]["tick"] = c.get("tick_count")
+            # CU 是全域表,舊劇本殘留的 cell 會以 tick_count=0 出現在同一視窗;取視窗內最大值才是真的走了幾個 tick
+            by_win[w]["tick"] = max(int(c.get("tick_count") or 0), int(by_win[w]["tick"] or 0))
         for w in sorted(by_win):
             b = by_win[w]
             tick = b["tick"]

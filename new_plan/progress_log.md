@@ -138,3 +138,18 @@
 - ④ 的 DU/E2 狀態是全域讀(目前一個 DU),P4 多 run 後要改成依 run 的 container 讀。
 - `wall_time_ms` 封存仍為 0(orchestrator 待補)。
 - 兩個前端的深色工程風(下一步,一起套)。
+
+## P3-3 深色工程風 + archiver 修正(2026-09-13)
+
+**做了什麼**
+- 兩個前端(scene-editor :3011、run-monitor :3012)改成深色工程風:深底 `#0b0f14` + 頁面淡格線、青色 `#4fd1ff` 主線 / 橘色 `#ff8a3d` 選取與強調、表頭大寫字距、狀態 pill 深色底亮字。兩個 repo 各留一份 `styles/globals.css`(共用 token 區塊相同,依規則不跨 repo import)。
+- 3D 畫布:深色地面、格線 section 亮青色 / cell 暗藍、建築改**線框**(`<Edges>` + 8% 透明體)、cell / gNB / UE 標籤白字加深色描邊、gNB palette 換亮色、marker 常態自發光。
+- 用 headless Chromium(playwright 容器)截圖確認兩頁(`scratchpad/editor.png`、`monitor.png`)。
+- 順手在監控頁發現並修 `cu_archiver.py` 兩個 bug:
+  1. 同一視窗內舊劇本殘留 cell 的 `tick_count=0` 覆蓋真值 → `sim_time_ms` 卡在 1000;改取視窗內最大 tick。
+  2. 同一 `scene_run` 再次 start 時 `window_index` 從 0 重算 → 重複;改成從 DB 既有最大值接續。
+  驗證:重跑 40 s,視窗 133→179 接續、sim_time 每窗 +1000。
+
+**已知(留 P4)**
+- CU 是全域表,`per_cell` 會混到其他劇本殘留 cell(本次看到 `src_c0`);CU per-run 才根治。
+- 測試期間同一 run 被 start 多次,舊的重複視窗(window 0–54 三份)仍在 DB;這個 run 是測試資料,不清。
