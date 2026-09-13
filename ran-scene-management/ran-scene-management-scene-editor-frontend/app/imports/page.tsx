@@ -10,7 +10,7 @@ export default function ImportsPage() {
     catch (e) { setMsg(`失敗:${e instanceof Error ? e.message : String(e)}`); } finally { setBusy(false); }
   }
   return (
-    <section className="page">
+    <section className="shell page">
       <h1>匯入</h1>
       <h2>劇本 JSON(v1)</h2>
       <textarea rows={14} value={text} onChange={(e) => setText(e.target.value)} placeholder='貼上劇本 JSON(docs/scenarios/*.json 格式)' />

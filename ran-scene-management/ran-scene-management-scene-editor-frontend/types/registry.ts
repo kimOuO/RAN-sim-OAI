@@ -43,3 +43,4 @@ export interface SceneRun {
   started_at: string | null; stopped_at: string | null; notes: string; f_scene_uuid: string; knobs?: Record<string, unknown>;
 }
 export interface SceneTree { scene: Scene & { ground_material?: Material }; buildings: Building[]; gnbs: Gnb[]; neighbor_seeds: unknown[]; ues: Ue[]; run: SceneRun | null; }
+export interface RunKnob { run_knob_uuid: string; key: string; value: unknown; f_scene_run_uuid: string; }

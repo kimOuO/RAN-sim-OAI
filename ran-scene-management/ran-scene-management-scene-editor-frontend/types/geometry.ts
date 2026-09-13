@@ -1,0 +1,3 @@
+/** building-geometry-ingest 的 DTO */
+export interface GeocodeResult { display_name: string; name: string; type: string; lat: number; lon: number; bbox: { min_lon: number; min_lat: number; max_lon: number; max_lat: number }; }
+export interface OsmMapAsset { osm_map_asset_uuid: string; name: string; label: string; min_lon: number; min_lat: number; max_lon: number; max_lat: number; origin_lat: number | null; origin_lon: number | null; mitsuba_xml: string; building_count: number; height_max_m: number; extent_ew_m: number; extent_ns_m: number; status: 'pending' | 'ready' | 'failed'; error: string; }

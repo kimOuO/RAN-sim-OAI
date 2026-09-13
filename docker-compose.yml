@@ -622,6 +622,7 @@ services:
     environment:
       NEXT_PUBLIC_REGISTRY_BASE_URL: "http://${SERVER_IP:-localhost}:8301"
       NEXT_PUBLIC_INGEST_BASE_URL: "http://${SERVER_IP:-localhost}:8303"
+      NEXT_PUBLIC_MONITOR_BASE_URL: "http://${SERVER_IP:-localhost}:3012"
       NEXT_PUBLIC_ORCHESTRATOR_BASE_URL: "http://${SERVER_IP:-localhost}:8302"
     volumes:
       - ./ran-scene-management/ran-scene-management-scene-editor-frontend:/app

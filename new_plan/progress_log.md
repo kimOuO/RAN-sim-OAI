@@ -153,3 +153,22 @@
 **已知(留 P4)**
 - CU 是全域表,`per_cell` 會混到其他劇本殘留 cell(本次看到 `src_c0`);CU per-run 才根治。
 - 測試期間同一 run 被 start 多次,舊的重複視窗(window 0–54 三份)仍在 DB;這個 run 是測試資料,不清。
+
+## P3-4 兩個前端依回饋重刻(2026-09-13)
+
+**使用者回饋**:未置中;劇本要 label 分類;沒有可拉東西的畫布;天線 / RAN 參數要有管理頁;要能像舊 Dashboard 從網路拉場景;監控要 Prometheus+Grafana 式圖形化(PRB per cell、一個個 UE),原封數值是最後手段;要美觀。
+
+**監控平台 :3012(commit 9a3ba83)**
+- 置中 `shell`(max 1480);Grafana 式 12 欄 panel grid、stat tile 列(附著 UE / 平均 SINR / Σ 吞吐 / 平均 PRB / MCS / 換手+RLF / RIC 命令,含與上一窗差值、狀態色)、時間範圍 chips(1m/5m/15m/全部)、LIVE 徽章。
+- 自製 SVG 圖表(不拉圖表庫):`TimeSeriesChart`(多序列、淡格線、hover 十字線 + tooltip、圖例、刻度數隨寬度)、`BarChart`、`ColumnChart`、`Sparkline`、`ServingStrip`。色彩用 dataviz skill 的深色類別色(固定順序、cell 依名稱對應),狀態色 good/warning/serious/critical。
+- Panels:PRB DL/UL per cell、當下 cell 負載長條、每 cell UE 數、DL 吞吐 per cell、平均 SINR per cell、**RAN 模擬執行狀況**(UE driver 進度條、達成倍速、DU tick、UE 附著、E2 link、DU cell 表)、換手/RLF 每分鐘直條、SINR 直方圖、**UE 逐一觀測**(每 UE 一張 SINR 迷你圖 + serving cell 色帶 + 當下值;點選展開 6 指標時序)、RIC 命令、設定快照。每個 panel 有「表」切換 = 原始數值退路。
+- `/runs` 有 stat 列 + 狀態 chips;`/compare` 每指標一圖、run 為序列;playback / events 沿用新元件。
+- 新增 UE driver 狀態讀取 `UE/Scenario/ScenarioController/status`(env `NEXT_PUBLIC_UE_BASE_URL`)。
+
+**管理平台 :3011**
+- 置中 `shell`(max 1400);`/scenes` 依 legacy_scenario_id 前綴自動分類 chips(ANR / 走廊室內 / 意圖 CCO-IM-ES / 規模全天 / 手動 / 其他),卡片左邊框依類別上色、run 狀態 pill、啟動/停止/監控↗。
+- 編輯器:左欄 **元件庫**(gNB / Cell 拉遠 / UE / 建築盒 → 放置模式 → 點地面建立,Esc 取消)、**地圖(OSM)**(地標 geocode → 選候選 → 抓 Overpass → attach 成 building source=osm)、物件樹;畫布地面接點擊、OSM 建築先畫 footprint 標記環(footprint 渲染留 Omniverse 階段);右欄分頁 **屬性 / 天線 / RAN 參數**:天線 = cell RU preset + 覆寫 JSON、UE preset;RAN 參數 = DU 模板選擇 + config_override、gNB A3(offset/hys/TTT)、Run 設定(mode/倍速/sim_dt/時長,無 run 自動建 draft)、Run knobs(9 種 key,JSON 或字串)。刪除物件。
+- 新頁 `/network-elements`:天線陣列 / DU 設定模板 / 建築材質三個分頁,表格內嵌編輯列 CRUD(`/presets` 轉址)。
+- 服務層新增:networkElements(updateDu/Building/Ue、create/delete)、presets(update/delete)、runs(runKnob CRUD、updateSceneRun)、geometry(geocode/generate/list/attach)。
+
+**驗證**:兩邊 typecheck / lint 乾淨;headless Chromium 截圖 5 頁;throwaway scene 走 API:UE + waypoint(欄位是 `ord`,已修)、manual_box 建築、OSM attach(既有 ready asset)全部成功並清掉。真的抓 Overpass 未跑(外網、1–3 分鐘),請使用者在瀏覽器試。

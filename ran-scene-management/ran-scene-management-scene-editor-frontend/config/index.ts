@@ -1,8 +1,22 @@
 export const REGISTRY_BASE_URL = process.env.NEXT_PUBLIC_REGISTRY_BASE_URL ?? 'http://localhost:8301';
 export const INGEST_BASE_URL = process.env.NEXT_PUBLIC_INGEST_BASE_URL ?? 'http://localhost:8303';
 export const ORCHESTRATOR_BASE_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL ?? 'http://localhost:8302';
+export const MONITOR_BASE_URL = process.env.NEXT_PUBLIC_MONITOR_BASE_URL ?? 'http://localhost:3012';
 export const REGISTRY_API = `${REGISTRY_BASE_URL}/api/v0.1/Network_element_registry`;
 export const ORCHESTRATOR_API = `${ORCHESTRATOR_BASE_URL}/api/v0.1/Run_orchestrator`;
 export const INGEST_API = `${INGEST_BASE_URL}/api/v0.1/Building_geometry_ingest`;
 /** 畫布:1 單位 = 1 公尺;registry 座標 Y-up(x 東、y 上、z 南),與 Sionna/場景檔一致 */
-export const CANVAS = { gridSize: 200, cellMarkerRadius: 1.2, ueMarkerRadius: 0.4 } as const;
+export const CANVAS = { gridSize: 400, cellMarkerRadius: 1.2, ueMarkerRadius: 0.4 } as const;
+/** 劇本分類:由 legacy_scenario_id 前綴推導(呈現層),沒有舊 id 的是手動建立 */
+export const SCENE_CATEGORIES: { key: string; label: string; test: (id: string) => boolean }[] = [
+  { key: 'anr', label: 'ANR', test: (id) => id.startsWith('anr_') },
+  { key: 'corridor', label: '走廊 / 室內', test: (id) => id.startsWith('corridor') || id.startsWith('indoor') },
+  { key: 'intent', label: '意圖(CCO / IM / ES)', test: (id) => /^(cco|im|es|recover)/.test(id) },
+  { key: 'scale', label: '規模 / 全天', test: (id) => /^(dt_|full_day|multi)/.test(id) },
+  { key: 'manual', label: '手動建立', test: (id) => !id },
+];
+export const categoryOf = (legacyId: string) => SCENE_CATEGORIES.find((c) => c.test(legacyId))?.key ?? 'other';
+/** run_knob 可調鍵(§計畫 run knobs);值以字串存,型別由模擬端解析 */
+export const RUN_KNOB_KEYS = ['inter_freq', 'cell_quotas', 'tx_power_dbm', 'discard_timer_ms', 'rlc_delay_model', 'antenna_pattern', 'default_serving_cell', 'trigger_config', 'anr_fixture'] as const;
+export const ANTENNA_PATTERNS = ['iso', 'dipole', 'hw_dipole', 'tr38901'] as const;
+export const POLARIZATIONS = ['V', 'H', 'VH', 'cross'] as const;
