@@ -1,18 +1,24 @@
 'use client';
-import { Sparkline } from '@/components/charts/Sparkline';
+import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
+import { Panel } from '@/components/dashboard/Panel';
 import { useComparePage } from '@/hooks/feature/useComparePage';
 
 export default function ComparePage() {
   const p = useComparePage();
-  const cells = Array.from(new Set(p.picked.flatMap((id) => Object.keys(p.perRunCells[id] ?? {}))));
   return (
-    <section className="page wide">
-      <h1>並看(最多 4 個 run,PrbTotDl 依 sim-time 對齊)</h1>
-      <ul className="picker">{p.candidates.map(({ run, label }) => <li key={run.scene_run_uuid}><label><input type="checkbox" checked={p.picked.includes(run.scene_run_uuid)} onChange={() => p.toggle(run.scene_run_uuid)} /> {label}</label></li>)}</ul>
-      {cells.length > 0 && (
-        <table><thead><tr><th>cell</th>{p.picked.map((id) => <th key={id}>{p.labelOf(id)}</th>)}</tr></thead>
-          <tbody>{cells.map((c) => <tr key={c}><td className="mono">{c}</td>{p.picked.map((id) => <td key={id}><Sparkline points={p.perRunCells[id]?.[c] ?? []} unit="%" yMin={0} yMax={100} /></td>)}</tr>)}</tbody></table>
-      )}
-    </section>
+    <>
+      <header className="pagehead"><h1>並看</h1><span className="muted">最多 4 個 run,同指標同圖,x = sim-time 視窗序</span></header>
+      <div className="card picker">{p.candidates.map(({ run, label }) => { const on = p.picked.includes(run.scene_run_uuid); return (
+        <button key={run.scene_run_uuid} className={`chip ${on ? 'on' : ''}`} style={on ? { borderColor: p.colorOf(run.scene_run_uuid), color: p.colorOf(run.scene_run_uuid) } : undefined} onClick={() => p.toggle(run.scene_run_uuid)}>{label} <span className="mono muted">{run.scene_run_uuid.slice(-4)}</span></button>); })}
+        {!p.candidates.length && <span className="muted">沒有可比的 run</span>}</div>
+      {p.picked.length > 0 && (
+        <div className="grid">
+          <Panel title="平均 PRB DL" span={6}><TimeSeriesChart series={p.charts.prb} unit="%" yMin={0} yMax={100} /></Panel>
+          <Panel title="Σ DL 吞吐" span={6}><TimeSeriesChart series={p.charts.thp} yMin={0} digits={2} /></Panel>
+          <Panel title="平均 SINR" span={4}><TimeSeriesChart series={p.charts.sinr} yMin={-10} yMax={40} /></Panel>
+          <Panel title="附著 UE 數" span={4}><TimeSeriesChart series={p.charts.ue} yMin={0} digits={0} /></Panel>
+          <Panel title="平均 MCS" span={4}><TimeSeriesChart series={p.charts.mcs} yMin={0} yMax={28} /></Panel>
+        </div>)}
+    </>
   );
 }

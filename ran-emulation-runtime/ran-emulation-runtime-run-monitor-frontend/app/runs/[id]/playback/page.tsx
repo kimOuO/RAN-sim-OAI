@@ -1,21 +1,27 @@
 'use client';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { KpmCellTable } from '@/components/run-dashboard/KpmCellTable';
-import { KpmUeTable } from '@/components/run-dashboard/KpmUeTable';
+import { BarChart } from '@/components/charts/BarChart';
+import { Panel } from '@/components/dashboard/Panel';
+import { UeSmallMultiples } from '@/components/dashboard/UeSmallMultiples';
 import { useRunDashboardPage } from '@/hooks/feature/useRunDashboardPage';
+import { fmtSimTime } from '@/hooks/feature/kpmDerive';
 
 export default function PlaybackPage() {
   const { id } = useParams<{ id: string }>();
   const p = useRunDashboardPage(id);
-  if (!p.samples.length) return <p className="muted page">{p.status === 'loading' ? '載入…' : '本 run 沒有封存視窗'}</p>;
-  const idx = p.selectedWindow ?? p.samples.length - 1;
+  if (!p.all.length) return <p className="muted">{p.status === 'loading' ? '載入…' : '本 run 沒有封存視窗'}</p>;
+  const idx = p.selectedWindow ?? p.all.length - 1; const w = p.all[idx];
+  const bars = p.cells.filter((c) => w.per_cell[c]).map((c) => ({ label: c, value: w.per_cell[c].prb_pct_dl, color: p.color[c], sub: `${Object.values(w.per_ue).filter((u) => u.serving_cell === c).length} UE` }));
   return (
-    <section className="page wide">
-      <h1>回放 · {p.sceneName}</h1>
-      <label className="slider">視窗 {idx} / {p.samples.length - 1} · sim-time {(p.samples[idx].sim_time_ms / 1000).toFixed(0)}s
-        <input type="range" min={0} max={p.samples.length - 1} value={idx} onChange={(e) => p.setSelectedWindow(Number(e.target.value))} /></label>
-      <KpmCellTable latest={p.samples[idx]} series={p.cellSeries} ueCount={p.cellUeCount} />
-      <KpmUeTable latest={p.samples[idx]} />
-    </section>
+    <>
+      <header className="runhead"><div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>回放</h1></div></header>
+      <div className="card"><label className="slider"><span>視窗 {w.window_index} · sim-time {fmtSimTime(w.sim_time_ms / 1000)} · {Object.keys(w.per_ue).length} UE</span>
+        <input type="range" min={0} max={p.all.length - 1} value={idx} onChange={(e) => p.setSelectedWindow(Number(e.target.value))} /></label></div>
+      <div className="grid">
+        <Panel title="cell 負載(此視窗)" span={4}><BarChart bars={bars} unit="%" max={100} /></Panel>
+        <Panel title="UE(此視窗)" span={8}><UeSmallMultiples items={p.ueSmall.map((u) => ({ ...u, last: w.per_ue[u.id] ?? null }))} color={p.color} selected={p.selectedUe} onSelect={p.setSelectedUe} /></Panel>
+      </div>
+    </>
   );
 }
