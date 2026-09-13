@@ -58,3 +58,7 @@ def list_run_instances(scene_run_uuid: str) -> list[dict]:
 
 def delete_run_instance(run_instance_uuid: str) -> dict:
     return _registry("Simulation_run/RunInstanceController/delete", {"run_instance_uuid": run_instance_uuid})
+
+
+def list_running_runs() -> list[dict]:
+    return _registry("Simulation_run/SceneRunReader/read", {"status": "running"}).get("data") or []

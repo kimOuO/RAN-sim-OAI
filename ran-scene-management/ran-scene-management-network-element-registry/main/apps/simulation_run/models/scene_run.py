@@ -12,6 +12,7 @@ class SceneRun(models.Model):
     duration_sec = models.IntegerField(default=60)
     status = models.CharField(max_length=16, default='pending')
     cache_path = models.CharField(max_length=512, blank=True, default='')
+    gnb_id_hex = models.CharField(max_length=16, blank=True, default='')   # per-run CU 的 GNB_ID_HEX(22-bit),RIC meid 由此推導
     e2_node_id = models.CharField(max_length=64, blank=True, default='')
     snapshot_json = models.JSONField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)

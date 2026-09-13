@@ -73,12 +73,31 @@ def drop_databases(rid: str) -> None:
         conn.close()
 
 
-def _gnb_id_hex(rid: str) -> str:
-    # 22-bit;OAI 對齊的 0xe00 為基底,per run 加一個 8-bit 位移(不同 run → 不同 E2 node id)
-    return f"0x{(0x000e00 + (int(rid, 16) % 0xff) + 1) & 0x3fffff:06x}"
+# ── E2 node 身分(RIC e2mgr 以 PLMN + gNB ID 推導 meid,兩個 run 同 ID 會互相覆蓋)──
+# PLMN 固定 208/95;gNB ID 22-bit,基底 0x000e00(OAI 對齊),低 9 bit(0x001–0x1ff)當 run 槽位。
+# RIC 端看到的 inventoryName = gnb_208_095_000e01 … gnb_208_095_000fff。
+GNB_ID_BASE = 0x000e00
+GNB_ID_SLOTS = 0x1ff
 
 
-def spawn(scene_run_uuid: str, mode: str) -> dict[str, dict]:
+def gnb_id_hex_for_slot(slot: int) -> str:
+    assert 1 <= slot <= GNB_ID_SLOTS
+    return f"0x{(GNB_ID_BASE | slot) & 0x3fffff:06x}"
+
+
+def e2_node_name(gnb_id_hex: str, mcc: str = "208", mnc: str = "95") -> str:
+    return f"gnb_{mcc}_{mnc.zfill(3)}_{int(gnb_id_hex, 16):06x}"
+
+
+def allocate_slot(used_gnb_id_hex: list[str]) -> int:
+    used = {int(h, 16) & GNB_ID_SLOTS for h in used_gnb_id_hex if h}
+    for k in range(1, GNB_ID_SLOTS + 1):
+        if k not in used:
+            return k
+    raise RuntimeError("E2 node 槽位用完(同時最多 511 個 run)")
+
+
+def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None) -> dict[str, dict]:
     """起四個容器;回傳 {role: {name, container_id, host_port}}。已存在同名容器先移除(上次沒清乾淨)。"""
     rid = rid_of(scene_run_uuid); names = names_for(scene_run_uuid); tpl = _load_template()
     client = docker.from_env()
@@ -89,8 +108,8 @@ def spawn(scene_run_uuid: str, mode: str) -> dict[str, dict]:
         spec = tpl[role]
         env = {k: v.format(**subst) if "{" in v else v for k, v in spec["env"].items()}
         env["SCENE_RUN_UUID"] = scene_run_uuid
-        if role == "cu":
-            env["GNB_ID_HEX"] = _gnb_id_hex(rid)
+        if role == "cu" and gnb_id_hex:
+            env["GNB_ID_HEX"] = gnb_id_hex
         if role == "ru":
             env["RU_CHANNEL_MODE"] = mode
         vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in spec["volumes"]}

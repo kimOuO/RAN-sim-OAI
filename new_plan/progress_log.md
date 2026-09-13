@@ -218,3 +218,10 @@
 - 第二個 run 達成倍速 0.47×(設定 1×)需查(RU 2 個 gunicorn sync worker?)。
 - 共用的 cu/du/ru/ue compose 服務仍在(legacy Dashboard 用);之後可拿掉。
 - UDS/msgpack 傳輸(§11 決策②)未動。
+
+## P4-1b E2 node 身分槽位(2026-09-13,回 RIC 端的可行性問題)
+
+- RIC 端(e2mgr)以 E2 Setup 的 PLMN + gNB ID 推導 meid(`gnb_208_095_000e00`),同 ID 的 run 會互相覆蓋 → 每 run 必須唯一。
+- 我們的身分本來就是 CU env(`PLMN_MCC/PLMN_MNC/GNB_ID_HEX/GNB_ID_LENGTH`)。改成確定性分配:PLMN 固定 208/95,gNB ID 22-bit 基底 `0x000e00`,**低 9 bit 當 run 槽位**(0x001–0x1ff,同時最多 511 run);orchestrator start 時從 registry 執行中 run 的 `gnb_id_hex` 反推已用槽位,取最小空位,寫回 `scene_run.gnb_id_hex / e2_node_id`(新欄位 + migration `simulation_run 0002`)。
+- 實測兩個 run:`cu-49117e33` 宣告 `0x00000e01`(3585)、`cu-388e8e0a` 宣告 `0x00000e02`(3586),PLMN 208/095;registry 記 `gnb_208_095_000e01 / 000e02`。
+- E2Adapter 多 node(每 run 一條 SCTP)仍待做(P4-2),需 RIC 端可連才能驗。

@@ -159,7 +159,7 @@ class LaunchController:
             UUID_FIELD: UUIDService.generate_uuid("launch_request"), "launch_request_created_at": now, "launch_request_updated_at": now,
             "f_scene_run_uuid": run_uuid, "action": "start", "mode": str(run.get("mode") or "cached"), "speed_x": speed_x, "status": "accepted"})
         try:
-            ue_host = None; cu_host = None; instances: dict[str, dict] = {}
+            ue_host = None; cu_host = None; instances: dict[str, dict] = {}; e2_node = ""; gnb_id_hex = ""
             if settings.PER_RUN_ENABLED:
                 mode = str(run.get("mode") or "cached")
                 if mode == "live" and container_spawner.live_run_exists(run_uuid):
@@ -167,7 +167,12 @@ class LaunchController:
                 # 舊的 run_instance 列清掉(重跑)
                 for old in platform_clients.list_run_instances(run_uuid):
                     platform_clients.delete_run_instance(old["run_instance_uuid"])
-                spawned = container_spawner.spawn(run_uuid, mode)
+                # E2 node 身分:從執行中 run 的 e2_node_id 反推已用槽位,配一個沒人用的(RIC 以 PLMN+gNB ID 當 meid)
+                used = [r.get("gnb_id_hex") or "" for r in platform_clients.list_running_runs() if r.get("scene_run_uuid") != run_uuid]
+                slot = container_spawner.allocate_slot(used)
+                gnb_id_hex = container_spawner.gnb_id_hex_for_slot(slot)
+                e2_node = container_spawner.e2_node_name(gnb_id_hex)
+                spawned = container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex)
                 for role, info in spawned.items():
                     r = platform_clients.create_run_instance(run_uuid, role, info["container_id"], info["host_port"])
                     instances[role] = {**info, "run_instance_uuid": (r.get("data") or {}).get("run_instance_uuid")}
@@ -181,7 +186,8 @@ class LaunchController:
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "started" if ok else "failed", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
             if ok:
-                platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat())
+                platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat(),
+                                                  **({"e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex} if settings.PER_RUN_ENABLED else {}))
                 cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
@@ -201,7 +207,7 @@ class LaunchController:
                 pass
             return error_response("launch failed", str(exc), 502)
         logger.info("run %s started (speed %.2fx, sim_dt %d)", run_uuid, speed_x, sim_dt_ms)
-        return success_response({"scene_run_uuid": run_uuid, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms, "ue": ue.get("data"), "instances": {r: {k: v for k, v in i.items() if k != "run_instance_uuid"} for r, i in instances.items()}}, "started", 201)
+        return success_response({"scene_run_uuid": run_uuid, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms, "ue": ue.get("data"), "e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex, "instances": {r: {k: v for k, v in i.items() if k != "run_instance_uuid"} for r, i in instances.items()}}, "started", 201)
 
     @staticmethod
     @csrf_exempt
