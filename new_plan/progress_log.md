@@ -307,3 +307,10 @@
 - 加 `encode_e2_removal_request()`(唯一 IE TransactionID;往返自測 13 bytes);`graceful_shutdown` 先送 Removal、等回應最多 2 s、失敗才退回 Reset(env `E2_SHUTDOWN_PROCEDURE=reset` 可強制舊行為)。
 - 實測:`docker stop e2adapter-388e8e0a` → 08:00:15 UTC 送出 Removal Request(13 bytes),2 s 內 RIC 沒回 Response;重新 spawn 後 08:00:40 Setup 再成功。RIC 端是否有處理 Removal(R-NIB 移除 `gnb_208_095_000e02`)待他們確認。
 - 共用 cu/du/ru/ue/e2adapter 先不退場(使用者決定)。
+
+## P5-2 Physics 座標系轉 z-up(2026-09-13)
+
+- 新增 `ran_calculation/frame.py`:engine 邊界做 Rx(+90°)—— 位置 ours (x,y,z) → Sionna (x,−z,y)(tx / rx / 速度);Mitsuba XML 載入時對每個 shape 的 `to_world` 補 `<rotate x=1 angle=90>`(相對檔名改絕對)寫暫存檔,既有場景檔不用重產。env `PHY_FRAME=zup`(預設)| `yup`(舊行為)。
+- orientation 回到單純定義:α = 90° − 羅盤方位、β = +tilt(正 = 往下),與 z-up 空場景 `look_at` 完全一致(E→0,0;S→α=−90;N→+90;下方 35°→β=+35.5)。
+- 自由空間驗證:**極化** V→V −65.6 / V→H −336 / H→H −65.6 dB(以前躺平時 V 極化沿南向,分不出 V/H);**方位** az 90/180/0/270 各朝東/南/北/西最大、135 東南;**下傾** az=90 與 az=180 行為一致、單調(+35 → 下方 UE +3.5 dB),az=180 不再有 −200 dB 假 null;**幾何** 東 20 m 放 10×15×10 建築,正後方 UE −19.5 dB、側邊不變 → 幾何與位置轉的是同一個框架。
+- 影響:所有 live / precompute 數值改變。現有 cached run 只有 corridor 四份(方位 0°、1×1 V,誤差幾 dB 級),舊檔改名 `*.legacyframe.npz` 留對照,重算四份;其他 25 份舊 npz 沒 run 在用,歸檔。

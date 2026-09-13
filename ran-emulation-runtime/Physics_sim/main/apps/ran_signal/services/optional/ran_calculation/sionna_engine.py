@@ -99,7 +99,11 @@ class SionnaEngine:
         self._solver = rt.PathSolver()
 
         # 載場景
-        self._scene = rt.load_scene(mitsuba_scene_path)
+        # P5-2:z-up 框架 —— 幾何補 Rx(+90°)、位置進 Sionna 前轉(見 frame.py)
+        from .frame import adapt_scene_xml, to_sionna, is_zup
+        self._to_sionna = to_sionna
+        self._zup = is_zup()
+        self._scene = rt.load_scene(adapt_scene_xml(mitsuba_scene_path))
 
         # 主動檢查:這個場景的材質是否支援使用者要求的頻率?
         # 不支援就 raise SceneFrequencyMismatch（會帶詳細訊息),不再偷偷 fallback。
@@ -147,7 +151,7 @@ class SionnaEngine:
                     self._cell_tilts[tx_name] = tilt_deg
                     tx = rt.Transmitter(
                         name=tx_name,
-                        position=tx_position,
+                        position=self._to_sionna(tx_position),
                         orientation=self._orientation(azimuth_rad, tilt_deg),
                     )
                     self._scene.add(tx)
@@ -163,7 +167,7 @@ class SionnaEngine:
                 self._cell_tilts[g["name"]] = tilt_deg
                 tx = rt.Transmitter(
                     name=g["name"],
-                    position=g["position"],
+                    position=self._to_sionna(g["position"]),
                     orientation=self._orientation(azimuth_rad, tilt_deg),
                 )
                 self._scene.add(tx)
@@ -196,6 +200,9 @@ class SionnaEngine:
         legacy 模式保留舊行為(azimuth 直接進 α,物理上是仰角;只給對照舊 cache)。"""
         if self._orientation_mode == "legacy":
             return [azimuth_rad, 0.0, 0.0]
+        if self._zup:
+            # z-up 世界:α = 繞 z 的方位(羅盤 0=北=+y_s, 90=東=+x),β = 繞 y 的俯仰(正 = 往下,-z)
+            return [math.radians(90.0) - azimuth_rad, math.radians(tilt_deg), 0.0]
         t = math.radians(tilt_deg)
         dx, dy, dz = math.sin(azimuth_rad) * math.cos(t), -math.sin(t), -math.cos(azimuth_rad) * math.cos(t)
         if abs(dx) < 1e-6 and abs(dy) < 1e-6:
@@ -211,6 +218,7 @@ class SionnaEngine:
             "ue": [self.ue_antenna_pattern, self.ue_polarization, self.ue_array_rows, self.ue_array_cols, self.ue_v_spacing, self.ue_h_spacing],
             "tilts": dict(sorted(self._cell_tilts.items())),
             "orientation_mode": self._orientation_mode,
+            "frame": "zup" if self._zup else "yup",
         }
 
     def close(self) -> None:
@@ -240,7 +248,7 @@ class SionnaEngine:
 
         rt = self._rt
         dummy_pos = [0.0, 1.5, 0.0]
-        dummy = rt.Receiver(name="__warmup__", position=dummy_pos)
+        dummy = rt.Receiver(name="__warmup__", position=self._to_sionna(dummy_pos))
         self._scene.add(dummy)
 
         t0 = time.time()
@@ -278,8 +286,8 @@ class SionnaEngine:
 
         # 放新 Receivers
         for u in ue_positions:
-            rx = rt.Receiver(name=u["id"], position=u["position"])
-            rx.velocity = u.get("velocity", [0.0, 0.0, 0.0])
+            rx = rt.Receiver(name=u["id"], position=self._to_sionna(u["position"]))
+            rx.velocity = self._to_sionna(u.get("velocity", [0.0, 0.0, 0.0]))
             scene.add(rx)
 
         # 跑光追
