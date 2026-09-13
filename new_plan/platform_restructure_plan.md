@@ -660,6 +660,20 @@ Stop / 改倍速 / 起 run 全部在**管理平台**的場景列表頁(§3 第 2
 4. orchestrator 起 run 時設 `uds` + 掛 socket 目錄
 5. 驗收:同一場景 http 與 uds 各跑一次,**KPM 逐 window 相等**(傳輸不該改值),wall tick 由 ~63ms 降到 ~20ms 以下
 
+### 11.8 實測後修正(2026-09-13,P4-3 之後)
+
+per-run 容器 + cached + `DU_RU_INPROCESS=on` 下,直接掃 DU 的 wall tick(新加的 `TickController/read.body_ms` = tick body 耗時):
+
+| wall_tick 設定 | 設定倍速 | 達成倍速 | body avg / max (ms) |
+|---|---|---|---|
+| 250 ms | 2× | 2.0 | 31–46 / 78 |
+| 50 ms | 10× | 10.0 | 16 / 33 |
+| 15 ms | 33× | **22** | 16 / 33 |
+
+11.3 的「每 tick wall ≈63ms,其中跨容器 RTT ≈45ms、上限 7–8×」**已不成立**:`dl_tti` 改非阻塞後 HTTP 不在 tick 關鍵路徑上,剩下的 16 ms 是 DU 自己的計算(slot engine / PF / RLC),max 33 ms 是每 2 tick 一次的 PM 視窗與 CU 量測回報。DU 單獨的上限約 **20–25×**。
+
+**決定:② UDS/msgpack 不做**(收益 ≈ 每 tick 省一條背景 HTTP thread,對 body 沒幫助)。要再往上是 profile tick body(slot engine 向量化 / PM 視窗搬到背景執行緒),那是另一個題目;目前 3–4 個 run 各跑 5–10× 已遠超需求。`ran_sim_protocol` 維持不動。
+
 ---
 
 ## §12 決策彙整(2026-09-12 拍板)

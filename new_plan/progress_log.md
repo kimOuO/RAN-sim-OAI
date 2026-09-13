@@ -250,3 +250,9 @@
 - 修法:DU / RU 的 `MODE_FILE` 改可由 env `CHANNEL_MODE_FILE` 指定;orchestrator 對同 run 的 du/ru 設 `/data/channel_cache/.mode.<rid>`。舊共用 `.mode` 只剩 legacy 共用容器在用。
 - 驗證:兩 run 重起後 `.mode.49117e33 = cached:corridor_00_08`、`.mode.388e8e0a = cached:corridor_16_24`,各 DU 只載入自己的 cache(各一行 loaded);20 s 取樣 run2 ≈ 1.0×(0.89–1.11,量測窗 1 s / 2 tick 的粒度抖動)、run1 ≈ 2.0×。
 - 教訓:P4 之前「共用目錄上的狀態檔」都要檢查;目前已知只有這一個。
+
+## P4-4 傳輸層(②)實測後決定不做(2026-09-13)
+
+- DU `TickController/read` 新增 `body_ms {avg,max}`(tick body wall 耗時,近 1 s 視窗),serializer 補欄位。
+- 掃 wall_tick 250 → 50 → 15 ms:達成 2.0× / 10.0× / **22×**,body avg 16 ms、max 33 ms。HTTP 已不在關鍵路徑(`dl_tti` 非阻塞),瓶頸是 DU 自身計算 → §11.3 的 63 ms / 7–8× 估計作廢,寫成 §11.8。
+- **決定:UDS/msgpack 不做**;要更快是 profile tick body,另開題。

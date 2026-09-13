@@ -120,6 +120,7 @@ class TickController:
                 "sim_dt_ms": runner.sim_dt_ms,
                 "sim_speed_x": runner.sim_speed_x,
                 "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
+                "body_ms": runner.body_ms,   # tick body 耗時 avg/max(倍速上限診斷)
                 "report_every_n_ticks": runner.REPORT_EVERY_N_TICKS,
                 "ue_registry": list(runner._ue_registry.keys()),
                 "ue_latest": ue_latest,         # 瞬時 RSRP/SINR/neighbors
@@ -268,4 +269,5 @@ def _status_dict() -> dict:
         "sim_dt_ms": runner.sim_dt_ms,
         "sim_speed_x": runner.sim_speed_x,
         "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
+        "body_ms": runner.body_ms,
     }).data

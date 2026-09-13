@@ -170,6 +170,10 @@ class TickRunner:
         # 0.0 = 尚未量到(剛啟動 < 1s)。
         self._achieved_speed_x: float = 0.0
         self._achv_window_start_wall: float = 0.0
+        # tick body 實際耗時(wall ms):近 ~1s 視窗的平均 / 最大,給倍速上限診斷用(2026-09-13)
+        self._body_ms_avg: float = 0.0
+        self._body_ms_max: float = 0.0
+        self._body_acc: list[float] = []
         self._achv_window_start_tick: int = 0
         # 改動一 shadow — per-UE 跨 tick 持有的 slot 引擎狀態(backlog/HARQ/slot 時鐘累積用)
         self._slot_states: dict[str, Any] = {}
@@ -187,6 +191,12 @@ class TickRunner:
         """
         with self._tick_ms_lock:
             return self._achieved_speed_x
+
+    @property
+    def body_ms(self) -> dict[str, float]:
+        """近 ~1s 視窗 tick body 的 wall 耗時 {avg, max}(ms)。avg 越接近 wall_tick_ms 就越到上限。"""
+        with self._tick_ms_lock:
+            return {"avg": self._body_ms_avg, "max": self._body_ms_max}
 
     @property
     def wall_tick_ms(self) -> int:
@@ -454,10 +464,12 @@ class TickRunner:
         )
         next_t = time.time()
         while not self._stop_event.is_set():
+            _t0 = time.perf_counter()
             try:
                 self._tick_body()
             except Exception as e:
                 logger.exception("tick body error: %s", e)
+            self._body_acc.append((time.perf_counter() - _t0) * 1000.0)
             # P0a — 更新 achieved_speed_x(每 ~1s wall 重算一次,純觀測不影響節拍)
             self._update_achieved_speed()
             # 每輪重讀 wall_tick_ms,set_tick_ms() 變更下一輪即生效
@@ -486,8 +498,11 @@ class TickRunner:
         if dw >= 1.0:
             dtick = self.status.tick_count - self._achv_window_start_tick
             achieved = dtick * self._sim_dt_ms / 1000.0 / dw
+            acc = self._body_acc; self._body_acc = []
             with self._tick_ms_lock:
                 self._achieved_speed_x = round(achieved, 3)
+                if acc:
+                    self._body_ms_avg = round(sum(acc) / len(acc), 2); self._body_ms_max = round(max(acc), 2)
             self._achv_window_start_wall = now
             self._achv_window_start_tick = self.status.tick_count
 
