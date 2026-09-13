@@ -451,7 +451,7 @@ def graceful_shutdown(reason: str = "om-intervention") -> None:
         except Exception:
             pass
         sock.close()
-        logger.info("graceful shutdown: E2 Reset sent, SCTP closed")
+        logger.info("graceful shutdown: %s sent, SCTP closed", "E2 Removal" if sent_removal else "E2 Reset")
     except Exception:  # noqa: BLE001
         logger.exception("graceful shutdown failed")
 

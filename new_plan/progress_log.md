@@ -300,3 +300,10 @@
 - 修 archiver:E2Adapter `ControlAuditReader` 回 `{commands:[…]}` 不是 list,之前一筆都封存不到;現在對映 command→action_type、result→target、acked→ACK、rttMs→landing_latency_ms。既有 seq=1 那筆在 prime 之前,不回補;下一筆控制起會進 `run_control_event`(監控頁「RIC 命令」面板)。
 - orchestrator 啟動時自動接回 status=running 的 run 的 archiver / 健康輪詢(以前重啟 orchestrator 會丟)。
 - 結論:P4 的驗收條件「兩個不同場景同時跑、RIC 看到兩個 E2 node、KPM/控制互不干擾」達成。剩:共用 cu/du/ru/ue/e2adapter(000e00)退場時機、E2 Removal(目前用 E2 Reset + 關 SCTP 收尾)。
+
+## P4-8 收尾改送 E2 Removal(2026-09-13)
+
+- Reset 是「連線重來、訂閱清掉、我還在」,Removal(E2AP v2 §8.3.9,本 schema procedureCode 13)才是「我要下線,請移除」;用 Reset 收尾 RIC 端仍會留 DISCONNECTED 殘留,而且槽位重用時會踩到 m-release「stale record → 5 分鐘」路徑。
+- 加 `encode_e2_removal_request()`(唯一 IE TransactionID;往返自測 13 bytes);`graceful_shutdown` 先送 Removal、等回應最多 2 s、失敗才退回 Reset(env `E2_SHUTDOWN_PROCEDURE=reset` 可強制舊行為)。
+- 實測:`docker stop e2adapter-388e8e0a` → 08:00:15 UTC 送出 Removal Request(13 bytes),2 s 內 RIC 沒回 Response;重新 spawn 後 08:00:40 Setup 再成功。RIC 端是否有處理 Removal(R-NIB 移除 `gnb_208_095_000e02`)待他們確認。
+- 共用 cu/du/ru/ue/e2adapter 先不退場(使用者決定)。
