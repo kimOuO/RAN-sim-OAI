@@ -22,9 +22,17 @@ from django.conf import settings
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
-ROLES = ("cu", "du", "ru", "ue")
+ROLES = ("cu", "du", "ru", "ue", "e2adapter")   # e2adapter 走 host network(SCTP 綁 host IP),每 run 一條 association → RIC 看到一個 E2 node
 _TEMPLATE = Path(__file__).with_name("per_run_template.json")
-HEALTH_PATH = {"cu": "/api/v0.1/CU/E2/E2NodeId/read", "du": "/api/v0.1/DU/Tick/TickController/read", "ru": "/api/v0.1/RU/State/RuStateReader/read", "ue": "/api/v0.1/UE/Status/read"}
+HEALTH_PATH = {"cu": "/api/v0.1/CU/E2/E2NodeId/read", "du": "/api/v0.1/DU/Tick/TickController/read", "ru": "/api/v0.1/RU/State/RuStateReader/read", "ue": "/api/v0.1/UE/Status/read", "e2adapter": "/api/v0.1/E2Adapter/Status/AdapterStatusReader/read"}
+E2ADAPTER_PORT_BASE = 8400   # per-run adapter HTTP port = 8400 + 槽位(host network,要唯一)
+
+
+def health_url(role: str, name: str, host_port: int | None) -> str:
+    """host network 的 e2adapter 不在 ransim-net,從 orchestrator 走 host.docker.internal:port"""
+    if role == "e2adapter":
+        return f"http://host.docker.internal:{host_port}{HEALTH_PATH[role]}"
+    return f"http://{name}:8000{HEALTH_PATH[role]}"
 
 
 def rid_of(scene_run_uuid: str) -> str:
@@ -97,15 +105,18 @@ def allocate_slot(used_gnb_id_hex: list[str]) -> int:
     raise RuntimeError("E2 node 槽位用完(同時最多 511 個 run)")
 
 
-def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None) -> dict[str, dict]:
+def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: int = 1, roles: tuple[str, ...] = ROLES, cu_host_port: int | None = None) -> dict[str, dict]:
     """起四個容器;回傳 {role: {name, container_id, host_port}}。已存在同名容器先移除(上次沒清乾淨)。"""
     rid = rid_of(scene_run_uuid); names = names_for(scene_run_uuid); tpl = _load_template()
     client = docker.from_env()
-    subst = {**names, "db_cu": f"cu_{rid}", "db_du": f"du_{rid}", "db_ru": f"ru_{rid}"}
-    create_databases(rid)
+    subst = {**names, "db_cu": f"cu_{rid}", "db_du": f"du_{rid}", "db_ru": f"ru_{rid}", "cu_port": "0", "e2_port": str(E2ADAPTER_PORT_BASE + slot)}
+    if "cu" in roles:
+        create_databases(rid)
     out: dict[str, dict] = {}
-    for role in ROLES:
+    for role in roles:
         spec = tpl[role]
+        if role == "e2adapter":
+            subst["cu_port"] = str(cu_host_port or out["cu"]["host_port"])   # adapter 在 host network,經 CU 的 host port 打 per-run CU
         env = {k: v.format(**subst) if "{" in v else v for k, v in spec["env"].items()}
         env["SCENE_RUN_UUID"] = scene_run_uuid
         if role == "cu" and gnb_id_hex:
@@ -116,25 +127,27 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None) -> dict
         old = client.containers.list(all=True, filters={"name": f"^{names[role]}$"})
         for c in old:
             c.remove(force=True)
-        c = client.containers.run(spec["image"], name=names[role], hostname=names[role], detach=True, environment=env, volumes=vols, network=settings.PER_RUN_NETWORK,
-                                  ports={"8000/tcp": None}, extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
+        host_net = spec.get("network_mode") == "host"
+        net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": None}, "hostname": names[role]}
+        c = client.containers.run(spec["image"], name=names[role], detach=True, environment=env, volumes=vols, **net_kw,
+                                  extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
                                   command=spec.get("command"), labels={"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": role})
         c.reload()
-        port = int(c.attrs["NetworkSettings"]["Ports"]["8000/tcp"][0]["HostPort"])
+        port = int(subst["e2_port"]) if host_net else int(c.attrs["NetworkSettings"]["Ports"]["8000/tcp"][0]["HostPort"])
         out[role] = {"name": names[role], "container_id": c.id[:12], "host_port": port}
         logger.info("spawned %s (%s) host_port=%d", names[role], c.id[:12], port)
     return out
 
 
-def wait_healthy(names: dict[str, str], timeout_sec: float = 300.0) -> dict[str, bool]:
-    """等每個容器的 HTTP 起來(entrypoint 會先 migrate,CU/DU 約 20–60 s)。"""
-    ok = {r: False for r in ROLES}; t0 = time.time()
+def wait_healthy(instances: dict[str, dict], timeout_sec: float = 300.0) -> dict[str, bool]:
+    """等每個容器的 HTTP 起來(entrypoint 會先 migrate,CU/DU 約 20–60 s)。instances = {role: {name, host_port}}"""
+    ok = {r: False for r in instances}; t0 = time.time()
     while time.time() - t0 < timeout_sec and not all(ok.values()):
-        for r in ROLES:
+        for r, inst in instances.items():
             if ok[r]:
                 continue
             try:
-                req = urllib.request.Request(f"http://{names[r]}:8000{HEALTH_PATH[r]}", data=b"{}", headers={"content-type": "application/json"})
+                req = urllib.request.Request(health_url(r, inst["name"], inst.get("host_port")), data=b"{}", headers={"content-type": "application/json"})
                 with urllib.request.urlopen(req, timeout=3) as resp:
                     ok[r] = resp.status < 500
             except Exception:  # noqa: BLE001

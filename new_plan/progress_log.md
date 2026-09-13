@@ -225,3 +225,20 @@
 - 我們的身分本來就是 CU env(`PLMN_MCC/PLMN_MNC/GNB_ID_HEX/GNB_ID_LENGTH`)。改成確定性分配:PLMN 固定 208/95,gNB ID 22-bit 基底 `0x000e00`,**低 9 bit 當 run 槽位**(0x001–0x1ff,同時最多 511 run);orchestrator start 時從 registry 執行中 run 的 `gnb_id_hex` 反推已用槽位,取最小空位,寫回 `scene_run.gnb_id_hex / e2_node_id`(新欄位 + migration `simulation_run 0002`)。
 - 實測兩個 run:`cu-49117e33` 宣告 `0x00000e01`(3585)、`cu-388e8e0a` 宣告 `0x00000e02`(3586),PLMN 208/095;registry 記 `gnb_208_095_000e01 / 000e02`。
 - E2Adapter 多 node(每 run 一條 SCTP)仍待做(P4-2),需 RIC 端可連才能驗。
+
+## P4-2 E2Adapter per-run(2026-09-13)
+
+**決定**:不把 1529 行的單連線 `sctp_loop`(模組級 `_ACTIVE_SUBS` / socket lock / 狀態 singleton / ring)改成多 association,改成 **每 run 一個 adapter 容器** `e2adapter-<rid>`(host network,SCTP 綁 host IP、各自 ephemeral port;HTTP 8400+槽位),`SIM_CU_URL` 指到該 run 的 CU host port。RIC 端效果相同:N 個 run = N 條 association = N 個 E2 node(`gnb_208_095_000e0N`),訂閱/控制天然依 meid 分流。對 RIC 端的問題「adapter 一對一還是一對多」答:**一對一(每場景一個 adapter)**。
+- `per_run_template.json` 加 `e2adapter`(佔位 `{cu_port}` `{e2_port}`);spawner 支援 `network_mode: host`、`roles` 子集、`cu_host_port`;`health_url` 對 host-network 容器走 `host.docker.internal:port`。
+- **兩階段 spawn**:cu/du/ru/ue → 等健康 → 才起 e2adapter(adapter 起來就抓 CU 的 E2 node id 送 E2 Setup;CU 沒 ready 會抓失敗然後進 5 分鐘 backoff)。
+- archiver 的 ControlAudit 改讀該 run 的 adapter;monitor E2 面狀態改依 `run_instance` role=e2adapter 的 port。
+- registry `run_instance` 多一列 role=e2adapter。
+
+**驗證**
+- 兩個 run 同時:`e2adapter-49117e33`(:8401,CU :32796)送 E2 Setup ranName `gnb_208_095_000e01`;`e2adapter-388e8e0a`(:8402)送 `gnb_208_095_000e02`;各 `pdu_sent_count=1`。
+- RIC(10.3.0.71:36422)目前對所有 association 都 `Connection reset by peer`(含原本共用 adapter),所以 E2 Setup Response / 多 node 註冊 **尚未驗證**,要等 RIC 端修好。
+
+**待辦**
+- 停 run 時先送 E2 Reset / 關 association 再停容器(現在是容器 SIGTERM 直接斷)。
+- 共用 `e2adapter`(gnb_…000e00)仍在 compose 裡,會多註冊一個 node;RIC 可連後決定是否拿掉。
+- adapter backoff 5 分鐘(RIC m-release bug 對策)在 per-run 情境下可能太長。

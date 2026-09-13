@@ -32,7 +32,7 @@ class HealthMonitor(threading.Thread):
                     alive = False
                     if st.get(role) == "running":
                         try:
-                            req = urllib.request.Request(f"http://{names[role]}:8000{container_spawner.HEALTH_PATH[role]}", data=b"{}", headers={"content-type": "application/json"})
+                            req = urllib.request.Request(container_spawner.health_url(role, names[role], inst.get("host_port")), data=b"{}", headers={"content-type": "application/json"})
                             with urllib.request.urlopen(req, timeout=3) as resp:
                                 alive = resp.status < 500
                         except Exception:  # noqa: BLE001

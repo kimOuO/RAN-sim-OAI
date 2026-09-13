@@ -40,7 +40,7 @@ def _stamp(prefix: str) -> dict[str, Any]:
 
 
 class RunArchiver(threading.Thread):
-    def __init__(self, scene_run_uuid: str, sim_dt_ms: int, poll_sec: float = 2.0, cu_host: str | None = None) -> None:
+    def __init__(self, scene_run_uuid: str, sim_dt_ms: int, poll_sec: float = 2.0, cu_host: str | None = None, e2_port: int | None = None) -> None:
         super().__init__(name=f"archiver-{scene_run_uuid[-8:]}", daemon=True)
         self.run_uuid = scene_run_uuid
         self.sim_dt_ms = max(1, int(sim_dt_ms))
@@ -54,7 +54,7 @@ class RunArchiver(threading.Thread):
         self.ticks_so_far = (last.sim_time_ms // self.sim_dt_ms) if last else 0   # CellMeasurementLog.tick_count 是「窗內 tick 數」,累計才是 sim-time
         self.stats = {"samples": 0, "handover": 0, "rlf": 0, "control": 0, "polls": 0, "errors": 0}
         self._cu = f"http://{cu_host or settings.HTTP_CU_HOST}:{8000 if cu_host else settings.HTTP_CU_PORT}/api/v0.1/CU/Logs/TelemetryExportReader/read"   # per-run CU(P4-1)或共用 CU
-        self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"
+        self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{e2_port or settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"   # per-run adapter(P4-2)或共用
 
     # 啟動時先把游標推到「現在」,只封存本 run 開始後的資料(CU 表跨 run 累積)
     def prime(self) -> None:
@@ -139,12 +139,12 @@ class RunArchiver(threading.Thread):
             self.stats["samples"] += 1
 
 
-def start_archiver(scene_run_uuid: str, sim_dt_ms: int, cu_host: str | None = None) -> RunArchiver:
+def start_archiver(scene_run_uuid: str, sim_dt_ms: int, cu_host: str | None = None, e2_port: int | None = None) -> RunArchiver:
     with _lock:
         old = _threads.get(scene_run_uuid)
         if old and old.is_alive():
             return old
-        t = RunArchiver(scene_run_uuid, sim_dt_ms, cu_host=cu_host)
+        t = RunArchiver(scene_run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)
         _threads[scene_run_uuid] = t
         t.start()
         return t

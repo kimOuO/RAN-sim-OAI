@@ -24,4 +24,4 @@ export interface E2AdapterStatus { sctp_link: { enabled: boolean; target_host: s
 /** 圖表用的序列 */
 export interface Pt { x: number; y: number | null; }
 export interface Series { key: string; label: string; color: string; points: Pt[]; }
-export interface RunInstance { run_instance_uuid: string; role: 'cu' | 'du' | 'ru' | 'ue'; container_id: string; host_port: number | null; status: string; last_heartbeat: string | null; f_scene_run_uuid: string; }
+export interface RunInstance { run_instance_uuid: string; role: 'cu' | 'du' | 'ru' | 'ue' | 'e2adapter'; container_id: string; host_port: number | null; status: string; last_heartbeat: string | null; f_scene_run_uuid: string; }

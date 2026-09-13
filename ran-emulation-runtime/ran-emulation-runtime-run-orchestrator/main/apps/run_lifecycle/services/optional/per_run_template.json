@@ -200,5 +200,35 @@
    "host.docker.internal=host-gateway"
   ],
   "command": null
+ },
+ "e2adapter": {
+  "image": "ransim-e2adapter:platform",
+  "env": {
+   "ADAPTER_HTTP_PORT": "{e2_port}",
+   "ASN1_SCHEMA_DIR": "/app/asn1",
+   "DJANGO_ALLOWED_HOSTS": "*",
+   "DJANGO_DEBUG": "True",
+   "DJANGO_SECRET_KEY": "change-me",
+   "E2SM_ANR_ENABLE": "on",
+   "E2SM_CCC_ENABLE": "on",
+   "E2SM_FULLKPM_ENABLE": "on",
+   "E2_ADAPTER_LINK_ENABLED": "1",
+   "LOG_DIR": "/app/logs",
+   "RC_MODULE_V10": "on",
+   "RIC_E2TERM_HOST": "10.3.0.71",
+   "RIC_E2TERM_PORT": "36422",
+   "SCTP_BIND_IP": "10.3.0.217",
+   "SIM_CU_URL": "http://127.0.0.1:{cu_port}"
+  },
+  "volumes": [
+   {
+    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-E2Adapter",
+    "target": "/app",
+    "ro": false
+   }
+  ],
+  "extra_hosts": null,
+  "command": null,
+  "network_mode": "host"
  }
 }

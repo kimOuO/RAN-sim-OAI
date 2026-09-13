@@ -159,7 +159,7 @@ class LaunchController:
             UUID_FIELD: UUIDService.generate_uuid("launch_request"), "launch_request_created_at": now, "launch_request_updated_at": now,
             "f_scene_run_uuid": run_uuid, "action": "start", "mode": str(run.get("mode") or "cached"), "speed_x": speed_x, "status": "accepted"})
         try:
-            ue_host = None; cu_host = None; instances: dict[str, dict] = {}; e2_node = ""; gnb_id_hex = ""
+            ue_host = None; cu_host = None; e2_port = None; instances: dict[str, dict] = {}; e2_node = ""; gnb_id_hex = ""
             if settings.PER_RUN_ENABLED:
                 mode = str(run.get("mode") or "cached")
                 if mode == "live" and container_spawner.live_run_exists(run_uuid):
@@ -172,14 +172,20 @@ class LaunchController:
                 slot = container_spawner.allocate_slot(used)
                 gnb_id_hex = container_spawner.gnb_id_hex_for_slot(slot)
                 e2_node = container_spawner.e2_node_name(gnb_id_hex)
-                spawned = container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex)
-                for role, info in spawned.items():
-                    r = platform_clients.create_run_instance(run_uuid, role, info["container_id"], info["host_port"])
-                    instances[role] = {**info, "run_instance_uuid": (r.get("data") or {}).get("run_instance_uuid")}
-                health = container_spawner.wait_healthy({r: i["name"] for r, i in instances.items()})
+                # 兩階段:先 cu/du/ru/ue → 等健康 → 再起 e2adapter(它啟動就抓 CU 的 E2 node id 送 E2 Setup,CU 要先 ready)
+                def _register(spawned: dict[str, dict]) -> None:
+                    for role, info in spawned.items():
+                        r = platform_clients.create_run_instance(run_uuid, role, info["container_id"], info["host_port"])
+                        instances[role] = {**info, "run_instance_uuid": (r.get("data") or {}).get("run_instance_uuid")}
+                _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue")))
+                health = container_spawner.wait_healthy(instances)
                 if not all(health.values()):
                     raise RuntimeError(f"per-run 容器未就緒: {health}")
-                ue_host = instances["ue"]["name"]; cu_host = instances["cu"]["name"]
+                _register(container_spawner.spawn(run_uuid, mode, slot=slot, roles=("e2adapter",), cu_host_port=instances["cu"]["host_port"]))
+                health = container_spawner.wait_healthy({"e2adapter": instances["e2adapter"]}, timeout_sec=90)
+                if not all(health.values()):
+                    raise RuntimeError(f"e2adapter 未就緒: {health}")
+                ue_host = instances["ue"]["name"]; cu_host = instances["cu"]["name"]; e2_port = instances["e2adapter"]["host_port"]
                 health_monitor.start_monitor(run_uuid, instances)
             ue = platform_clients.ue_start(run_uuid, speed_x, sim_dt_ms, host=ue_host)
             ok = bool(ue.get("success"))
@@ -188,7 +194,7 @@ class LaunchController:
             if ok:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat(),
                                                   **({"e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex} if settings.PER_RUN_ENABLED else {}))
-                cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
+                cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
                 return error_response("UE driver refused start", ue, 502)

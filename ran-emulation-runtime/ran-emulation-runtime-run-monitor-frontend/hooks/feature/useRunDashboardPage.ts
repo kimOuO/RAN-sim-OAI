@@ -4,7 +4,7 @@ import { POLL_MS, RANGE_OPTIONS, UE_METRICS } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
 import { usePolling } from '@/hooks/base/usePolling';
 import { listControlEvents, listHandoverEvents, listKpmSamples, listLaunchRequests } from '@/services/api/archive';
-import { DU_API, UE_API } from '@/config';
+import { DU_API, E2ADAPTER_API, UE_API } from '@/config';
 import { getDuTick, getE2AdapterStatus, getRun, getSceneTree, getUeDriverStatus, listDuCells, listRunInstances, listScenes, runtimeBase } from '@/services/api/runs';
 import { allCells, allUes, bucketEvents, cellColorMap, cellSeries, groupCellsByGnb, histogram, latestUes, mean, meanMcsByCell, meanRlcDelayByCell, meanSinrByCell, prbDl, prbUl, thpDlByCell, thpUlByCell, ueCountByCell, ueSeries, ueServingStrip } from '@/hooks/feature/kpmDerive';
 import type { KpmSample } from '@/types/telemetry';
@@ -21,7 +21,8 @@ export function useRunDashboardPage(runUuid: string) {
   const instances = useAsync(() => listRunInstances(runUuid), [runUuid]);
   const duBase = runtimeBase((instances.data ?? []).find((i) => i.role === 'du'), DU_API, 'DU');
   const ueBase = runtimeBase((instances.data ?? []).find((i) => i.role === 'ue'), UE_API, 'UE');
-  const tick = useAsync(() => getDuTick(duBase), [duBase]); const e2 = useAsync(getE2AdapterStatus, []); const ueDrv = useAsync(() => getUeDriverStatus(ueBase), [ueBase]); const duCells = useAsync(() => listDuCells(duBase), [duBase]);
+  const e2Base = runtimeBase((instances.data ?? []).find((i) => i.role === 'e2adapter'), E2ADAPTER_API, 'E2Adapter');
+  const tick = useAsync(() => getDuTick(duBase), [duBase]); const e2 = useAsync(() => getE2AdapterStatus(e2Base), [e2Base]); const ueDrv = useAsync(() => getUeDriverStatus(ueBase), [ueBase]); const duCells = useAsync(() => listDuCells(duBase), [duBase]);
   const live = run.data?.status === 'running';
   const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); ueDrv.refetch(); instances.refetch(); }, [run, samples, hos, ctrls, tick, e2, ueDrv, instances]);
   usePolling(refetchAll, POLL_MS, live);
