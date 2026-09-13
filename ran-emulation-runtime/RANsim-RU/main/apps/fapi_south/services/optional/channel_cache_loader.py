@@ -24,7 +24,11 @@ logger = get_logger(__name__)
 CACHE_DIR = Path(os.environ.get("RU_CACHE_DIR", "/data/channel_cache"))
 # Phase B — Gunicorn 跑 multi-worker,os.environ mutation 只改單一 worker 不對其他 worker 生效。
 # 改用 disk file 當所有 worker 共用的 mode source-of-truth。
-MODE_FILE = CACHE_DIR / ".mode"   # 內容:"live" 或 "cached:<scenario_id>"
+# .mode 是 RU 寫、DU 讀的 channel-mode 交接檔。channel_cache 目錄是所有 run 共用的 bind mount,
+# per-run 容器(P4)必須各用各的檔,否則 A run 的 RU 一寫,B run 的 DU 就跟著切到 A 的 cache
+# (2026-09-13 實測:corridor_00_08 的 DU 被切成 corridor_16_24,tick 停頓、倍速掉到 0.47×)。
+# orchestrator 對同一 run 的 du/ru 都設 CHANNEL_MODE_FILE=/data/channel_cache/.mode.<rid>。
+MODE_FILE = Path(os.environ.get("CHANNEL_MODE_FILE", "")) if os.environ.get("CHANNEL_MODE_FILE") else CACHE_DIR / ".mode"
 
 
 class ChannelCache:

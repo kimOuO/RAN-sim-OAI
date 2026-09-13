@@ -123,6 +123,8 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
             env["GNB_ID_HEX"] = gnb_id_hex
         if role == "ru":
             env["RU_CHANNEL_MODE"] = mode
+        if role in ("du", "ru"):
+            env["CHANNEL_MODE_FILE"] = f"/data/channel_cache/.mode.{rid}"   # per-run 交接檔,不共用 .mode
         vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in spec["volumes"]}
         old = client.containers.list(all=True, filters={"name": f"^{names[role]}$"})
         for c in old:

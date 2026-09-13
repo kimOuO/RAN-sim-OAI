@@ -242,3 +242,11 @@
 - 停 run 時先送 E2 Reset / 關 association 再停容器(現在是容器 SIGTERM 直接斷)。
 - 共用 `e2adapter`(gnb_…000e00)仍在 compose 裡,會多註冊一個 node;RIC 可連後決定是否拿掉。
 - adapter backoff 5 分鐘(RIC m-release bug 對策)在 per-run 情境下可能太長。
+
+## P4-3 達成倍速 0.47× 的真因:共用 `.mode` 交接檔(2026-09-13)
+
+- 現象:第二個 run(corridor_00_08,設定 1×)在第一個 run 起來後瞬間量到 0.47×。
+- 真因:RU 在 `/data/channel_cache/.mode` 寫 `cached:<scenario_id>`、DU 每 tick 讀它決定用哪個 npz;這個目錄是所有 run 共用的 bind mount,所以 run1 的 RU 一寫 `cached:corridor_16_24`,run2 的 DU 就把 cache 切成 corridor_16_24(log 實證 `DuChannelCache loaded: scenario=corridor_16_24` 出現在 du-49117e33),重載 npz 讓 tick 停頓 ~1 s → 該秒的 achieved 掉到 0.47×,**而且之後 run2 一直用錯的通道**。這是跨 run 汙染 bug,不是效能問題。
+- 修法:DU / RU 的 `MODE_FILE` 改可由 env `CHANNEL_MODE_FILE` 指定;orchestrator 對同 run 的 du/ru 設 `/data/channel_cache/.mode.<rid>`。舊共用 `.mode` 只剩 legacy 共用容器在用。
+- 驗證:兩 run 重起後 `.mode.49117e33 = cached:corridor_00_08`、`.mode.388e8e0a = cached:corridor_16_24`,各 DU 只載入自己的 cache(各一行 loaded);20 s 取樣 run2 ≈ 1.0×(0.89–1.11,量測窗 1 s / 2 tick 的粒度抖動)、run1 ≈ 2.0×。
+- 教訓:P4 之前「共用目錄上的狀態檔」都要檢查;目前已知只有這一個。

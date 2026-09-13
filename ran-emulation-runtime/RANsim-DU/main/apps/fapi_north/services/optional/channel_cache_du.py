@@ -20,7 +20,11 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 
 CACHE_DIR = Path(os.environ.get("RU_CACHE_DIR", "/data/channel_cache"))
-MODE_FILE = CACHE_DIR / ".mode"
+# .mode 是 RU 寫、DU 讀的 channel-mode 交接檔。channel_cache 目錄是所有 run 共用的 bind mount,
+# per-run 容器(P4)必須各用各的檔,否則 A run 的 RU 一寫,B run 的 DU 就跟著切到 A 的 cache
+# (2026-09-13 實測:corridor_00_08 的 DU 被切成 corridor_16_24,tick 停頓、倍速掉到 0.47×)。
+# orchestrator 對同一 run 的 du/ru 都設 CHANNEL_MODE_FILE=/data/channel_cache/.mode.<rid>。
+MODE_FILE = Path(os.environ.get("CHANNEL_MODE_FILE", "")) if os.environ.get("CHANNEL_MODE_FILE") else CACHE_DIR / ".mode"
 # SINR 計算常數(對齊 RU dl_tti_pipeline:同 env)
 _TX_POWER_DBM = float(os.environ.get("RU_TX_POWER_DBM", "23.0"))
 _NOISE_FLOOR_DBM = float(os.environ.get("RU_NOISE_FLOOR_DBM", "-98.0"))
