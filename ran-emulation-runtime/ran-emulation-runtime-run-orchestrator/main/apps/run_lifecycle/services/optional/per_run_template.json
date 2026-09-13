@@ -79,7 +79,7 @@
    "HTTP_RU_PORT": "8000",
    "LOG_DIR": "/app/logs",
    "NR_EESM_ENABLED": "off",
-   "NR_MIMO_LAYERS_ENABLED": "off",
+   "NR_MIMO_LAYERS_ENABLED": "on",
    "NR_TBS_SPEC_MODE": "off",
    "PLMN_MCC": "208",
    "PLMN_MNC": "95",

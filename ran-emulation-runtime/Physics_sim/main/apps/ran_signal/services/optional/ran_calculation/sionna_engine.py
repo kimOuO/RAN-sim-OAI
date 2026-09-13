@@ -11,13 +11,14 @@ import os
 # TS 38.215 §5.1.1:RSRP 為 per-port 量(功率線性平均,接收分集下不取各分支之和)。
 # off = 舊行為:對 (rx_ant, tx_ant) 元素對加總,僅在 1x1 陣列下與 per-port 等價。
 # 啟用多天線陣列前必須打開,否則 path_gain 會被元素數污染。詳見 compute_paths 內註解。
-_PATH_GAIN_PER_PORT = (os.environ.get("PHY_PATH_GAIN_PER_PORT", "off").strip().lower()
-                       in ("on", "true", "1", "yes"))
-
 import math
 from typing import Any
 
-from main.utils.env_loader import get_float, get_int, get_str
+from main.utils.env_loader import get_bool, get_float, get_int, get_str
+
+# per-port 正規化(TS 38.215 §5.1.1 RSRP 是「每個資源元素、每個天線埠」的功率):預設 on(2026-09-13 P5-3)。
+# off = 舊行為,path gain 隨 (rx_ant × tx_ant) 元素對數線性膨脹(4×4 比 1×1 高 ~15 dB 的假增益)。
+_PATH_GAIN_PER_PORT = get_bool("PHY_PATH_GAIN_PER_PORT", default=True)
 from main.utils.logger import get_logger
 
 

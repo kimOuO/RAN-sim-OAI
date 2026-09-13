@@ -312,7 +312,7 @@ services:
       # 那是「元素數量」不是波束成形增益 = 早期記載的 antenna gain 雙重計算。
       # 1x1 下開關兩者等價(除以 1),故預設 off 不影響既有 npz cache 與校正結果。
       # 啟用多天線陣列前必須打開。詳見 docs/architecture/mimo_antenna_selection_plan.md §2
-      PHY_PATH_GAIN_PER_PORT: "off"
+      PHY_PATH_GAIN_PER_PORT: "on"   # P5-3:per-port 正規化(TS 38.215),多天線不再假增益
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"

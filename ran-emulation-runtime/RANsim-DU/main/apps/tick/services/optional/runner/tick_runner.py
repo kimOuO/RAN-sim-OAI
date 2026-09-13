@@ -308,11 +308,14 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
                 self._ue_registry[ue_id]["rsrp_dbm"] = rsrp_dbm
+            # RU 由 H 的 SVD 回報的 RI(2026-09-13 P5-3 之前從沒寫進 registry → 層數永遠 1)
+            if rank is not None:
+                self._ue_registry[ue_id]["rank"] = max(1, min(4, int(rank)))
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""

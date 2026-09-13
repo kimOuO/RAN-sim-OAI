@@ -500,7 +500,10 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             try:
                 H = _to_complex_matrix(H_raw)
                 H_eff = precoder.apply_pmi(H, pmi=pdu.pmi, layers=pdu.layers)
-                rank = sinr_estimator.estimate_rank(H_eff)
+                # RI 是「通道」能撐幾層,要看未預編碼的 H;用 H_eff(已被 DU 目前的 layers 壓成 layers 欄)
+                # 會永遠回報 DU 現在給的層數 → rank 卡在 1(2026-09-13 P5-3 實測)。上限 min(rx_ant, tx_ant, 4)。
+                rank = min(sinr_estimator.estimate_rank(H), int(min(H.shape)), 4) if H.size else 1
+                _ = H_eff
             except codebook.CodebookError as exc:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
                 rank = 1
