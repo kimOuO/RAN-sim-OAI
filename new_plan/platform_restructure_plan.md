@@ -705,3 +705,34 @@ per-run 容器 + cached + `DU_RU_INPROCESS=on` 下,直接掃 DU 的 wall tick(�
 4. ~~registry 骨架~~ ✅ d5f39ea
 5. ~~orchestrator 骨架~~ ✅ 4fa6984
 6. ~~驗收~~ ✅ 以 `corridor_16_24` 驗(cco_20min 不在倉庫);雙路徑 SINR 一致、零 traceback。細節見 progress_log P0-6
+
+---
+
+## §13 P6 評估:上行(UL)鏈路與跨 cell 上行干擾(2026-09-13)
+
+### 13.1 現況
+| 項目 | 現在怎麼做 | 問題 |
+|---|---|---|
+| UL SINR | **= DL SINR**(`ue["sinr_db"]`) | 沒有 UE 發射功率、沒有 gNB 端雜訊/干擾;UL 與 DL 鏈路預算差 20–30 dB(23 dBm vs 43 dBm、UE 單天線) |
+| UL MCS | `DL MCS − 2` 經驗值 | 不是鏈路適應,和 SINR 無關 |
+| UL 干擾 | 無 | 密集場景 UL 比 DL 更容易干擾受限 |
+| UL 流量 | 劇本 `ul_rate_mbps` + TCP delayed-ACK(由 DL 推) | 這部分合理,保留 |
+| UL 容量 | `mcs_to_throughput(mcs_ul, bps_re(DL SINR), 1 PRB) × PRB` | 只要 SINR/MCS 換成真的,公式可沿用 |
+
+### 13.2 要做的(依序)
+1. **RU:UL SINR@gNB(per UE)**。TDD 互易,`pg(UE→gNB) = pg(gNB→UE)`,RU 現在每個 UE 對**每個** cell 的 path gain 都有(`path_gain_dict`),不用多算光追。
+   `SINR_UL = P_UE·pg_serv / (N0·BW_PRB·n_PRB + Σ_j P_UE_j·pg(UE_j→serv gNB)·ρ_j)`,ρ_j = UE_j 所在 cell 的 UL PRB 負載(當碰撞機率,不做跨 cell 排程對齊)。
+   干擾項的 pg(UE_j→我的 gNB)也是互易的 —— 就是 UE_j 看到「我這個 cell」的鄰區 path gain,RU 已經在算 neighbors。
+2. **UE 功率**:23 dBm 上限 + 開迴路功控 `P = min(P_max, P0 + α·PL + 10log10 M_PRB)`(TS 38.213 §7.1.1;α=0.8、P0 依 cell 設定)。放 registry cell / DU 模板欄位。
+3. **協定**:`CqiIndication` 加 `ul_sinr_db`(空 = 舊 RU,退回 DL SINR − 20 dB 的保守近似,比現在的「= DL SINR」誠實)。
+4. **DU**:`mcs_ul = sinr_to_mcs(ul_sinr)`(同一張 OAI BLER 曲線,目標 BLER 10%),UL 容量公式沿用;`prb_pct_ul` / `throughput_ul` 從此是算出來的。UL 的 rank 先固定 1(UE 單發射鏈)。
+5. **KPM**:`DRB.UEThpUl`、`RRU.PrbTotUl` 已有欄位,不改介面;E2 KPM 自動反映。
+6. 驗證:自由空間單 UE,UL SINR 應比 DL 低 ≈ (43−23) dB + 天線增益差;兩 cell 各一個邊緣 UE 同 PRB 滿載時,UL SINR 隨鄰 cell UL 負載 0→100% 單調下降。
+
+### 13.3 不做 / 之後
+- UE 對 UE 直接干擾(sidelink / 動態 TDD 交叉鏈路):現在所有 cell 同一 TDD pattern,不存在交叉鏈路;之後要做「不同 cell 不同 TDD 配置」時才需要,那要 UE↔UE 的光追(Physics 目前只算 gNB↔UE)。
+- UL MIMO(UE 2T):UE 端陣列已可設,但 UL rank>1 要 RU 端 UL 的 H;等 DL 多層結論穩定再說。
+- 跨 cell 排程對齊(精確碰撞):用負載機率夠用,真要做得把兩個 DU 的 UL 排程同步,代價大。
+
+### 13.4 估時
+RU 1 天(UL SINR + 功控)、協定+DU 1 天、驗證 0.5 天 → **2.5 天**。不影響既有 DL 數值;cached 模式也適用(pg 來自 npz,互易)。
