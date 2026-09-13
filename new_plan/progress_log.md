@@ -314,3 +314,4 @@
 - orientation 回到單純定義:α = 90° − 羅盤方位、β = +tilt(正 = 往下),與 z-up 空場景 `look_at` 完全一致(E→0,0;S→α=−90;N→+90;下方 35°→β=+35.5)。
 - 自由空間驗證:**極化** V→V −65.6 / V→H −336 / H→H −65.6 dB(以前躺平時 V 極化沿南向,分不出 V/H);**方位** az 90/180/0/270 各朝東/南/北/西最大、135 東南;**下傾** az=90 與 az=180 行為一致、單調(+35 → 下方 UE +3.5 dB),az=180 不再有 −200 dB 假 null;**幾何** 東 20 m 放 10×15×10 建築,正後方 UE −19.5 dB、側邊不變 → 幾何與位置轉的是同一個框架。
 - 影響:所有 live / precompute 數值改變。現有 cached run 只有 corridor 四份(方位 0°、1×1 V,誤差幾 dB 級),舊檔改名 `*.legacyframe.npz` 留對照,重算四份;其他 25 份舊 npz 沒 run 在用,歸檔。
+- corridor cache 重算:舊四份改名 `*.legacyframe.npz`(容器內 root 才能寫 data 目錄);`corridor_24h` 以 z-up 框架重算中(`run_precompute_segmented.sh corridor_24h 10000`,SCENARIO_STORE_URL 指 registry shim;`update_status` 404 只是警告)。踩到兩個坑:① `--resume` 接到舊框架的 checkpoint、② `pkill -f` 沒殺到 python 行程造成兩個行程同寫 ckpt —— 已全部砍掉、刪 ckpt 從 0 重跑。前 35000 tick UE 不在場所以 ~800 t/s,之後 ~5 t/s,ETA ≈ 7.5 h;完成後用 `carve_window.py` 切 00_08 / 08_16 / 16_24 三份。
