@@ -51,6 +51,50 @@ _SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=0
 _SINR_INTERFERENCE_PENALTY_DB = get_float("RU_SINR_INTERFERENCE_PENALTY_DB", default=0.0)
 """額外 SINR fade margin。預設 0(真實 interference 已從多 cell path_gain 算)."""
 
+# ── 上行(P6,計畫 §13)──────────────────────────────────────────────
+# UE 開迴路功控(TS 38.213 §7.1.1):P_perPRB = min(P_CMAX − 10log10 M_ref, P0 + α·PL)。
+_UL_P0_DBM = get_float("RU_UL_P0_DBM", default=-90.0)          # 每 PRB 目標接收功率(常見 −90…−100)
+_UL_ALPHA = get_float("RU_UL_ALPHA", default=0.8)               # 部分路損補償係數
+_UL_PCMAX_DBM = get_float("RU_UL_PCMAX_DBM", default=23.0)      # UE power class 3
+_UL_M_REF_PRB = get_float("RU_UL_M_REF_PRB", default=10.0)      # 分攤 P_CMAX 的參考 PRB 數(RU 不知道 DU 排幾個)
+# gNB 端每 PRB 雜訊:−174 dBm/Hz + 10log10(12×30 kHz) + NF 5 dB ≈ −113.4 dBm
+_UL_NOISE_PER_PRB_DBM = get_float("RU_UL_NOISE_PER_PRB_DBM", default=-113.4)
+# 鄰 cell UE 在同 PRB 上發射的機率(= 該 cell UL PRB 負載);RU 不知道各 DU 的 UL 排程,先用常數,之後可由 DU 推
+_UL_NEIGHBOR_LOAD = get_float("RU_UL_NEIGHBOR_LOAD", default=0.5)
+
+
+def _ul_tx_power_per_prb_dbm(pg_serv_linear: float) -> float:
+    pl_db = -10.0 * math.log10(max(pg_serv_linear, 1e-30))
+    return min(_UL_PCMAX_DBM - 10.0 * math.log10(max(_UL_M_REF_PRB, 1.0)), _UL_P0_DBM + _UL_ALPHA * pl_db)
+
+
+def _compute_ul_sinr_db(ul_ctx: dict, cell_to_freq: dict, inter_freq: bool) -> dict[str, float]:
+    """每個 UE 的上行 SINR@其 serving gNB。
+    ul_ctx[ue] = {serving: cell_id, serving_tx: tx_name, pg_serv: linear, pg: {tx_name: linear}}
+    干擾 = Σ 其他 cell 的 UE_v:P_v × pg(v → 我的 serving tx) × ρ;inter_freq 時只算同頻 cell。"""
+    out: dict[str, float] = {}
+    noise_mw = 10.0 ** (_UL_NOISE_PER_PRB_DBM / 10.0)
+    ptx = {u: _ul_tx_power_per_prb_dbm(c["pg_serv"]) for u, c in ul_ctx.items() if c.get("pg_serv")}
+    for u, c in ul_ctx.items():
+        if not c.get("pg_serv") or not c.get("serving_tx"):
+            continue
+        sig_mw = 10.0 ** ((ptx[u] + 10.0 * math.log10(c["pg_serv"])) / 10.0)
+        f_u = (cell_to_freq or {}).get(c["serving"])
+        interf_mw = 0.0
+        for v, cv in ul_ctx.items():
+            if v == u or cv.get("serving") == c["serving"] or v not in ptx:
+                continue
+            if inter_freq:
+                f_v = (cell_to_freq or {}).get(cv["serving"])
+                if f_u and f_v and abs(float(f_u[0]) - float(f_v[0])) > 1e-6:
+                    continue
+            pg_v_to_me = cv["pg"].get(c["serving_tx"])
+            if not isinstance(pg_v_to_me, (int, float)) or pg_v_to_me <= 0:
+                continue
+            interf_mw += 10.0 ** ((ptx[v] + 10.0 * math.log10(pg_v_to_me)) / 10.0) * _UL_NEIGHBOR_LOAD
+        out[u] = 10.0 * math.log10(sig_mw / (noise_mw + interf_mw))
+    return out
+
 # inter-frequency:True = 各 cell 不同頻不互擾 → SINR 只算訊號/噪聲(不累加他 cell 干擾)。
 # 對齊 DU channel_cache_du 的 _INTER_FREQ;live mode 也要吃劇本 inter_freq(否則 cell 邊界
 # co-channel 把 SINR 算崩,跟 cached 差 ~20dB)。
@@ -405,6 +449,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     cell_to_freq = _build_cell_to_freq_map()     # cell.name → (freq_ghz, bw_mhz),頻率重疊干擾用
 
     out: list[CqiIndication] = []
+    ul_ctx: dict[str, dict] = {}   # P6:給第二趟算上行 SINR 用
     for pdu in req.pdus:
         bundle = cached.get(pdu.ue_id) or {}
         path_gain_dict = bundle.get("path_gain") or {}
@@ -524,6 +569,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             float(sinr_db) if sinr_db != -float("inf") else -100.0,
         )
 
+        ul_ctx[pdu.ue_id] = {"serving": serving_label, "serving_tx": serving_tx or serving_gnb, "pg_serv": path_gain_linear, "pg": path_gain_dict}
         out.append(CqiIndication(
             ue_id=pdu.ue_id,
             sinr_db=float(sinr_db) if sinr_db != -float("inf") else -100.0,
@@ -535,4 +581,13 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             serving_cell=serving_label,
             neighbors=neighbors_list,
         ))
+    # P6:上行 SINR(整批一起算,干擾要看別的 UE)
+    try:
+        ul = _compute_ul_sinr_db(ul_ctx, cell_to_freq, _read_inter_freq())
+        for ind in out:
+            if ind.ue_id in ul:
+                ind.ul_sinr_db = round(ul[ind.ue_id], 2)
+    except Exception as exc:  # noqa: BLE001 — UL 算失敗不能拖垮 DL
+        logger.warning("ul sinr pass failed: %s", exc)
+
     return out

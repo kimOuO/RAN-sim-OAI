@@ -308,7 +308,7 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
@@ -318,6 +318,8 @@ class TickRunner:
                 self._ue_registry[ue_id]["rank"] = max(1, min(4, int(rank)))
             # RU 由 H 奇異值算的每層 SINR(P5-4);None = 舊 RU,排程端退回等功率近似
             self._ue_registry[ue_id]["sinr_layers"] = list(sinr_layers) if sinr_layers else None
+            # P6:RU 算的上行 SINR@gNB;None = 舊 RU
+            self._ue_registry[ue_id]["ul_sinr_db"] = float(ul_sinr_db) if ul_sinr_db is not None else None
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -808,8 +810,12 @@ class TickRunner:
                 if _ack_bytes > 0:
                     ul_buffer.report(uid, _ack_bytes)
             # UL:一個 PRB 本 tick 在 UL 時隙能載的 bytes → 滿 PRB 容量 → drain backlog
-            _mcs_ul = max(0, mcs_map.get(uid, 9) - 2)
-            _, _bps_re_ul = sinr_to_mcs(ue["sinr_db"])
+            # P6:UL 鏈路適應。RU 有回 ul_sinr 就用它查同一張 BLER 曲線;沒有(舊 RU)退回 DL SINR − 20 dB 保守近似
+            # (以前是 mcs_ul = mcs_dl − 2、bps 用 DL SINR,等於 UL 沒有物理)。
+            _ul_sinr = ue.get("ul_sinr_db")
+            if _ul_sinr is None:
+                _ul_sinr = float(ue["sinr_db"]) - 20.0
+            _mcs_ul, _bps_re_ul = sinr_to_mcs(_ul_sinr)
             _ul_bytes_per_prb = mcs_to_throughput_mbps(
                 mcs=_mcs_ul, bps_re=_bps_re_ul, n_rb=1, tdd_dl_ratio=_UL_RATIO,
             ) * 1e6 * _ul_tick_s / 8.0

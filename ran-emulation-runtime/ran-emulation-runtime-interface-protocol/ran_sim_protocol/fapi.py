@@ -62,6 +62,9 @@ class CqiIndication:
     # 每層 SINR(dB,長度 = rank;由 H 的奇異值推:第 i 層 = 總 SINR − 10log10(rank) + 20log10(σi/σ1))。
     # 空 list = 舊 RU 沒帶,DU 退回等功率近似(每層 −10log10 rank)。2026-09-13 P5-4。
     sinr_per_layer_db: list[float] = field(default_factory=list)
+    # 上行 SINR@gNB(dB;P6 2026-09-13):TDD 互易 pg(UE→gNB)=pg(gNB→UE),UE 開迴路功控,鄰 cell UE 依 UL 負載當干擾。
+    # None = 舊 RU 沒帶 → DU 退回 DL SINR − 20 dB 的保守近似(以前是直接 = DL SINR)。
+    ul_sinr_db: float | None = None
     # RSRP from path_gain (RU 端 dl_tti_pipeline 算)；
     # 預設 -200 表示未填（保持 backward compat），DU 收到 -200 會用估算 fallback。
     rsrp_dbm: float = -200.0

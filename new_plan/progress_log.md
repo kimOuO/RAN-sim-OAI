@@ -336,3 +336,10 @@
 
 - Sionna tx_array / rx_array 是 scene-global → 一個 run 只能一組 gNB 陣列、一組 UE 陣列。registry `scene.f_gnb_antenna_preset_uuid / f_ue_antenna_preset_uuid`(migration scene_layout 0003),read_full_tree 帶 `gnb_antenna_preset / ue_antenna_preset`;UE loader 優先用場景層級,沒設才退回「第一個 cell 的 RU preset / 第一個 UE 的 preset」。
 - 編輯器:未選物件時「天線」分頁顯示場景層級兩個下拉。API 往返驗證 OK。
+
+## P6 上行鏈路(2026-09-13)
+
+- RU `dl_tti_pipeline`:整批算完 DL 後第二趟算每 UE 的上行 SINR@serving gNB:TDD 互易 pg(UE→gNB)=pg(gNB→UE)(RU 已有每 UE 對每 cell 的 path gain,零新光追);UE 開迴路功控 P_perPRB = min(P_CMAX − 10log10 M_ref, P0 + α·PL)(env `RU_UL_P0_DBM=-90 / RU_UL_ALPHA=0.8 / RU_UL_PCMAX_DBM=23 / RU_UL_M_REF_PRB=10`);gNB 每 PRB 雜訊 −113.4 dBm(NF 5);干擾 = Σ 其他 cell 的 UE 功率 × 它到我 gNB 的 pg × ρ(`RU_UL_NEIGHBOR_LOAD`,預設 0.5;inter_freq 時只算同頻)。
+- 協定 `CqiIndication.ul_sinr_db`(None = 舊 RU);DU registry `ul_sinr_db`;UL 鏈路適應改 `sinr_to_mcs(ul_sinr)`(同一張 OAI BLER 曲線),舊 RU 退回 DL − 20 dB。以前是 `mcs_ul = mcs_dl − 2`、bps 用 DL SINR。
+- 實測(live anr_nrt_capacity):`cp0 dl=6.4 ul=6.2 dB`(功控補償後接近 DL,合理);UL 流量 0.31 Mb/s、serving cell `prb_pct_ul` 19.8%,其他 cell 0。
+- 近似 / 待做:ρ 是常數(RU 不知各 DU 的 UL 排程),之後可由 DU 把每 cell UL 負載推給 RU;UL rank 固定 1;UE↔UE 直接干擾(動態 TDD 交叉鏈路)不做。

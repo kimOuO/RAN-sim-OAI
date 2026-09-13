@@ -14,6 +14,7 @@ class CqiIndicationSerializer(serializers.Serializer):
     cqi = serializers.IntegerField(min_value=0, max_value=15)
     rank = serializers.IntegerField(min_value=1, max_value=4, default=1)
     sinr_per_layer_db = serializers.ListField(child=serializers.FloatField(), default=list)   # P5-4 每層 SINR
+    ul_sinr_db = serializers.FloatField(required=False, allow_null=True, default=None)   # P6 上行 SINR@gNB
     pmi = serializers.IntegerField(default=0)
     # RU 從 Sionna path_gain 算的真 RSRP (RU 0.x 版本沒帶，預設 -200 表「未填」)
     rsrp_dbm = serializers.FloatField(default=-200.0)

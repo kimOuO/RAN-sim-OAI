@@ -20,6 +20,7 @@ from main.utils.response import error_response, success_response
 
 logger = get_logger(__name__)
 _LAYER_LOG_N = 0
+_UL_LOG_N = 0
 
 
 class FapiRouterController:
@@ -47,7 +48,7 @@ class FapiRouterController:
         else:
             noise_floor_dbm = get_float("DU_NOISE_FLOOR_DBM", -95.0)
             rsrp_for_pm = noise_floor_dbm + float(v["sinr_db"])  # legacy fallback
-        get_tick_runner().update_ue_sinr(v["ue_id"], float(v["sinr_db"]), rsrp_dbm=rsrp_for_pm, rank=v.get("rank"), sinr_layers=v.get("sinr_per_layer_db") or None)
+        get_tick_runner().update_ue_sinr(v["ue_id"], float(v["sinr_db"]), rsrp_dbm=rsrp_for_pm, rank=v.get("rank"), sinr_layers=v.get("sinr_per_layer_db") or None, ul_sinr_db=v.get("ul_sinr_db"))
 
         # 緩存 neighbor measurements（A3 evaluator 用）— 每次覆蓋，要 fresh 量測
         neighbors = v.get("neighbors") or []
@@ -60,6 +61,12 @@ class FapiRouterController:
             rsrp_for_pm, "" if rsrp_real > -150.0 else " (estimated)", len(neighbors),
             v.get("rank"), v.get("sinr_per_layer_db"),
         )
+        # 上行 SINR 每 100 筆印一次 INFO(P6 驗證)
+        global _UL_LOG_N
+        if v.get("ul_sinr_db") is not None:
+            _UL_LOG_N += 1
+            if _UL_LOG_N % 100 == 1:
+                logger.info("UL sinr ue=%s dl=%.1f ul=%.1f dB", v["ue_id"], v["sinr_db"], v["ul_sinr_db"])
         # 多層時每 50 筆印一次 INFO(驗證每層 SINR 有進來;P5-4)
         global _LAYER_LOG_N
         if v.get("rank", 1) > 1 and v.get("sinr_per_layer_db"):
