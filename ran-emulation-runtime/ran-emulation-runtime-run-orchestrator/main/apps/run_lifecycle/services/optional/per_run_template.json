@@ -218,7 +218,10 @@
    "RIC_E2TERM_HOST": "10.3.0.71",
    "RIC_E2TERM_PORT": "36422",
    "SCTP_BIND_IP": "10.3.0.217",
-   "SIM_CU_URL": "http://127.0.0.1:{cu_port}"
+   "SIM_CU_URL": "http://127.0.0.1:{cu_port}",
+   "E2_SETUP_RESPONSE_TIMEOUT_SEC": "600",
+   "SCTP_BACKOFF_INITIAL_SEC": "20",
+   "SCTP_BACKOFF_AFTER_SUCCESS_SEC": "20"
   },
   "volumes": [
    {

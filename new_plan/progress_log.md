@@ -286,3 +286,9 @@
 - Mitsuba 場景與所有位置都是 **Y-up**(ground cube scale (500, 0.1, 500)),但 Sionna 假設 **z-up**:天線 pattern 的「垂直面」與 **V 極化軸都躺在水平面上**(V = 我們的南向)。方位/仰角靠上面的解析式已對,但極化(cross 的 H/V、V-only 的 null,例如 az=180 時下方 UE −200 dB)與 3GPP pattern 的上下切面仍是錯的。
 - 正解:engine 邊界做座標旋轉 —— 位置 (x, y, z)_ours → (x, −z, y)_sionna,幾何載入時對每個 shape 加 `<rotate x=1 angle=90>`(或 builder 直接輸出),H / path_gain 不受影響。做完後 α 就是方位、β 是仰角,polarization 才有意義。**會改變所有 live / precompute 的數值**,既有 npz cache 都是「天線側躺」算出來的,要重算。
 - 另:`PHY_PATH_GAIN_PER_PORT` 仍 off(4×4 的 path gain −83.7 dB 比 1×1 −98.7 高 15 dB 是元素相加),MIMO 多層(§5 第 5–7 項)未動。
+
+## P4-6 E2 association 生命週期對時(2026-09-13,回 RIC 端)
+
+- 對時:我方 06:34:29/39/49 UTC 送三個 Setup(000e00/e01/e02),RIC 端 e2mgr 記 06:07:29/39/49(其時鐘慢 27 分),但標 CONNECTED 在 06:12:47/06:13(≈5 分鐘後);我方 adapter 等 Setup Response 只等 30 s 就關 association、5 分鐘後重連 → Response 回到已不存在的 association。
+- 改:`E2_SETUP_RESPONSE_TIMEOUT_SEC`(env,per-run 與共用皆 600)、`SCTP_BACKOFF_*` 縮到 20 s;adapter 收 SIGTERM 先送 E2 Reset、shutdown SCTP 再結束(`graceful_shutdown`),對應 RIC 要求的「先 Removal/Reset 再關關聯再停容器」;association 關閉時記 log。
+- 06:44:40 / 06:44:41 / 06:45:3x 重連後,**三條 association 同時 ESTABLISHED 持續 >9 分鐘**(`/proc/net/sctp/assocs` state 3,lport 49749/34211/47478 → 36422),Setup 各送一次,但到 06:53:50 仍無 Setup Response(pdu_recv 0)。球在 RIC 端:請他們在這三條活著的關聯上核對 association↔ranName 綁定與 Response 是否送出。

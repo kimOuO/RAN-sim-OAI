@@ -30,7 +30,10 @@ logger = get_logger(__name__)
 _E2AP_SCTP_PPID = 70    # O-RAN E2AP payload protocol identifier
 _RECV_BUF = 65535
 _CONNECT_TIMEOUT_SEC = 8.0
-_RECV_TIMEOUT_SEC = 30.0  # E2 Setup Response 必須 30 秒內回，否則重連
+# E2 Setup Response 等多久才放棄重連。2026-09-13 RIC 端對時:e2mgr 從收到 Setup 到標 CONNECTED 花了 ~5 分鐘,
+# 30 s 就關 association 會讓 Response 回到已不存在的收件人(RIC 看到 CONNECTED→DISCONNECTED)。env 可調。
+_RECV_TIMEOUT_SEC = float(get_int("E2_SETUP_RESPONSE_TIMEOUT_SEC", default=30))
+_CURRENT_SOCK = None   # 目前活著的 association(給 graceful shutdown 送 E2 Reset 用)
 
 
 _started_flag = threading.Event()
@@ -316,6 +319,8 @@ def _link_loop(host: str, port: int) -> None:
             )
             logger.info("SCTP connected")
             event_ring.record_sctp_connect(host, port)
+            global _CURRENT_SOCK
+            _CURRENT_SOCK = sock
 
             # Step: send E2 Setup Request, wait response
             if _do_e2_setup(sock):
@@ -393,6 +398,7 @@ def _link_loop(host: str, port: int) -> None:
                 registry, last_error=f"unexpected: {exc!r}",
             )
         finally:
+            _CURRENT_SOCK = None
             try:
                 sock.close()
             except Exception:
@@ -402,8 +408,29 @@ def _link_loop(host: str, port: int) -> None:
                 sctp_connected=False,
                 last_disconnect_at_ms=_now_ms(),
             )
+            logger.info("SCTP association closed (will retry in %ds)", backoff_sec)
 
         time.sleep(backoff_sec)
+
+
+def graceful_shutdown(reason: str = "om-intervention") -> None:
+    """容器 stop(SIGTERM)時:先送 E2 Reset 再關 SCTP,讓 RIC 端 R-NIB 不留 DISCONNECTED 殘留
+    (RIC 端 2026-09-13 要求的收尾順序:E2 Removal/Reset → 關 SCTP → 停容器)。"""
+    sock = _CURRENT_SOCK
+    if sock is None:
+        return
+    try:
+        _stop_all_indication_threads()
+        _send_e2_reset(sock, reason=f"shutdown:{reason}")
+        time.sleep(0.5)
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        sock.close()
+        logger.info("graceful shutdown: E2 Reset sent, SCTP closed")
+    except Exception:  # noqa: BLE001
+        logger.exception("graceful shutdown failed")
 
 
 def start_if_enabled() -> None:

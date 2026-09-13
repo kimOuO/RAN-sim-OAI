@@ -32,3 +32,16 @@ class E2AdapterConfig(AppConfig):
             return
         from main.apps.e2_adapter.services.optional.sctp_link import sctp_loop
         sctp_loop.start_if_enabled()
+        # SIGTERM(docker stop)→ 先送 E2 Reset、關 SCTP 再結束(收尾順序)
+        import os
+        import signal
+
+        def _on_term(signum, frame):  # noqa: ARG001
+            try:
+                sctp_loop.graceful_shutdown("sigterm")
+            finally:
+                os._exit(0)
+        try:
+            signal.signal(signal.SIGTERM, _on_term)
+        except (ValueError, OSError):
+            pass
