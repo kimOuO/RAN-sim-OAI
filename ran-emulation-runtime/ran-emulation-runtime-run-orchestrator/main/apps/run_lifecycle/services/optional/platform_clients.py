@@ -62,3 +62,21 @@ def delete_run_instance(run_instance_uuid: str) -> dict:
 
 def list_running_runs() -> list[dict]:
     return _registry("Simulation_run/SceneRunReader/read", {"status": "running"}).get("data") or []
+
+
+def notify_ric_stopped(scene_run_uuid: str, e2_node_id: str, gnb_id_hex: str, plmn_mcc: str = "208", plmn_mnc: str = "95") -> dict | None:
+    """收尾第 4 步:通知 RIC 端這個 E2 node 已收掉,請清 R-NIB(RAN:<ranName> 與 GNB:<plmn>:<gnb-id bits> 兩把)。
+    RIC_STOP_WEBHOOK_URL 沒設就只記 log(由人工跑 rnib_clear_gnb.sh)。"""
+    from main.utils.logger import get_logger
+    log = get_logger(__name__)
+    gnb_bits = format(int(gnb_id_hex, 16), "022b") if gnb_id_hex else ""
+    payload = {"event": "scene_run_stopped", "scene_run_uuid": scene_run_uuid, "ran_name": e2_node_id, "gnb_id_hex": gnb_id_hex,
+               "gnb_id_bits": gnb_bits, "plmn_mcc": plmn_mcc, "plmn_mnc": plmn_mnc, "stopped_at": now_iso()}
+    log.info("RIC R-NIB cleanup needed: %s", payload)
+    if not settings.RIC_STOP_WEBHOOK_URL:
+        return None
+    try:
+        return _post(settings.RIC_STOP_WEBHOOK_URL, "", payload, 10.0)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("RIC stop webhook failed: %s", exc)
+        return {"error": str(exc)}

@@ -421,8 +421,10 @@ def graceful_shutdown(reason: str = "om-intervention") -> None:
         return
     try:
         _stop_all_indication_threads()
-        # 優先送 E2 Removal(正式「下線」,RIC 端會移除節點);RIC 不支援或編碼失敗就退回 E2 Reset
-        proc = get_str("E2_SHUTDOWN_PROCEDURE", "removal").lower()
+        # 預設送 E2 Reset。E2 Removal(procedureCode 13)在 OSC RIC m-release 的 e2term 解不開(2026-09-13 實測:
+        # "Error 2 Decoding (unpack) E2AP PDU"、不轉 e2mgr、R-NIB 不動),所以只在 env E2_SHUTDOWN_PROCEDURE=removal 才送。
+        # R-NIB 殘留由 RIC 端 scripts/rnib_clear_gnb.sh 清 → orchestrator stop 後要通知(RIC_STOP_WEBHOOK_URL)。
+        proc = get_str("E2_SHUTDOWN_PROCEDURE", "reset").lower()
         sent_removal = False
         if proc == "removal":
             try:

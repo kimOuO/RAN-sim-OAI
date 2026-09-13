@@ -245,9 +245,17 @@ class LaunchController:
                 for inst in platform_clients.list_run_instances(run_uuid):
                     platform_clients.update_run_instance(inst["run_instance_uuid"], status="stopped")
             platform_clients.update_scene_run(run_uuid, status="stopped", stopped_at=now.isoformat())
+            ric_note = None
+            if settings.PER_RUN_ENABLED:   # 收尾第 4 步:通知 RIC 端清 R-NIB(m-release 沒有 E2 Removal)
+                try:
+                    rr = platform_clients._registry("Simulation_run/SceneRunReader/read", {"scene_run_uuid": run_uuid}).get("data") or {}
+                    if rr.get("e2_node_id"):
+                        ric_note = platform_clients.notify_ric_stopped(run_uuid, rr["e2_node_id"], rr.get("gnb_id_hex") or "")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("notify_ric_stopped failed: %s", exc)
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "stopped", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
         except Exception as exc:  # noqa: BLE001
             logger.exception("launch stop failed run=%s", run_uuid)
             return error_response("stop failed", str(exc), 502)
-        return success_response({"scene_run_uuid": run_uuid, "ue": ue.get("data"), "archive": archive_stats, "containers": containers}, "stopped", 200)
+        return success_response({"scene_run_uuid": run_uuid, "ue": ue.get("data"), "archive": archive_stats, "containers": containers, "ric_notified": ric_note}, "stopped", 200)

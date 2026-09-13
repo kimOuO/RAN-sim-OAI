@@ -42,3 +42,5 @@ PER_RUN_ENABLED = get_bool("PER_RUN_ENABLED", False)
 PER_RUN_NETWORK = get_str("PER_RUN_NETWORK", "ransim-net")
 PER_RUN_PG_ADMIN_DB = get_str("PER_RUN_PG_ADMIN_DB", "ransim_root")
 PER_RUN_HEALTH_SEC = get_int("PER_RUN_HEALTH_SEC", 5)
+# 場景停止後通知 RIC 端清 R-NIB 殘留(m-release 不支援 E2 Removal;收尾第 4 步)。空 = 只記 log
+RIC_STOP_WEBHOOK_URL = get_str("RIC_STOP_WEBHOOK_URL", "")
