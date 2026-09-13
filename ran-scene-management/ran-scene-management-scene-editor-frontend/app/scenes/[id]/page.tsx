@@ -27,7 +27,7 @@ export default function SceneEditorPage() {
           <ObjectTree tree={p.tree} selection={p.selection} onSelect={p.select} />
         </div>
         <div className="center"><SceneCanvas tree={p.tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} /></div>
-        <PropertyPanel selection={p.selection} presets={p.presets} templates={p.templates} gnbTemplates={p.gnbTemplates} materials={p.materials}
+        <PropertyPanel selection={p.selection} presets={p.presets} templates={p.templates} gnbTemplates={p.gnbTemplates} materials={p.materials} scene={p.tree.scene} onSceneAntenna={p.setSceneAntenna}
           onApplyGnbTemplate={p.applyGnbTemplate} onSaveGnbTemplate={p.saveGnbAsTemplate} onAntennaFields={p.applyAntennaFields} onSaveAntennaPreset={p.saveAntennaAsPreset} run={p.run} knobs={p.knobs} saving={p.saving} message={null}
           onCell={p.updateCellFields} onGnb={p.updateGnbFields} onDu={p.updateDuFields} onUe={p.updateUeFields} onBuilding={p.updateBuildingFields}
           onCellAntenna={p.setCellAntenna} onUeAntenna={p.setUeAntenna} onRun={p.updateRunFields} onKnob={p.setKnob} onRemoveKnob={p.removeKnob} onDelete={p.removeSelected} />

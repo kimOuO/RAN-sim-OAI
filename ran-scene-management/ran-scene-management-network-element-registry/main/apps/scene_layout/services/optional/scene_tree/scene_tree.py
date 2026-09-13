@@ -47,6 +47,8 @@ def build_scene_tree(scene: Scene, run: SceneRun | None = None) -> dict[str, Any
     tree: dict[str, Any] = {"scene": SceneReadSerializer(scene).data}
     if scene.ground_material_id:
         tree["scene"]["ground_material"] = MaterialReadSerializer(scene.ground_material).data
+    tree["scene"]["gnb_antenna_preset"] = AntennaPresetReadSerializer(scene.gnb_antenna_preset).data if scene.gnb_antenna_preset_id else None
+    tree["scene"]["ue_antenna_preset"] = AntennaPresetReadSerializer(scene.ue_antenna_preset).data if scene.ue_antenna_preset_id else None
     tree["buildings"] = []
     for b in Building.objects.filter(scene=scene).select_related("default_material").order_by("id"):
         bd = BuildingReadSerializer(b).data

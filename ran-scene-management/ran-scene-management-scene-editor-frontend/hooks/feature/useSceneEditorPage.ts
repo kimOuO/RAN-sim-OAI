@@ -5,7 +5,7 @@ import { attachOsmToScene, generateOsmMap, geocodeLandmark, listOsmMaps } from '
 import { createBuilding, createCell, createDu, createGnb, createRu, createUe, createUeWaypoint, deleteBuilding, deleteCell, deleteGnb, deleteUe, updateBuilding, updateCell, updateDu, updateGnb, updateRu, updateUe } from '@/services/api/networkElements';
 import { createAntennaPreset, createGnbConfigTemplate, listAntennaPresets, listDuConfigTemplates, listGnbConfigTemplates, listMaterials, updateAntennaPreset, updateGnbConfigTemplate } from '@/services/api/presets';
 import { createRunKnob, createSceneRun, deleteRunKnob, listRunKnobs, listSceneRuns, updateRunKnob, updateSceneRun } from '@/services/api/runs';
-import { getSceneTree } from '@/services/api/scenes';
+import { getSceneTree, updateScene } from '@/services/api/scenes';
 import type { AntennaPreset, Building, Cell, Du, Gnb, GnbConfigTemplate, SceneRun, Ue } from '@/types/registry';
 import type { GeocodeResult } from '@/types/geometry';
 
@@ -98,6 +98,8 @@ export function useSceneEditorPage(sceneUuid: string) {
     saveAntennaAsPreset: (c: Cell, fields: Partial<AntennaPreset>, name: string, uuid: string | null) => withSave(uuid ? '更新天線 preset' : `新天線 preset ${name}`, async () => { const a = uuid ? await updateAntennaPreset(uuid, { ...fields, name }) : await createAntennaPreset({ ...fields, name, source: 'custom' }); if (c.ru) await updateRu(c.ru.ru_uuid, { f_antenna_preset_uuid: a.antenna_preset_uuid, antenna_override: null }); else await createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru`, f_antenna_preset_uuid: a.antenna_preset_uuid }); presets.refetch(); }),
     setUeAntenna: (u: Ue, uuid: string | null) => withSave(`UE ${u.name} 天線`, () => updateUe(u.ue_uuid, { f_antenna_preset_uuid: uuid })),
     /** run 層:沒有 run 就先建 draft;knob 以 key 唯一 */
+    /** 場景層級天線(run 只能一組;Sionna scene-global) */
+    setSceneAntenna: (which: 'gnb' | 'ue', uuid: string | null) => withSave(`場景 ${which.toUpperCase()} 天線`, () => updateScene(sceneUuid, which === 'gnb' ? { f_gnb_antenna_preset_uuid: uuid } : { f_ue_antenna_preset_uuid: uuid })),
     updateRunFields: (f: Partial<SceneRun>) => withSave('run 設定', async () => { if (run) await updateSceneRun(run.scene_run_uuid, f); else await createSceneRun({ f_scene_uuid: sceneUuid, ...f }); runs.refetch(); }),
     setKnob: (key: string, value: string) => withSave(`knob ${key}`, async () => {
       let r = run; if (!r) { r = await createSceneRun({ f_scene_uuid: sceneUuid }); runs.refetch(); }

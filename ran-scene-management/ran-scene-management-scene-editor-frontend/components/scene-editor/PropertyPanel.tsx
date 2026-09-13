@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react';
 import type { Selection } from '@/hooks/feature/useSceneEditorPage';
 import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS } from '@/config';
-import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, GnbConfigTemplate, Material, RunKnob, SceneRun, Ue } from '@/types/registry';
+import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, GnbConfigTemplate, Material, RunKnob, SceneRun, SceneTree, Ue } from '@/types/registry';
 
 type Tab = 'props' | 'antenna' | 'ran';
 interface Props {
   selection: Selection; presets: AntennaPreset[]; templates: DuConfigTemplate[]; gnbTemplates: GnbConfigTemplate[]; materials: Material[]; run: SceneRun | null; knobs: RunKnob[]; saving: boolean; message: string | null;
+  scene: SceneTree['scene']; onSceneAntenna: (which: 'gnb' | 'ue', uuid: string | null) => void;
   onApplyGnbTemplate: (g: Gnb, t: GnbConfigTemplate) => void; onSaveGnbTemplate: (g: Gnb, name: string, uuid: string | null) => void;
   onAntennaFields: (c: Cell, f: Partial<AntennaPreset>) => void; onSaveAntennaPreset: (c: Cell, f: Partial<AntennaPreset>, name: string, uuid: string | null) => void;
   onCell: (c: Cell, f: Partial<Cell>) => void; onGnb: (g: Gnb, f: Partial<Gnb>) => void; onDu: (d: Du, f: Partial<Du>) => void; onUe: (u: Ue, f: Partial<Ue>) => void; onBuilding: (b: Building, f: Partial<Building>) => void;
@@ -73,7 +74,11 @@ export function PropertyPanel(p: Props) {
               {sel.cell.ru?.antenna_override != null && <button className="ghost" disabled={p.saving} onClick={() => p.onAntennaFields(sel.cell, {})}>清除覆寫</button>}</div>); })()}
           <p className="muted small">噪聲係數 {sel.cell.ru?.noise_figure_db ?? '—'} dB · preset 清單在「網路元件」頁維護</p></>
         : sel?.kind === 'ue' ? <label><span>UE 天線</span><select value={sel.ue.f_antenna_preset_uuid ?? ''} onChange={(e) => p.onUeAntenna(sel.ue, e.target.value || null)}><option value="">(預設 1×1)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.rows}×{a.cols}</option>)}</select></label>
-        : <p className="muted">選一個 cell 或 UE 設定天線陣列。</p>)}
+        : <>
+          <div className="row head">場景層級天線 <span className="muted">一個 run 只能一組(Sionna 限制)</span></div>
+          <label><span>gNB 陣列</span><select value={p.scene.f_gnb_antenna_preset_uuid ?? ''} onChange={(e) => p.onSceneAntenna('gnb', e.target.value || null)}><option value="">(未設 → 第一個 cell 的 RU preset / 1×1 tr38901)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.pattern} {a.rows}×{a.cols} {a.polarization}</option>)}</select></label>
+          <label><span>UE 陣列</span><select value={p.scene.f_ue_antenna_preset_uuid ?? ''} onChange={(e) => p.onSceneAntenna('ue', e.target.value || null)}><option value="">(未設 → 第一個 UE 的 preset / 1×1 dipole)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.pattern} {a.rows}×{a.cols} {a.polarization}</option>)}</select></label>
+          <p className="muted small">兩層 MIMO 需要:gNB 與 UE 都 ≥ 2 埠(建議 cross 極化)、SINR ≥ 15 dB、有流量。個別 cell / UE 的 preset 只在場景層級未設時當預設。</p></>)}
       {tab === 'ran' && <>
         {(sel?.kind === 'gnb' || sel?.kind === 'cell') && (() => { const g = sel.kind === 'gnb' ? sel.gnb : sel.gnb; const du = g.dus[0]; return <>
           <div className="row head">DU 設定模板 <span className="muted">{du?.name}</span></div>

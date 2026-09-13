@@ -331,3 +331,8 @@
 - RU:由未預編碼 H 的奇異值算每層 SINR:第 i 層 = 總 SINR − 10log10(rank) + 20log10(σi/σ1)。
 - DU:serializer / actor / registry(`ue["sinr_layers"]`)接下來;`eesm.effective_sinr_for_layers(sinr, n, sinr_layers, mcs)` 有每層值就 `combine_db`(EESM,β 依目前 MCS,無 MCS 用 10)壓成等效 SINR,否則等功率近似;pf_scheduler 與 slot engine(`SlotParams.sinr_layers / mcs_hint`)兩個呼叫點都接上。DU 每 50 筆多層 cqi 印一次 INFO。
 - 實測(live,2×2 cross + 1×2 cross):`cp0 rank=2 sinr=6.0 layers=[2.97, −1.83]`、`cp4 sinr=1.7 layers=[−1.34, −4.49]` —— 第二層比第一層弱 ~4.8 dB,與自由空間 cross-pol 的第二奇異值 −4.7 dB 一致;KPM rank=2。
+
+## P5-Q2 場景層級天線(2026-09-13)
+
+- Sionna tx_array / rx_array 是 scene-global → 一個 run 只能一組 gNB 陣列、一組 UE 陣列。registry `scene.f_gnb_antenna_preset_uuid / f_ue_antenna_preset_uuid`(migration scene_layout 0003),read_full_tree 帶 `gnb_antenna_preset / ue_antenna_preset`;UE loader 優先用場景層級,沒設才退回「第一個 cell 的 RU preset / 第一個 UE 的 preset」。
+- 編輯器:未選物件時「天線」分頁顯示場景層級兩個下拉。API 往返驗證 OK。

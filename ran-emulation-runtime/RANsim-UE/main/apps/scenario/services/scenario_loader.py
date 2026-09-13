@@ -393,8 +393,9 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
                for u in t.get("ues") or [] for tr in (u.get("traffic") or [])]
     gnbs: list[GnbScenarioRow] = []
     a3: dict = {}
-    tx_antenna: dict | None = None
-    ue_antenna: dict | None = next((_preset_to_array(u["antenna_preset"]) for u in (t.get("ues") or []) if u.get("antenna_preset")), None)
+    # 場景層級(scene.gnb/ue_antenna_preset)優先;沒設才退回「第一個 cell 的 RU preset / 第一個 UE 的 preset」
+    tx_antenna: dict | None = _preset_to_array(scene["gnb_antenna_preset"]) if scene.get("gnb_antenna_preset") else None
+    ue_antenna: dict | None = _preset_to_array(scene["ue_antenna_preset"]) if scene.get("ue_antenna_preset") else next((_preset_to_array(u["antenna_preset"]) for u in (t.get("ues") or []) if u.get("antenna_preset")), None)
     for g in t.get("gnbs") or []:
         cells: list[CellScenarioRow] = []
         f0 = bw0 = p0 = None

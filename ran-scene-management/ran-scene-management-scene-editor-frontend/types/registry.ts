@@ -13,6 +13,7 @@ export interface DuConfigTemplate {
 export interface Scene {
   scene_uuid: string; name: string; description: string; origin_lat: number | null; origin_lon: number | null; bounds: unknown;
   legacy_scenario_id: string; geometry_scene_id: string; geometry_source: unknown; f_material_uuid: string | null;
+  f_gnb_antenna_preset_uuid: string | null; f_ue_antenna_preset_uuid: string | null;
   scene_created_at: string; scene_updated_at: string;
 }
 export interface Building {
@@ -42,7 +43,7 @@ export interface SceneRun {
   status: 'draft' | 'pending' | 'precomputing' | 'ready' | 'running' | 'stopped' | 'failed'; cache_path: string; e2_node_id: string;
   started_at: string | null; stopped_at: string | null; notes: string; f_scene_uuid: string; knobs?: Record<string, unknown>;
 }
-export interface SceneTree { scene: Scene & { ground_material?: Material }; buildings: Building[]; gnbs: Gnb[]; neighbor_seeds: unknown[]; ues: Ue[]; run: SceneRun | null; }
+export interface SceneTree { scene: Scene & { ground_material?: Material; gnb_antenna_preset?: AntennaPreset | null; ue_antenna_preset?: AntennaPreset | null }; buildings: Building[]; gnbs: Gnb[]; neighbor_seeds: unknown[]; ues: Ue[]; run: SceneRun | null; }
 export interface RunKnob { run_knob_uuid: string; key: string; value: unknown; f_scene_run_uuid: string; }
 export interface GnbConfigTemplate {
   gnb_config_template_uuid: string; name: string; source: string; notes: string; plmn_mcc: string; plmn_mnc: string;
