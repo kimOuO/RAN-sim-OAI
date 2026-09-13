@@ -256,3 +256,14 @@
 - DU `TickController/read` 新增 `body_ms {avg,max}`(tick body wall 耗時,近 1 s 視窗),serializer 補欄位。
 - 掃 wall_tick 250 → 50 → 15 ms:達成 2.0× / 10.0× / **22×**,body avg 16 ms、max 33 ms。HTTP 已不在關鍵路徑(`dl_tti` 非阻塞),瓶頸是 DU 自身計算 → §11.3 的 63 ms / 7–8× 估計作廢,寫成 §11.8。
 - **決定:UDS/msgpack 不做**;要更快是 profile tick body,另開題。
+
+## P4-5 cell 識別碼跨場景唯一(2026-09-13,回 RIC 端 ③)
+
+- RIC 端盤點 dt-anr-xapp:27 個狀態欄位以 (src, dst) 等 cell 字串當鍵、沒有場景維度;registry 裡 53 個 cell 名跨場景重複(`gnbDT_c0` ×24、`src` ×5…),並行必撞(最嚴重 `_guard_cooldown` 會把後者永遠噤聲)。
+- 做法:sim 對外 cell_id 一律 **`<tag>:<name>`**,tag = 該 run gNB ID 低 12 bit(`e01`),與 E2 node `gnb_208_095_000e01` 同源。
+  - 加標籤只在 UE loader(所有 cell 字串唯一源頭):cells、default_serving、cell_quotas;env `CELL_ID_TAG` 由 orchestrator 設。
+  - 剝標籤只在 cell → 物理 tx 名的轉換點:DU `channel_cache_du.cell_id_to_tx`、RU `payload_builder._cells_grouped_by_gnb`、UE `cell_selection.to_cu_cell_id`(用剝掉的名字比對、回完整 id)。
+  - helper 在 `ran_sim_protocol/cell_tag.py`;UE image 沒掛 protocol 套件,所以 UE 內有一份同語意的 `ue_lifecycle/services/cell_tag.py`。
+  - 監控 gNB 分組比對時剝標籤;封存與 E2 原樣帶標籤。
+- 驗證:兩 run 同時 → DU cell `e01:src / e01:nbr` 與 `e02:src / e02:nbr`;UE attach 18/18 到 `e01:src`;cached SINR 43–55 dB(npz 對應沒斷);封存 per_cell / serving 都帶標籤;0 RLF。
+- SCTP:host 上 `association_max_retrans` 已掉回 10,需重跑 `RANsim-E2Adapter/shell/host_setup_sctp.sh`(root),已請使用者跑。

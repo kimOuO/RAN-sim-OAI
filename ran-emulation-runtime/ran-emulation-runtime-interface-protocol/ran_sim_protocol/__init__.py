@@ -14,6 +14,7 @@ Modules:
   - common   : 共用 dataclass (CellConfig, DrbConfig, ...)
 """
 from ran_sim_protocol.serde import to_dict, from_dict
+from ran_sim_protocol.cell_tag import tag_cell, strip_tag, tag_of
 
 __version__ = "0.1.0"
 __all__ = ["to_dict", "from_dict"]

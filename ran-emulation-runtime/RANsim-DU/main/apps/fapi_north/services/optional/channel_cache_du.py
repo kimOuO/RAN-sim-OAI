@@ -127,7 +127,9 @@ def read_mode() -> tuple[str, str]:
 
 
 def cell_id_to_tx(cell_id: str) -> str:
-    """DU cell_id → physics tx_name:'gnbDT_c0' → 'gnbDT#0'。"""
+    """DU cell_id → physics tx_name:'gnbDT_c0' → 'gnbDT#0'。run 標籤('e01:gnbDT_c0')先剝掉,npz 的 tx 名沒有它。"""
+    from ran_sim_protocol.cell_tag import strip_tag
+    cell_id = strip_tag(cell_id)
     if "_c" in cell_id:
         base, n = cell_id.rsplit("_c", 1)
         return f"{base}#{n}"

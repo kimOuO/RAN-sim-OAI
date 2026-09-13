@@ -45,6 +45,8 @@ export function groupCellsByGnb(cells: string[], tree: SceneTreeLite | null): { 
   const owner = new Map<string, string>();
   for (const g of tree?.gnbs ?? []) for (const du of g.dus) for (const c of du.cells) owner.set(c.name, g.name);
   const m = new Map<string, string[]>();
-  for (const c of cells) { const g = owner.get(c) ?? '其他'; (m.get(g) ?? m.set(g, []).get(g)!).push(c); }
+  // KPM 的 cell_id 帶 run 標籤(e01:src),場景樹的名字沒有 → 剝掉再比對
+  const bare = (c: string) => (c.includes(':') ? c.split(':')[1] : c);
+  for (const c of cells) { const g = owner.get(bare(c)) ?? '其他'; (m.get(g) ?? m.set(g, []).get(g)!).push(c); }
   return [...m.entries()].sort(([a], [b]) => (a === '其他' ? 1 : b === '其他' ? -1 : a.localeCompare(b))).map(([gnb, cs]) => ({ gnb, cells: cs }));
 }

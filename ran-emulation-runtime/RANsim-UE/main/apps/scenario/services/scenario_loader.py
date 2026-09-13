@@ -355,6 +355,9 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     gnb 層級 frequency/bandwidth/power = 第一個 cell、a3 None = 未指定)。
     scenario_id 取 scene.legacy_scenario_id(RU cache npz 檔名靠它)。
     """
+    # run 唯一 cell 標籤(見 ran_sim_protocol.cell_tag):orchestrator 設 CELL_ID_TAG=e01 之類;沒設就不加(舊共用模式)
+    _run_tag = os.getenv("CELL_ID_TAG", "").strip()
+    from main.apps.ue_lifecycle.services.cell_tag import tag_cell as _tag_cell
     if not REGISTRY_URL:
         raise RuntimeError("REGISTRY_URL not set; cannot fetch scene_run from registry")
     r = requests.post(
@@ -388,7 +391,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
                     f0, bw0, p0 = f, bw, pw
                 pos = c.get("position")
                 cells.append(CellScenarioRow(
-                    cell_id=str(c["name"]), pci=int(c.get("pci") or 0), azimuth_deg=float(c.get("azimuth_deg") or 0.0),
+                    cell_id=_tag_cell(_run_tag, str(c["name"])), pci=int(c.get("pci") or 0), azimuth_deg=float(c.get("azimuth_deg") or 0.0),
                     position=(float(pos[0]), float(pos[1]), float(pos[2])) if pos else None,
                     frequency_ghz=(float(f) if (f is not None and f != f0) else None),
                     bandwidth_mhz=(float(bw) if (bw is not None and bw != bw0) else None),
@@ -414,7 +417,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     # default_serving_cell 必須是樹裡真的有的 cell;舊劇本常寫 "<gnb>_c0" 但 cell 叫 "<gnb>",
     # 掛到不存在的 cell 會在 CU 生出幽靈 serving cell(2026-09-13 P4-1 發現)。不在樹裡就退回第一個 cell。
     cell_names = [c.cell_id for g in gnbs for c in g.cells]
-    default_serving = str(knobs.get("default_serving_cell") or "")
+    default_serving = _tag_cell(_run_tag, str(knobs.get("default_serving_cell") or ""))
     if default_serving not in cell_names:
         fallback = cell_names[0] if cell_names else "gnb1_cell0"
         if default_serving:
@@ -430,7 +433,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
         precompute_status="ready" if run.get("mode") == "cached" else "pending",
         antenna_pattern=(str(knobs["antenna_pattern"]) if knobs.get("antenna_pattern") else None),
         has_anr_fixture=bool(knobs.get("anr_fixture")),
-        cell_quotas=[{"cell_id": str(q["cell_id"]), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
+        cell_quotas=[{"cell_id": _tag_cell(_run_tag, str(q["cell_id"])), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
                      for q in (knobs.get("cell_quotas") or []) if q.get("cell_id")],
         inter_freq=bool(knobs.get("inter_freq", False)),
         discard_timer_ms=int(knobs.get("discard_timer_ms", 300)),

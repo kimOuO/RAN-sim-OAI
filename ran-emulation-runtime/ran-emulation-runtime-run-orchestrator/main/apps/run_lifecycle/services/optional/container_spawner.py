@@ -121,6 +121,8 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
         env["SCENE_RUN_UUID"] = scene_run_uuid
         if role == "cu" and gnb_id_hex:
             env["GNB_ID_HEX"] = gnb_id_hex
+        # run 唯一 cell 標籤 = gNB ID 低 12 bit(與 RIC 看到的 E2 node 同源);UE loader 加、DU/RU 轉 tx 名時剝
+        env["CELL_ID_TAG"] = f"{(GNB_ID_BASE | slot) & 0xfff:03x}"
         if role == "ru":
             env["RU_CHANNEL_MODE"] = mode
         if role in ("du", "ru"):

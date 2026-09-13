@@ -53,8 +53,9 @@ def collect_ue_specs(ue_ids: Iterable[str]) -> list[UeSpec]:
 def _cells_grouped_by_gnb() -> dict[str, list[Cell]]:
     """Cell.name 約定：`<gnb_name>` 或 `<gnb_name>#<pci>`（與 sionna_engine 約定相容）。"""
     out: dict[str, list[Cell]] = {}
+    from ran_sim_protocol.cell_tag import strip_tag
     for c in Cell.objects.all():
-        gnb_name = c.name.split("#", 1)[0]
+        gnb_name = strip_tag(c.name).split("#", 1)[0]   # run 標籤不進 Sionna 的 tx 名
         out.setdefault(gnb_name, []).append(c)
     return out
 

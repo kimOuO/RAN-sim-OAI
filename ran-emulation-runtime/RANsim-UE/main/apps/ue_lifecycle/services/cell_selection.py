@@ -77,11 +77,18 @@ def to_cu_cell_id(label: str, known: set[str], by_pci: dict[int, str] | None = N
     """
     if label in known:
         return label
+    # run 標籤('e01:gnb1_c0'):物理標籤沒有它,用剝掉標籤的名字比對,回傳 CU 認的完整 id
+    from main.apps.ue_lifecycle.services.cell_tag import strip_tag
+    by_bare = {strip_tag(k): k for k in known}
+    if label in by_bare:
+        return by_bare[label]
     m = _LABEL_RE.match(label)
     if m:
         cand = f"{m.group('gnb')}_c{m.group('idx')}"
         if cand in known:
             return cand
+        if cand in by_bare:
+            return by_bare[cand]
         # "#" 後綴實為 PCI(SionnaEngine tx 命名)→ 以 PCI 反查 CU cell
         if by_pci:
             hit = by_pci.get(int(m.group("idx")))
