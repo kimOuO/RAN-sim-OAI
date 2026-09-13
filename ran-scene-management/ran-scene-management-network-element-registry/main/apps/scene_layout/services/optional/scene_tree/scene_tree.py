@@ -14,6 +14,7 @@ from typing import Any
 
 from main.apps.preset_catalog.serializers.antenna_preset_serializers import AntennaPresetReadSerializer
 from main.apps.preset_catalog.serializers.du_config_template_serializers import DuConfigTemplateReadSerializer
+from main.apps.preset_catalog.serializers.gnb_config_template_serializers import GnbConfigTemplateReadSerializer
 from main.apps.preset_catalog.serializers.material_serializers import MaterialReadSerializer
 from main.apps.radio_access_element.models.cell import Cell
 from main.apps.radio_access_element.models.du import Du
@@ -53,8 +54,9 @@ def build_scene_tree(scene: Scene, run: SceneRun | None = None) -> dict[str, Any
         tree["buildings"].append(bd)
     tree["gnbs"] = []
     cells_all: list[Cell] = []
-    for g in Gnb.objects.filter(scene=scene).order_by("id"):
+    for g in Gnb.objects.filter(scene=scene).select_related("config_template").order_by("id"):
         gd = GnbReadSerializer(g).data; gd["dus"] = []
+        gd["config_template"] = GnbConfigTemplateReadSerializer(g.config_template).data if g.config_template_id else None
         for du in Du.objects.filter(gnb=g).select_related("config_template").order_by("id"):
             dd = DuReadSerializer(du).data
             dd["config_template"] = DuConfigTemplateReadSerializer(du.config_template).data if du.config_template_id else None

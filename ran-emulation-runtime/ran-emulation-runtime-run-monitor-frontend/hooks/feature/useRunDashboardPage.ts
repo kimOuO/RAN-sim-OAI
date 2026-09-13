@@ -4,14 +4,15 @@ import { POLL_MS, RANGE_OPTIONS, UE_METRICS } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
 import { usePolling } from '@/hooks/base/usePolling';
 import { listControlEvents, listHandoverEvents, listKpmSamples, listLaunchRequests } from '@/services/api/archive';
-import { getDuTick, getE2AdapterStatus, getRun, getUeDriverStatus, listDuCells, listScenes } from '@/services/api/runs';
-import { allCells, allUes, bucketEvents, cellColorMap, cellSeries, histogram, latestUes, mean, meanSinrByCell, prbDl, prbUl, thpDlByCell, ueCountByCell, ueSeries, ueServingStrip } from '@/hooks/feature/kpmDerive';
+import { getDuTick, getE2AdapterStatus, getRun, getSceneTree, getUeDriverStatus, listDuCells, listScenes } from '@/services/api/runs';
+import { allCells, allUes, bucketEvents, cellColorMap, cellSeries, groupCellsByGnb, histogram, latestUes, mean, meanMcsByCell, meanRlcDelayByCell, meanSinrByCell, prbDl, prbUl, thpDlByCell, thpUlByCell, ueCountByCell, ueSeries, ueServingStrip } from '@/hooks/feature/kpmDerive';
 import type { KpmSample } from '@/types/telemetry';
 
 /** 單 run 的全部資料 + 衍生序列。元件只畫。 */
 export function useRunDashboardPage(runUuid: string) {
   const run = useAsync(() => getRun(runUuid), [runUuid]);
   const scenes = useAsync(listScenes, []);
+  const tree = useAsync(() => (run.data ? getSceneTree(run.data.f_scene_uuid) : Promise.resolve(null)), [run.data?.f_scene_uuid]);
   const samples = useAsync(() => listKpmSamples(runUuid), [runUuid]);
   const hos = useAsync(() => listHandoverEvents(runUuid), [runUuid]);
   const ctrls = useAsync(() => listControlEvents(runUuid), [runUuid]);
@@ -30,18 +31,21 @@ export function useRunDashboardPage(runUuid: string) {
   const cells = useMemo(() => allCells(all), [all]);
   const color = useMemo(() => cellColorMap(cells), [cells]);
   const ues = useMemo(() => allUes(all), [all]);
+  const gnbGroups = useMemo(() => groupCellsByGnb(cells, tree.data ?? null), [cells, tree.data]);
   const latest: KpmSample | null = all.length ? (selectedWindow != null ? all[Math.min(selectedWindow, all.length - 1)] : all[all.length - 1]) : null;
   const prev: KpmSample | null = all.length > 1 ? all[all.length - 2] : null;
 
   const charts = useMemo(() => ({
     prbDl: cellSeries(view, cells, color, prbDl), prbUl: cellSeries(view, cells, color, prbUl),
-    thpDl: cellSeries(view, cells, color, thpDlByCell), ueCount: cellSeries(view, cells, color, ueCountByCell), sinr: cellSeries(view, cells, color, meanSinrByCell),
+    thpDl: cellSeries(view, cells, color, thpDlByCell), thpUl: cellSeries(view, cells, color, thpUlByCell), ueCount: cellSeries(view, cells, color, ueCountByCell), sinr: cellSeries(view, cells, color, meanSinrByCell),
+    rlcDelay: cellSeries(view, cells, color, meanRlcDelayByCell), mcs: cellSeries(view, cells, color, meanMcsByCell),
   }), [view, cells, color]);
   const xLabels = useMemo(() => view.map((w) => w.sim_time_ms / 1000), [view]);
 
   const ueRows = useMemo(() => latestUes(latest).map(([id, k]) => ({ id, k, color: color[k.serving_cell] ?? '#888' })), [latest, color]);
+  const cellUeCount = useMemo(() => { const m: Record<string, number> = {}; for (const r of ueRows) m[r.k.serving_cell] = (m[r.k.serving_cell] ?? 0) + 1; return m; }, [ueRows]);
   const sinrHist = useMemo(() => histogram(ueRows.map((r) => r.k.sinr_db), -10, 40, 10), [ueRows]);
-  const ueDetail = useMemo(() => selectedUe ? { id: selectedUe, metrics: UE_METRICS.map((m) => ({ ...m, points: ueSeries(view, selectedUe, m.key) })), serving: ueServingStrip(view, selectedUe) } : null, [selectedUe, view]);
+  const ueDetail = useMemo(() => selectedUe ? { id: selectedUe, metrics: UE_METRICS.map((m) => ({ ...m, points: ueSeries(view, selectedUe, m.key) })), serving: ueServingStrip(view, selectedUe), last: latest?.per_ue[selectedUe] ?? null } : null, [selectedUe, view, latest]);
   const ueSmall = useMemo(() => ues.map((u) => ({ id: u, sinr: ueSeries(view, u, 'sinr_db'), serving: ueServingStrip(view, u), last: latest?.per_ue[u] ?? null })), [ues, view, latest]);
 
   const totalSec = Math.max(60, (all[all.length - 1]?.sim_time_ms ?? 0) / 1000);
@@ -61,7 +65,7 @@ export function useRunDashboardPage(runUuid: string) {
 
   return {
     run: run.data, sceneName: (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid)?.legacy_scenario_id ?? '', status: run.status, error: run.error,
-    all, view, latest, cells, color, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
+    all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
     handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], commandImpact, launches: launches.data ?? [],
     duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, live, range, setRange, selectedWindow, setSelectedWindow,
   };

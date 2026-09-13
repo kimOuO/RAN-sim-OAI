@@ -172,3 +172,25 @@
 - 服務層新增:networkElements(updateDu/Building/Ue、create/delete)、presets(update/delete)、runs(runKnob CRUD、updateSceneRun)、geometry(geocode/generate/list/attach)。
 
 **驗證**:兩邊 typecheck / lint 乾淨;headless Chromium 截圖 5 頁;throwaway scene 走 API:UE + waypoint(欄位是 `ord`,已修)、manual_box 建築、OSM attach(既有 ready asset)全部成功並清掉。真的抓 Overpass 未跑(外網、1–3 分鐘),請使用者在瀏覽器試。
+
+## P3-5 gNB 模板 / 天線現場調整 / 監控 gNB→cell 圓環(2026-09-13)
+
+**使用者回饋**:full KPM 是否都在;PRB 用圓環百分比、以 gNB 為單位再展 cell;「並看」難聽 → Runs 後面接模擬名稱分頁;網路元件要能管 gNB 參數(參考對齊 OAI 的設定)、給一組預設、場景現場套用只是快速填、現場可改、改完可存成/更新模板、天線同理;要不要 DB 管。
+
+**Registry(DB 管,答案:要)**
+- 新表 `preset_catalog_gnb_config_template`(name、source oai/custom、PLMN、A3 enabled/offset/hys/TTT、cell RF 預設 band/GHz/BW/dBm/tilt、cells_per_gnb、azimuth_step、FK → DU 模板、FK → 天線 preset);actor/serializer/URL 同 DuConfigTemplate 模式(`GnbConfigTemplateController/create|update|delete`、`GnbConfigTemplateReader/read`)。
+- `gnb.f_gnb_config_template_uuid`(SET_NULL,記來源模板;現場改值不自動回寫);read_full_tree 帶 `config_template`。
+- migrations `preset_catalog 0002`、`radio_access_element 0004`;`manage.py seed_presets`(冪等)建三組預設:DU 模板「OAI 對齊」(DDDDDDDSUU、μ1、106 PRB、min 5、PF 0.05、BLER 0.1、discard 300、HARQ 4)、天線「1×1 iso(OAI rfsim)」、gNB 模板「OAI 對齊預設」(208/95、A3 關 1/0.5/80、n78 3.5 GHz 40 MHz 23 dBm,綁前兩者)。
+
+**管理平台**
+- 元件庫放 gNB 時自動套「OAI 對齊預設」(source=oai 的模板):DU 綁模板、依 cells_per_gnb 建 cell(帶 RF 預設、方位步進)、RU 綁天線、gNB 帶 PLMN/A3。
+- gNB 屬性頁頂端「gNB 模板」列:下拉套用(確認後覆蓋 PLMN/A3/DU 模板/每 cell RF/天線,之後仍可逐項改)、「現場存成新模板」、「更新模板『X』」(值取現場第一個 DU/cell/RU)。
+- cell 天線分頁:preset 下拉 + **現場調整欄位**(pattern/rows/cols/極化/間距/增益)→「套用到此 RU(覆寫 antenna_override)」/「存成新 preset」/「更新『X』」/「清除覆寫」。
+- 網路元件頁新增「gNB 模板」分頁(含 DU 模板、天線的參照下拉),預設頁籤。
+
+**監控平台**
+- 頂欄改成 Runs + 每個執行中 / 最近結束的 run 一個分頁(模擬名稱,執行中有綠點),「並看」改名「對照」。
+- PRB DL/UL 改成 **gNB → cell 圓環板**:每 gNB 一列,列首 gNB 平均圓環,後面每 cell 一個圓環(色跟 cell、>85% 警示);gNB 對應由 registry read_full_tree 的 cell 名稱比對,對不到歸「其他」(舊劇本殘留 cell 會落在這)。走勢折線保留在下方。
+- Full KPM 覆蓋:per-cell 新增 UL 吞吐、RLC SDU delay、平均 MCS;UE 細節新增 Thp UL、PDCP volume DL/UL 時序,以及 rank、5QI、PRB、鄰區 RSRP/RSRQ 列。至此 KPM 的每個欄位都有圖或位置。
+
+**驗證**:migrate + seed OK;registry 讀回模板 OK;兩前端 typecheck/lint 乾淨;headless 截圖(dashboard 圓環板、gNB 模板列、天線分頁、網路元件 gNB 模板頁)。gNB 模板「套用 / 存成」按鈕有 confirm/prompt,未在 headless 走完,請使用者實測。

@@ -29,7 +29,7 @@ export interface Cell {
 export interface Du { du_uuid: string; name: string; gnb_du_id: number; config_override: unknown; f_gnb_uuid: string; f_du_config_template_uuid: string | null; config_template?: DuConfigTemplate | null; cells: Cell[]; }
 export interface Gnb {
   gnb_uuid: string; name: string; gnb_id: number; plmn_mcc: string; plmn_mnc: string; position: number[]; is_active: boolean; color: number[] | null;
-  a3_enabled: boolean | null; a3_offset_db: number | null; a3_hys_db: number | null; a3_ttt_ms: number | null; f_scene_uuid: string; dus: Du[];
+  a3_enabled: boolean | null; a3_offset_db: number | null; a3_hys_db: number | null; a3_ttt_ms: number | null; f_scene_uuid: string; f_gnb_config_template_uuid: string | null; config_template?: GnbConfigTemplate | null; dus: Du[];
 }
 export interface UeTraffic { ue_traffic_uuid: string; pattern: string; rate_mbps: number; schedule: number[][] | null; bearer_id: number; }
 export interface Ue {
@@ -44,3 +44,8 @@ export interface SceneRun {
 }
 export interface SceneTree { scene: Scene & { ground_material?: Material }; buildings: Building[]; gnbs: Gnb[]; neighbor_seeds: unknown[]; ues: Ue[]; run: SceneRun | null; }
 export interface RunKnob { run_knob_uuid: string; key: string; value: unknown; f_scene_run_uuid: string; }
+export interface GnbConfigTemplate {
+  gnb_config_template_uuid: string; name: string; source: string; notes: string; plmn_mcc: string; plmn_mnc: string;
+  a3_enabled: boolean; a3_offset_db: number; a3_hys_db: number; a3_ttt_ms: number; band: string; center_frequency_ghz: number; bandwidth_mhz: number; power_dbm: number; tilt_deg: number;
+  cells_per_gnb: number; azimuth_step_deg: number; f_du_config_template_uuid: string | null; f_antenna_preset_uuid: string | null;
+}

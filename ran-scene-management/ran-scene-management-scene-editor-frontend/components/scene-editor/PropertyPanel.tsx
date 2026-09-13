@@ -1,15 +1,19 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { Selection } from '@/hooks/feature/useSceneEditorPage';
-import { RUN_KNOB_KEYS } from '@/config';
-import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, Material, RunKnob, SceneRun, Ue } from '@/types/registry';
+import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS } from '@/config';
+import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, GnbConfigTemplate, Material, RunKnob, SceneRun, Ue } from '@/types/registry';
 
 type Tab = 'props' | 'antenna' | 'ran';
 interface Props {
-  selection: Selection; presets: AntennaPreset[]; templates: DuConfigTemplate[]; materials: Material[]; run: SceneRun | null; knobs: RunKnob[]; saving: boolean; message: string | null;
+  selection: Selection; presets: AntennaPreset[]; templates: DuConfigTemplate[]; gnbTemplates: GnbConfigTemplate[]; materials: Material[]; run: SceneRun | null; knobs: RunKnob[]; saving: boolean; message: string | null;
+  onApplyGnbTemplate: (g: Gnb, t: GnbConfigTemplate) => void; onSaveGnbTemplate: (g: Gnb, name: string, uuid: string | null) => void;
+  onAntennaFields: (c: Cell, f: Partial<AntennaPreset>) => void; onSaveAntennaPreset: (c: Cell, f: Partial<AntennaPreset>, name: string, uuid: string | null) => void;
   onCell: (c: Cell, f: Partial<Cell>) => void; onGnb: (g: Gnb, f: Partial<Gnb>) => void; onDu: (d: Du, f: Partial<Du>) => void; onUe: (u: Ue, f: Partial<Ue>) => void; onBuilding: (b: Building, f: Partial<Building>) => void;
   onCellAntenna: (c: Cell, uuid: string | null) => void; onUeAntenna: (u: Ue, uuid: string | null) => void; onRun: (f: Partial<SceneRun>) => void; onKnob: (k: string, v: string) => void; onRemoveKnob: (uuid: string) => void; onDelete: () => void;
 }
+/** 天線分頁的表單初值:RU 覆寫 > preset > 1×1 iso */
+const antennaForm = (c: Cell): Record<string, string> => { const o = (c.ru?.antenna_override ?? {}) as Partial<AntennaPreset>; const a = c.ru?.antenna_preset; const g = <K extends keyof AntennaPreset>(k: K, d: AntennaPreset[K]) => String(o[k] ?? a?.[k] ?? d); return { an_pattern: g('pattern', 'iso'), an_rows: g('rows', 1), an_cols: g('cols', 1), an_polarization: g('polarization', 'V'), an_v_spacing: g('v_spacing', 0.5), an_h_spacing: g('h_spacing', 0.5), an_max_gain_dbi: g('max_gain_dbi', 0), an_polarization_model: g('polarization_model', 'tr38901_2') }; };
 const Field = ({ k, label, v, set, type = 'text' }: { k: string; label?: string; v: string; set: (k: string, v: string) => void; type?: string }) => <label><span>{label ?? k}</span><input type={type} value={v} onChange={(e) => set(k, e.target.value)} /></label>;
 
 /** 右側面板:屬性 / 天線 / RAN 參數 三個分頁;表單狀態在此,寫回交給 hook */
@@ -17,7 +21,7 @@ export function PropertyPanel(p: Props) {
   const { selection: sel } = p;
   const [tab, setTab] = useState<Tab>('props'); const [form, setForm] = useState<Record<string, string>>({}); const [knobKey, setKnobKey] = useState<string>(RUN_KNOB_KEYS[0]); const [knobVal, setKnobVal] = useState('');
   useEffect(() => {
-    if (sel?.kind === 'cell') { const c = sel.cell; setForm({ name: c.name, pci: String(c.pci), center_frequency_ghz: String(c.center_frequency_ghz ?? ''), bandwidth_mhz: String(c.bandwidth_mhz), power_dbm: String(c.power_dbm), azimuth_deg: String(c.azimuth_deg), tilt_deg: String(c.tilt_deg), band: c.band, override: JSON.stringify(c.ru?.antenna_override ?? {}, null, 1), du_override: JSON.stringify(sel.gnb.dus[0]?.config_override ?? {}, null, 1) }); }
+    if (sel?.kind === 'cell') { const c = sel.cell; setForm({ name: c.name, pci: String(c.pci), center_frequency_ghz: String(c.center_frequency_ghz ?? ''), bandwidth_mhz: String(c.bandwidth_mhz), power_dbm: String(c.power_dbm), azimuth_deg: String(c.azimuth_deg), tilt_deg: String(c.tilt_deg), band: c.band, override: JSON.stringify(c.ru?.antenna_override ?? {}, null, 1), ...antennaForm(c), du_override: JSON.stringify(sel.gnb.dus[0]?.config_override ?? {}, null, 1) }); }
     else if (sel?.kind === 'gnb') { const g = sel.gnb; setForm({ name: g.name, gnb_id: String(g.gnb_id), plmn_mcc: g.plmn_mcc, plmn_mnc: g.plmn_mnc, x: String(g.position[0] ?? 0), y: String(g.position[1] ?? 0), z: String(g.position[2] ?? 0), a3_offset_db: String(g.a3_offset_db ?? ''), a3_hys_db: String(g.a3_hys_db ?? ''), a3_ttt_ms: String(g.a3_ttt_ms ?? ''), du_override: JSON.stringify(g.dus[0]?.config_override ?? {}, null, 1) }); }
     else if (sel?.kind === 'ue') { const u = sel.ue; setForm({ name: u.name, antenna_height_m: String(u.antenna_height_m), qos_5qi: String(u.qos_5qi), speed_mps: String(u.speed_mps ?? '') }); }
     else if (sel?.kind === 'building') { const b = sel.building; setForm({ name: b.name, x: String(b.position[0] ?? 0), z: String(b.position[2] ?? 0), sx: String(b.size[0] ?? 10), sy: String(b.size[1] ?? 6), sz: String(b.size[2] ?? 10) }); }
@@ -38,6 +42,10 @@ export function PropertyPanel(p: Props) {
           <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onCell(sel.cell, { name: f('name'), pci: Number(f('pci')), band: f('band'), center_frequency_ghz: num('center_frequency_ghz'), bandwidth_mhz: Number(f('bandwidth_mhz')), power_dbm: Number(f('power_dbm')), azimuth_deg: Number(f('azimuth_deg')), tilt_deg: Number(f('tilt_deg')) })}>儲存</button>
             <button disabled={p.saving} onClick={() => p.onCell(sel.cell, { is_active: !sel.cell.is_active })}>{sel.cell.is_active ? '關閉 cell' : '開啟 cell'}</button></div></>
         : sel.kind === 'gnb' ? <>
+          <div className="tpl-row"><span className="row head">gNB 模板</span>
+            <select value={sel.gnb.f_gnb_config_template_uuid ?? ''} onChange={(e) => { const t = p.gnbTemplates.find((x) => x.gnb_config_template_uuid === e.target.value); if (t && confirm(`套用「${t.name}」到 ${sel.gnb.name}?會覆蓋 PLMN / A3 / DU 模板 / 每個 cell 的 RF 與天線,之後仍可現場改。`)) p.onApplyGnbTemplate(sel.gnb, t); }}><option value="">(選一個模板快速填值)</option>{p.gnbTemplates.map((t) => <option key={t.gnb_config_template_uuid} value={t.gnb_config_template_uuid}>{t.name}{t.source === 'oai' ? ' · OAI' : ''}</option>)}</select>
+            <div className="actions"><button disabled={p.saving} onClick={() => { const n = prompt('新模板名稱', `${sel.gnb.name}-模板`); if (n) p.onSaveGnbTemplate(sel.gnb, n, null); }}>現場存成新模板</button>{sel.gnb.config_template && <button disabled={p.saving} onClick={() => { if (confirm(`用 ${sel.gnb.name} 的現場值更新模板「${sel.gnb.config_template!.name}」?`)) p.onSaveGnbTemplate(sel.gnb, sel.gnb.config_template!.name, sel.gnb.config_template!.gnb_config_template_uuid); }}>更新模板「{sel.gnb.config_template.name}」</button>}</div>
+            {sel.gnb.config_template && <p className="muted small">來源模板 {sel.gnb.config_template.name};現場改值不會自動回寫。</p>}</div>
           <Field k="name" v={f('name')} set={set} /><Field k="gnb_id" v={f('gnb_id')} set={set} type="number" /><Field k="plmn_mcc" label="MCC" v={f('plmn_mcc')} set={set} /><Field k="plmn_mnc" label="MNC" v={f('plmn_mnc')} set={set} />
           <div className="xyz"><Field k="x" v={f('x')} set={set} type="number" /><Field k="y" v={f('y')} set={set} type="number" /><Field k="z" v={f('z')} set={set} type="number" /></div>
           <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onGnb(sel.gnb, { name: f('name'), gnb_id: Number(f('gnb_id')), plmn_mcc: f('plmn_mcc'), plmn_mnc: f('plmn_mnc'), position: [Number(f('x')), Number(f('y')), Number(f('z'))] })}>儲存</button>
@@ -54,10 +62,16 @@ export function PropertyPanel(p: Props) {
           <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onBuilding(sel.building, { name: f('name'), position: [Number(f('x')), 0, Number(f('z'))], size: [Number(f('sx')), Number(f('sy')), Number(f('sz'))] })}>儲存</button></div></>)}
       {tab === 'antenna' && (sel?.kind === 'cell' ? <>
           <label><span>陣列 preset</span><select value={sel.cell.ru?.f_antenna_preset_uuid ?? ''} onChange={(e) => p.onCellAntenna(sel.cell, e.target.value || null)}><option value="">(未指定 → 1×1 iso)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.pattern} {a.rows}×{a.cols} {a.polarization}</option>)}</select></label>
-          {sel.cell.ru?.antenna_preset && <dl className="kv"><dt>pattern</dt><dd>{sel.cell.ru.antenna_preset.pattern}</dd><dt>陣列</dt><dd>{sel.cell.ru.antenna_preset.rows}×{sel.cell.ru.antenna_preset.cols} · {sel.cell.ru.antenna_preset.polarization}</dd><dt>間距 λ</dt><dd>{sel.cell.ru.antenna_preset.v_spacing} / {sel.cell.ru.antenna_preset.h_spacing}</dd><dt>max gain</dt><dd>{sel.cell.ru.antenna_preset.max_gain_dbi} dBi</dd></dl>}
-          <label><span>RU 覆寫 JSON</span><textarea rows={4} value={f('override')} onChange={(e) => set('override', e.target.value)} /></label>
-          <div className="actions"><button className="primary" disabled={p.saving || parse(f('override')) === undefined} onClick={() => p.onCellAntenna(sel.cell, sel.cell.ru?.f_antenna_preset_uuid ?? null)}>套用</button></div>
-          <p className="muted small">噪聲係數 {sel.cell.ru?.noise_figure_db ?? '—'} dB · 陣列種類在「網路元件」頁維護</p></>
+          <div className="row head">現場調整 <span className="muted">{sel.cell.ru?.antenna_override && Object.keys(sel.cell.ru.antenna_override as object).length ? '此 RU 有覆寫' : '沿用 preset'}</span></div>
+          <label><span>pattern</span><select value={f('an_pattern')} onChange={(e) => set('an_pattern', e.target.value)}>{ANTENNA_PATTERNS.map((x) => <option key={x}>{x}</option>)}</select></label>
+          <div className="xyz"><Field k="an_rows" label="rows" v={f('an_rows')} set={set} type="number" /><Field k="an_cols" label="cols" v={f('an_cols')} set={set} type="number" /><label><span>極化</span><select value={f('an_polarization')} onChange={(e) => set('an_polarization', e.target.value)}>{POLARIZATIONS.map((x) => <option key={x}>{x}</option>)}</select></label></div>
+          <div className="xyz"><Field k="an_v_spacing" label="v λ" v={f('an_v_spacing')} set={set} type="number" /><Field k="an_h_spacing" label="h λ" v={f('an_h_spacing')} set={set} type="number" /><Field k="an_max_gain_dbi" label="max dBi" v={f('an_max_gain_dbi')} set={set} type="number" /></div>
+          {(() => { const fields = (): Partial<AntennaPreset> => ({ pattern: f('an_pattern') as AntennaPreset['pattern'], rows: Number(f('an_rows')), cols: Number(f('an_cols')), polarization: f('an_polarization') as AntennaPreset['polarization'], v_spacing: Number(f('an_v_spacing')), h_spacing: Number(f('an_h_spacing')), max_gain_dbi: Number(f('an_max_gain_dbi')), polarization_model: f('an_polarization_model') }); const cur = sel.cell.ru?.antenna_preset; return (
+            <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onAntennaFields(sel.cell, fields())}>套用到此 RU(覆寫)</button>
+              <button disabled={p.saving} onClick={() => { const n = prompt('新天線 preset 名稱', `${f('an_pattern')} ${f('an_rows')}×${f('an_cols')} ${f('an_polarization')}`); if (n) p.onSaveAntennaPreset(sel.cell, fields(), n, null); }}>存成新 preset</button>
+              {cur && <button disabled={p.saving} onClick={() => { if (confirm(`更新 preset「${cur.name}」?其他引用它的 cell 也會跟著變。`)) p.onSaveAntennaPreset(sel.cell, fields(), cur.name, cur.antenna_preset_uuid); }}>更新「{cur.name}」</button>}
+              {sel.cell.ru?.antenna_override != null && <button className="ghost" disabled={p.saving} onClick={() => p.onAntennaFields(sel.cell, {})}>清除覆寫</button>}</div>); })()}
+          <p className="muted small">噪聲係數 {sel.cell.ru?.noise_figure_db ?? '—'} dB · preset 清單在「網路元件」頁維護</p></>
         : sel?.kind === 'ue' ? <label><span>UE 天線</span><select value={sel.ue.f_antenna_preset_uuid ?? ''} onChange={(e) => p.onUeAntenna(sel.ue, e.target.value || null)}><option value="">(預設 1×1)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.rows}×{a.cols}</option>)}</select></label>
         : <p className="muted">選一個 cell 或 UE 設定天線陣列。</p>)}
       {tab === 'ran' && <>

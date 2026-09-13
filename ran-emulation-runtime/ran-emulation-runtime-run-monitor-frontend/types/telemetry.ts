@@ -4,6 +4,8 @@ export interface SceneRun {
   status: string; cache_path: string; e2_node_id: string; started_at: string | null; stopped_at: string | null; notes: string; f_scene_uuid: string;
 }
 export interface Scene { scene_uuid: string; name: string; legacy_scenario_id: string; }
+/** registry read_full_tree 的子集:只要 gNB → cell 名稱對應 */
+export interface SceneTreeLite { scene: Scene; gnbs: { gnb_uuid: string; name: string; dus: { cells: { cell_uuid: string; name: string; pci: number }[] }[] }[]; }
 export interface UeKpm {
   serving_cell: string; rsrp_dbm: number; sinr_db: number; throughput_dl_mbps: number; throughput_ul_mbps: number; mcs_dl: number;
   rb_width_dl: number; mimo_rank: number; pdcp_sdu_volume_dl: number; pdcp_sdu_volume_ul: number; rlc_sdu_delay_dl_ms: number; qos_5qi: number;

@@ -1,6 +1,6 @@
 import { REGISTRY_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
-import type { AntennaPreset, DuConfigTemplate, Material } from '@/types/registry';
+import type { AntennaPreset, DuConfigTemplate, GnbConfigTemplate, Material } from '@/types/registry';
 
 const P = `${REGISTRY_API}/Preset_catalog`;
 export const listAntennaPresets = () => post<AntennaPreset[]>(`${P}/AntennaPresetReader/read`, {});
@@ -14,3 +14,7 @@ export const listDuConfigTemplates = () => post<DuConfigTemplate[]>(`${P}/DuConf
 export const createDuConfigTemplate = (body: Partial<DuConfigTemplate>) => post<DuConfigTemplate>(`${P}/DuConfigTemplateController/create`, body);
 export const updateDuConfigTemplate = (du_config_template_uuid: string, body: Partial<DuConfigTemplate>) => post<DuConfigTemplate>(`${P}/DuConfigTemplateController/update`, { du_config_template_uuid, ...body });
 export const deleteDuConfigTemplate = (du_config_template_uuid: string) => post<{ deleted: number }>(`${P}/DuConfigTemplateController/delete`, { du_config_template_uuid });
+export const listGnbConfigTemplates = () => post<GnbConfigTemplate[]>(`${P}/GnbConfigTemplateReader/read`, {});
+export const createGnbConfigTemplate = (body: Partial<GnbConfigTemplate>) => post<GnbConfigTemplate>(`${P}/GnbConfigTemplateController/create`, body);
+export const updateGnbConfigTemplate = (gnb_config_template_uuid: string, body: Partial<GnbConfigTemplate>) => post<GnbConfigTemplate>(`${P}/GnbConfigTemplateController/update`, { gnb_config_template_uuid, ...body });
+export const deleteGnbConfigTemplate = (gnb_config_template_uuid: string) => post<{ deleted: number }>(`${P}/GnbConfigTemplateController/delete`, { gnb_config_template_uuid });

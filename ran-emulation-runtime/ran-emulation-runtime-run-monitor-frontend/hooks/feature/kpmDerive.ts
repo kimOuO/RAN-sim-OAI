@@ -1,5 +1,5 @@
 import { SERIES, type UeMetricKey } from '@/config';
-import type { KpmSample, Pt, Series, UeKpm } from '@/types/telemetry';
+import type { KpmSample, Pt, SceneTreeLite, Series, UeKpm } from '@/types/telemetry';
 
 /** cell → 固定色:依名稱排序後對應 slot,不因篩選改色(dataviz「色跟實體走」) */
 export function cellColorMap(cells: string[]): Record<string, string> {
@@ -36,3 +36,15 @@ export function bucketEvents(atMs: number[], bucketSec: number, totalSec: number
   return out;
 }
 export const fmtSimTime = (sec: number) => { const s = Math.max(0, Math.round(sec)); const m = Math.floor(s / 60); const h = Math.floor(m / 60); return h ? `${h}h${String(m % 60).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`; };
+
+export const thpUlByCell = (w: KpmSample, c: string) => { let s = 0, n = 0; for (const u of Object.values(w.per_ue)) if (u.serving_cell === c) { s += u.throughput_ul_mbps ?? 0; n++; } return n ? s : (w.per_cell[c] ? 0 : null); };
+export const meanRlcDelayByCell = (w: KpmSample, c: string) => { let s = 0, n = 0; for (const u of Object.values(w.per_ue)) if (u.serving_cell === c) { s += u.rlc_sdu_delay_dl_ms ?? 0; n++; } return n ? s / n : null; };
+export const meanMcsByCell = (w: KpmSample, c: string) => { let s = 0, n = 0; for (const u of Object.values(w.per_ue)) if (u.serving_cell === c) { s += u.mcs_dl ?? 0; n++; } return n ? s / n : null; };
+/** gNB → cells:用場景樹的 cell 名稱對 KPM 的 cell_id;對不到的歸「其他」 */
+export function groupCellsByGnb(cells: string[], tree: SceneTreeLite | null): { gnb: string; cells: string[] }[] {
+  const owner = new Map<string, string>();
+  for (const g of tree?.gnbs ?? []) for (const du of g.dus) for (const c of du.cells) owner.set(c.name, g.name);
+  const m = new Map<string, string[]>();
+  for (const c of cells) { const g = owner.get(c) ?? '其他'; (m.get(g) ?? m.set(g, []).get(g)!).push(c); }
+  return [...m.entries()].sort(([a], [b]) => (a === '其他' ? 1 : b === '其他' ? -1 : a.localeCompare(b))).map(([gnb, cs]) => ({ gnb, cells: cs }));
+}

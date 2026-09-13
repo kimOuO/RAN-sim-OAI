@@ -65,3 +65,4 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .mapfetch select { width: 100%; margin-top: 6px; } .mapfetch .wide { margin-top: 8px; }
 .tree .node { margin: 4px 0; } .tree .row { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 4px 6px; border-radius: 3px; color: var(--ink); font-size: 13px; }
 .tree button.row:hover { background: var(--bg-3); } .tree .row.sub { padding-left: 22px; } .tree .row.sel { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent); }
+.tpl-row { background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 3px; padding: 6px 10px 8px; margin-bottom: 8px; } .tpl-row .row.head { margin-top: 0; } .tpl-row select { width: 100%; } .tpl-row .actions { margin: 8px 0 0; }

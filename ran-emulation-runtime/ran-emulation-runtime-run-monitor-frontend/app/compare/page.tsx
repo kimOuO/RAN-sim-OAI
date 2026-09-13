@@ -7,7 +7,7 @@ export default function ComparePage() {
   const p = useComparePage();
   return (
     <>
-      <header className="pagehead"><h1>並看</h1><span className="muted">最多 4 個 run,同指標同圖,x = sim-time 視窗序</span></header>
+      <header className="pagehead"><h1>多 run 對照</h1><span className="muted">最多 4 個 run,同指標同圖,x = sim-time 視窗序</span></header>
       <div className="card picker">{p.candidates.map(({ run, label }) => { const on = p.picked.includes(run.scene_run_uuid); return (
         <button key={run.scene_run_uuid} className={`chip ${on ? 'on' : ''}`} style={on ? { borderColor: p.colorOf(run.scene_run_uuid), color: p.colorOf(run.scene_run_uuid) } : undefined} onClick={() => p.toggle(run.scene_run_uuid)}>{label} <span className="mono muted">{run.scene_run_uuid.slice(-4)}</span></button>); })}
         {!p.candidates.length && <span className="muted">沒有可比的 run</span>}</div>

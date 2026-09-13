@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { BarChart } from '@/components/charts/BarChart';
 import { ColumnChart } from '@/components/charts/ColumnChart';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
+import { GnbLoadBoard } from '@/components/dashboard/GnbLoadBoard';
 import { Panel } from '@/components/dashboard/Panel';
 import { RangeBar } from '@/components/dashboard/RangeBar';
 import { RanRuntimePanel } from '@/components/dashboard/RanRuntimePanel';
@@ -22,7 +22,6 @@ export default function RunDashboardPage() {
   if (!p.run) return <p className="muted">載入 run…</p>;
   const l = p.latest; const s = p.stats.now, s0 = p.stats.prev;
   const d = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
-  const cellBars = p.cells.filter((c) => l?.per_cell[c]).map((c) => ({ label: c, value: l!.per_cell[c].prb_pct_dl, color: p.color[c], sub: `${p.ueRows.filter((u) => u.k.serving_cell === c).length} UE` }));
   const rawTable = l ? <table><thead><tr><th>UE</th><th>serving</th><th className="num">RSRP</th><th className="num">SINR</th><th className="num">MCS</th><th className="num">PRB</th><th className="num">Thp DL</th><th className="num">Thp UL</th><th className="num">RLC delay</th><th className="num">PDCP DL</th><th className="num">rank</th><th className="num">5QI</th></tr></thead>
     <tbody>{p.ueRows.map((u) => <tr key={u.id}><td className="mono">{u.id}</td><td className="mono" style={{ color: u.color }}>{u.k.serving_cell}</td><td className="num">{u.k.rsrp_dbm.toFixed(1)}</td><td className="num">{u.k.sinr_db.toFixed(1)}</td><td className="num">{u.k.mcs_dl}</td><td className="num">{u.k.rb_width_dl}</td><td className="num">{u.k.throughput_dl_mbps.toFixed(2)}</td><td className="num">{u.k.throughput_ul_mbps.toFixed(2)}</td><td className="num">{u.k.rlc_sdu_delay_dl_ms.toFixed(1)}</td><td className="num">{u.k.pdcp_sdu_volume_dl}</td><td className="num">{u.k.mimo_rank}</td><td className="num">{u.k.qos_5qi}</td></tr>)}</tbody></table> : null;
   return (
@@ -44,19 +43,23 @@ export default function RunDashboardPage() {
         <StatTile label="RIC 命令" value={p.controls.length} digits={0} foot={p.e2?.sctp_link.connected ? 'E2 connected' : 'E2 down'} tone={p.e2?.sctp_link.connected ? 'good' : 'critical'} />
       </div>
       <div className="grid">
-        <Panel title="PRB 使用率 DL · per cell" sub="RRU.PrbTotDl" span={6} table={<table><thead><tr><th>cell</th><th className="num">PRB DL %</th></tr></thead><tbody>{cellBars.map((b) => <tr key={b.label}><td className="mono">{b.label}</td><td className="num">{b.value.toFixed(1)}</td></tr>)}</tbody></table>}>
-          <TimeSeriesChart series={p.charts.prbDl} unit="%" yMin={0} yMax={100} xLabels={p.xLabels} /></Panel>
-        <Panel title="當下 cell 負載" sub={l ? `window ${l.window_index}` : undefined} span={3}><BarChart bars={cellBars} unit="%" max={100} /></Panel>
-        <Panel title="每 cell UE 數" span={3}><TimeSeriesChart series={p.charts.ueCount} yMin={0} xLabels={p.xLabels} digits={0} legend={false} /></Panel>
-        <Panel title="DL 吞吐 · per cell" sub="Σ UE throughput_dl" span={4}><TimeSeriesChart series={p.charts.thpDl} unit="" yMin={0} xLabels={p.xLabels} digits={2} /></Panel>
-        <Panel title="平均 SINR · per cell" span={4}><TimeSeriesChart series={p.charts.sinr} unit="" yMin={-10} yMax={40} xLabels={p.xLabels} /></Panel>
-        <Panel title="PRB 使用率 UL · per cell" sub="RRU.PrbTotUl" span={4}><TimeSeriesChart series={p.charts.prbUl} unit="%" yMin={0} yMax={100} xLabels={p.xLabels} /></Panel>
+        <Panel title="PRB 使用率 DL · gNB → cell" sub={`RRU.PrbTotDl · ${l ? `window ${l.window_index}` : ''}`} span={8} table={<table><thead><tr><th>gNB</th><th>cell</th><th className="num">PRB DL %</th><th className="num">PRB UL %</th><th className="num">UE</th></tr></thead><tbody>{p.gnbGroups.flatMap((g) => g.cells.map((c) => <tr key={c}><td className="mono">{g.gnb}</td><td className="mono">{c}</td><td className="num">{(l?.per_cell[c]?.prb_pct_dl ?? 0).toFixed(1)}</td><td className="num">{(l?.per_cell[c]?.prb_pct_ul ?? 0).toFixed(1)}</td><td className="num">{p.cellUeCount[c] ?? 0}</td></tr>))}</tbody></table>}>
+          <GnbLoadBoard groups={p.gnbGroups} latest={l} color={p.color} ueCount={p.cellUeCount} /></Panel>
+        <Panel title="PRB 使用率 UL · gNB → cell" sub="RRU.PrbTotUl" span={4}><GnbLoadBoard groups={p.gnbGroups} latest={l} color={p.color} ueCount={p.cellUeCount} metric="prb_pct_ul" label="PRB UL" /></Panel>
+        <Panel title="PRB DL 走勢 · per cell" span={6}><TimeSeriesChart series={p.charts.prbDl} unit="%" yMin={0} yMax={100} xLabels={p.xLabels} /></Panel>
+        <Panel title="PRB UL 走勢 · per cell" span={6}><TimeSeriesChart series={p.charts.prbUl} unit="%" yMin={0} yMax={100} xLabels={p.xLabels} /></Panel>
+        <Panel title="DL 吞吐 · per cell" sub="Σ UE DRB.UEThpDl" span={4}><TimeSeriesChart series={p.charts.thpDl} yMin={0} xLabels={p.xLabels} digits={2} /></Panel>
+        <Panel title="UL 吞吐 · per cell" sub="Σ UE DRB.UEThpUl" span={4}><TimeSeriesChart series={p.charts.thpUl} yMin={0} xLabels={p.xLabels} digits={2} /></Panel>
+        <Panel title="平均 SINR · per cell" span={4}><TimeSeriesChart series={p.charts.sinr} yMin={-10} yMax={40} xLabels={p.xLabels} /></Panel>
+        <Panel title="RLC SDU delay DL · per cell 平均" sub="DRB.RlcSduDelayDl" span={4}><TimeSeriesChart series={p.charts.rlcDelay} yMin={0} xLabels={p.xLabels} /></Panel>
+        <Panel title="平均 MCS · per cell" span={4}><TimeSeriesChart series={p.charts.mcs} yMin={0} yMax={28} xLabels={p.xLabels} /></Panel>
+        <Panel title="每 cell UE 數" span={4}><TimeSeriesChart series={p.charts.ueCount} yMin={0} xLabels={p.xLabels} digits={0} /></Panel>
         <Panel title="RAN 模擬執行狀況" sub="UE driver / DU / E2" span={6}><RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} /></Panel>
         <Panel title="換手 / RLF · 每分鐘" span={3}><ColumnChart groups={[{ name: 'HO', color: STATUS.good, cols: p.eventBars.ho.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }, { name: 'RLF', color: STATUS.critical, cols: p.eventBars.rlf.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }]} /></Panel>
         <Panel title="SINR 分布(當下)" sub={`${p.ueRows.length} UE`} span={3}><ColumnChart groups={[{ name: 'UE', color: 'var(--cyan)', cols: p.sinrHist.map((b) => ({ label: `${b.x0}`, value: b.n })) }]} unit=" UE" /></Panel>
         <Panel title="UE 逐一觀測" sub="SINR 走勢 + serving cell 色帶,點選看全指標" span={12} table={rawTable}>
           <UeSmallMultiples items={p.ueSmall} color={p.color} selected={p.selectedUe} onSelect={(u) => p.setSelectedUe(p.selectedUe === u ? null : u)} />
-          {p.ueDetail && <UeDetail id={p.ueDetail.id} metrics={p.ueDetail.metrics} serving={p.ueDetail.serving} color={p.color} xLabels={p.xLabels} onClose={() => p.setSelectedUe(null)} />}
+          {p.ueDetail && <UeDetail id={p.ueDetail.id} metrics={p.ueDetail.metrics} serving={p.ueDetail.serving} color={p.color} xLabels={p.xLabels} last={p.ueDetail.last} onClose={() => p.setSelectedUe(null)} />}
         </Panel>
         <Panel title="RIC 命令" sub={`${p.controls.length} 筆 · 落地前後 5 窗 PRB 對照`} span={6}><RicCommandTimeline items={p.commandImpact} /></Panel>
         <Panel title="設定快照 / 起停紀錄" span={6} defaultOpen={false}>

@@ -88,3 +88,11 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .events li.rlf .pill { background: var(--poor); color: var(--poor-fg); border-color: transparent; } .events li.ric .pill { background: var(--fair); color: var(--fair-fg); border-color: transparent; } .events li.run .pill { background: var(--good); color: var(--good-fg); border-color: transparent; } .events li.ho .pill { background: var(--sel); color: var(--cyan); }
 .empty-state { display: grid; gap: 4px; padding: 18px 6px; } .empty-state span { font-size: 12.5px; }
 .links a { margin-right: 10px; font-size: 12.5px; } label.slider { display: block; } label.slider span { font-size: 13px; } label.slider input { width: 100%; accent-color: var(--accent); margin-top: 6px; }
+/* gauges / gnb board / run tabs */
+.gauge { display: grid; justify-items: center; gap: 1px; } .g-track { stroke: var(--line-2); } .g-val { font-size: 15px; font-weight: 600; fill: var(--ink); font-variant-numeric: tabular-nums; } .g-l { font-size: 12px; } .g-s { font-size: 10.5px; }
+.gauge.warning .g-val { fill: var(--fair-fg); } .gauge.serious .g-val { fill: var(--poor-fg); }
+.gnb-board { display: grid; gap: 10px; } .gnb-row { display: flex; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; background: var(--bg-3); }
+.gnb-head { padding-right: 12px; border-right: 1px dashed var(--line-2); } .gnb-cells { display: flex; flex-wrap: wrap; gap: 12px; }
+.runtabs { display: flex; gap: 2px; align-items: stretch; } .runtabs a { padding: 6px 12px; color: var(--muted); border-bottom: 2px solid transparent; text-transform: none; letter-spacing: 0; display: flex; gap: 6px; align-items: center; } .runtabs a.on { color: var(--ink); border-bottom-color: var(--cyan); } .runtabs .dot { margin: 0; }
+.topnav .shell { padding-bottom: 0; } .topnav .brand { padding-bottom: 8px; }
+.ue-now { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 8px; color: var(--muted); } .ue-now b { color: var(--ink); margin-left: 2px; } .nbrs { display: flex; gap: 10px; flex-wrap: wrap; } .nbr { display: inline-flex; gap: 4px; align-items: center; } .nbr i { width: 8px; height: 8px; border-radius: 2px; }

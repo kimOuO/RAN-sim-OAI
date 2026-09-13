@@ -14,5 +14,6 @@ export const UE_METRICS = [
   { key: 'sinr_db', label: 'SINR', unit: 'dB', min: -10, max: 40 }, { key: 'rsrp_dbm', label: 'RSRP', unit: 'dBm', min: -130, max: -60 },
   { key: 'throughput_dl_mbps', label: 'Thp DL', unit: 'Mbps', min: 0 }, { key: 'mcs_dl', label: 'MCS', unit: '', min: 0, max: 28 },
   { key: 'rb_width_dl', label: 'PRB', unit: '', min: 0 }, { key: 'rlc_sdu_delay_dl_ms', label: 'RLC delay', unit: 'ms', min: 0 },
+  { key: 'throughput_ul_mbps', label: 'Thp UL', unit: 'Mbps', min: 0 }, { key: 'pdcp_sdu_volume_dl', label: 'PDCP vol DL', unit: 'B', min: 0 }, { key: 'pdcp_sdu_volume_ul', label: 'PDCP vol UL', unit: 'B', min: 0 },
 ] as const;
 export type UeMetricKey = (typeof UE_METRICS)[number]['key'];

@@ -17,6 +17,8 @@ class Gnb(models.Model):
     a3_offset_db = models.FloatField(null=True, blank=True)
     a3_hys_db = models.FloatField(null=True, blank=True)
     a3_ttt_ms = models.IntegerField(null=True, blank=True)
+    # 來源模板(套用時記住;現場改了值不會自動回寫模板)
+    config_template = models.ForeignKey("preset_catalog.GnbConfigTemplate", on_delete=models.SET_NULL, to_field="gnb_config_template_uuid", db_column="f_gnb_config_template_uuid", related_name="gnbs", null=True, blank=True)
     gnb_created_at = models.DateTimeField()
     gnb_updated_at = models.DateTimeField()
 

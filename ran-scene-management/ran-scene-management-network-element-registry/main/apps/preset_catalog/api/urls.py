@@ -2,6 +2,7 @@ from django.urls import path
 from main.apps.preset_catalog.actors.material_actor import MaterialController, MaterialReader
 from main.apps.preset_catalog.actors.antenna_preset_actor import AntennaPresetController, AntennaPresetReader
 from main.apps.preset_catalog.actors.du_config_template_actor import DuConfigTemplateController, DuConfigTemplateReader
+from main.apps.preset_catalog.actors.gnb_config_template_actor import GnbConfigTemplateController, GnbConfigTemplateReader
 
 urlpatterns = [
     path("MaterialController/create", MaterialController.create, name="material_create"),
@@ -16,4 +17,8 @@ urlpatterns = [
     path("DuConfigTemplateController/update", DuConfigTemplateController.update, name="du_config_template_update"),
     path("DuConfigTemplateController/delete", DuConfigTemplateController.delete, name="du_config_template_delete"),
     path("DuConfigTemplateReader/read", DuConfigTemplateReader.read, name="du_config_template_read"),
+    path("GnbConfigTemplateController/create", GnbConfigTemplateController.create, name="gnb_config_template_create"),
+    path("GnbConfigTemplateController/update", GnbConfigTemplateController.update, name="gnb_config_template_update"),
+    path("GnbConfigTemplateController/delete", GnbConfigTemplateController.delete, name="gnb_config_template_delete"),
+    path("GnbConfigTemplateReader/read", GnbConfigTemplateReader.read, name="gnb_config_template_read"),
 ]
