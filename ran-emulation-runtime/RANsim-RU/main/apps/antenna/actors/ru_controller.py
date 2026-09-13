@@ -108,6 +108,7 @@ class RuController:
                 "cell_uuid": uuid,
                 "pci": c["pci"],
                 "azimuth_deg": c["azimuth_deg"],
+                "tilt_deg": float(c.get("tilt_deg", 0.0) or 0.0),
                 "position_x": c["position"]["x"],
                 "position_y": c["position"]["y"],
                 "position_z": c["position"]["z"],

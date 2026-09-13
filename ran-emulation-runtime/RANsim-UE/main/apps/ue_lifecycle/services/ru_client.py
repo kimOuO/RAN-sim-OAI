@@ -101,3 +101,21 @@ def update_ues_batch(ues: list[dict[str, Any]], clear_stale: bool = False) -> bo
     except requests.RequestException as exc:
         logger.warning("update_ues_batch HTTP failed: %s", exc)
         return False
+
+
+def update_antenna(tx: dict[str, Any], ue: dict[str, Any] | None = None) -> bool:
+    """P5:把 registry 的天線 preset 推到 RU(RU 再帶進 Physics 的 tx_config / rx_config)。
+    tx / ue:{rows, cols, polarization, pattern, vertical_spacing, horizontal_spacing}"""
+    url = f"{settings.SIM_RU_URL.rstrip('/')}/api/v0.1/RU/Config/RuController/update_antenna"
+    body: dict[str, Any] = {k: tx[k] for k in ("rows", "cols", "polarization", "pattern", "vertical_spacing", "horizontal_spacing") if k in tx}
+    if ue:
+        body.update({"ue_rows": ue.get("rows"), "ue_cols": ue.get("cols"), "ue_pattern": ue.get("pattern"), "ue_polarization": ue.get("polarization")})
+    try:
+        r = _session.post(url, json=body, timeout=5.0)
+        ok = r.status_code == 200
+        if not ok:
+            logger.warning("RU update_antenna non-200 %s: %s", r.status_code, r.text[:200])
+        return ok
+    except requests.RequestException as exc:
+        logger.warning("RU update_antenna failed: %s", exc)
+        return False

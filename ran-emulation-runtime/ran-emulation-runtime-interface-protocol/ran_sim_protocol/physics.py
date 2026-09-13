@@ -12,9 +12,12 @@ from ran_sim_protocol.common import AntennaArrayConfig
 
 @dataclass
 class CellSpec:
+    """tilt_deg:機械下傾,正 = 往下(2026-09-13 P5);power_dbm None = 用 gNB 的。"""
     """RU 上某一個 cell 的設定（給 Sionna 知道 azimuth）。"""
     pci: int
     azimuth_deg: float = 0.0
+    tilt_deg: float = 0.0
+    power_dbm: float | None = None
 
 
 @dataclass

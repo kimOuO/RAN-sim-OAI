@@ -22,6 +22,7 @@ class CellWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=128)
     pci = serializers.IntegerField(min_value=0, max_value=1007)
     azimuth_deg = serializers.FloatField(default=0.0)
+    tilt_deg = serializers.FloatField(required=False, default=0.0)
     position = _CellPositionSerializer()
     frequency_ghz = serializers.FloatField(default=2.5)
     bandwidth_mhz = serializers.FloatField(default=40.0)

@@ -12,6 +12,7 @@ class Cell(models.Model):
     name = models.CharField(max_length=128, unique=True, db_index=True)
     pci = models.IntegerField(db_index=True)
     azimuth_deg = models.FloatField(default=0.0)
+    tilt_deg = models.FloatField(default=0.0)   # 機械下傾,正 = 往下(P5,進 Sionna orientation)
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
 

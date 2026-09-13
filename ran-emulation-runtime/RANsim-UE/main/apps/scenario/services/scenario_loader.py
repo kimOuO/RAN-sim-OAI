@@ -45,6 +45,7 @@ class CellScenarioRow:
     # 對齊 OAI「1 gNB + 2 DU 異頻」(pci0=3.45 / pci1=3.65);有給時干擾改走頻率重疊判斷。
     frequency_ghz: float | None = None
     bandwidth_mhz: float | None = None
+    tilt_deg: float = 0.0   # 機械下傾,正 = 往下(P5)
 
 
 @dataclass
@@ -104,6 +105,11 @@ class ScenarioSpec:
     # "iso" / "dipole" / "tr38901" 是 Sionna 內建可用 patterns。
     # 注意:這是 scenario-level 全局設定,sionna scene.tx_array 不支援 per-cell pattern。
     antenna_pattern: str | None = None
+    # P5:gNB / UE 天線陣列(registry preset → RU update_antenna → Physics)。Sionna 陣列是 scene-global,
+    # 所以取場景第一個 cell 的 RU preset 當整個 run 的 gNB 陣列;各 cell 若不同會 warning。
+    # dict 欄位:rows, cols, polarization, pattern, vertical_spacing, horizontal_spacing
+    tx_antenna: dict | None = None
+    ue_antenna: dict | None = None
     # 劇本是否帶 anr_fixture 區塊(driver 據此決定要不要跑起場前準備)
     has_anr_fixture: bool = False
     # Optional 劇本自帶 per-cell PRB quota,start() 時自動套用(= xApp E2 Control Style2/Action6)。
@@ -348,6 +354,12 @@ def positions_to_waypoints(positions: list[list[float]]) -> list[dict[str, float
     ]
 
 
+def _preset_to_array(p: dict) -> dict:
+    """registry AntennaPreset → RU update_antenna / Physics 用的陣列 dict。"""
+    return {"rows": int(p.get("rows") or 1), "cols": int(p.get("cols") or 1), "polarization": str(p.get("polarization") or "V"),
+            "pattern": str(p.get("pattern") or "tr38901"), "vertical_spacing": float(p.get("v_spacing") or 0.5), "horizontal_spacing": float(p.get("h_spacing") or 0.5)}
+
+
 def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     """2026-09-13 P2:從 registry `SceneReader/read_full_tree` 組 ScenarioSpec —— 不經劇本 JSON。
 
@@ -381,6 +393,8 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
                for u in t.get("ues") or [] for tr in (u.get("traffic") or [])]
     gnbs: list[GnbScenarioRow] = []
     a3: dict = {}
+    tx_antenna: dict | None = None
+    ue_antenna: dict | None = next((_preset_to_array(u["antenna_preset"]) for u in (t.get("ues") or []) if u.get("antenna_preset")), None)
     for g in t.get("gnbs") or []:
         cells: list[CellScenarioRow] = []
         f0 = bw0 = p0 = None
@@ -390,11 +404,19 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
                 if f0 is None:
                     f0, bw0, p0 = f, bw, pw
                 pos = c.get("position")
+                preset = (c.get("ru") or {}).get("antenna_preset") or None
+                if preset:
+                    ap = _preset_to_array(preset)
+                    if tx_antenna is None:
+                        tx_antenna = ap
+                    elif ap != tx_antenna:
+                        logger.warning("[scene_run %s] cell %s 的天線 preset 與第一個 cell 不同;Sionna 陣列是 scene-global,沿用第一個", scene_run_uuid, c.get("name"))
                 cells.append(CellScenarioRow(
                     cell_id=_tag_cell(_run_tag, str(c["name"])), pci=int(c.get("pci") or 0), azimuth_deg=float(c.get("azimuth_deg") or 0.0),
                     position=(float(pos[0]), float(pos[1]), float(pos[2])) if pos else None,
                     frequency_ghz=(float(f) if (f is not None and f != f0) else None),
                     bandwidth_mhz=(float(bw) if (bw is not None and bw != bw0) else None),
+                    tilt_deg=float(c.get("tilt_deg") or 0.0),
                 ))
         pos = g.get("position") or [0.0, 0.0, 0.0]
         gnbs.append(GnbScenarioRow(
@@ -432,6 +454,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
         gnbs=gnbs, buildings=buildings,
         precompute_status="ready" if run.get("mode") == "cached" else "pending",
         antenna_pattern=(str(knobs["antenna_pattern"]) if knobs.get("antenna_pattern") else None),
+        tx_antenna=tx_antenna, ue_antenna=ue_antenna,
         has_anr_fixture=bool(knobs.get("anr_fixture")),
         cell_quotas=[{"cell_id": _tag_cell(_run_tag, str(q["cell_id"])), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
                      for q in (knobs.get("cell_quotas") or []) if q.get("cell_id")],

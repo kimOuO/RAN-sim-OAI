@@ -18,6 +18,7 @@ from django.views.decorators.http import require_http_methods
 from main.apps.ran_signal.services.business.sionna_operations import (
     SionnaBusinessService,
 )
+from main.utils.env_loader import get_bool
 from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
@@ -48,6 +49,28 @@ def _walk(x):
     if isinstance(x, list):
         return [_walk(i) for i in x]
     return x
+
+
+_ANTENNA_FROM_REQUEST = get_bool("PHY_ANTENNA_FROM_REQUEST", default=True)
+
+
+def _apply_request_antenna(body: dict) -> None:
+    tx = body.get("tx_config") or {}
+    ta = tx.get("antenna_array") or {}
+    if not ta:
+        return
+    ra = (body.get("rx_config") or {}).get("antenna_array") or {}
+    antenna_cfg = {
+        "gnb_antenna_pattern": ta.get("pattern", "tr38901"), "gnb_polarization": ta.get("polarization", "V"),
+        "gnb_array_rows": int(ta.get("rows", 1)), "gnb_array_cols": int(ta.get("cols", 1)),
+        "gnb_v_spacing": float(ta.get("vertical_spacing", 0.5)), "gnb_h_spacing": float(ta.get("horizontal_spacing", 0.5)),
+        "ue_antenna_pattern": ra.get("pattern", "dipole"), "ue_polarization": ra.get("polarization", "V"),
+        "ue_array_rows": int(ra.get("rows", 1)), "ue_array_cols": int(ra.get("cols", 1)),
+        "ue_v_spacing": float(ra.get("vertical_spacing", 0.5)), "ue_h_spacing": float(ra.get("horizontal_spacing", 0.5)),
+    }
+    tilts = {f"{g.get('name')}#{c.get('pci')}": float(c.get("tilt_deg", 0) or 0) for g in tx.get("gnbs") or [] for c in g.get("cells") or []}
+    if SionnaBusinessService.ensure_antenna(antenna_cfg, tilts):
+        logger.info("antenna config applied from request: gnb %sx%s %s/%s ue %sx%s %s", antenna_cfg["gnb_array_rows"], antenna_cfg["gnb_array_cols"], antenna_cfg["gnb_antenna_pattern"], antenna_cfg["gnb_polarization"], antenna_cfg["ue_array_rows"], antenna_cfg["ue_array_cols"], antenna_cfg["ue_antenna_pattern"])
 
 
 class PathSolverActor:
@@ -85,9 +108,11 @@ class PathSolverActor:
                 "velocity": ue.get("velocity", [0.0, 0.0, 0.0]),
             })
 
-        # tx_config 跟 rx_config 目前 Physics_sim 內 sionna scene 已經 baked-in（在 init_scene 階段配好）
-        # 未來要支援動態切換 antenna config 再從 body 讀
+        # P5(2026-09-13):tx_config / rx_config 的天線陣列 + 每 cell tilt 現在會被讀;跟 scene 目前不同就重建 engine。
+        # 陣列是 scene-global(Sionna 限制),tilt 是 per-cell。env PHY_ANTENNA_FROM_REQUEST=off 可關回 baked-in。
         try:
+            if _ANTENNA_FROM_REQUEST:
+                _apply_request_antenna(body)
             cir_result = SionnaBusinessService.compute_paths(ue_positions=sionna_input)
         except Exception as exc:
             logger.exception("Sionna compute_paths failed")

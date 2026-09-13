@@ -267,3 +267,22 @@
   - 監控 gNB 分組比對時剝標籤;封存與 E2 原樣帶標籤。
 - 驗證:兩 run 同時 → DU cell `e01:src / e01:nbr` 與 `e02:src / e02:nbr`;UE attach 18/18 到 `e01:src`;cached SINR 43–55 dB(npz 對應沒斷);封存 per_cell / serving 都帶標籤;0 RLF。
 - SCTP:host 上 `association_max_retrans` 已掉回 10,需重跑 `RANsim-E2Adapter/shell/host_setup_sctp.sh`(root),已請使用者跑。
+
+## P5-1 天線落地:registry preset / tilt → RU → Physics(2026-09-13)
+
+**做了什麼**
+- 協定 `CellSpec` 加 `tilt_deg`(正 = 往下)、`power_dbm`。
+- Physics:`SionnaEngine` 吃陣列間距與每 cell tilt、提供 `antenna_signature()`;`SionnaBusinessService.ensure_antenna()` 比對請求的 `tx_config.antenna_array / rx_config.antenna_array / cells[].tilt_deg`,不同就用同一份幾何重建 engine(~1–4 s);`PathSolver/compute` 每次請求都會走這個檢查(env `PHY_ANTENNA_FROM_REQUEST=off` 可關)。陣列是 scene-global(Sionna 限制),tilt 是 per-cell。
+- RU:`Cell.tilt_deg`、`AntennaConfig.ue_rows/ue_cols/ue_pattern/ue_polarization`(migration antenna 0005),`update_cells` 收 tilt、`build_tx_config` 帶 tilt/power、`build_rx_config` 用 UE 陣列。
+- UE:loader 從 registry 樹取 cell 的 RU preset(第一個 cell 的當整個 run 的 gNB 陣列,不同會 warning)、UE preset、cell tilt;scenario driver 在 scene-apply 前一律 `RU update_antenna`(沒 preset 給 1×1 tr38901 V —— 以前 live mode 沒人設 AntennaConfig,RU 會 raise);Physics push_scene 也帶完整 `scene_antenna_config`。
+- **Transmitter orientation 修正(重要)**:自由空間 + `look_at` 實測,本場景 Y-up、Sionna orientation=[α(繞 z),β(繞 y),γ(繞 x)],舊碼把羅盤方位直接塞 α,實際是把扇區「轉成仰角」。改成解析式反推(boresight = Rz(α)Ry(β)x̂,d = (sin az·cos t, −sin t, −cos az·cos t) → β = −asin d_z, α = atan2(d_y, d_x)),β=±90° 奇異點微推。驗證:az 90/180/0/270/135 各自朝東/南/北/西/東南最大;tilt +10/+20/+35 讓下方 35° 的 UE 逐步 +1.8/+3.0/+3.7 dB,−10 反向。env `PHY_ORIENTATION_MODE=legacy` 可切回舊行為(只給對照舊 cache)。
+
+**驗證**
+- Physics 直打:1×1 → 2×2 cross → 4×4 V + UE 1×2,H 形狀 (1,1)→(1,8)→(2,16),重建 0.5–4 s;同設定不重建。
+- 整條鏈(live per-run run,anr_nrt_capacity):registry 掛 2×2 cross preset + n60_c0 tilt 10 → UE `update_antenna gnb 2×2 cross` → RU cells `e03:n60_c0 tilt 10` → Physics `rebuilding … cross 2×2 … tilts {'n60#191': 10.0}` → `antenna config applied`。測完已還原場景、刪測試 preset。
+- 順帶:live 模式 DU body ≈130 ms(Sionna 光追)→ live 上限約 2–3×,cached 才有 20×。
+
+**發現(P5-2 要做)—— 座標系**
+- Mitsuba 場景與所有位置都是 **Y-up**(ground cube scale (500, 0.1, 500)),但 Sionna 假設 **z-up**:天線 pattern 的「垂直面」與 **V 極化軸都躺在水平面上**(V = 我們的南向)。方位/仰角靠上面的解析式已對,但極化(cross 的 H/V、V-only 的 null,例如 az=180 時下方 UE −200 dB)與 3GPP pattern 的上下切面仍是錯的。
+- 正解:engine 邊界做座標旋轉 —— 位置 (x, y, z)_ours → (x, −z, y)_sionna,幾何載入時對每個 shape 加 `<rotate x=1 angle=90>`(或 builder 直接輸出),H / path_gain 不受影響。做完後 α 就是方位、β 是仰角,polarization 才有意義。**會改變所有 live / precompute 的數值**,既有 npz cache 都是「天線側躺」算出來的,要重算。
+- 另:`PHY_PATH_GAIN_PER_PORT` 仍 off(4×4 的 path gain −83.7 dB 比 1×1 −98.7 高 15 dB 是元素相加),MIMO 多層(§5 第 5–7 項)未動。

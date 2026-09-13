@@ -22,6 +22,10 @@ class AntennaConfigWriteSerializer(serializers.Serializer):
     pattern = serializers.ChoiceField(choices=_PATTERN_VALUES)
     vertical_spacing = serializers.FloatField(required=False, default=0.5, min_value=0.1, max_value=4.0)
     horizontal_spacing = serializers.FloatField(required=False, default=0.5, min_value=0.1, max_value=4.0)
+    ue_rows = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=16)
+    ue_cols = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=16)
+    ue_pattern = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=32)
+    ue_polarization = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=16)
 
 
 class AntennaConfigReadSerializer(serializers.ModelSerializer):

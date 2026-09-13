@@ -73,7 +73,7 @@ def build_tx_config() -> TxConfig:
             GnbSpec(
                 name=gnb_name,
                 position=[head.position_x, head.position_y, head.position_z],
-                cells=[CellSpec(pci=c.pci, azimuth_deg=c.azimuth_deg) for c in cells],
+                cells=[CellSpec(pci=c.pci, azimuth_deg=c.azimuth_deg, tilt_deg=float(getattr(c, 'tilt_deg', 0.0) or 0.0), power_dbm=c.power_dbm) for c in cells],
                 frequency_ghz=head.frequency_ghz,
                 bandwidth_mhz=head.bandwidth_mhz,
             )
@@ -95,15 +95,17 @@ def build_rx_config() -> RxConfig:
     array = latest_antenna_array()
     if array is None:
         raise ValueError("AntennaConfig not set; call /update_antenna first")
-    ue_array = AntennaArrayConfig(
-        rows=get_int("UE_ARRAY_ROWS", 1),
-        cols=get_int("UE_ARRAY_COLS", 1),
-        polarization=get_str(
-            "UE_ARRAY_POLARIZATION",
-            "V" if array.polarization in ("V", "H") else "VH",
-        ),
-        pattern=get_str("UE_ARRAY_PATTERN", "dipole"),
-    )
+    # P5:update_antenna 有帶 UE 陣列就用它(registry 的 UE preset);沒有才退 env / 1×1
+    a = AntennaConfig.objects.order_by("-antenna_config_updated_at").first()
+    if a is not None and a.ue_rows:
+        ue_array = AntennaArrayConfig(rows=int(a.ue_rows), cols=int(a.ue_cols or 1), polarization=a.ue_polarization or "V", pattern=a.ue_pattern or "dipole")
+    else:
+        ue_array = AntennaArrayConfig(
+            rows=get_int("UE_ARRAY_ROWS", 1),
+            cols=get_int("UE_ARRAY_COLS", 1),
+            polarization=get_str("UE_ARRAY_POLARIZATION", "V" if array.polarization in ("V", "H") else "VH"),
+            pattern=get_str("UE_ARRAY_PATTERN", "dipole"),
+        )
     return RxConfig(antenna_array=ue_array)
 
 

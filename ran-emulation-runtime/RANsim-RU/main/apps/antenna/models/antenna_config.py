@@ -34,6 +34,11 @@ class AntennaConfig(models.Model):
     pattern = models.CharField(max_length=32, choices=PATTERN_CHOICES)
     vertical_spacing = models.FloatField(default=0.5)
     horizontal_spacing = models.FloatField(default=0.5)
+    # UE 端陣列(P5;None = 用 env UE_ARRAY_* / 1×1)
+    ue_rows = models.PositiveIntegerField(null=True, blank=True)
+    ue_cols = models.PositiveIntegerField(null=True, blank=True)
+    ue_pattern = models.CharField(max_length=32, null=True, blank=True)
+    ue_polarization = models.CharField(max_length=16, null=True, blank=True)
 
     antenna_config_created_at = models.DateTimeField()
     antenna_config_updated_at = models.DateTimeField()

@@ -17,7 +17,7 @@ _PATH_GAIN_PER_PORT = (os.environ.get("PHY_PATH_GAIN_PER_PORT", "off").strip().l
 import math
 from typing import Any
 
-from main.utils.env_loader import get_float, get_int
+from main.utils.env_loader import get_float, get_int, get_str
 from main.utils.logger import get_logger
 
 
@@ -58,6 +58,10 @@ class SionnaEngine:
         gnb_array_cols: int = 1,
         ue_array_rows: int = 1,
         ue_array_cols: int = 1,
+        gnb_v_spacing: float = 0.5,
+        gnb_h_spacing: float = 0.5,
+        ue_v_spacing: float = 0.5,
+        ue_h_spacing: float = 0.5,
     ):
         self.mitsuba_scene_path = mitsuba_scene_path
         self.gnbs = gnbs
@@ -73,6 +77,15 @@ class SionnaEngine:
         self.gnb_array_cols = max(1, int(gnb_array_cols))
         self.ue_array_rows = max(1, int(ue_array_rows))
         self.ue_array_cols = max(1, int(ue_array_cols))
+        self.gnb_v_spacing = float(gnb_v_spacing); self.gnb_h_spacing = float(gnb_h_spacing)
+        self.ue_v_spacing = float(ue_v_spacing); self.ue_h_spacing = float(ue_h_spacing)
+        # Transmitter orientation 的軸對應(2026-09-13 P5 自由空間實測,見 progress_log P5-1):
+        #   本場景 Y-up(x 東、y 高、z 南)、boresight +x;Sionna orientation=[α(繞 z), β(繞 y), γ(繞 x)]
+        #   → α 是「仰角」(α=-35° 讓下方 UE +3.7 dB)、β 是「方位」(β=-35° 讓 +z 方向 UE +3.6 dB)、γ 是 roll。
+        #   yup   :azimuth(羅盤,0=北=-z,90=東=+x)→ β = 90°-az;tilt(正=往下)→ α = -tilt。
+        #   legacy:舊行為 azimuth → α(把扇區轉成仰角,物理上錯;只留給對照舊 cache 用)。
+        self._orientation_mode = get_str("PHY_ORIENTATION_MODE", default="yup").lower()
+        self._cell_tilts: dict[str, float] = {}
 
         # 延遲 import Sionna——避免 Django management command 也拖 GPU kernel
         try:
@@ -100,8 +113,8 @@ class SionnaEngine:
         self._scene.tx_array = rt.PlanarArray(
             num_rows=self.gnb_array_rows,
             num_cols=self.gnb_array_cols,
-            vertical_spacing=0.5,
-            horizontal_spacing=0.5,
+            vertical_spacing=self.gnb_v_spacing,
+            horizontal_spacing=self.gnb_h_spacing,
             pattern=gnb_antenna_pattern,
             polarization=gnb_polarization,
         )
@@ -110,8 +123,8 @@ class SionnaEngine:
         self._scene.rx_array = rt.PlanarArray(
             num_rows=self.ue_array_rows,
             num_cols=self.ue_array_cols,
-            vertical_spacing=0.5,
-            horizontal_spacing=0.5,
+            vertical_spacing=self.ue_v_spacing,
+            horizontal_spacing=self.ue_h_spacing,
             pattern=ue_antenna_pattern,
             polarization=ue_polarization,
         )
@@ -130,10 +143,12 @@ class SionnaEngine:
                     # AL5.2: 試 α 正號. γ 經實驗繞 beam 軸自身 → c1/c3 沒方向性.
                     # 改成 α 正號 (預設 Sionna world Z = our scene Y = 高度).
                     tx_position = cell.get("position") or g["position"]
+                    tilt_deg = float(cell.get("tilt_deg", 0) or 0)
+                    self._cell_tilts[tx_name] = tilt_deg
                     tx = rt.Transmitter(
                         name=tx_name,
                         position=tx_position,
-                        orientation=[azimuth_rad, 0.0, 0.0],
+                        orientation=self._orientation(azimuth_rad, tilt_deg),
                     )
                     self._scene.add(tx)
                     self._cell_entries.append({
@@ -144,10 +159,12 @@ class SionnaEngine:
             else:
                 # 向後相容：無 cells 時當單 TX 處理
                 azimuth_rad = math.radians(float(g.get("azimuth_deg", 0)))
+                tilt_deg = float(g.get("tilt_deg", 0) or 0)
+                self._cell_tilts[g["name"]] = tilt_deg
                 tx = rt.Transmitter(
                     name=g["name"],
                     position=g["position"],
-                    orientation=[azimuth_rad, 0.0, 0.0],
+                    orientation=self._orientation(azimuth_rad, tilt_deg),
                 )
                 self._scene.add(tx)
                 self._cell_entries.append({
@@ -170,6 +187,31 @@ class SionnaEngine:
 
         logger.info("SionnaEngine ready (warmed up)")
 
+
+    def _orientation(self, azimuth_rad: float, tilt_deg: float) -> list[float]:
+        """Sionna orientation [α, β, γ](ZYX Euler,boresight = Rz(α)·Ry(β)·x̂ = (cosα cosβ, sinα cosβ, -sinβ))。
+        本場景 Y-up、羅盤方位 az(0=北=-z, 90=東=+x)、tilt 正=往下(-y):
+          目標方向 d = (sin az·cos t, -sin t, -cos az·cos t) → β = -asin(d_z), α = atan2(d_y, d_x), γ = 0。
+        與 rt.Transmitter.look_at 實測一致(E→0,0;S→β=-90;E 下 35°→α=-35.5;S 下 35°→α=-90,β=-54.5)。
+        legacy 模式保留舊行為(azimuth 直接進 α,物理上是仰角;只給對照舊 cache)。"""
+        if self._orientation_mode == "legacy":
+            return [azimuth_rad, 0.0, 0.0]
+        t = math.radians(tilt_deg)
+        dx, dy, dz = math.sin(azimuth_rad) * math.cos(t), -math.sin(t), -math.cos(azimuth_rad) * math.cos(t)
+        if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+            dx = 1e-4   # β=±90° 的 Euler 奇異點(實測給 -200 dB 的假 null),微推一點避開
+        beta = -math.asin(max(-1.0, min(1.0, dz)))
+        alpha = math.atan2(dy, dx)
+        return [alpha, beta, 0.0]
+
+    def antenna_signature(self) -> dict[str, Any]:
+        """目前 scene 的天線設定(陣列 + 每 tx 的 tilt),給 path_solver 判斷請求帶的設定有沒有變。"""
+        return {
+            "gnb": [self.gnb_antenna_pattern, self.gnb_polarization, self.gnb_array_rows, self.gnb_array_cols, self.gnb_v_spacing, self.gnb_h_spacing],
+            "ue": [self.ue_antenna_pattern, self.ue_polarization, self.ue_array_rows, self.ue_array_cols, self.ue_v_spacing, self.ue_h_spacing],
+            "tilts": dict(sorted(self._cell_tilts.items())),
+            "orientation_mode": self._orientation_mode,
+        }
 
     def close(self) -> None:
         """釋放 Sionna/DrJit 持有的資源。

@@ -72,6 +72,7 @@ class SionnaBusinessService:
     _ttl_expires_at_ms: int | None = None
     _current_mitsuba_path: str | None = None
     _current_geometry_source_type: str | None = None
+    _antenna_cfg: dict[str, Any] = {}   # 最近一次建 engine 用的 scene_antenna_config(P5)
 
     # ── query ────────────────────────────────────────────────────
 
@@ -136,6 +137,10 @@ class SionnaBusinessService:
             gnb_array_cols=antenna_cfg.get("gnb_array_cols", 1),
             ue_array_rows=antenna_cfg.get("ue_array_rows", 1),
             ue_array_cols=antenna_cfg.get("ue_array_cols", 1),
+            gnb_v_spacing=antenna_cfg.get("gnb_v_spacing", 0.5),
+            gnb_h_spacing=antenna_cfg.get("gnb_h_spacing", 0.5),
+            ue_v_spacing=antenna_cfg.get("ue_v_spacing", 0.5),
+            ue_h_spacing=antenna_cfg.get("ue_h_spacing", 0.5),
         )
 
         # 短暫鎖 swap engine（毫秒級）
@@ -143,6 +148,7 @@ class SionnaBusinessService:
             _old = cls._engine
             cls._loaded_config = cfg
             cls._engine = engine
+            cls._antenna_cfg = dict(antenna_cfg)
             cls._scene_id = scene_id
             cls._loaded_at_ms = TimestampService.now_ms()
             cls._source = "default"
@@ -232,6 +238,10 @@ class SionnaBusinessService:
             gnb_array_cols=antenna_cfg.get("gnb_array_cols", 1),
             ue_array_rows=antenna_cfg.get("ue_array_rows", 1),
             ue_array_cols=antenna_cfg.get("ue_array_cols", 1),
+            gnb_v_spacing=antenna_cfg.get("gnb_v_spacing", 0.5),
+            gnb_h_spacing=antenna_cfg.get("gnb_h_spacing", 0.5),
+            ue_v_spacing=antenna_cfg.get("ue_v_spacing", 0.5),
+            ue_h_spacing=antenna_cfg.get("ue_h_spacing", 0.5),
         )
 
         # ── Step 4: 提交 state（短暫鎖 swap engine） ─────────────
@@ -239,6 +249,7 @@ class SionnaBusinessService:
             _old = cls._engine
             cls._loaded_config = merged_cfg
             cls._engine = engine
+            cls._antenna_cfg = dict(antenna_cfg)
             cls._scene_id = new_scene_id
             cls._loaded_at_ms = TimestampService.now_ms()
             cls._source = "runtime_push"
@@ -420,6 +431,48 @@ class SionnaBusinessService:
     #   pm_aggregator / rrc_tracker / bbu_telemetry — 那些屬於 DU/CU。
     #   原始備份保留在 _legacy/mixed/sionna_operations.py（git history）。
     #   Physics 只提供 raw Sionna ray tracing 結果，不做 KPI 聚合。
+
+    # ── P5:請求帶的天線設定(RU tx_config / rx_config)→ 有變就重建 engine ──
+    @classmethod
+    def ensure_antenna(cls, antenna_cfg: dict[str, Any], cell_tilts: dict[str, float]) -> bool:
+        """讓 scene 的天線陣列 + 每 tx tilt 跟請求一致;不一致就用同一份幾何重建 engine(~4 s)。
+        回 True 表示有重建。Sionna 的 tx_array / rx_array 是 scene-global,所以陣列是整個 run 一組;
+        tilt 才是 per-cell(進 Transmitter orientation)。"""
+        cls.ensure_loaded()
+        cur = cls._engine.antenna_signature() if cls._engine is not None else {}
+        want = {
+            "gnb": [antenna_cfg.get("gnb_antenna_pattern", "tr38901"), antenna_cfg.get("gnb_polarization", "V"), int(antenna_cfg.get("gnb_array_rows", 1)), int(antenna_cfg.get("gnb_array_cols", 1)), float(antenna_cfg.get("gnb_v_spacing", 0.5)), float(antenna_cfg.get("gnb_h_spacing", 0.5))],
+            "ue": [antenna_cfg.get("ue_antenna_pattern", "dipole"), antenna_cfg.get("ue_polarization", "V"), int(antenna_cfg.get("ue_array_rows", 1)), int(antenna_cfg.get("ue_array_cols", 1)), float(antenna_cfg.get("ue_v_spacing", 0.5)), float(antenna_cfg.get("ue_h_spacing", 0.5))],
+        }
+        cur_tilts = cur.get("tilts") or {}
+        tilt_diff = any(abs(float(cur_tilts.get(k, 0.0)) - float(v)) > 1e-6 for k, v in cell_tilts.items() if k in cur_tilts)
+        if cur.get("gnb") == want["gnb"] and cur.get("ue") == want["ue"] and not tilt_diff:
+            return False
+        merged_cfg = copy.deepcopy(cls._loaded_config or {})
+        for g in merged_cfg.get("gnbs", []):
+            cells = g.get("cells") or []
+            if cells:
+                for c in cells:
+                    key = f"{g['name']}#{c.get('pci')}"
+                    if key in cell_tilts:
+                        c["tilt_deg"] = float(cell_tilts[key])
+            elif g.get("name") in cell_tilts:
+                g["tilt_deg"] = float(cell_tilts[g["name"]])
+        mitsuba_path = cls._current_mitsuba_path or get_str("MITSUBA_SCENE_PATH", "/app/scenes/umi_3sector.xml")
+        logger.info("rebuilding Sionna engine for antenna change: %s → %s tilts=%s", cur, want, {k: v for k, v in cell_tilts.items() if v})
+        engine = sionna_engine.SionnaEngine(
+            mitsuba_scene_path=mitsuba_path, gnbs=merged_cfg.get("gnbs", []),
+            gnb_antenna_pattern=want["gnb"][0], gnb_polarization=want["gnb"][1], gnb_array_rows=want["gnb"][2], gnb_array_cols=want["gnb"][3], gnb_v_spacing=want["gnb"][4], gnb_h_spacing=want["gnb"][5],
+            ue_antenna_pattern=want["ue"][0], ue_polarization=want["ue"][1], ue_array_rows=want["ue"][2], ue_array_cols=want["ue"][3], ue_v_spacing=want["ue"][4], ue_h_spacing=want["ue"][5],
+        )
+        with cls._engine_lock:
+            _old = cls._engine
+            cls._loaded_config = merged_cfg
+            cls._engine = engine
+            cls._antenna_cfg = dict(antenna_cfg)
+            cls._loaded_at_ms = TimestampService.now_ms()
+        _release_engine(_old)
+        return True
 
     @classmethod
     def compute_paths(

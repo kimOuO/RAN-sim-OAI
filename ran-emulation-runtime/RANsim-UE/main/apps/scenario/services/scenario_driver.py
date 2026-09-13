@@ -346,6 +346,7 @@ class ScenarioDriver:
                     "pci": c.pci, "cell_id": c.cell_id,
                     "position": list(c.position) if c.position else None,
                     "azimuth_deg": c.azimuth_deg,
+                    "tilt_deg": float(getattr(c, "tilt_deg", 0.0) or 0.0),
                 } for c in (g.cells or [])],
             } for g in (self.scenario.gnbs or [])]
             bld_dicts = [{
@@ -355,6 +356,7 @@ class ScenarioDriver:
             ok = physics_client.push_scene(
                 scene_id=self.scenario.scene_id, gnbs=gnb_dicts,
                 buildings=bld_dicts, antenna_pattern=self.scenario.antenna_pattern,
+                tx_antenna=self.scenario.tx_antenna, ue_antenna=self.scenario.ue_antenna,
             )
             logger.info("scenario %s push_scene to Physics(live): ok=%s",
                         self.scenario.scenario_id, ok)
@@ -386,6 +388,7 @@ class ScenarioDriver:
                     "name": cell_id,
                     "pci": c.pci,
                     "azimuth_deg": c.azimuth_deg,
+                    "tilt_deg": float(getattr(c, "tilt_deg", 0.0) or 0.0),
                     "position": [cell_pos[0], cell_pos[1], cell_pos[2]],
                     "frequency_ghz": cell_freq,
                     "bandwidth_mhz": cell_bw,
@@ -406,6 +409,12 @@ class ScenarioDriver:
             pos = interpolate_position(ue.positions, 0.0)
             ru_ue_payload.append({"id": ue.name, "position": {"x": pos[0], "y": pos[1], "z": pos[2]}})
 
+        # P5:天線 preset → RU(RU 的 tx_config/rx_config 再帶去 Physics);沒 preset 但劇本有 antenna_pattern 就 1×1 該 pattern
+        # 沒 preset 也要給 RU 一組(live mode 的 RU build_tx_config 沒 AntennaConfig 會 raise);預設 1×1 tr38901 V
+        tx_ant = self.scenario.tx_antenna or {"rows": 1, "cols": 1, "polarization": "V", "pattern": self.scenario.antenna_pattern or "tr38901", "vertical_spacing": 0.5, "horizontal_spacing": 0.5}
+        if tx_ant:
+            ok = ru_client.update_antenna(tx_ant, self.scenario.ue_antenna)
+            logger.info("scenario %s RU update_antenna gnb=%s ue=%s ok=%s", self.scenario.scenario_id, tx_ant, self.scenario.ue_antenna, ok)
         SceneApplyService.apply(
             ru_cells=ru_cells,
             du_cells=du_cells,

@@ -41,13 +41,15 @@ def _flatten_gnbs(scenario_gnbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 # 扇區方位角 — 漏帶的話 Sionna TX 全部朝預設方向,
                 # 使用者設的多扇區(如 0°/180°)完全失效(2026-07-19 實踩)
                 "azimuth_deg": float(c.get("azimuth_deg", g.get("azimuth_deg", 0) or 0)),
+                "tilt_deg": float(c.get("tilt_deg", 0) or 0),
             })
     return flat
 
 
 def push_scene(*, scene_id: str, gnbs: list[dict[str, Any]],
                buildings: list[dict[str, Any]] | None = None,
-               antenna_pattern: str | None = None) -> bool:
+               antenna_pattern: str | None = None,
+               tx_antenna: dict[str, Any] | None = None, ue_antenna: dict[str, Any] | None = None) -> bool:
     """把劇本場景推給 Physics live 引擎(apply_override full:換 geometry + gnbs + 天線)。
 
     buildings 空 = 平地(自由空間);antenna_pattern None = Physics 預設 tr38901。
@@ -67,6 +69,14 @@ def push_scene(*, scene_id: str, gnbs: list[dict[str, Any]],
     }
     if antenna_pattern:
         payload["scene_antenna_config"] = {"gnb_antenna_pattern": antenna_pattern}
+    if tx_antenna:   # P5:完整陣列(preset)蓋過單一 pattern
+        payload["scene_antenna_config"] = {
+            "gnb_antenna_pattern": tx_antenna.get("pattern", "tr38901"), "gnb_polarization": tx_antenna.get("polarization", "V"),
+            "gnb_array_rows": tx_antenna.get("rows", 1), "gnb_array_cols": tx_antenna.get("cols", 1),
+            "gnb_v_spacing": tx_antenna.get("vertical_spacing", 0.5), "gnb_h_spacing": tx_antenna.get("horizontal_spacing", 0.5),
+            **({"ue_antenna_pattern": ue_antenna.get("pattern", "dipole"), "ue_polarization": ue_antenna.get("polarization", "V"),
+                "ue_array_rows": ue_antenna.get("rows", 1), "ue_array_cols": ue_antenna.get("cols", 1)} if ue_antenna else {}),
+        }
     url = f"{settings.SIM_PHYSICS_URL.rstrip('/')}/api/v0.1/Physics/RanSignal/ConfigManager/push_scene"
     try:
         r = requests.post(url, json=payload, timeout=_TIMEOUT_SEC)

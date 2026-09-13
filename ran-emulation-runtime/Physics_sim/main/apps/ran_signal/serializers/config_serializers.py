@@ -105,6 +105,7 @@ class GnbWriteSerializer(serializers.Serializer):
     # 扇區方位角 — 未宣告的話 DRF 會把 caller 傳的 azimuth_deg 靜默丟掉,
     # Sionna TX 全部朝預設方向,多扇區設定失效(2026-07-19 實踩)
     azimuth_deg = serializers.FloatField(required=False, default=0.0)
+    tilt_deg = serializers.FloatField(required=False, default=0.0)   # 機械下傾,正 = 往下(P5)
 
 
 class UeWriteSerializer(serializers.Serializer):
