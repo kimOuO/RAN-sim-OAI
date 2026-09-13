@@ -343,3 +343,4 @@
 - 協定 `CqiIndication.ul_sinr_db`(None = 舊 RU);DU registry `ul_sinr_db`;UL 鏈路適應改 `sinr_to_mcs(ul_sinr)`(同一張 OAI BLER 曲線),舊 RU 退回 DL − 20 dB。以前是 `mcs_ul = mcs_dl − 2`、bps 用 DL SINR。
 - 實測(live anr_nrt_capacity):`cp0 dl=6.4 ul=6.2 dB`(功控補償後接近 DL,合理);UL 流量 0.31 Mb/s、serving cell `prb_pct_ul` 19.8%,其他 cell 0。
 - 近似 / 待做:ρ 是常數(RU 不知各 DU 的 UL 排程),之後可由 DU 把每 cell UL 負載推給 RU;UL rank 固定 1;UE↔UE 直接干擾(動態 TDD 交叉鏈路)不做。
+- ⚠ corridor_24h 重算在 P5-3/P6 期間被我幾次 `docker compose restart/up -d physics` 殺掉(precompute 是 `docker exec` 進 physics 容器跑的,容器一重啟就沒了),停在 40000 tick;已用 checkpoint 續跑(0–40000 也是新框架算的)。**重算期間不要重啟 physics**;長期應把 precompute 放獨立容器。
