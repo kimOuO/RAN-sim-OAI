@@ -382,3 +382,4 @@
   - **corridor(5)**:已改 src=180,現在 3–4°。
   - **cco_1hr / im / es(兩扇區 c0=0, c1=180)**:一個扇區面向 UE、一個背對,是合理的兩扇區站,不動。
   - **dt_\*(12)、cco_20min、full_day_\*、kpm_compare、recover_\*(共 19 場景)**:兩個 cell 都 0°(作者沒做扇區),羅盤下側向/背對 UE(108–180°);舊框架同樣是共指 +x(39–162°)。建議 `--fix-centroid` 把它們指向 UE 質心(維持共指、恢復「無扇區」的意圖)。
+- 對 dt_* / cco_20min / full_day_* / kpm_compare / recover_* 共 19 場景執行 `--fix-centroid`:全 0° 的 cell 改成指向 UE 質心(依 cell 自身位置);修後全部 OK(≤90°)。這些場景的 cache 用到時再預算。
