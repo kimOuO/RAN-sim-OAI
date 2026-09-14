@@ -71,7 +71,7 @@ def reset_state() -> None:
 
 
 def _build_setup_message() -> F1Setup:
-    """讀 cell_state 表組 F1Setup;若 DB 還空,送一個 default cell。"""
+    """讀 cell_state 表組 F1Setup;DB 還空就送空 served_cells。"""
     try:
         from main.apps.mac.models.cell_state import CellState
         cells = list(CellState.objects.all())
@@ -93,12 +93,8 @@ def _build_setup_message() -> F1Setup:
                     nr_cellid=getattr(c, "nr_cellid", None),
                 ),
             )
-    else:
-        served_cells.append(
-            CellConfig(
-                cell_id="default-cell-0", pci=0, frequency_ghz=3.5, bandwidth_mhz=40.0,
-            ),
-        )
+    # 2026-09-15:DB 還空時不再塞 "default-cell-0" 幽靈 cell(它會進 CU cell_config / cell_measurement_log,
+    # 連 E2 indication 都會帶 cell=default-cell-0)。空 served_cells 合法,真 cell 由 gNB-DU Configuration Update 補。
 
     return F1Setup(
         gnb_du_id=get_int("SIM_GNB_DU_ID", 1),

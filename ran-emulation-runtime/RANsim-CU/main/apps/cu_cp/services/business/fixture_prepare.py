@@ -38,7 +38,17 @@ def _load_scenario(scenario_id: str) -> dict[str, Any]:
         p = d / f"{scenario_id}.json"
         if p.exists():
             return json.loads(p.read_text(encoding="utf-8"))
-    raise FileNotFoundError(f"scenario {scenario_id}.json not found in {SCENARIO_DIRS}")
+    # 平台化(2026-09-15):劇本主檔在 registry,經相容端點取(scenario_id 可為舊 id / 場景名 / scene_uuid)
+    import os
+    import requests
+    base = os.environ.get("SCENARIO_STORE_URL") or "http://ran-network-element-registry:8000"
+    r = requests.post(f"{base.rstrip('/')}/api/v0.1/RAN/Scenario/ScenarioController/read",
+                      json={"scenario_id": scenario_id, "with_raw": True}, timeout=15)
+    body = r.json() if r.ok else {}
+    raw = ((body.get("data") or {}).get("raw_json")) if isinstance(body, dict) else None
+    if raw:
+        return raw
+    raise FileNotFoundError(f"scenario {scenario_id}.json not in {SCENARIO_DIRS} and registry {base} returned HTTP {r.status_code}")
 
 
 def _kill_stale_timelines() -> int:

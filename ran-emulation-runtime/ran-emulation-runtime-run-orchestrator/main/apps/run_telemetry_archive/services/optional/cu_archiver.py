@@ -148,7 +148,7 @@ class RunArchiver(threading.Thread):
                 self.ticks_so_far += int(tick)
             DB.create_entity(RunKpmSample, {**_stamp("run_kpm_sample"), "f_scene_run_uuid": self.run_uuid,
                 "window_index": self.window_index, "sim_time_ms": self.ticks_so_far * self.sim_dt_ms,
-                "wall_time_ms": 0, "per_cell": b["per_cell"], "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
+                "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"], "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
             self.window_index += 1
             self.stats["samples"] += 1
 

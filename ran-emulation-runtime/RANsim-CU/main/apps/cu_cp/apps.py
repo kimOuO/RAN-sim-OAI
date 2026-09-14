@@ -36,6 +36,13 @@ class CuCpConfig(AppConfig):
 
             _resume_anr_fixture()
 
+            try:
+                from main.apps.cu_cp.services.optional.retention import log_pruner
+                log_pruner.start()
+            except Exception:
+                import logging
+                logging.exception("Failed to start CU log retention pruner")
+
 
 def _resume_anr_fixture() -> None:
     """CU 啟動時把中斷的病徵時間軸接回來。

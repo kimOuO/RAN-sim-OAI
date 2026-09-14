@@ -1,6 +1,8 @@
-import { DU_API, E2ADAPTER_API, REGISTRY_API, RUNTIME_HOST, UE_API } from '@/config';
+import { DU_API, E2ADAPTER_API, ORCHESTRATOR_API, REGISTRY_API, RUNTIME_HOST, UE_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
-import type { DuCell, DuTick, E2AdapterStatus, RunInstance, Scene, SceneRun, SceneTreeLite, UeDriverStatus } from '@/types/telemetry';
+import type { DuCell, DuTick, E2AdapterStatus, RicObservation, RunInstance, Scene, SceneRun, SceneTreeLite, UeDriverStatus } from '@/types/telemetry';
+/** RIC 端觀測(閘道 GET 兩趟,慢;獨立慢輪詢) */
+export const getRicObservation = (scene_run_uuid: string) => post<RicObservation>(`${ORCHESTRATOR_API}/Run_lifecycle/RicObservationReader/read`, { scene_run_uuid }, { timeoutMs: 20000 });
 
 export const listRuns = () => post<SceneRun[]>(`${REGISTRY_API}/Simulation_run/SceneRunReader/read`, {});
 export const getRun = (scene_run_uuid: string) => post<SceneRun>(`${REGISTRY_API}/Simulation_run/SceneRunReader/read`, { scene_run_uuid });

@@ -417,3 +417,12 @@
 - 監控頁 RanRuntimePanel:degraded 顯示黃燈並列出原因。
 - 以事故 payload 單測:「sim CU 不可達 http://127.0.0.1:32917: ConnectionError…」會被抓到;live 兩個 run 十個 instance 全 running、detail 空。
 - precompute `_patch_status` 打舊 Omniverse update_status 端點 404 一次即永久關閉(不再每 50 tick 刷 404 HTML);`carve_window` 回寫失敗改提示。scene_run 狀態一律由 orchestrator precompute_actor 依容器結束碼決定。
+
+## P6-4 小項清理(2026-09-15 凌晨)
+
+- `run_kpm_sample.wall_time_ms`:archiver 改寫入歸檔時的 epoch ms(之前恆 0);已驗。
+- CU 時序表保留期:新增 `services/optional/retention/log_pruner.py`,啟動時開 thread,每 `CU_LOG_PRUNE_INTERVAL_SEC`(600)清 `CU_LOG_RETENTION_HOURS`(24)以前的 measurement_log / cell_measurement_log / rlf_event / handover_event。長期資料以 orchestrator 歸檔為準。shared CU 首輪清掉 58.7 萬 + 46.4 萬列舊資料。per-run CU 於下次 run start 生效(現有兩個 run 的容器不重啟,重啟會換 port)。
+- CU ANR fixture:`_load_scenario` 檔案找不到時改向 registry 相容端點 `RAN/Scenario/ScenarioController/read` 取 raw_json(`SCENARIO_STORE_URL`,預設 registry 容器)。
+- `default-cell-0` 幽靈:DU F1 Setup 在 cell_state 空時不再塞假 cell,改送空 served_cells(CU serializer 允許空)。run 49117e33 的舊資料(3,778 列、最後 09-13 11:18)由保留期自然清掉;該 run 重啟後不再出現。
+- 監控頁「RIC 端觀測」面板:orchestrator `RicObservationReader`(閘道 scenario + node view)接上前端,顯示 profile / isolation / 控制策略、每個 meid 的 E2 連線與訂閱數、觀測中的 xApp pod(phase / ready),30 s 慢輪詢。
+- 未做:MIMO 增益驗證場景(需 GPU precompute,等 corridor 重算完)。

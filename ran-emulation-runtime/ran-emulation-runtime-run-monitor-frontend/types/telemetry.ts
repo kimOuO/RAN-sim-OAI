@@ -26,4 +26,8 @@ export interface E2AdapterStatus { sctp_link: { enabled: boolean; target_host: s
 /** 圖表用的序列 */
 export interface Pt { x: number; y: number | null; }
 export interface Series { key: string; label: string; color: string; points: Pt[]; }
+/** RIC 閘道視角:這個 run 被哪個 xApp pod 觀測(orchestrator RicObservationReader) */
+export interface RicObservedBy { name: string; phase: string; ready: boolean; podIP?: string; }
+export interface RicNode { meid: string; e2ConnectionStatus?: string; subscriptionCount?: number; view?: { xappName?: string; observedBy?: RicObservedBy[]; state?: string } | null; }
+export interface RicObservation { scene_run_uuid: string; gateway: boolean; scenario: { xappName?: string; profile?: string; isolation?: string; state?: string; ranFunctions?: number[]; connectedNodes?: number; controlPolicy?: { allowedStyles?: string[]; allowWrite?: boolean }; error?: string } | null; nodes: Record<string, RicNode>; }
 export interface RunInstance { run_instance_uuid: string; role: 'cu' | 'du' | 'ru' | 'ue' | 'e2adapter'; container_id: string; host_port: number | null; status: string; last_heartbeat: string | null; health_detail?: string; f_scene_run_uuid: string; }
