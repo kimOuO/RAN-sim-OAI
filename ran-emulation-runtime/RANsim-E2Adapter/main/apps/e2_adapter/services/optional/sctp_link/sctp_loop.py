@@ -505,9 +505,40 @@ def _dispatch_pdu(sock, pdu_bytes: bytes) -> None:
     elif proc_code == 4 and inner_choice == "RICcontrolRequest":     # RIC Control
         _handle_control_req(sock, pdu_bytes)
     elif proc_code == 9 and inner_choice == "RICsubscriptionDeleteRequest":
-        logger.info("RIC Subscription Delete Request received — TODO (sim CU sub_delete)")
+        _handle_sub_delete(sock, msg["value"][1])
     else:
         logger.info("Unhandled procCode=%d inner=%s — skip", proc_code, inner_choice)
+
+
+def _handle_sub_delete(sock, sub_del_value: dict) -> None:
+    """RIC Subscription Delete(E2AP §8.2.2):停掉該 RICrequestID + RANfunctionID 的所有 producer(含多 action 的
+    signature_suffix 變體)、刪 sim CU 端訂閱、回 RICsubscriptionDeleteResponse。找不到也回成功(冪等,RIC 要的是它消失)。"""
+    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+    ric_req_id, ran_func_id = e2_subscription_codec.decode_ric_subscription_delete_request(sub_del_value)
+    base_sig = f"{ric_req_id['requestor_id']}-{ric_req_id['instance_id']}-{ran_func_id}"
+    stopped: list[str] = []; sim_ids: set[str] = set()
+    with _SUBS_LOCK:
+        for sig in list(_ACTIVE_SUBS.keys()):
+            if sig == base_sig or sig.startswith(base_sig + ":") or sig.startswith(base_sig + "#") or sig.startswith(base_sig + "-a") or sig.startswith(base_sig + "_"):
+                meta = _ACTIVE_SUBS.pop(sig)
+                meta["stop"].set(); stopped.append(sig)
+                if meta.get("sub_id"):
+                    sim_ids.add(str(meta["sub_id"]))
+    for sid in sim_ids:
+        try:
+            sim_http_client.call_subscription_delete(sid)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sim CU subscription delete %s failed: %s", sid, exc)
+    try:
+        resp = e2_subscription_codec.encode_ric_subscription_delete_response(ric_req_id, ran_func_id)
+        sent = _send_sctp(sock, resp)
+    except Exception:  # noqa: BLE001
+        logger.exception("encode/send RICsubscriptionDeleteResponse failed")
+        sent = False
+    logger.info("RIC SUB_DELETE ric_req_id=%s ran_func=%d → stopped producers=%s sim_subs=%s response_sent=%s",
+                ric_req_id, ran_func_id, stopped or "(none)", sorted(sim_ids) or "(none)", sent)
+    event_ring.append("sub_delete", ric_req_id=ric_req_id, ran_func_id=ran_func_id, stopped=stopped, response_sent=sent)
 
 
 def _handle_sub_req(sock, sub_req_value: dict) -> None:

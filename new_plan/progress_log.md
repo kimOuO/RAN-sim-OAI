@@ -383,3 +383,10 @@
   - **cco_1hr / im / es(兩扇區 c0=0, c1=180)**:一個扇區面向 UE、一個背對,是合理的兩扇區站,不動。
   - **dt_\*(12)、cco_20min、full_day_\*、kpm_compare、recover_\*(共 19 場景)**:兩個 cell 都 0°(作者沒做扇區),羅盤下側向/背對 UE(108–180°);舊框架同樣是共指 +x(39–162°)。建議 `--fix-centroid` 把它們指向 UE 質心(維持共指、恢復「無扇區」的意圖)。
 - 對 dt_* / cco_20min / full_day_* / kpm_compare / recover_* 共 19 場景執行 `--fix-centroid`:全 0° 的 cell 改成指向 UE 質心(依 cell 自身位置);修後全部 OK(≤90°)。這些場景的 cache 用到時再預算。
+
+## P4-10 訂閱刪除 + xApp pod 開關(2026-09-14)
+
+- RIC 端回報:拆 xApp 後 gNB 仍對已刪訂閱送 indication(RMR_ERR_NOENDPT 14–29/s,四筆孤兒)。查我方 adapter:收到 `RICsubscriptionDeleteRequest`(procedureCode 9)只印 TODO,不停 producer、不回 Response。
+- 補 `_handle_sub_delete`:依 RICrequestID + RANfunctionID 停掉所有 producer(含多 action 的 `-a<id>` 變體)、刪 sim CU 訂閱、回 `RICsubscriptionDeleteResponse`(codec 新增 encode/decode,往返自測 22 bytes);找不到也回成功(冪等)。事件記 ring `sub_delete`。
+- 三個 adapter 重啟以清掉既有孤兒 producer(RIC 端 xApp ≤90 s 自癒重訂)。
+- dt-anr 已參數化(XAPP_NAME / SCENARIO_ID / SCENARIO_MEIDS…),閘道 0.5.7 拆除零殘留 → `RIC_GATEWAY_DEPLOY_XAPP` 翻 on:之後每個 run start 會部署專屬 pod。

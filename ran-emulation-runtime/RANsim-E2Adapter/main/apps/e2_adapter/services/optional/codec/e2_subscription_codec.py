@@ -228,6 +228,35 @@ def encode_ric_subscription_response(
     return pdu_cls.to_aper()
 
 
+_PROC_CODE_RICsubscriptionDelete = 9
+
+
+def decode_ric_subscription_delete_request(sub_del_value: dict) -> tuple[dict[str, int], int]:
+    """RICsubscriptionDeleteRequest value → (ric_req_id, ran_function_id)。IE id=29 RICrequestID、id=5 RANfunctionID。"""
+    ric_req_id = {"requestor_id": 0, "instance_id": 0}; ran_func_id = 0
+    for ie in sub_del_value.get("protocolIEs", []):
+        if ie.get("id") == _IE_ID_RICrequestID:
+            v = ie["value"][1]; ric_req_id = {"requestor_id": int(v.get("ricRequestorID", 0)), "instance_id": int(v.get("ricInstanceID", 0))}
+        elif ie.get("id") == _IE_ID_RANfunctionID:
+            ran_func_id = int(ie["value"][1])
+    return ric_req_id, ran_func_id
+
+
+def encode_ric_subscription_delete_response(ric_req_id: dict[str, int], ran_function_id: int) -> bytes:
+    """RIC Subscription Delete Response(successfulOutcome,E2AP §9.2.5):IE 29 RICrequestID + IE 5 RANfunctionID(echo)。
+    2026-09-14:以前收到 Delete Request 只印 TODO,不停 producer 也不回 → RIC 端拆掉的訂閱 gNB 還在送(孤兒)。"""
+    rt = _load_runtime()
+    pdu_cls = rt.E2AP_PDU_Descriptions.E2AP_PDU
+    pdu_cls.set_val(("successfulOutcome", {
+        "procedureCode": _PROC_CODE_RICsubscriptionDelete, "criticality": "reject",
+        "value": ("RICsubscriptionDeleteResponse", {"protocolIEs": [
+            {"id": _IE_ID_RICrequestID, "criticality": "reject", "value": ("RICrequestID", {"ricRequestorID": ric_req_id.get("requestor_id", 0), "ricInstanceID": ric_req_id.get("instance_id", 0)})},
+            {"id": _IE_ID_RANfunctionID, "criticality": "reject", "value": ("RANfunctionID", ran_function_id)},
+        ]}),
+    }))
+    return pdu_cls.to_aper()
+
+
 def encode_ric_indication(
     ric_req_id: dict[str, int],
     ran_function_id: int,
