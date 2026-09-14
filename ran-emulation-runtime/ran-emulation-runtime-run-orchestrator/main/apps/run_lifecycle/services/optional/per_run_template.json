@@ -233,5 +233,56 @@
   "extra_hosts": null,
   "command": null,
   "network_mode": "host"
+ },
+ "physics": {
+  "image": "ransim-physics:platform",
+  "env": {
+   "DB_HOST": "postgres",
+   "DB_NAME": "physics_db",
+   "DB_PASSWORD": "ransim",
+   "DB_PORT": "5432",
+   "DB_USER": "ransim",
+   "DJANGO_ALLOWED_HOSTS": "*",
+   "DJANGO_DEBUG": "True",
+   "DJANGO_SECRET_KEY": "change-me",
+   "ENABLE_FAST_FADING": "false",
+   "LOG_DIR": "/app/logs",
+   "MITSUBA_SCENE_PATH": "/app/scenes/umi_3sector.xml",
+   "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics",
+   "OMNIVERSE_URL": "http://10.3.0.217:8001",
+   "PHY_PATH_GAIN_PER_PORT": "on"
+  },
+  "volumes": [
+   {
+    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim",
+    "target": "/app",
+    "ro": false
+   },
+   {
+    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+    "target": "/opt/ran-sim-protocol",
+    "ro": false
+   },
+   {
+    "source": "/home/mitlab/XAPP_DT/scanned-building-assets",
+    "target": "/app/scenes",
+    "ro": true
+   },
+   {
+    "source": "/home/mitlab/XAPP_DT/docker-compose-deployment/scene_config.json",
+    "target": "/mnt/srcin/scene_config.json",
+    "ro": true
+   },
+   {
+    "source": "/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps",
+    "target": "/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps",
+    "ro": true
+   }
+  ],
+  "extra_hosts": [
+   "host.docker.internal=host-gateway"
+  ],
+  "command": null,
+  "gpu": true
  }
 }

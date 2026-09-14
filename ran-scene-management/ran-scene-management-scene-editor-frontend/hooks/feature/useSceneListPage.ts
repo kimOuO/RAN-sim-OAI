@@ -1,8 +1,8 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SCENE_CATEGORIES, categoryOf } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
-import { listSceneRuns, startRun, stopRun } from '@/services/api/runs';
+import { listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, type PrecomputeStatus } from '@/services/api/runs';
 import { createScene, deleteScene, listScenes } from '@/services/api/scenes';
 import type { Scene, SceneRun } from '@/types/registry';
 
@@ -10,6 +10,11 @@ export function useSceneListPage() {
   const scenes = useAsync(listScenes, []);
   const runs = useAsync(() => listSceneRuns(), []);
   const [busy, setBusy] = useState<string | null>(null);
+  /** precomputing 中的 run 每 10 s 拉一次進度 */
+  const [precomp, setPrecomp] = useState<Record<string, PrecomputeStatus>>({});
+  useEffect(() => { const ids = (runs.data ?? []).filter((r) => r.status === 'precomputing').map((r) => r.scene_run_uuid); if (!ids.length) return;
+    const tick = () => ids.forEach((id) => readPrecompute(id).then((s) => setPrecomp((p) => ({ ...p, [id]: s }))).catch(() => undefined));
+    tick(); const t = setInterval(() => { tick(); runs.refetch(); }, 10_000); return () => clearInterval(t); }, [runs.data]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [filter, setFilter] = useState(''); const [category, setCategory] = useState<string>('all');
   const runsByScene = useMemo(() => { const m = new Map<string, SceneRun[]>(); for (const r of runs.data ?? []) { const a = m.get(r.f_scene_uuid) ?? []; a.push(r); m.set(r.f_scene_uuid, a); } return m; }, [runs.data]);
   const all = useMemo(() => [...(scenes.data ?? [])].sort((a, b) => b.scene_updated_at.localeCompare(a.scene_updated_at)), [scenes.data]);
@@ -27,5 +32,8 @@ export function useSceneListPage() {
     remove: (s: Scene) => withBusy(s.scene_uuid, () => deleteScene(s.scene_uuid)),
     start: (r: SceneRun) => withBusy(r.scene_run_uuid, () => startRun(r.scene_run_uuid, r.speed_x, r.sim_dt_ms)),
     stop: (r: SceneRun) => withBusy(r.scene_run_uuid, () => stopRun(r.scene_run_uuid)),
+    precompute: (r: SceneRun) => withBusy(r.scene_run_uuid, () => precomputeRun(r.scene_run_uuid)),
+    stopPrecompute: (r: SceneRun) => withBusy(r.scene_run_uuid, () => stopPrecompute(r.scene_run_uuid)),
+    precomp,
   };
 }

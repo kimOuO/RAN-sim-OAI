@@ -582,6 +582,7 @@ services:
     volumes:
       - ./ran-emulation-runtime/ran-emulation-runtime-run-orchestrator:/app
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./ran-emulation-runtime/Physics_sim/data/channel_cache:/data/channel_cache:ro   # 讀 precompute 進度 log
     ports:
       - "8302:8000"
     depends_on:

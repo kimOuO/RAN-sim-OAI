@@ -13,3 +13,7 @@ export const deleteRunKnob = (run_knob_uuid: string) => post<{ deleted: number }
 export const startRun = (scene_run_uuid: string, speed_x?: number, sim_dt_ms?: number) =>
   post<{ scene_run_uuid: string }>(`${ORCHESTRATOR_API}/Run_lifecycle/LaunchController/start`, { scene_run_uuid, speed_x, sim_dt_ms }, { timeoutMs: 200_000 });
 export const stopRun = (scene_run_uuid: string) => post<{ scene_run_uuid: string }>(`${ORCHESTRATOR_API}/Run_lifecycle/LaunchController/stop`, { scene_run_uuid }, { timeoutMs: 200_000 });
+export interface PrecomputeStatus { state: string; exit_code: number | null; done: boolean; progress: { tick: number; total: number; pct: number; rate_tps: number; eta_sec: number } | null; scenario_id?: string; last_lines?: string[]; }
+export const precomputeRun = (scene_run_uuid: string) => post<{ scene_run_uuid: string }>(`${ORCHESTRATOR_API}/Run_lifecycle/PrecomputeController/start`, { scene_run_uuid }, { timeoutMs: 60_000 });
+export const stopPrecompute = (scene_run_uuid: string) => post<{ scene_run_uuid: string }>(`${ORCHESTRATOR_API}/Run_lifecycle/PrecomputeController/stop`, { scene_run_uuid });
+export const readPrecompute = (scene_run_uuid: string) => post<PrecomputeStatus>(`${ORCHESTRATOR_API}/Run_lifecycle/PrecomputeReader/read`, { scene_run_uuid }, { timeoutMs: 10_000 });

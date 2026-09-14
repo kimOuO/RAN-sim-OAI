@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import time
 import urllib.request
@@ -197,3 +198,59 @@ def live_run_exists(exclude_uuid: str) -> bool:
         if env.get("RU_CHANNEL_MODE") == "live":
             return True
     return False
+
+
+# ── 預算(precompute)獨立容器(2026-09-14)──────────────────────────
+# 以前 precompute 是 `docker exec` 進共用 physics 容器跑,physics 一重啟就死。改成每個 run 一個一次性容器
+# `precompute-<rid>`(同 physics image、同 bind mount、要 GPU),跑完 orchestrator 把 registry scene_run 標 ready。
+def precompute_name(scene_run_uuid: str) -> str:
+    return f"precompute-{rid_of(scene_run_uuid)}"
+
+
+def spawn_precompute(scene_run_uuid: str, scenario_id: str, segment_ticks: int = 10000) -> dict:
+    tpl = _load_template()["physics"]; client = docker.from_env(); name = precompute_name(scene_run_uuid)
+    for c in client.containers.list(all=True, filters={"name": f"^{name}$"}):
+        c.remove(force=True)
+    env = dict(tpl["env"]); env["SCENARIO_STORE_URL"] = f"http://{settings.HTTP_REGISTRY_HOST}:{settings.HTTP_REGISTRY_PORT}"; env["SCENE_RUN_UUID"] = scene_run_uuid
+    vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in tpl["volumes"]}
+    c = client.containers.run(tpl["image"], name=name, detach=True, environment=env, volumes=vols, network=settings.PER_RUN_NETWORK,
+                              command=["sh", "/app/precompute/run_precompute_segmented.sh", scenario_id, str(int(segment_ticks))],
+                              device_requests=[docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])],
+                              extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (tpl.get("extra_hosts") or [])} or None,
+                              labels={"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": "precompute", "ransim.scenario_id": scenario_id})
+    logger.info("spawned %s for scenario %s", name, scenario_id)
+    return {"name": name, "container_id": c.id[:12], "scenario_id": scenario_id}
+
+
+_PROG_RE = re.compile(r"\[precompute\] (\d+)/(\d+) \(([0-9.]+)%\) rate=([0-9.]+) t/s ETA=(\d+)s")
+
+
+def precompute_status(scene_run_uuid: str) -> dict:
+    client = docker.from_env(); name = precompute_name(scene_run_uuid)
+    lst = client.containers.list(all=True, filters={"name": f"^{name}$"})
+    if not lst:
+        return {"state": "absent"}
+    c = lst[0]; c.reload()
+    # 進度在 run_precompute_segmented.sh 寫的 log 檔(不是 stdout);orchestrator 以唯讀 bind mount 讀同一個目錄
+    sid = c.labels.get("ransim.scenario_id") or ""
+    tail = ""
+    try:
+        with open(f"{settings.PRECOMPUTE_LOG_DIR}/{sid}.precompute.log", "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()[-400:]
+            tail = "".join(lines)
+    except OSError:
+        tail = c.logs(tail=400).decode("utf-8", "replace")
+    prog = None
+    for m in _PROG_RE.finditer(tail):
+        prog = {"tick": int(m.group(1)), "total": int(m.group(2)), "pct": float(m.group(3)), "rate_tps": float(m.group(4)), "eta_sec": int(m.group(5))}
+    done = "[precompute] DONE" in tail or "status=ready" in tail
+    exit_code = c.attrs.get("State", {}).get("ExitCode")
+    return {"state": c.status, "exit_code": exit_code, "done": done, "progress": prog, "scenario_id": c.labels.get("ransim.scenario_id"),
+            "last_lines": [l for l in tail.strip().splitlines()[-3:]]}
+
+
+def stop_precompute(scene_run_uuid: str) -> str:
+    client = docker.from_env(); name = precompute_name(scene_run_uuid)
+    for c in client.containers.list(all=True, filters={"name": f"^{name}$"}):
+        c.remove(force=True); return "removed"
+    return "absent"

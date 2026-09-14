@@ -353,3 +353,11 @@
 - 修:registry 5 個 corridor 場景的 src cell azimuth 改 180(朝 +z 面向 UE),nbr 保持 0;shim 讀回已反映。第一次算的檔留成 `corridor_24h.az0.npz` 對照;從 0 再跑一次(ETA ~8 h)。
 - 教訓:匯入舊劇本時 azimuth 語意要對:羅盤(現行,編輯器也這樣畫)。其他 anr_* 場景 azimuth 是 90/270 等,是有意識設定的,語意應同羅盤(要不要逐一核對留待重算 anr cache 時)。
 - `carve_window.py` 需要 `/tmp/<sid>.json`(劇本),切窗時從 registry shim 先存一份。
+
+## P7-1 預算(precompute)獨立容器 + 管理平台按鈕(2026-09-14)
+
+- orchestrator `PrecomputeController/start|stop`、`PrecomputeReader/read`:每個 run 起一次性容器 `precompute-<rid>`(physics image、同 bind mount、GPU device request、`SCENARIO_STORE_URL` 指 registry shim),跑 `run_precompute_segmented.sh <legacy_scenario_id>`;registry `scene_run.status` draft/pending/failed → **precomputing** → 容器 exit 0 且 log 有 `status=ready` → **ready** + `cache_path`,否則 failed(notes 帶最後幾行)。watcher thread 每 15 s 看。
+- 進度從 `<sid>.precompute.log` 解析(tick / % / rate / ETA);orchestrator 以唯讀 bind mount `Physics_sim/data/channel_cache → /data/channel_cache` 讀。第一次踩到「讀容器 stdout 只有 NGC 授權 banner」。
+- 管理平台 `/scenes`:cached 且未預算 → 「預算」按鈕;precomputing → 進度條(每 10 s)+「停止預算」;cached 未預算時「啟動」灰掉。
+- 驗證:dt_2m(1200 tick,UE 靜止 → 1.7 s)走完 start → precomputing → ready,cache_path 寫回;測完還原成 live/draft。
+- 限制:precompute 仍經 registry 的舊劇本 shim 讀劇本,**手動建的場景(沒 legacy_scenario_id)還不能預算** → 下一步讓 run_precompute 直接讀 read_full_tree。
