@@ -141,3 +141,19 @@ def ric_rnib_clear(ran_name: str, gnb_id_hex: str, plmn_mcc: str = "208", plmn_m
 def ric_node_view(meid: str) -> dict | None:
     """GET /v1/nodes/{meid} → 哪個 pod 在看這個 meid(監控頁用)。"""
     return _gw(f"/v1/nodes/{meid}", None, method="GET", timeout=5.0)
+
+
+def ric_deploy_xapp(scene_run_uuid: str, image: str | None = None, env: dict | None = None) -> dict | None:
+    """POST /v1/scenarios/{id}/xapp —— 為這個場景部署專屬 xApp pod(profile 預設映像;場景 DELETE 會一併拆)。
+    pod 會被注入 SCENARIO_ID / SCENARIO_MEIDS(只含本場景)/ CONTROL_GATEWAY。"""
+    body: dict = {}
+    if image:
+        body["image"] = image
+    if env:
+        body["env"] = env
+    return _gw(f"/v1/scenarios/{scene_run_uuid}/xapp", body, timeout=60.0)
+
+
+def ric_scenario_view(scene_run_uuid: str) -> dict | None:
+    """GET /v1/scenarios/{id} → 場景主檔 + 每 node 即時 e2ConnectionStatus / subscriptionCount / xappName。"""
+    return _gw(f"/v1/scenarios/{scene_run_uuid}", None, method="GET", timeout=5.0)

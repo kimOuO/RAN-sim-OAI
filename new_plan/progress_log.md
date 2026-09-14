@@ -371,3 +371,4 @@
 - 順帶:CU ANR indication 裡有一個 `default-cell-0` 幽靈 cell(CU 內部佔位),之後清。
 - 閘道上線 `http://10.3.0.71:30990`(叢集內 `ric-scenario-gw.ricplt:8080`)。收尾改為 E2 Reset → 關 SCTP → 停容器 → **DELETE /v1/scenarios/{id}**(一次釋放 meid 綁定 + 清 R-NIB 三樣);只有 DELETE 沒清成(404 / cleared:false)才補 `/v1/rnib/clear`。node 帶 `plmnId` / `nbIdBits`(第二把 R-NIB key 用)。profile 白名單:anr(預設)/ fullkpm / kpm / rc / ccc。
 - 實測:run2 stop → 第一次 DELETE 404(從未註冊)→ 補清成功(deletedRanKey/GnbKey true);start → POST 201,閘道 `GET /v1/nodes/e02` 回 scenarioId、`GET /v1/scenarios` 現查 CONNECTED、subscriptionCount 2。run1 已補註冊。dt-anr 0.1.30-v10 重連自癒實測 67 s。
+- RIC ②③ 上線後:start 在註冊後加 `POST /v1/scenarios/{id}/xapp`(best effort);orchestrator 新增 `RicObservationReader/read`(閘道 scenario + node 視圖,給監控頁)。實測 xApp 部署回 422 `k8s-create-failed`:Service 名 `service-ricxapp-dt-scn-scene-run-<32hex>-rmr` 超過 k8s 63 字元上限 —— 閘道只做了小寫/連字號正規化沒截短,已回報 RIC 端(建議 hash 截短);他們修好後不用改我方程式。plmnId/nbIdBits 改可省略(閘道自己查 e2mgr),我方帶著也可。

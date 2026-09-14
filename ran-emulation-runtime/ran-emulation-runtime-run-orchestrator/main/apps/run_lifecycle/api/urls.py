@@ -1,5 +1,5 @@
 from django.urls import path
-from main.apps.run_lifecycle.actors.precompute_actor import PrecomputeController, PrecomputeReader
+from main.apps.run_lifecycle.actors.precompute_actor import PrecomputeController, PrecomputeReader, RicObservationReader
 from main.apps.run_lifecycle.actors.launch_request_actor import LaunchController, LaunchRequestController, LaunchRequestReader
 
 urlpatterns = [
@@ -12,4 +12,5 @@ urlpatterns = [
     path("PrecomputeController/start", PrecomputeController.start, name="precompute_start"),
     path("PrecomputeController/stop", PrecomputeController.stop, name="precompute_stop"),
     path("PrecomputeReader/read", PrecomputeReader.read, name="precompute_read"),
+    path("RicObservationReader/read", RicObservationReader.read, name="ric_observation_read"),
 ]

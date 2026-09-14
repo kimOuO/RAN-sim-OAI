@@ -110,3 +110,24 @@ class PrecomputeReader:
         if not run_uuid:
             return error_response("Validation failed", {"scene_run_uuid": "required"}, 400)
         return success_response({"scene_run_uuid": run_uuid, **container_spawner.precompute_status(run_uuid)}, "ok", 200)
+
+
+class RicObservationReader:
+    """監控頁用:這個 run 在 RIC 端被誰觀測(閘道 GET /v1/scenarios/{id} + /v1/nodes/{meid})。只讀。"""
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def read(request):
+        try:
+            payload = _body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        run_uuid = str(payload.get("scene_run_uuid") or "")
+        if not run_uuid:
+            return error_response("Validation failed", {"scene_run_uuid": "required"}, 400)
+        sc = platform_clients.ric_scenario_view(run_uuid)
+        nodes = {}
+        for nid, n in ((sc or {}).get("nodes") or {}).items():
+            if isinstance(n, dict) and n.get("meid"):
+                nodes[nid] = {**n, "view": platform_clients.ric_node_view(n["meid"])}
+        return success_response({"scene_run_uuid": run_uuid, "gateway": bool(sc) and not (sc or {}).get("error"), "scenario": sc, "nodes": nodes}, "ok", 200)
