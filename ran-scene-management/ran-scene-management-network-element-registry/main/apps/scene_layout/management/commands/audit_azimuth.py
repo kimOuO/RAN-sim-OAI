@@ -50,10 +50,10 @@ class Command(BaseCommand):
                     verdict = "OK" if off <= 90 else ("背對" if off >= 135 else "側向")
                     self.stdout.write(f"{sid:22s} {g['name']:8s} {c['name']:12s} az={az:5.0f} 質心方位={b:5.0f} 偏角={off:4.0f}  {verdict}")
                 if fix and sid.startswith(fix) and cells and all(float(c["azimuth_deg"]) == 0.0 for c in cells):
-                    p = g["position"]; b = _bearing_deg(cx - p[0], cz - p[2])
-                    for c in cells:
+                    for c in cells:   # cell 有自己的位置(DAS)就用 cell 的,否則用 gNB 的
+                        p = c["position"] or g["position"]; b = _bearing_deg(cx - p[0], cz - p[2])
                         Cell.objects.filter(cell_uuid=c["cell_uuid"]).update(azimuth_deg=round(b, 1), cell_updated_at=TimestampService.get_current_timestamp())
                         n_fix += 1
-                    self.stdout.write(f"  → {sid} {g['name']}: {len(cells)} cells 改成 {b:.1f}°(指向 UE 質心)")
+                        self.stdout.write(f"  → {sid} {c['name']}: 0° → {b:.1f}°(指向 UE 質心)")
         if fix:
             self.stdout.write(f"fixed {n_fix} cells")
