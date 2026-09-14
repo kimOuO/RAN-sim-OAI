@@ -407,3 +407,5 @@
 - 根因:我方為套 CU migration 0018 做了 `docker restart` CU/DU,per-run 容器的 host port 是 `ports={"8000/tcp": None}` 隨機分配,restart 後重配(cu 32917→32922、32845→32923)。adapter 走 host network、`SIM_CU_URL` 在 spawn 時烤進 env,仍指舊 port → producer 打 CU 全部 connection refused,新訂閱在 sim 端建不起來就回拒。RIC 端無誤。
 - 修復:(1) 依原 config 重建兩個 adapter,SIM_CU_URL 指向新 port(16:0x UTC 起兩顆恢復送 indication,CU 呼叫失敗 0);(2) registry `run_instance.host_port` 同步 cu/du 新 port(監控前端 per-run DU 讀數用);(3) spawner 改為 `_free_host_port()` 明確綁定 host port,之後 `docker restart` 不再變 port。
 - 教訓:per-run 容器要換程式碼一律走 orchestrator 的 stop/start,不要手動 `docker restart`。
+- RIC 端確認(2026-09-15):e00/e01/e02 全面恢復,scene pod 只收 e02(隔離正常),NOENDPT 0、自癒觸發 0。
+- 待辦(源自此事故):adapter status 端點加 sim CU 可達性 / 最近 CU 呼叫失敗時間,orchestrator health monitor 納入並在監控頁標示 run 異常;否則「SCTP CONNECTED 但資料不來」沒有任何一端會主動發現。
