@@ -36,7 +36,9 @@ def _record(scene: Scene, run: SceneRun | None, with_raw: bool) -> dict:
 
 
 def _latest_scene(scenario_id: str) -> Scene | None:
+    """scenario_id 可以是舊劇本 id、場景名稱、或 scene_uuid(手動建的場景沒有舊 id,precompute 用 uuid 當檔名)。"""
     return (Scene.objects.filter(legacy_scenario_id=scenario_id).order_by("-id").first()
+            or Scene.objects.filter(scene_uuid=scenario_id).first()
             or Scene.objects.filter(name=scenario_id).order_by("-id").first())
 
 

@@ -60,9 +60,10 @@ class PrecomputeController:
         if not tree.get("success"):
             return error_response("scene_run not found", run_uuid, 404)
         t = tree["data"]; run = t.get("run") or {}; scene = t.get("scene") or {}
-        scenario_id = str(scene.get("legacy_scenario_id") or "")
+        # 舊劇本用 legacy id 當 cache 檔名(相容既有 npz);手動建的場景用 scene_uuid(registry shim 兩種都認)
+        scenario_id = str(scene.get("legacy_scenario_id") or scene.get("scene_uuid") or "")
         if not scenario_id:
-            return error_response("此場景沒有 legacy_scenario_id;precompute 目前經 registry 的舊劇本 shim 讀劇本(手動建的場景待 precompute 改讀場景樹)", run_uuid, 400)
+            return error_response("scene has no id", run_uuid, 400)
         if run.get("status") == "running":
             return error_response("run 執行中,先停再預算", run_uuid, 409)
         if run.get("mode") != "cached":

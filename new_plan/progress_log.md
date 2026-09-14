@@ -361,3 +361,4 @@
 - 管理平台 `/scenes`:cached 且未預算 → 「預算」按鈕;precomputing → 進度條(每 10 s)+「停止預算」;cached 未預算時「啟動」灰掉。
 - 驗證:dt_2m(1200 tick,UE 靜止 → 1.7 s)走完 start → precomputing → ready,cache_path 寫回;測完還原成 live/draft。
 - 限制:precompute 仍經 registry 的舊劇本 shim 讀劇本,**手動建的場景(沒 legacy_scenario_id)還不能預算** → 下一步讓 run_precompute 直接讀 read_full_tree。
+- P7-1 補:registry 舊劇本 shim 的 `scenario_id` 也認 `scene_uuid` → 手動建的場景(沒 legacy id)也能預算,cache 檔名用 scene uuid。臨時場景(1 gNB / 1 UE / 60 s)走 start → ready 驗證通過,已清。
