@@ -86,8 +86,15 @@ def _fetch_scenario(scenario_id: str) -> dict:
     return body["data"]
 
 
+_status_disabled = False
+
+
 def _patch_status(scenario_id: str, **fields):
-    """呼 Omniverse Scenario/update_status,把 precompute 進度 / 結果寫回 DB。"""
+    """舊 Omniverse Scenario/update_status 回寫。平台化後 scene_run 狀態由 orchestrator precompute_actor
+    依容器結束碼決定;這裡只是相容舊 store,端點 404 一次就永久關閉(2026-09-15,之前每 50 tick 刷一頁 404 HTML)。"""
+    global _status_disabled
+    if _status_disabled:
+        return
     payload = {"scenario_id": scenario_id, **fields}
     try:
         r = requests.post(
@@ -95,7 +102,10 @@ def _patch_status(scenario_id: str, **fields):
             json=payload,
             timeout=5,
         )
-        if not r.ok:
+        if r.status_code == 404:
+            _status_disabled = True
+            print("[STATUS] update_status 端點不存在(平台化後由 orchestrator 管狀態),之後不再回寫")
+        elif not r.ok:
             print(f"[STATUS WARN] HTTP {r.status_code}: {r.text[:200]}")
     except Exception as e:
         print(f"[STATUS WARN] {e}")

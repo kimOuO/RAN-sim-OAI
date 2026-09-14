@@ -10,7 +10,7 @@ class RunInstanceWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RunInstance
-        fields = ['role', 'container_id', 'host_port', 'status', 'last_heartbeat', 'f_scene_run_uuid']
+        fields = ['role', 'container_id', 'host_port', 'status', 'last_heartbeat', 'health_detail', 'f_scene_run_uuid']
 
 
 class RunInstanceReadSerializer(serializers.ModelSerializer):
@@ -18,4 +18,4 @@ class RunInstanceReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RunInstance
-        fields = ['id', 'run_instance_uuid', 'role', 'container_id', 'host_port', 'status', 'last_heartbeat', 'f_scene_run_uuid', 'run_instance_created_at', 'run_instance_updated_at']
+        fields = ['id', 'run_instance_uuid', 'role', 'container_id', 'host_port', 'status', 'last_heartbeat', 'health_detail', 'f_scene_run_uuid', 'run_instance_created_at', 'run_instance_updated_at']

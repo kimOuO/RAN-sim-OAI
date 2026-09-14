@@ -1,6 +1,7 @@
 """健康輪詢(P4-1):每 run 一條 thread,每 PER_RUN_HEALTH_SEC 秒看容器狀態 + HTTP 存活,寫 registry run_instance.status / last_heartbeat。"""
 from __future__ import annotations
 
+import json
 import threading
 import time
 import urllib.request
@@ -13,6 +14,30 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 _threads: dict[str, "HealthMonitor"] = {}
 _lock = threading.Lock()
+
+
+def dependency_issue(role: str, data: dict) -> str:
+    """看各角色 status 回應裡的依賴鏈欄位;回傳問題描述,正常回空字串。
+    2026-09-15 事故:adapter HTTP 活著、SCTP CONNECTED,但打 sim CU 全失敗 → 之前只看「活著」完全看不出來。"""
+    try:
+        if role == "e2adapter":
+            sctp = data.get("sctp_link") or {}; bridge = data.get("sim_bridge") or {}
+            if sctp.get("enabled") and not sctp.get("connected"):
+                return f"SCTP 未連線 {sctp.get('target_host')}:{sctp.get('target_port')} {sctp.get('last_error') or ''}".strip()
+            if bridge.get("last_error"):
+                return f"sim CU 不可達 {bridge.get('cu_url')}: {str(bridge['last_error'])[:120]}"
+        elif role == "ue":
+            failed = data.get("attach_failed") or []; errs = data.get("scene_apply_errors") or []
+            if errs:
+                return f"scene apply 失敗 {len(errs)} 筆: {str(errs[0])[:100]}"
+            if failed:
+                return f"UE attach 失敗 {len(failed)} 台: {', '.join(map(str, failed[:5]))}"
+        elif role == "du":
+            if data.get("last_error"):
+                return f"DU: {str(data['last_error'])[:120]}"
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
 
 
 class HealthMonitor(threading.Thread):
@@ -29,16 +54,20 @@ class HealthMonitor(threading.Thread):
             try:
                 st = container_spawner.container_status(self.run_uuid)
                 for role, inst in self.instances.items():
-                    alive = False
+                    alive = False; detail = ""
                     if st.get(role) == "running":
                         try:
                             req = urllib.request.Request(container_spawner.health_url(role, names[role], inst.get("host_port")), data=b"{}", headers={"content-type": "application/json"})
                             with urllib.request.urlopen(req, timeout=3) as resp:
                                 alive = resp.status < 500
+                                body = json.loads(resp.read().decode() or "{}") if alive else {}
+                            detail = dependency_issue(role, (body or {}).get("data") or {})
                         except Exception:  # noqa: BLE001
                             alive = False
-                    status = "running" if alive else ("starting" if st.get(role) == "running" else st.get(role, "absent"))
-                    platform_clients.update_run_instance(inst["run_instance_uuid"], status=status, **({"last_heartbeat": platform_clients.now_iso()} if alive else {}))
+                    else:
+                        detail = f"container {st.get(role, 'absent')}"
+                    status = ("degraded" if detail else "running") if alive else ("starting" if st.get(role) == "running" else st.get(role, "absent"))
+                    platform_clients.update_run_instance(inst["run_instance_uuid"], status=status, health_detail=detail, **({"last_heartbeat": platform_clients.now_iso()} if alive else {}))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("health poll %s: %s", self.run_uuid, exc)
             self._stop_evt.wait(settings.PER_RUN_HEALTH_SEC)

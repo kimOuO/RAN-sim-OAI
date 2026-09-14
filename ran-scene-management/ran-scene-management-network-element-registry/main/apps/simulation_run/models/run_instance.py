@@ -11,6 +11,8 @@ class RunInstance(models.Model):
     host_port = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=16, default='pending')
     last_heartbeat = models.DateTimeField(null=True, blank=True)
+    # 依賴鏈健康(2026-09-15):status=degraded 時的原因,如「sim CU 不可達」「SCTP 斷線」;正常為空
+    health_detail = models.CharField(max_length=255, blank=True, default='')
     run_instance_created_at = models.DateTimeField()
     run_instance_updated_at = models.DateTimeField()
 

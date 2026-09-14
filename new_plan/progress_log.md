@@ -409,3 +409,11 @@
 - 教訓:per-run 容器要換程式碼一律走 orchestrator 的 stop/start,不要手動 `docker restart`。
 - RIC 端確認(2026-09-15):e00/e01/e02 全面恢復,scene pod 只收 e02(隔離正常),NOENDPT 0、自癒觸發 0。
 - 待辦(源自此事故):adapter status 端點加 sim CU 可達性 / 最近 CU 呼叫失敗時間,orchestrator health monitor 納入並在監控頁標示 run 異常;否則「SCTP CONNECTED 但資料不來」沒有任何一端會主動發現。
+
+## P4-11 依賴鏈健康監控 + precompute 狀態回寫收斂(2026-09-15)
+
+- registry `run_instance.health_detail`(migration 0003):status 新增 `degraded`,detail 記原因。
+- orchestrator `health_monitor.dependency_issue(role, data)`:health 端點不再只看「回得來」,改解析回應——e2adapter 看 `sctp_link.connected` 與 `sim_bridge.last_error`(adapter 每次打 sim CU 失敗都會記,60 s 無新錯自動清);UE 看 `attach_failed` / `scene_apply_errors`;DU 看 `last_error`。任一有問題 → `degraded` + 原因;容器非 running → detail 記容器狀態。
+- 監控頁 RanRuntimePanel:degraded 顯示黃燈並列出原因。
+- 以事故 payload 單測:「sim CU 不可達 http://127.0.0.1:32917: ConnectionError…」會被抓到;live 兩個 run 十個 instance 全 running、detail 空。
+- precompute `_patch_status` 打舊 Omniverse update_status 端點 404 一次即永久關閉(不再每 50 tick 刷 404 HTML);`carve_window` 回寫失敗改提示。scene_run 狀態一律由 orchestrator precompute_actor 依容器結束碼決定。

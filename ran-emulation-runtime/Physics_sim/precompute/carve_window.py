@@ -56,4 +56,7 @@ body = json.dumps({"scenario_id": sid, "precompute_status": "ready",
 req = urllib.request.Request(
     f"{OMNIVERSE_URL.rstrip('/')}/api/v0.1/RAN/Scenario/ScenarioController/update_status",
     data=body, headers={"Content-Type": "application/json"})
-print("狀態回寫:", json.load(urllib.request.urlopen(req, timeout=60)).get("success"))
+try:
+    print("狀態回寫:", json.load(urllib.request.urlopen(req, timeout=60)).get("success"))
+except Exception as e:  # noqa: BLE001  舊 store 端點已下線時只提示;scene_run.cache_path 由 registry 管
+    print(f"狀態回寫略過({type(e).__name__}):cache_path 請在 registry scene_run 設定")
