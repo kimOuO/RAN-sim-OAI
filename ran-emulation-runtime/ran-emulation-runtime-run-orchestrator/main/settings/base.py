@@ -45,3 +45,6 @@ PER_RUN_HEALTH_SEC = get_int("PER_RUN_HEALTH_SEC", 5)
 # 場景停止後通知 RIC 端清 R-NIB 殘留(m-release 不支援 E2 Removal;收尾第 4 步)。空 = 只記 log
 RIC_STOP_WEBHOOK_URL = get_str("RIC_STOP_WEBHOOK_URL", "")
 PRECOMPUTE_LOG_DIR = get_str("PRECOMPUTE_LOG_DIR", "/data/channel_cache")   # precompute 容器的 log / npz 目錄(唯讀 mount)
+# RIC 場景閘道(ric-scenario-gw,RIC 端 2026-09-14):場景註冊 / R-NIB 清理 / meid 反查。空 = 只記 log
+RIC_GATEWAY_URL = get_str("RIC_GATEWAY_URL", "")
+RIC_GATEWAY_PROFILE = get_str("RIC_GATEWAY_PROFILE", "anr")

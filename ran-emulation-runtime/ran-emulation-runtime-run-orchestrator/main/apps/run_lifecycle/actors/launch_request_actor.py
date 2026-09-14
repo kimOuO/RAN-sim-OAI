@@ -194,6 +194,9 @@ class LaunchController:
             if ok:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat(),
                                                   **({"e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex} if settings.PER_RUN_ENABLED else {}))
+                if settings.PER_RUN_ENABLED and e2_node:   # RIC 場景閘道:宣告場景 + 它唯一的 meid(best effort)
+                    gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node)
+                    logger.info("RIC gateway register %s → %s", e2_node, gw)
                 cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
@@ -246,13 +249,15 @@ class LaunchController:
                     platform_clients.update_run_instance(inst["run_instance_uuid"], status="stopped")
             platform_clients.update_scene_run(run_uuid, status="stopped", stopped_at=now.isoformat())
             ric_note = None
-            if settings.PER_RUN_ENABLED:   # 收尾第 4 步:通知 RIC 端清 R-NIB(m-release 沒有 E2 Removal)
+            if settings.PER_RUN_ENABLED:   # 收尾第 4 步:SCTP 已關 → 解除場景 → 清 R-NIB(RIC 場景閘道;沒設就只記 log)
                 try:
                     rr = platform_clients._registry("Simulation_run/SceneRunReader/read", {"scene_run_uuid": run_uuid}).get("data") or {}
                     if rr.get("e2_node_id"):
-                        ric_note = platform_clients.notify_ric_stopped(run_uuid, rr["e2_node_id"], rr.get("gnb_id_hex") or "")
+                        platform_clients.notify_ric_stopped(run_uuid, rr["e2_node_id"], rr.get("gnb_id_hex") or "")   # 舊 webhook(可選)
+                        platform_clients.ric_unregister_scenario(run_uuid)
+                        ric_note = platform_clients.ric_rnib_clear(rr["e2_node_id"], rr.get("gnb_id_hex") or "")
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("notify_ric_stopped failed: %s", exc)
+                    logger.warning("RIC cleanup failed: %s", exc)
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "stopped", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})
         except Exception as exc:  # noqa: BLE001

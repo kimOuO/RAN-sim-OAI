@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
 from django.conf import settings
@@ -80,3 +81,57 @@ def notify_ric_stopped(scene_run_uuid: str, e2_node_id: str, gnb_id_hex: str, pl
     except Exception as exc:  # noqa: BLE001
         log.warning("RIC stop webhook failed: %s", exc)
         return {"error": str(exc)}
+
+
+# ── RIC 場景閘道(ric-scenario-gw)──────────────────────────────────
+# 模型(RIC 端 2026-09-14):一 scene_run 一 pod,pod 訂閱該 run 的全部 meid;meid → scenario 必須 N:1。
+# 我方一個 run 只有一個 CU = 一個 meid,所以 nodes[] 永遠一筆(nodeId 固定 "cu")。
+def _gw(path: str, body: dict | None, method: str = "POST", timeout: float = 15.0) -> dict | None:
+    from main.utils.logger import get_logger
+    log = get_logger(__name__)
+    if not settings.RIC_GATEWAY_URL:
+        log.info("RIC gateway not configured; would %s %s %s", method, path, body)
+        return None
+    req = urllib.request.Request(f"{settings.RIC_GATEWAY_URL.rstrip('/')}{path}", data=(json.dumps(body).encode() if body is not None else None),
+                                 headers={"content-type": "application/json"}, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            return json.loads(raw) if raw else {"status": resp.status}
+    except urllib.error.HTTPError as exc:
+        body_txt = exc.read().decode("utf-8", "replace")[:300]
+        log.warning("RIC gateway %s %s → HTTP %s %s", method, path, exc.code, body_txt)
+        return {"error": exc.code, "body": body_txt}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("RIC gateway %s %s failed: %s", method, path, exc)
+        return {"error": str(exc)}
+
+
+def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_functions: list[int] | None = None, profile: str | None = None) -> dict | None:
+    """POST /v1/scenarios —— 場景 start 時宣告(E2 Setup 完成前先宣告也可,閘道現查連線狀態)。409 meid-already-bound 表示上次沒清乾淨。"""
+    body = {"scenarioId": scene_run_uuid, "labels": {"scene_name": scene_name}, "profile": profile or settings.RIC_GATEWAY_PROFILE,
+            "nodes": [{"nodeId": "cu", "meid": meid}], "ranFunctions": ran_functions or [2, 3, 4, 5, 6],
+            "controlPolicy": {"allowedStyles": ["rc-reportcgi", "anr-add"], "allowWrite": True}}
+    return _gw("/v1/scenarios", body)
+
+
+def ric_unregister_scenario(scene_run_uuid: str) -> dict | None:
+    """DELETE /v1/scenarios/{id}(RIC 端尚未說明是否存在;404/405 只記 log)。"""
+    return _gw(f"/v1/scenarios/{scene_run_uuid}", None, method="DELETE")
+
+
+def ric_rnib_clear(ran_name: str, gnb_id_hex: str, plmn_mcc: str = "208", plmn_mnc: str = "95", force: bool = False) -> dict | None:
+    """POST /v1/rnib/clear —— stop 後(SCTP 已關)清 RAN:<name> / GNB:<plmn>:<bits> / GNB set 成員。RAN 還連著預設拒絕(要 force)。"""
+    mnc = plmn_mnc.zfill(3) if len(plmn_mnc) == 2 else plmn_mnc
+    # PLMN TBCD:MCC 208 MNC 95 → 02F859(MNC 2 位補 F)
+    m = plmn_mcc; n = plmn_mnc
+    plmn_hex = f"{m[1]}{m[0]}{'F' if len(n) == 2 else n[2]}{m[2]}{n[1]}{n[0]}".upper()
+    body = {"ran_name": ran_name, "plmn": plmn_hex, "gnb_id_bits": format(int(gnb_id_hex, 16), "022b") if gnb_id_hex else ""}
+    if force:
+        body["force"] = True
+    return _gw("/v1/rnib/clear", body)
+
+
+def ric_node_view(meid: str) -> dict | None:
+    """GET /v1/nodes/{meid} → 哪個 pod 在看這個 meid(監控頁用)。"""
+    return _gw(f"/v1/nodes/{meid}", None, method="GET", timeout=5.0)

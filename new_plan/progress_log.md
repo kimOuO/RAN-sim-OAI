@@ -362,3 +362,10 @@
 - 驗證:dt_2m(1200 tick,UE 靜止 → 1.7 s)走完 start → precomputing → ready,cache_path 寫回;測完還原成 live/draft。
 - 限制:precompute 仍經 registry 的舊劇本 shim 讀劇本,**手動建的場景(沒 legacy_scenario_id)還不能預算** → 下一步讓 run_precompute 直接讀 read_full_tree。
 - P7-1 補:registry 舊劇本 shim 的 `scenario_id` 也認 `scene_uuid` → 手動建的場景(沒 legacy id)也能預算,cache 檔名用 scene uuid。臨時場景(1 gNB / 1 UE / 60 s)走 start → ready 驗證通過,已清。
+
+## P4-9 RIC 場景閘道對接(2026-09-14)
+
+- RIC 端(ric-scenario-gw 0.3.0)模型:**一 scene_run 一 pod,pod 訂閱該 run 全部 meid;meid→scenario N:1(409 meid-already-bound)**。我方一個 run 只有一個 CU = 一個 meid,所以 nodes[] 永遠一筆(nodeId "cu");他們例子裡把 e01/e02 當同場景兩個 gNB 是誤解(那是兩個不同 run)。已回答他們三題:同 run 內跨 gNB 換手 / 鄰區 / 重建 PCI 都在同一個 meid 的 indication 裡(實證:一個 node 的 servingCells 同時列 e01:src 與 e01:nbr,HO 表 target e01:nbr)。
+- orchestrator:`RIC_GATEWAY_URL` 設了就 start 時 `POST /v1/scenarios`(scenarioId=scene_run_uuid、labels.scene_name、profile、nodes[{cu, meid}]、ranFunctions [2,3,4,5,6]、controlPolicy),stop 時 `DELETE /v1/scenarios/{id}`(他們沒列,404 只記 log)→ `POST /v1/rnib/clear`(PLMN TBCD 02F859、gnb_id 22-bit);`GET /v1/nodes/{meid}` 留給監控。沒設 URL 就只記 log(閘道尚未上叢集)。
+- 待 RIC 端:pod 部署 API(RBAC)、dt-anr 重連自癒、閘道部署 + URL。
+- 順帶:CU ANR indication 裡有一個 `default-cell-0` 幽靈 cell(CU 內部佔位),之後清。
