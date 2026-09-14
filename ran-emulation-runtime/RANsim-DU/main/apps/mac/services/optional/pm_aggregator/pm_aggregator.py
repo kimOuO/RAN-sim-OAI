@@ -44,6 +44,9 @@ class _UeWindowAccumulator:
     mcs_dl_sum: int = 0
     mcs_ul_sum: int = 0
     rank_sum: int = 0
+    ul_sinr_sum: float = 0.0
+    ul_sinr_n: int = 0
+    last_sinr_layers: list[float] | None = None
     prb_dl_sum: int = 0
     prb_ul_sum: int = 0
     dl_bytes_sum: int = 0
@@ -73,9 +76,15 @@ class _UeWindowAccumulator:
         dl_bytes: int,
         ul_bytes: int,
         qos_5qi: int,
+        ul_sinr_db: float | None = None,
+        sinr_layers: list[float] | None = None,
     ) -> None:
         self.serving_cell = serving_cell
         self.samples += 1
+        if ul_sinr_db is not None:
+            self.ul_sinr_sum += float(ul_sinr_db); self.ul_sinr_n += 1
+        if sinr_layers:
+            self.last_sinr_layers = list(sinr_layers)
         self.sinr_db_sum += sinr_db
         self.rsrp_dbm_sum += rsrp_dbm
         self.mcs_dl_sum += mcs_dl
@@ -100,6 +109,8 @@ class _UeWindowAccumulator:
             "avg_rank": max(1, int(round(self.rank_sum / n))),
             "avg_prb_dl": int(round(self.prb_dl_sum / n)),
             "avg_prb_ul": int(round(self.prb_ul_sum / n)),
+            "avg_ul_sinr_db": (self.ul_sinr_sum / self.ul_sinr_n) if self.ul_sinr_n else None,
+            "sinr_layers_db": list(self.last_sinr_layers or []),
             "throughput_dl_mbps": (self.dl_bytes_sum * 8) / max(window_seconds, 1e-3) / 1e6,
             "throughput_ul_mbps": (self.ul_bytes_sum * 8) / max(window_seconds, 1e-3) / 1e6,
             # 真累計 bytes — 對齊 3GPP TS 28.552 DRB.PdcpSduVolumeDL/UL
@@ -125,6 +136,7 @@ class _UeWindowAccumulator:
         self.mcs_dl_sum = 0
         self.mcs_ul_sum = 0
         self.rank_sum = 0
+        self.ul_sinr_sum = 0.0; self.ul_sinr_n = 0
         self.prb_dl_sum = 0
         self.prb_ul_sum = 0
         self.dl_bytes_sum = 0
@@ -282,6 +294,8 @@ class PmAggregatorService:
         ul_bytes: int,
         qos_5qi: int,
         rank: int = 1,
+        ul_sinr_db: float | None = None,
+        sinr_layers: list[float] | None = None,
     ) -> None:
         acc = self._acc_for(gnb_name)
         if 0 <= mcs_dl < MCS_BINS:
@@ -325,6 +339,7 @@ class PmAggregatorService:
                 dl_bytes=dl_bytes,
                 ul_bytes=ul_bytes,
                 qos_5qi=qos_5qi,
+            ul_sinr_db=ul_sinr_db, sinr_layers=sinr_layers,
             )
 
     def accumulate_rlc_delay(self, ue_id: str, delay_samples_ms: list[float]) -> None:

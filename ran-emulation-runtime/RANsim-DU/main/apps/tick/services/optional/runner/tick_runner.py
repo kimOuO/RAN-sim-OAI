@@ -840,6 +840,7 @@ class TickRunner:
                 ul_bytes=_ul_drained,
                 qos_5qi=ue["qos_5qi"],
                 rank=ue.get("rank", 1),
+                ul_sinr_db=ue.get("ul_sinr_db"), sinr_layers=ue.get("sinr_layers"),
             )
         # 4b) Accumulate RLC SDU delay (從 step 1 收的 samples)
         # slot 引擎接管時不用 calib /30,改在 4b-shadow 用 slot 引擎輸出餵 PM。
@@ -1024,6 +1025,8 @@ class TickRunner:
                     rlc_sdu_delay_dl_ms=w.get("rlc_sdu_delay_dl_ms", 0.0),
                     qos_5qi=int(w.get("qos_5qi", 9) or 9),   # D:per-5QI 分桶
                     neighbor_cells=neighbor_meas_list,    # ★ A3 evaluator 終於有料
+                    mcs_ul=int(w.get("avg_mcs_ul", 0) or 0), rb_width_ul=int(w.get("avg_prb_ul", 0) or 0),
+                    ul_sinr_db=w.get("avg_ul_sinr_db"), sinr_layers_db=list(w.get("sinr_layers_db") or []),
                 )
                 # 留存 1s 窗口吞吐給 dump_pm(Omniverse label 用,與此處送 CU 的值同源)
                 self._last_ue_window_kpm[uid] = {

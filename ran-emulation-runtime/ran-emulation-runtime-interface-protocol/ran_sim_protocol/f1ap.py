@@ -79,6 +79,11 @@ class GnbDuMeasurementReport:
     # 2026-08-12(D):UE 的 5QI —— CU 端 delay/thp per-5QI 分桶用(AirIfDelayDlAvg.5QI1 轉真)
     qos_5qi: int = 9
     neighbor_cells: list[NeighborMeas] = field(default_factory=list)
+    # P6 / P5-4(2026-09-14):上行與多層觀測。舊 DU 不帶 → CU 端存 None / 0 / []。
+    mcs_ul: int = 0
+    rb_width_ul: int = 0
+    ul_sinr_db: float | None = None
+    sinr_layers_db: list[float] = field(default_factory=list)
 
 
 @dataclass

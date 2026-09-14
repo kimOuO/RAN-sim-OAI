@@ -14,8 +14,9 @@ export const STATUS = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a',
 /** per-UE 指標定義:哪些能畫、單位、量程 */
 export const UE_METRICS = [
   { key: 'sinr_db', label: 'SINR', unit: 'dB', min: -10, max: 40 }, { key: 'rsrp_dbm', label: 'RSRP', unit: 'dBm', min: -130, max: -60 },
-  { key: 'throughput_dl_mbps', label: 'Thp DL', unit: 'Mbps', min: 0 }, { key: 'mcs_dl', label: 'MCS', unit: '', min: 0, max: 28 },
-  { key: 'rb_width_dl', label: 'PRB', unit: '', min: 0 }, { key: 'rlc_sdu_delay_dl_ms', label: 'RLC delay', unit: 'ms', min: 0 },
+  { key: 'throughput_dl_mbps', label: 'Thp DL', unit: 'Mbps', min: 0 }, { key: 'mcs_dl', label: 'MCS DL', unit: '', min: 0, max: 28 },
+  { key: 'ul_sinr_db', label: 'UL SINR', unit: 'dB', min: -10, max: 40 }, { key: 'mcs_ul', label: 'MCS UL', unit: '', min: 0, max: 28 }, { key: 'rb_width_ul', label: 'PRB UL', unit: '', min: 0 },
+  { key: 'rb_width_dl', label: 'PRB DL', unit: '', min: 0 }, { key: 'rlc_sdu_delay_dl_ms', label: 'RLC delay', unit: 'ms', min: 0 },
   { key: 'throughput_ul_mbps', label: 'Thp UL', unit: 'Mbps', min: 0 }, { key: 'pdcp_sdu_volume_dl', label: 'PDCP vol DL', unit: 'B', min: 0 }, { key: 'pdcp_sdu_volume_ul', label: 'PDCP vol UL', unit: 'B', min: 0 },
 ] as const;
 export type UeMetricKey = (typeof UE_METRICS)[number]['key'];

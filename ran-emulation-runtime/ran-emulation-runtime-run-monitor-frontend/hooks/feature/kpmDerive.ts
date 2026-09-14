@@ -20,7 +20,7 @@ export const prbUl = (w: KpmSample, c: string) => w.per_cell[c]?.prb_pct_ul ?? n
 export const thpDlByCell = (w: KpmSample, c: string) => { let s = 0, n = 0; for (const u of Object.values(w.per_ue)) if (u.serving_cell === c) { s += u.throughput_dl_mbps ?? 0; n++; } return n ? s : (w.per_cell[c] ? 0 : null); };
 export const ueCountByCell = (w: KpmSample, c: string) => { let n = 0; for (const u of Object.values(w.per_ue)) if (u.serving_cell === c) n++; return w.per_cell[c] || n ? n : null; };
 export const meanSinrByCell = (w: KpmSample, c: string) => { let s = 0, n = 0; for (const u of Object.values(w.per_ue)) if (u.serving_cell === c) { s += u.sinr_db; n++; } return n ? s / n : null; };
-export function ueSeries(samples: KpmSample[], ue: string, key: UeMetricKey): Pt[] { return samples.map((w, i) => ({ x: xOf(i), y: (w.per_ue[ue]?.[key] as number | undefined) ?? null })); }
+export function ueSeries(samples: KpmSample[], ue: string, key: UeMetricKey): Pt[] { return samples.map((w, i) => ({ x: xOf(i), y: (w.per_ue[ue]?.[key] as number | null | undefined) ?? null })); }
 export function ueServingStrip(samples: KpmSample[], ue: string): { x: number; cell: string }[] { return samples.map((w, i) => ({ x: xOf(i), cell: w.per_ue[ue]?.serving_cell ?? '' })); }
 export function latestUes(w: KpmSample | null): [string, UeKpm][] { return w ? Object.entries(w.per_ue).sort(([a], [b]) => a.localeCompare(b)) : []; }
 export function mean(xs: number[]): number | null { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; }

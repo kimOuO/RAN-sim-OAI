@@ -10,6 +10,8 @@ export interface UeKpm {
   serving_cell: string; rsrp_dbm: number; sinr_db: number; throughput_dl_mbps: number; throughput_ul_mbps: number; mcs_dl: number;
   rb_width_dl: number; mimo_rank: number; pdcp_sdu_volume_dl: number; pdcp_sdu_volume_ul: number; rlc_sdu_delay_dl_ms: number; qos_5qi: number;
   neighbor_cells_json: { cell_id: string; rsrp_dbm: number; rsrq_db: number }[] | null;
+  /** P6 / P5-4 上行與每層(舊樣本可能缺) */
+  mcs_ul?: number; rb_width_ul?: number; ul_sinr_db?: number | null; sinr_layers_json?: number[] | null;
 }
 export interface CellKpm { prb_pct_dl: number; prb_pct_ul: number; window_seconds: number; }
 export interface KpmSample { run_kpm_sample_uuid: string; f_scene_run_uuid: string; window_index: number; sim_time_ms: number; wall_time_ms: number; per_cell: Record<string, CellKpm>; per_ue: Record<string, UeKpm>; warnings: string[]; run_kpm_sample_created_at: string; }

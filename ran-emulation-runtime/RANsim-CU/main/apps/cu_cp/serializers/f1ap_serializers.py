@@ -55,6 +55,11 @@ class MeasurementReportWriteSerializer(serializers.Serializer):
     rlc_sdu_delay_dl_ms = serializers.FloatField(default=0.0)
     qos_5qi = serializers.IntegerField(default=9)   # 2026-08-12(D):per-5QI 分桶
     neighbor_cells = _NeighborMeasSerializer(many=True, default=list)
+    # P6 / P5-4 上行與多層(舊 DU 不帶)
+    mcs_ul = serializers.IntegerField(default=0)
+    rb_width_ul = serializers.IntegerField(default=0)
+    ul_sinr_db = serializers.FloatField(required=False, allow_null=True, default=None)
+    sinr_layers_db = serializers.ListField(child=serializers.FloatField(), default=list)
 
 
 class DuRegistryReadSerializer(serializers.Serializer):

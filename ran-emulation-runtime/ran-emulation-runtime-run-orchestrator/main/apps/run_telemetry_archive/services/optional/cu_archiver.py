@@ -134,7 +134,8 @@ class RunArchiver(threading.Thread):
             w = (m.get("recorded_at") or "")[:19]
             by_win[w]["per_ue"][m["ue_id"]] = {k: m.get(k) for k in ("serving_cell", "rsrp_dbm", "sinr_db", "throughput_dl_mbps", "throughput_ul_mbps",
                                                                     "mcs_dl", "rb_width_dl", "mimo_rank", "pdcp_sdu_volume_dl", "pdcp_sdu_volume_ul",
-                                                                    "rlc_sdu_delay_dl_ms", "qos_5qi", "neighbor_cells_json")}
+                                                                    "rlc_sdu_delay_dl_ms", "qos_5qi", "neighbor_cells_json",
+                                                                    "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json")}
         for c in cells:
             w = (c.get("recorded_at") or "")[:19]
             by_win[w]["per_cell"][c["cell_id"]] = {k: c.get(k) for k in ("prb_pct_dl", "prb_pct_ul", "window_seconds")}

@@ -366,6 +366,8 @@ class F1ApRouterActor:
             "qos_5qi": d.get("qos_5qi", 9),
             "rlc_sdu_delay_dl_ms": d.get("rlc_sdu_delay_dl_ms", 0.0),
             "neighbor_cells_json": d["neighbor_cells"],
+            "mcs_ul": d.get("mcs_ul", 0), "rb_width_ul": d.get("rb_width_ul", 0),
+            "ul_sinr_db": d.get("ul_sinr_db"), "sinr_layers_json": d.get("sinr_layers_db") or [],
             "serving_cell": ue.serving_cell or "",
             "recorded_at": now,
         })

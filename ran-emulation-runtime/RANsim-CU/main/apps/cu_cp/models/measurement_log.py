@@ -26,6 +26,11 @@ class MeasurementLog(models.Model):
     # 2026-08-12(D):UE 的 5QI → delay/thp per-5QI 分桶(AirIfDelayDlAvg.5QI1 轉真)
     qos_5qi = models.IntegerField(default=9)
     neighbor_cells_json = models.JSONField(default=list)
+    # P6 / P5-4(2026-09-14):上行 MCS / PRB / SINR@gNB、每層 SINR
+    mcs_ul = models.IntegerField(default=0)
+    rb_width_ul = models.IntegerField(default=0)
+    ul_sinr_db = models.FloatField(null=True, blank=True)
+    sinr_layers_json = models.JSONField(default=list)
     # 2026-08-26 第三十輪:量測「當時」的 serving cell。bySourceCell 歸屬曾用
     # 查詢當下的 UeContext.serving_cell,UE 移動時整窗樣本被記到單一 cell(argmax 假象)。
     serving_cell = models.CharField(max_length=64, default="", blank=True)

@@ -390,3 +390,13 @@
 - 補 `_handle_sub_delete`:依 RICrequestID + RANfunctionID 停掉所有 producer(含多 action 的 `-a<id>` 變體)、刪 sim CU 訂閱、回 `RICsubscriptionDeleteResponse`(codec 新增 encode/decode,往返自測 22 bytes);找不到也回成功(冪等)。事件記 ring `sub_delete`。
 - 三個 adapter 重啟以清掉既有孤兒 producer(RIC 端 xApp ≤90 s 自癒重訂)。
 - dt-anr 已參數化(XAPP_NAME / SCENARIO_ID / SCENARIO_MEIDS…),閘道 0.5.7 拆除零殘留 → `RIC_GATEWAY_DEPLOY_XAPP` 翻 on:之後每個 run start 會部署專屬 pod。
+
+## P6-3 監控頁補上行 / 每層 SINR(2026-09-14)
+
+- per-UE KPM 鏈新增四個欄位 `mcs_ul`、`rb_width_ul`、`ul_sinr_db`(gNB 側上行 SINR,可 null)、`sinr_layers_db`(每層 SINR 陣列,rank 1 為空):
+  - 協定 `GnbDuMeasurementReport` 加欄位(預設 0 / None / [],舊 DU 不帶也相容)。
+  - DU `pm_aggregator` per-UE 視窗累加 ul_sinr 平均、保留最後一筆每層陣列;`tick_runner` 由 registry(`ul_sinr_db` / `sinr_layers`)餵入並填報告。
+  - CU `MeasurementLog` 加欄位(migration 0018),serializer / router 寫入 / telemetry export `_TABLES["measurement"]` 同步;orchestrator `cu_archiver` per_ue key 加入。
+  - 監控前端:`UeKpm` 型別、`UE_METRICS` 新增 UL SINR / MCS UL / PRB UL 三張時間序列圖(MCS/PRB 標籤改 DL/UL 區分)、UeDetail 顯示 PRB DL/UL、UL SINR、每層 SINR;原始表加 UL 欄。
+- 部署:三個 CU(ransim-cu、cu-388e8e0a、cu-49117e33)套 migration 後重啟 CU/DU/orchestrator。migrate→restart 之間舊 CU 程序對新欄位寫 null 出現短暫 IntegrityError,重啟後歸零。
+- 驗證:cu_388e8e0a 的 measurement_log 與 orchestrator 歸檔 per_ue 皆帶 `mcs_ul` / `rb_width_ul` / `ul_sinr_db`(例 p06:mcs_ul 8、PRB UL 12、UL SINR 2.44 dB)。`sinr_layers_json` 目前皆空:兩個 run 的 UE 都是單天線 rank 1,屬預期。run 49117e33 的 RU/UE 是 36 小時前起的舊程序,尚無 UL SINR(mcs_ul 0、ul_sinr null),等 corridor 重算完重啟該 run 即會補上。
