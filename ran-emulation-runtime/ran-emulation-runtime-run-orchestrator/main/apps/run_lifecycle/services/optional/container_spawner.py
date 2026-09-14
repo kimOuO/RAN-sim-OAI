@@ -106,6 +106,13 @@ def allocate_slot(used_gnb_id_hex: list[str]) -> int:
     raise RuntimeError("E2 node 槽位用完(同時最多 511 個 run)")
 
 
+def _free_host_port() -> int:
+    """向 OS 要一個目前空閒的 host port(bind 0 再放掉;與 docker 分配間有極短競態,實務可接受)。"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("0.0.0.0", 0)); return int(s.getsockname()[1])
+
+
 def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: int = 1, roles: tuple[str, ...] = ROLES, cu_host_port: int | None = None) -> dict[str, dict]:
     """起四個容器;回傳 {role: {name, container_id, host_port}}。已存在同名容器先移除(上次沒清乾淨)。"""
     rid = rid_of(scene_run_uuid); names = names_for(scene_run_uuid); tpl = _load_template()
@@ -133,7 +140,8 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
         for c in old:
             c.remove(force=True)
         host_net = spec.get("network_mode") == "host"
-        net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": None}, "hostname": names[role]}
+        # host port 明確綁定(而非 None 隨機):docker restart 後 port 不變,adapter 的 SIM_CU_URL / registry host_port 才不會失效(2026-09-15 事故)
+        net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": _free_host_port()}, "hostname": names[role]}
         c = client.containers.run(spec["image"], name=names[role], detach=True, environment=env, volumes=vols, **net_kw,
                                   extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
                                   command=spec.get("command"), labels={"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": role})

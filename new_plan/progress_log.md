@@ -400,3 +400,10 @@
   - 監控前端:`UeKpm` 型別、`UE_METRICS` 新增 UL SINR / MCS UL / PRB UL 三張時間序列圖(MCS/PRB 標籤改 DL/UL 區分)、UeDetail 顯示 PRB DL/UL、UL SINR、每層 SINR;原始表加 UL 欄。
 - 部署:三個 CU(ransim-cu、cu-388e8e0a、cu-49117e33)套 migration 後重啟 CU/DU/orchestrator。migrate→restart 之間舊 CU 程序對新欄位寫 null 出現短暫 IntegrityError,重啟後歸零。
 - 驗證:cu_388e8e0a 的 measurement_log 與 orchestrator 歸檔 per_ue 皆帶 `mcs_ul` / `rb_width_ul` / `ul_sinr_db`(例 p06:mcs_ul 8、PRB UL 12、UL SINR 2.44 dB)。`sinr_layers_json` 目前皆空:兩個 run 的 UE 都是單天線 rank 1,屬預期。run 49117e33 的 RU/UE 是 36 小時前起的舊程序,尚無 UL SINR(mcs_ul 0、ul_sinr null),等 corridor 重算完重啟該 run 即會補上。
+
+## 事故:e01/e02 自 14:55 UTC 停送 indication(2026-09-15 修復)
+
+- RIC 端回報 e01/e02 從 2026-09-14 14:55:41 UTC 起對所有 xApp(含 sim 自己的 scene pod)停送 indication,訂閱回 ErrorSource=E2Node。
+- 根因:我方為套 CU migration 0018 做了 `docker restart` CU/DU,per-run 容器的 host port 是 `ports={"8000/tcp": None}` 隨機分配,restart 後重配(cu 32917→32922、32845→32923)。adapter 走 host network、`SIM_CU_URL` 在 spawn 時烤進 env,仍指舊 port → producer 打 CU 全部 connection refused,新訂閱在 sim 端建不起來就回拒。RIC 端無誤。
+- 修復:(1) 依原 config 重建兩個 adapter,SIM_CU_URL 指向新 port(16:0x UTC 起兩顆恢復送 indication,CU 呼叫失敗 0);(2) registry `run_instance.host_port` 同步 cu/du 新 port(監控前端 per-run DU 讀數用);(3) spawner 改為 `_free_host_port()` 明確綁定 host port,之後 `docker restart` 不再變 port。
+- 教訓:per-run 容器要換程式碼一律走 orchestrator 的 stop/start,不要手動 `docker restart`。
