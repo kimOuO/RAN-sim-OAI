@@ -197,7 +197,7 @@ class LaunchController:
                 if settings.PER_RUN_ENABLED and e2_node:   # RIC 場景閘道:宣告場景 + 它唯一的 meid(best effort)
                     gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node, gnb_id_hex=gnb_id_hex)
                     logger.info("RIC gateway register %s → %s", e2_node, gw)
-                    if gw and not gw.get("error"):   # 專屬 xApp pod(RIC 端 2026-09-14 ②);失敗只記 log,不擋 run
+                    if settings.RIC_GATEWAY_DEPLOY_XAPP and gw and not gw.get("error"):   # 專屬 xApp pod;RIC 端 dt-anr 參數化前先關(env)
                         xa = platform_clients.ric_deploy_xapp(run_uuid)
                         logger.info("RIC gateway xapp deploy %s → %s", run_uuid, str(xa)[:200])
                 cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
