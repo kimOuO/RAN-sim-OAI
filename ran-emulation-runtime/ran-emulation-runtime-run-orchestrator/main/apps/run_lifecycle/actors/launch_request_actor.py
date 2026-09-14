@@ -195,7 +195,7 @@ class LaunchController:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat(),
                                                   **({"e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex} if settings.PER_RUN_ENABLED else {}))
                 if settings.PER_RUN_ENABLED and e2_node:   # RIC 場景閘道:宣告場景 + 它唯一的 meid(best effort)
-                    gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node)
+                    gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node, gnb_id_hex=gnb_id_hex)
                     logger.info("RIC gateway register %s → %s", e2_node, gw)
                 cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
@@ -254,8 +254,12 @@ class LaunchController:
                     rr = platform_clients._registry("Simulation_run/SceneRunReader/read", {"scene_run_uuid": run_uuid}).get("data") or {}
                     if rr.get("e2_node_id"):
                         platform_clients.notify_ric_stopped(run_uuid, rr["e2_node_id"], rr.get("gnb_id_hex") or "")   # 舊 webhook(可選)
-                        platform_clients.ric_unregister_scenario(run_uuid)
-                        ric_note = platform_clients.ric_rnib_clear(rr["e2_node_id"], rr.get("gnb_id_hex") or "")
+                        # RIC 端(2026-09-14):DELETE /v1/scenarios/{id} 一次做「釋放 meid 綁定 + 清 R-NIB 三樣」;放最後(容器已停、SCTP 已斷)。
+                        # 只有 DELETE 沒清成(404 / cleared:false)才補呼 /v1/rnib/clear。
+                        ric_note = platform_clients.ric_unregister_scenario(run_uuid)
+                        purged = bool(ric_note) and not ric_note.get("error") and all(x.get("cleared") for x in (ric_note.get("rnibPurge") or [])) and bool(ric_note.get("rnibPurge"))
+                        if not purged:
+                            ric_note = {"delete": ric_note, "rnib_clear": platform_clients.ric_rnib_clear(rr["e2_node_id"], rr.get("gnb_id_hex") or "")}
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("RIC cleanup failed: %s", exc)
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),

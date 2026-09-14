@@ -369,3 +369,5 @@
 - orchestrator:`RIC_GATEWAY_URL` 設了就 start 時 `POST /v1/scenarios`(scenarioId=scene_run_uuid、labels.scene_name、profile、nodes[{cu, meid}]、ranFunctions [2,3,4,5,6]、controlPolicy),stop 時 `DELETE /v1/scenarios/{id}`(他們沒列,404 只記 log)→ `POST /v1/rnib/clear`(PLMN TBCD 02F859、gnb_id 22-bit);`GET /v1/nodes/{meid}` 留給監控。沒設 URL 就只記 log(閘道尚未上叢集)。
 - 待 RIC 端:pod 部署 API(RBAC)、dt-anr 重連自癒、閘道部署 + URL。
 - 順帶:CU ANR indication 裡有一個 `default-cell-0` 幽靈 cell(CU 內部佔位),之後清。
+- 閘道上線 `http://10.3.0.71:30990`(叢集內 `ric-scenario-gw.ricplt:8080`)。收尾改為 E2 Reset → 關 SCTP → 停容器 → **DELETE /v1/scenarios/{id}**(一次釋放 meid 綁定 + 清 R-NIB 三樣);只有 DELETE 沒清成(404 / cleared:false)才補 `/v1/rnib/clear`。node 帶 `plmnId` / `nbIdBits`(第二把 R-NIB key 用)。profile 白名單:anr(預設)/ fullkpm / kpm / rc / ccc。
+- 實測:run2 stop → 第一次 DELETE 404(從未註冊)→ 補清成功(deletedRanKey/GnbKey true);start → POST 201,閘道 `GET /v1/nodes/e02` 回 scenarioId、`GET /v1/scenarios` 現查 CONNECTED、subscriptionCount 2。run1 已補註冊。dt-anr 0.1.30-v10 重連自癒實測 67 s。
