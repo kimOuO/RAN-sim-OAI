@@ -373,3 +373,12 @@
 - 實測:run2 stop → 第一次 DELETE 404(從未註冊)→ 補清成功(deletedRanKey/GnbKey true);start → POST 201,閘道 `GET /v1/nodes/e02` 回 scenarioId、`GET /v1/scenarios` 現查 CONNECTED、subscriptionCount 2。run1 已補註冊。dt-anr 0.1.30-v10 重連自癒實測 67 s。
 - RIC ②③ 上線後:start 在註冊後加 `POST /v1/scenarios/{id}/xapp`(best effort);orchestrator 新增 `RicObservationReader/read`(閘道 scenario + node 視圖,給監控頁)。實測 xApp 部署回 422 `k8s-create-failed`:Service 名 `service-ricxapp-dt-scn-scene-run-<32hex>-rmr` 超過 k8s 63 字元上限 —— 閘道只做了小寫/連字號正規化沒截短,已回報 RIC 端(建議 hash 截短);他們修好後不用改我方程式。plmnId/nbIdBits 改可省略(閘道自己查 e2mgr),我方帶著也可。
 - RIC ②:閘道名稱長度已修(超長接 8 碼雜湊),但 dt-anr xApp 身分寫死(XAPP_NAME 常數、不讀 SCENARIO_MEIDS)→ per-scenario pod 起不來。/xapp 呼叫改成 env `RIC_GATEWAY_DEPLOY_XAPP`(預設 off),他們參數化後改 on 即可;現在共用 dt-anr 實例 + 閘道註冊/控制/清理照常。
+
+## P5-5 azimuth 核對(2026-09-14)
+
+- 新 registry 指令 `manage.py audit_azimuth [--only <prefix>] [--fix-centroid <prefix>]`:每 cell 的羅盤 boresight 與 UE 質心的夾角(≤90 OK / 側向 / ≥135 背對)。
+- 164 個 cell 核對結果:
+  - **anr_\*(14 場景)**:方位 90/270,羅盤語意下大多正對 UE(0–47°);舊框架下 270 的那些其實一直對著反方向(171–180°)→ 改正後**更對**。少數背對的(s11/f55/f61/h2/s28/tmp/s01)是劇本設計(harmful/stale/unknown/異頻遠端 cell),不動。
+  - **corridor(5)**:已改 src=180,現在 3–4°。
+  - **cco_1hr / im / es(兩扇區 c0=0, c1=180)**:一個扇區面向 UE、一個背對,是合理的兩扇區站,不動。
+  - **dt_\*(12)、cco_20min、full_day_\*、kpm_compare、recover_\*(共 19 場景)**:兩個 cell 都 0°(作者沒做扇區),羅盤下側向/背對 UE(108–180°);舊框架同樣是共指 +x(39–162°)。建議 `--fix-centroid` 把它們指向 UE 質心(維持共指、恢復「無扇區」的意圖)。
