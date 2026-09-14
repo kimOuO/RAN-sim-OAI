@@ -345,3 +345,11 @@
 - 近似 / 待做:ρ 是常數(RU 不知各 DU 的 UL 排程),之後可由 DU 把每 cell UL 負載推給 RU;UL rank 固定 1;UE↔UE 直接干擾(動態 TDD 交叉鏈路)不做。
 - ⚠ corridor_24h 重算在 P5-3/P6 期間被我幾次 `docker compose restart/up -d physics` 殺掉(precompute 是 `docker exec` 進 physics 容器跑的,容器一重啟就沒了),停在 40000 tick;已用 checkpoint 續跑(0–40000 也是新框架算的)。**重算期間不要重啟 physics**;長期應把 precompute 放獨立容器。
 - P6 補完:DU 每 tick 把「上一 tick 每 cell UL PRB 負載」放進 `DlTtiRequest.cell_ul_load` 推給 RU,RU 落 `Cell.ul_load`(migration antenna 0006;多 worker 不能放全域),上行干擾的 ρ 改用真值(沒推才退 env 常數)。實測 RU 收到 `n62_c0 0.189 / n77_c0 0.151`;此場景雜訊受限,UL SINR 不變(6.2 dB)。
+
+## P5-2 續:corridor cache 第一次重算結果與方位修正(2026-09-14)
+
+- corridor_24h 第一次(z-up)重算 09-13 21:42 完成(172800 tick,最後段 433 s)。與舊框架比:mean +10.2 dB、|diff| p50 25 dB、p95 57 dB —— 遠大於預期的「幾 dB」。
+- 原因:走廊沿 z 軸(UE z −16…30,src 在 z=−14、nbr 在 z=+28),兩個 cell 方位都是 0。舊框架 az=0 = boresight +x(橫向、對著牆);新框架 az 是羅盤(0=北=−z)→ src 朝 −z **背對整條走廊**、nbr 朝 −z 面向走廊。舊劇本作者沒有用羅盤語意想 azimuth(0 = 沒指定)。
+- 修:registry 5 個 corridor 場景的 src cell azimuth 改 180(朝 +z 面向 UE),nbr 保持 0;shim 讀回已反映。第一次算的檔留成 `corridor_24h.az0.npz` 對照;從 0 再跑一次(ETA ~8 h)。
+- 教訓:匯入舊劇本時 azimuth 語意要對:羅盤(現行,編輯器也這樣畫)。其他 anr_* 場景 azimuth 是 90/270 等,是有意識設定的,語意應同羅盤(要不要逐一核對留待重算 anr cache 時)。
+- `carve_window.py` 需要 `/tmp/<sid>.json`(劇本),切窗時從 registry shim 先存一份。
