@@ -483,3 +483,9 @@
 - 量 5 分鐘:CU 約 10,000 行幾乎全是 daphne access log(measurement_report 每秒 30 筆);DU 每 tick 每 UE 印 SLOT_SHADOW / DU_SINR_CMP / UL sinr;RU 每請求印 dl_tti、update_ues。
 - 改:CU daphne `--access-log /dev/null`(Dockerfile,已重建 ransim-cu:platform);DU/RU 上述 per-tick info 降為 debug。預估 log 量少一個數量級。
 - 主機端輪替:`docker-compose-deployment/host_setup_docker_log_rotation.sh`(sudo):寫 daemon.json log-opts 200m×3、重啟 docker、--force-recreate ransim-platform 服務;per-run 容器由自動復原重建時套用。**待使用者執行**。
+
+## 事故:docker 重啟後兩個 run 同時自動重啟搶到同一 E2 槽位(2026-09-16 00:03 本地)
+
+- 使用者執行日誌輪替腳本 → docker daemon 重啟 → 兩個 run 的容器 exited → 健康監控同時判定並自動重啟 → 兩個 start 併發,`allocate_slot` 都看到對方「不是 running」→ 都拿 slot 1(e01、adapter port 8401):第二個 adapter 起不來(port in use),RIC 登記也互撞。
+- 修:start 內配槽位改在進程鎖 `_SLOT_LOCK` 內完成,且配到後立刻把 `gnb_id_hex / e2_node_id / status=starting` 寫回 registry,used 集合含 starting。健康監控隨後把 49117e33 重啟為 e02/8402 並成功登記 RIC;388e8e0a 手動 stop/start 一次清掉殘留登記。
+- 日誌輪替生效:新容器 LogConfig json-file max-size 200m × max-file 3。

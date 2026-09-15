@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
@@ -26,6 +27,8 @@ UUID_FIELD = "launch_request_uuid"
 def _body(request) -> dict:
     return json.loads(request.body or b"{}")
 
+
+_SLOT_LOCK = threading.Lock()   # E2 槽位配置序列化(同進程;orchestrator 單 worker)
 
 class LaunchRequestController:
     @staticmethod
@@ -168,10 +171,15 @@ class LaunchController:
                 for old in platform_clients.list_run_instances(run_uuid):
                     platform_clients.delete_run_instance(old["run_instance_uuid"])
                 # E2 node 身分:從執行中 run 的 e2_node_id 反推已用槽位,配一個沒人用的(RIC 以 PLMN+gNB ID 當 meid)
-                used = [r.get("gnb_id_hex") or "" for r in platform_clients.list_running_runs() if r.get("scene_run_uuid") != run_uuid]
-                slot = container_spawner.allocate_slot(used)
-                gnb_id_hex = container_spawner.gnb_id_hex_for_slot(slot)
-                e2_node = container_spawner.e2_node_name(gnb_id_hex)
+                # 2026-09-16 事故:docker 重啟後兩個 run 同時自動重啟,都看到對方「不是 running」→ 都拿到槽位 1(同 meid、adapter port 撞)。
+                # 配槽位 + 立刻把 gnb_id_hex/status=starting 寫回 registry 要在同一把鎖內;used 也把 starting 算進去。
+                with _SLOT_LOCK:
+                    used = [r.get("gnb_id_hex") or "" for st in ("running", "starting")
+                            for r in platform_clients.list_runs_by_status(st) if r.get("scene_run_uuid") != run_uuid]
+                    slot = container_spawner.allocate_slot(used)
+                    gnb_id_hex = container_spawner.gnb_id_hex_for_slot(slot)
+                    e2_node = container_spawner.e2_node_name(gnb_id_hex)
+                    platform_clients.update_scene_run(run_uuid, status="starting", gnb_id_hex=gnb_id_hex, e2_node_id=e2_node)
                 # 兩階段:先 cu/du/ru/ue → 等健康 → 再起 e2adapter(它啟動就抓 CU 的 E2 node id 送 E2 Setup,CU 要先 ready)
                 def _register(spawned: dict[str, dict]) -> None:
                     for role, info in spawned.items():

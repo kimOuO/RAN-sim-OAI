@@ -64,7 +64,11 @@ def delete_run_instance(run_instance_uuid: str) -> dict:
 
 
 def list_running_runs() -> list[dict]:
-    return _registry("Simulation_run/SceneRunReader/read", {"status": "running"}).get("data") or []
+    return list_runs_by_status("running")
+
+
+def list_runs_by_status(status: str) -> list[dict]:
+    return _registry("Simulation_run/SceneRunReader/read", {"status": status}).get("data") or []
 
 
 def notify_ric_stopped(scene_run_uuid: str, e2_node_id: str, gnb_id_hex: str, plmn_mcc: str = "208", plmn_mnc: str = "95") -> dict | None:
