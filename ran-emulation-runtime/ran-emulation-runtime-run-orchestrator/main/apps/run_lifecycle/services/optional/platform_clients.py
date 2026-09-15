@@ -124,7 +124,17 @@ def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_f
     body = {"scenarioId": scene_run_uuid, "labels": {"scene_name": scene_name}, "profile": profile or settings.RIC_GATEWAY_PROFILE,
             "nodes": [node], "ranFunctions": ran_functions or [2, 3, 4, 5, 6],
             "controlPolicy": {"allowedStyles": ["rc-reportcgi", "anr-add"], "allowWrite": True}}
-    return _gw("/v1/scenarios", body)
+    gw = _gw("/v1/scenarios", body)
+    # 2026-09-16:409 meid-already-bound = 閘道還留著上一輪(通常是 DELETE 逾時)綁這個 meid 的舊場景 → 找出來 DELETE 再登記一次
+    if isinstance(gw, dict) and gw.get("error") == 409 and "meid-already-bound" in str(gw.get("body", "")):
+        stale = [sc.get("scenarioId") for sc in (_gw("/v1/scenarios", None, method="GET", timeout=20.0) or [])
+                 if isinstance(sc, dict) and any((n or {}).get("meid") == meid for n in (sc.get("nodes") or {}).values())]
+        for sid in stale:
+            logger.warning("RIC gateway meid %s 被舊場景 %s 佔住 → DELETE 後重試登記", meid, sid)
+            _gw(f"/v1/scenarios/{sid}", None, method="DELETE", timeout=30.0)
+        if stale:
+            gw = _gw("/v1/scenarios", body)
+    return gw
 
 
 def ric_unregister_scenario(scene_run_uuid: str) -> dict | None:
