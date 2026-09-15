@@ -382,50 +382,6 @@ services:
 
   # ── Dashboard（Next.js 前端，現階段保留舊 frontend）──────
   # 注意：Dashboard 在 Physics_sim/Dashboard/ 內，build context 指過去
-  dashboard:
-    build:
-      context: ./ran-scene-management/ran-scene-management-legacy-dashboard
-      dockerfile: Dockerfile.dev   # dev mode → 支援 hot-reload + bind mount
-    image: ransim-dashboard:dev
-    container_name: ransim-dashboard
-    # 啟動時 npm install 補裝 package.json 新增的 dep（已裝的會被 skip）
-    # 避免 anonymous volume 把 node_modules 凍在 image build 時的狀態
-    command: sh -c "npm install --legacy-peer-deps && npm run dev"
-    environment:
-      # 跨機器存取：browser 在 windows 開 :3010，但 backend port 用 server IP 才連得到
-      # 改機器部署時改 .env 的 SERVER_IP 即可
-      NEXT_PUBLIC_CU_URL: "http://${SERVER_IP:-localhost}:8101"
-      NEXT_PUBLIC_DU_URL: "http://${SERVER_IP:-localhost}:8102"
-      NEXT_PUBLIC_RU_URL: "http://${SERVER_IP:-localhost}:8103"
-      NEXT_PUBLIC_E2_ADAPTER_URL: "http://${SERVER_IP:-localhost}:8201"
-      NEXT_PUBLIC_UE_URL: "http://${SERVER_IP:-localhost}:8105"
-      NEXT_PUBLIC_PHYSICS_URL: "http://${SERVER_IP:-localhost}:8104"
-      NEXT_PUBLIC_API_BASE_URL: "http://${SERVER_IP:-localhost}:8104"   # 舊變數兼容（→ Physics）
-      NEXT_PUBLIC_OMNIVERSE_URL: "http://${SERVER_IP:-localhost}:8001"
-      NEXT_PUBLIC_VNC_URL: "http://${SERVER_IP:-localhost}:6080/vnc.html"
-      NEXT_PUBLIC_WS_URL: "ws://${SERVER_IP:-localhost}:8104/ws/sim/live/"
-      # ↓ app/layout.tsx 用無前綴版本注入 window.__APP_CONFIG__（getRuntimeConfig 優先級最高）
-      # 跨機器 fix 必須這邊也設，否則 fallback localhost 會蓋掉 client side resolveHost
-      API_BASE_URL: "http://${SERVER_IP:-localhost}:8104"
-      OMNIVERSE_URL: "http://${SERVER_IP:-localhost}:8001"
-      VNC_URL: "http://${SERVER_IP:-localhost}:6080/vnc.html"
-      WS_URL: "ws://${SERVER_IP:-localhost}:8104/ws/sim/live/"
-      CU_URL: "http://${SERVER_IP:-localhost}:8101"
-      DU_URL: "http://${SERVER_IP:-localhost}:8102"
-      RU_URL: "http://${SERVER_IP:-localhost}:8103"
-      PHYSICS_URL: "http://${SERVER_IP:-localhost}:8104"
-      E2_ADAPTER_URL: "http://${SERVER_IP:-localhost}:8201"
-      UE_URL: "http://${SERVER_IP:-localhost}:8105"
-    volumes:
-      - ./ran-scene-management/ran-scene-management-legacy-dashboard:/app
-      - /app/node_modules                              # 保留 image 內 node_modules
-      - /app/.next                                     # build artifact 存在 container
-    ports:
-      - "3010:3000"   # host 3000 被 Omniverse debugpy 佔用
-    depends_on:
-      - cu
-    networks:
-      - ransim-net
 
   # ── E2 Adapter（HTTP REST ↔ ASN.1/SCTP RIC 翻譯器）─────────────
   # P2.7 階段：骨架 only；E2_ADAPTER_LINK_ENABLED=0 → 不嘗試連 RIC
@@ -506,10 +462,10 @@ services:
       # Phase B B.4 — scenario driver fetch scenario JSON from Omniverse
       OMNIVERSE_URL: "http://${SERVER_IP:-host.docker.internal}:8001"
       # 劇本倉庫來源(2026-09-12 P1-3):預設 Omniverse;切到 registry 用
-      #   SCENARIO_STORE_URL=http://network-element-registry:8000 docker compose up -d --force-recreate ue
+      #   SCENARIO_STORE_URL=http://scene-management-backend:8000 docker compose up -d --force-recreate ue
       SCENARIO_STORE_URL: "${SCENARIO_STORE_URL:-http://${SERVER_IP:-host.docker.internal}:8001}"
       # 2026-09-13 P2:registry 直讀(SimController/start 帶 scene_run_uuid 時走 read_full_tree)
-      REGISTRY_URL: "http://network-element-registry:8000"
+      REGISTRY_URL: "http://scene-management-backend:8000"
       # Tick 週期
       UE_TRAJECTORY_PERIOD_MS: "100"
       # AC5 — 原 80 ms ≥ HO_TTT_MS 60 ms,A3 觸發條件量不到第二次。降到 40 ms 留 buffer。
@@ -547,23 +503,25 @@ services:
 
 
   # ── 管理平台:網元登錄(2026-09-12 重構 P1)──
-  network-element-registry:
+  scene-management-backend:
     build:
-      context: ./ran-scene-management/ran-scene-management-network-element-registry
+      context: ./ran-scene-management/ran-scene-management-backend
       dockerfile: Dockerfile
-    image: ran-scene-management-network-element-registry:platform
-    container_name: ran-network-element-registry
+    image: ran-scene-management-backend:platform
+    container_name: ran-scene-management-backend
     environment:
       DJANGO_SETTINGS_MODULE: main.settings.local
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
+      SCANNED_ASSETS_DIR: /app/assets
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: scene_registry_db
       DB_USER: ransim
       DB_PASSWORD: "ransim"
     volumes:
-      - ./ran-scene-management/ran-scene-management-network-element-registry:/app
+      - ./ran-scene-management/ran-scene-management-backend:/app
+      - ./scanned-building-assets:/app/assets   # 3D 幾何匯入產物(2026-09-16 自 ingest 併入)
       - ./docs/scenarios:/app/docs/scenarios:ro   # import_scenarios --dir 用
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -591,7 +549,7 @@ services:
       DB_NAME: run_orchestrator_db
       DB_USER: ransim
       DB_PASSWORD: "ransim"
-      HTTP_REGISTRY_HOST: network-element-registry
+      HTTP_REGISTRY_HOST: scene-management-backend
       HTTP_REGISTRY_PORT: "8000"
       HTTP_UE_DRIVER_HOST: ue
       HTTP_UE_DRIVER_PORT: "8000"
@@ -621,34 +579,6 @@ services:
       - ransim-net
 
   # ── 管理平台:建築幾何匯入(2026-09-12 重構 P1-4;自 Omniverse backend 複製,不含 USD)──
-  building-geometry-ingest:
-    build:
-      context: ./ran-scene-management/ran-scene-management-building-geometry-ingest
-      dockerfile: Dockerfile
-    image: ran-scene-management-building-geometry-ingest:platform
-    container_name: ran-building-geometry-ingest
-    environment:
-      DJANGO_SETTINGS_MODULE: main.settings.local
-      DJANGO_DEBUG: "True"
-      DJANGO_ALLOWED_HOSTS: "*"
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: building_ingest_db
-      DB_USER: ransim
-      DB_PASSWORD: "ransim"
-      SCANNED_ASSETS_DIR: /app/assets
-      HTTP_REGISTRY_HOST: network-element-registry
-      HTTP_REGISTRY_PORT: "8000"
-    volumes:
-      - ./ran-scene-management/ran-scene-management-building-geometry-ingest:/app
-      - ./scanned-building-assets:/app/assets
-    ports:
-      - "8303:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - ransim-net
 
   # ── 管理平台前端(2026-09-13 P3-1;dev 模式 bind mount + hot reload)──
   scene-editor-frontend:
@@ -659,7 +589,7 @@ services:
     container_name: ran-scene-editor-frontend
     environment:
       NEXT_PUBLIC_REGISTRY_BASE_URL: "http://${SERVER_IP:-localhost}:8301"
-      NEXT_PUBLIC_INGEST_BASE_URL: "http://${SERVER_IP:-localhost}:8303"
+      NEXT_PUBLIC_INGEST_BASE_URL: \"http://${SERVER_IP:-localhost}:8301\"
       NEXT_PUBLIC_MONITOR_BASE_URL: "http://${SERVER_IP:-localhost}:3012"
       NEXT_PUBLIC_ORCHESTRATOR_BASE_URL: "http://${SERVER_IP:-localhost}:8302"
     volumes:
@@ -669,7 +599,7 @@ services:
     ports:
       - "3011:3011"
     depends_on:
-      - network-element-registry
+      - scene-management-backend
     networks:
       - ransim-net
 

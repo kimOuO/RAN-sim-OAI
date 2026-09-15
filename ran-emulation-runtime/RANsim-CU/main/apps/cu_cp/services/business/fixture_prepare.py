@@ -41,7 +41,7 @@ def _load_scenario(scenario_id: str) -> dict[str, Any]:
     # 平台化(2026-09-15):劇本主檔在 registry,經相容端點取(scenario_id 可為舊 id / 場景名 / scene_uuid)
     import os
     import requests
-    base = os.environ.get("SCENARIO_STORE_URL") or "http://ran-network-element-registry:8000"
+    base = os.environ.get("SCENARIO_STORE_URL") or "http://ran-scene-management-backend:8000"
     r = requests.post(f"{base.rstrip('/')}/api/v0.1/RAN/Scenario/ScenarioController/read",
                       json={"scenario_id": scenario_id, "with_raw": True}, timeout=15)
     body = r.json() if r.ok else {}

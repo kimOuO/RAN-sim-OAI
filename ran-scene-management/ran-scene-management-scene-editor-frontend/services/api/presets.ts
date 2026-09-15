@@ -2,7 +2,7 @@ import { REGISTRY_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
 import type { AntennaPreset, DuConfigTemplate, GnbConfigTemplate, Material } from '@/types/registry';
 
-const P = `${REGISTRY_API}/Preset_catalog`;
+const P = `${REGISTRY_API}/Equipment_preset`;
 export const listAntennaPresets = () => post<AntennaPreset[]>(`${P}/AntennaPresetReader/read`, {});
 export const createAntennaPreset = (body: Partial<AntennaPreset>) => post<AntennaPreset>(`${P}/AntennaPresetController/create`, body);
 export const updateAntennaPreset = (antenna_preset_uuid: string, body: Partial<AntennaPreset>) => post<AntennaPreset>(`${P}/AntennaPresetController/update`, { antenna_preset_uuid, ...body });

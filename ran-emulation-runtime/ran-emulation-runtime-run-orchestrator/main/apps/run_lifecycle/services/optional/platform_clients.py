@@ -16,7 +16,7 @@ def _post(base: str, path: str, body: dict, timeout: float) -> dict:
 
 
 def _registry(path: str, body: dict, timeout: float = 30.0) -> dict:
-    return _post(f"http://{settings.HTTP_REGISTRY_HOST}:{settings.HTTP_REGISTRY_PORT}/api/v0.1/Network_element_registry/", path, body, timeout)
+    return _post(f"http://{settings.HTTP_REGISTRY_HOST}:{settings.HTTP_REGISTRY_PORT}/api/v0.1/Scene_management_backend/", path, body, timeout)
 
 
 def _ue(path: str, body: dict, timeout: float = 180.0, host: str | None = None) -> dict:
@@ -29,7 +29,7 @@ def now_iso() -> str:
 
 
 def read_full_tree(scene_run_uuid: str) -> dict:
-    return _registry("Scene_layout/SceneReader/read_full_tree", {"scene_run_uuid": scene_run_uuid})
+    return _registry("Field_scene/SceneReader/read_full_tree", {"scene_run_uuid": scene_run_uuid})
 
 
 def update_scene_run(scene_run_uuid: str, **fields) -> dict:

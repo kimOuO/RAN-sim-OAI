@@ -373,7 +373,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     if not REGISTRY_URL:
         raise RuntimeError("REGISTRY_URL not set; cannot fetch scene_run from registry")
     r = requests.post(
-        f"{REGISTRY_URL.rstrip('/')}/api/v0.1/Network_element_registry/Scene_layout/SceneReader/read_full_tree",
+        f"{REGISTRY_URL.rstrip('/')}/api/v0.1/Scene_management_backend/Field_scene/SceneReader/read_full_tree",
         json={"scene_run_uuid": scene_run_uuid}, timeout=30,
     )
     r.raise_for_status()

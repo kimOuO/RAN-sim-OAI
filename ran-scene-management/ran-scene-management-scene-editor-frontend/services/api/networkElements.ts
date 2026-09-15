@@ -2,7 +2,7 @@ import { REGISTRY_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
 import type { Building, Cell, Du, Gnb, Ru, Ue } from '@/types/registry';
 
-const R = `${REGISTRY_API}/Radio_access_element`; const L = `${REGISTRY_API}/Scene_layout`; const U = `${REGISTRY_API}/User_equipment`;
+const R = `${REGISTRY_API}/Equipment_ran`; const L = `${REGISTRY_API}/Field_scene`; const U = `${REGISTRY_API}/Equipment_ue`;
 export const createGnb = (body: Partial<Gnb> & { f_scene_uuid: string }) => post<Gnb>(`${R}/GnbController/create`, body);
 export const updateGnb = (gnb_uuid: string, body: Partial<Gnb>) => post<Gnb>(`${R}/GnbController/update`, { gnb_uuid, ...body });
 export const deleteGnb = (gnb_uuid: string) => post<{ deleted: number }>(`${R}/GnbController/delete`, { gnb_uuid });

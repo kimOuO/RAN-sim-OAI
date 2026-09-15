@@ -3,7 +3,7 @@ import { post } from '@/services/clients/apiClient';
 import type { Building } from '@/types/registry';
 import type { GeocodeResult, OsmMapAsset } from '@/types/geometry';
 
-const O = `${INGEST_API}/Osm_footprint_ingest`;
+const O = `${INGEST_API}/Render_osm_footprint`;
 /** 地標 → 候選地點(後端 proxy Nominatim) */
 export const geocodeLandmark = async (query: string) => (await post<{ results: GeocodeResult[] }>(`${O}/OsmFootprintImporter/geocode`, { query, limit: 5 }, { timeoutMs: 30_000 })).results;
 /** 抓 OSM(Overpass)→ Mitsuba;可能要 1–3 分鐘 */

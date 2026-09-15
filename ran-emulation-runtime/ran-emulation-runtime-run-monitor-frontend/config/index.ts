@@ -1,4 +1,4 @@
-export const REGISTRY_API = `${process.env.NEXT_PUBLIC_REGISTRY_BASE_URL ?? 'http://localhost:8301'}/api/v0.1/Network_element_registry`;
+export const REGISTRY_API = `${process.env.NEXT_PUBLIC_REGISTRY_BASE_URL ?? 'http://localhost:8301'}/api/v0.1/Scene_management_backend`;
 export const ORCHESTRATOR_API = `${process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL ?? 'http://localhost:8302'}/api/v0.1/Run_orchestrator`;
 export const DU_API = `${process.env.NEXT_PUBLIC_DU_BASE_URL ?? 'http://localhost:8102'}/api/v0.1/DU`;
 export const UE_API = `${process.env.NEXT_PUBLIC_UE_BASE_URL ?? 'http://localhost:8105'}/api/v0.1/UE`;

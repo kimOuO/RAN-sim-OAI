@@ -2,9 +2,9 @@ export const REGISTRY_BASE_URL = process.env.NEXT_PUBLIC_REGISTRY_BASE_URL ?? 'h
 export const INGEST_BASE_URL = process.env.NEXT_PUBLIC_INGEST_BASE_URL ?? 'http://localhost:8303';
 export const ORCHESTRATOR_BASE_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL ?? 'http://localhost:8302';
 export const MONITOR_BASE_URL = process.env.NEXT_PUBLIC_MONITOR_BASE_URL ?? 'http://localhost:3012';
-export const REGISTRY_API = `${REGISTRY_BASE_URL}/api/v0.1/Network_element_registry`;
+export const REGISTRY_API = `${REGISTRY_BASE_URL}/api/v0.1/Scene_management_backend`;
 export const ORCHESTRATOR_API = `${ORCHESTRATOR_BASE_URL}/api/v0.1/Run_orchestrator`;
-export const INGEST_API = `${INGEST_BASE_URL}/api/v0.1/Building_geometry_ingest`;
+export const INGEST_API = `${INGEST_BASE_URL}/api/v0.1/Scene_management_backend`;
 /** 畫布:1 單位 = 1 公尺;registry 座標 Y-up(x 東、y 上、z 南),與 Sionna/場景檔一致 */
 export const CANVAS = { gridSize: 400, cellMarkerRadius: 1.2, ueMarkerRadius: 0.4 } as const;
 /** 劇本分類:由 legacy_scenario_id 前綴推導(呈現層),沒有舊 id 的是手動建立 */

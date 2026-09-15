@@ -1,4 +1,4 @@
-/** registry(network-element-registry)的 DTO。欄位名對齊後端 model;FK 一律 f_<parent>_uuid。 */
+/** 管理平台後端(scene-management-backend)的 DTO。欄位名對齊後端 model;FK 一律 f_<parent>_uuid。 */
 export interface Material { material_uuid: string; key: string; itu_id: string; freq_range_ghz: string; notes: string; }
 export interface AntennaPreset {
   antenna_preset_uuid: string; name: string; source: string; pattern: 'iso' | 'dipole' | 'hw_dipole' | 'tr38901';

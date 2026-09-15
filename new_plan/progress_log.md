@@ -507,3 +507,12 @@
 - **未通過:RIC 沒有下訂閱**。e2e_check 3 分鐘內 subscriptionCount 0、adapter 只收到 E2SetupResponse;兩個 corridor run 自 17:0x UTC 重啟後同樣 0 訂閱、30 分鐘 0 筆 indication。我方 SCTP/E2 Setup 正常,訂閱由 RIC xApp 發起 → RIC 端問題(當時 RIC 曾回 SCTP control-processing-overload;懷疑 submgr/xApp 在我方連續重啟後卡住)。
 - 49117e33 上一輪重啟 RIC DELETE 逾時、之後登記未成功(meid-not-registered),再 stop/start 一次補登記。
 - 殘留:precompute-<rid> 容器 exited 後未清(小,待清理)。
+
+## 管理平台合併為一個後端 + app 依領域分類(2026-09-16)
+
+- `ran-scene-management-network-element-registry` → **`ran-scene-management-backend`**;`building-geometry-ingest` 兩個 app 併入;`legacy-dashboard`(3010)退場。管理平台現在就是 backend + scene-editor-frontend 兩個目錄。
+- app 重新分類(平鋪 + 前綴):場域 `field_scene`(scene/building/material/劇本匯入)、設備 `equipment_ran` / `equipment_ue`(含流量)/ `equipment_preset`、3D `render_scan_mesh` / `render_osm_footprint`、執行 `simulation_run`。
+- URL 前綴 `Network_element_registry` → `Scene_management_backend`,app 段同步改名;compose 服務/映像/容器改 `scene-management-backend`(port 8301 不變),ingest 8303 併入 8301;外部呼叫端(orchestrator、UE loader、CU fixture、兩個前端、per_run_template)全部改路徑。
+- 資料:18 張表 db_table 明示,資料表不動;django_migrations / content_type 的 app 名以 SQL 改名;Material 從 preset 搬到 field_scene 與 FK 目標 app 變更用 SeparateDatabaseAndState(state-only)遷移。ingest 兩表原本 0 列,直接以新 app 建表。事前 pg_dump 備份在 scratchpad。
+- 驗證:後端 8 個 app 讀端點 + 舊劇本相容端點全通(68 場景 / 149 gNB / 282 UE 完整);兩個前端 tsc 通過、3011/3012 回應;e2e_check 經新後端 start/stop 全鏈通過(UE 由 read_full_tree 取場景、五容器健康、歸檔、收尾)。
+- 踩到:歷史遷移的小寫 lazy ref(`'preset_catalog.antennapreset'`)要另外改;容器內產生的 root 檔案用 docker chown 處理;orchestrator 在後端換名期間 DNS 失敗導致兩個舊 run 的 health thread 停擺,重啟 orchestrator 恢復。

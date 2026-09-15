@@ -1,0 +1,8 @@
+# 單獨開發用;平台整合走 XAPP_DT 根目錄的 docker-compose.yml
+services:
+  scene-management-backend:
+    build: { context: ., dockerfile: Dockerfile }
+    image: ran-scene-management-scene-management-backend:local
+    env_file: .env
+    volumes: [ ".:/app" ]
+    ports: [ "8301:8000" ]
