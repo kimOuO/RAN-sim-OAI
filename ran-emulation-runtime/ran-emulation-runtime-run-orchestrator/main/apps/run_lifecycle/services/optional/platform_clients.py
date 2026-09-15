@@ -41,7 +41,9 @@ def ue_start(scene_run_uuid: str, speed_x: float, sim_dt_ms: int, host: str | No
 
 
 def ue_stop(host: str | None = None) -> dict:
-    return _ue("SimController/stop", {}, host=host)
+    # stop 路徑不能等 180 s:CU 卡死時 UE driver 的 release_all 會一直等,撞到 gunicorn worker 上限被 SIGKILL(2026-09-15 06:30 事故)。
+    # 45 s 等不到就當 UE driver 已死,照樣往下拆容器。
+    return _ue("SimController/stop", {}, timeout=45.0, host=host)
 
 
 # run_instance(registry Simulation_run):每個 per-run 容器一列

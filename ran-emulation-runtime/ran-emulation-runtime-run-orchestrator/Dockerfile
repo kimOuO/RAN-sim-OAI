@@ -8,4 +8,4 @@ COPY . /app/
 RUN mkdir -p /app/logs && chmod +x /app/shell/*.sh /app/manage.py
 EXPOSE 8000
 ENTRYPOINT ["/app/shell/entrypoint.sh"]
-CMD ["gunicorn", "main.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "8"]
+CMD ["gunicorn", "main.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "8", "--timeout", "600", "--graceful-timeout", "30"]

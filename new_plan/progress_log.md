@@ -451,3 +451,10 @@
 
 - 解讀:rank 2 在 119/120 視窗成立,每層 SINR [16.7, 9.0] dB;第二層比第一層低 7.7 dB,EESM 後 MCS 只從 10.4 升到 12.9,滿載吞吐 +24%(34.3 → 42.4 Mbps),不是 2×——符合單 UE、LOS 主導(奇異值差距大)的預期。同流量下 PRB −25%。每層 SINR 有進歸檔(229/231 視窗;先前用 max(text) 查到 '[]' 是字串排序假象)。
 - 注意:live 模式 physics engine 是全域單例,同時只能跑一個 live run,否則不同天線/場景互相重建。
+
+## 事故:兩個 per-run CU 同時卡死(2026-09-15 06:30 UTC)
+
+- 06:30:26 UTC 起 cu-388e8e0a / cu-49117e33 的 Daphne 同時停止回應 HTTP(CPU 0%、DB 連線全 idle、無鎖等待),DU→CU measurement_report 逾時、adapter 打 CU 逾時、歸檔停擺;前端 3012 兩個 run 因此沒有數值。前 5 分鐘 CU 有一波 A3 換手(SessionController/handover ×4)且 DU 達成倍速掉到 0.39×。
+- 新的依賴鏈健康監控有抓到:e2adapter 標 degraded「sim CU 不可達 … Read timed out」、cu 標 starting;但沒有自動復原。
+- 容器內 ptrace 被擋(py-spy 失敗),抓不到堆疊。假設:換手路徑 CU→DU 同步呼叫、DU 再同步回打 CU,把 Daphne 執行緒池佔滿形成環形等待。**待查**:給 CU 容器 CAP_SYS_PTRACE 或加 faulthandler 訊號,下次卡住時 dump。
+- orchestrator stop 也卡:ue_stop 等 180 s → gunicorn worker 預設 30 s 逾時被 SIGKILL,start 同樣。修:ue_stop 45 s 上限、gunicorn `--timeout 600`。復原方式:強拆 10 個容器後 start,07:25 UTC 起兩個 run 恢復正常至今。
