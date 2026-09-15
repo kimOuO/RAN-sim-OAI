@@ -499,3 +499,11 @@
   - RU:P6 加的 cell ul_load 每 tick UPDATE 拿掉,pipeline 直接用 DL TTI 請求帶的 cell_ul_load,DB 只當後備。
 - 結果:兩個 run(一個 2×)postgres CPU 106% → 約 28%;per-run CU 每 DB 4–5 條連線;歸檔、健康全綠。
 - 順帶:同一 run 的 start/stop 加 run 級鎖(手動 stop/start 撞上自動復原造成 run 變 failed 無容器,已補跑)。RIC 端在我方連續重啟期間回 SCTP `control-processing-overload`,恢復後自癒。
+
+## 端到端回歸 e2e_check(2026-09-16 01:50–02:05 本地)
+
+- 流程:匯入 dt_2m 複本 → scene_run cached → orchestrator PrecomputeController(GPU 容器,1200 tick 1.4 s)→ status ready → LaunchController/start → 驗 12 段 → stop → 收尾。
+- 通過:五個容器 running、健康無 detail;UE attach 1/1、scene apply 無錯;DU tick 2× 達成 1.97×(body 24 ms);RU 載入 e2e_check.npz cached;CU measurement_log 持續寫入、UE CONNECTED;歸檔 per_ue 含 UL/每層欄位、wall_time_ms 有值;adapter SCTP 連上、E2 Setup 完成、RAN function 2/3/4/5/6 全接受;RIC 閘道登記成功、專屬 xApp pod 2 個 Running;監控頁用的 registry / orchestrator API 都有資料;stop 後五個容器移除、三個 DB 刪除、run_instance 全 stopped、RIC scenario/node 404、歸檔 241 筆保留。
+- **未通過:RIC 沒有下訂閱**。e2e_check 3 分鐘內 subscriptionCount 0、adapter 只收到 E2SetupResponse;兩個 corridor run 自 17:0x UTC 重啟後同樣 0 訂閱、30 分鐘 0 筆 indication。我方 SCTP/E2 Setup 正常,訂閱由 RIC xApp 發起 → RIC 端問題(當時 RIC 曾回 SCTP control-processing-overload;懷疑 submgr/xApp 在我方連續重啟後卡住)。
+- 49117e33 上一輪重啟 RIC DELETE 逾時、之後登記未成功(meid-not-registered),再 stop/start 一次補登記。
+- 殘留:precompute-<rid> 容器 exited 後未清(小,待清理)。
