@@ -66,7 +66,7 @@ class FapiRouterController:
         if v.get("ul_sinr_db") is not None:
             _UL_LOG_N += 1
             if _UL_LOG_N % 100 == 1:
-                logger.info("UL sinr ue=%s dl=%.1f ul=%.1f dB", v["ue_id"], v["sinr_db"], v["ul_sinr_db"])
+                logger.debug("UL sinr ue=%s dl=%.1f ul=%.1f dB", v["ue_id"], v["sinr_db"], v["ul_sinr_db"])
         # 多層時每 50 筆印一次 INFO(驗證每層 SINR 有進來;P5-4)
         global _LAYER_LOG_N
         if v.get("rank", 1) > 1 and v.get("sinr_per_layer_db"):

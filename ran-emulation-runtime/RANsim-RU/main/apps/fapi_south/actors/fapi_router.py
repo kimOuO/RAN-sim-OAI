@@ -116,7 +116,7 @@ class FapiRouter:
             _record_dl(cqi.ue_id, req.sfn, req.slot, cqi.sinr_db, cqi.cqi, cqi.rank, cqi.pmi)
 
         _bump_ru_state(req.sfn, req.slot)
-        logger.info("dl_tti sfn=%d slot=%d pdus=%d", req.sfn, req.slot, len(req.pdus))
+        logger.debug("dl_tti sfn=%d slot=%d pdus=%d", req.sfn, req.slot, len(req.pdus))
 
         return success_response(
             {

@@ -958,7 +958,7 @@ class TickRunner:
                     try:
                         from main.apps.fapi_north.services.optional.channel_cache_du import sinr_for_ue
                         _ip = sinr_for_ue(self.status.tick_count * self._sim_dt_ms, uid, ue.get("serving_cell"))
-                        logger.info("[DU_SINR_CMP] tick=%d ue=%s http_sinr=%.2f inproc_sinr=%s",
+                        logger.debug("[DU_SINR_CMP] tick=%d ue=%s http_sinr=%.2f inproc_sinr=%s",
                                     self.status.tick_count, uid, sinr,
                                     ("%.2f" % _ip) if _ip is not None else "None")
                     except Exception as e:
@@ -970,7 +970,7 @@ class TickRunner:
                     _bytes = actual_drained_map.get(uid, 0)
                     _thp = (_bytes * 8 / 1e6 / (self._sim_dt_ms / 1000.0)) if self._sim_dt_ms else 0.0
                     _prb_pct = (100.0 * prb_now / prb_per_cell) if prb_per_cell else 0.0
-                    logger.info(
+                    logger.debug(
                         "[SLOT_SHADOW] tick=%d ue=%s bo=%d prb=%d prb_op=%d prb_pct=%.2f mcs=%d sinr=%.1f "
                         "bytes=%d thp=%.3f slot_loop=%.2fms slot_loop_op=%.2fms calib=%.2fms retx=%d/%d drop=%d",
                         self.status.tick_count, uid, bo, prb_now, prb_op, _prb_pct,

@@ -477,3 +477,9 @@
 
 - 不是站位錯。按 UE 到站台距離分箱看 24h cache:src 與 nbr 在 0–20 m 幾乎一樣(3–6 m 約 −47 dB、12–20 m 約 −60 dB);src 的 −107 dB 平均是被「30–50 m 且被走廊轉角/牆完全遮蔽(−160 dB)」的 100 萬個樣本拉低——UE 大部分時間停在 nbr 那一端。方位修正後兩站都正對走廊。
 - 附帶觀察:兩站 0–3 m 內反而只有 −70 dB(3–6 m 是 −47),是 tr38901 天線垂直面在正下方的零點,UE 停在站台正下方時會偏弱;屬模型行為,不改。
+
+## 第 5 項 docker 日誌輪替 + 降 log 量(2026-09-15)
+
+- 量 5 分鐘:CU 約 10,000 行幾乎全是 daphne access log(measurement_report 每秒 30 筆);DU 每 tick 每 UE 印 SLOT_SHADOW / DU_SINR_CMP / UL sinr;RU 每請求印 dl_tti、update_ues。
+- 改:CU daphne `--access-log /dev/null`(Dockerfile,已重建 ransim-cu:platform);DU/RU 上述 per-tick info 降為 debug。預估 log 量少一個數量級。
+- 主機端輪替:`docker-compose-deployment/host_setup_docker_log_rotation.sh`(sudo):寫 daemon.json log-opts 200m×3、重啟 docker、--force-recreate ransim-platform 服務;per-run 容器由自動復原重建時套用。**待使用者執行**。

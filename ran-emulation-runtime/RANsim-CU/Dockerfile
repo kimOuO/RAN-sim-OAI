@@ -27,4 +27,5 @@ EXPOSE 8000
 # install it on container start so its venv has the latest source.
 ENTRYPOINT ["/app/shell/entrypoint.sh"]
 # daphne 跑 ASGI（HTTP + WebSocket 都支援，runserver 不支援 WebSocket）
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "main.asgi:application"]
+# 2026-09-15:關 HTTP access log(每秒 30 行量測報告 access 行,一天數 GB;磁碟滿事故)
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "--access-log", "/dev/null", "main.asgi:application"]

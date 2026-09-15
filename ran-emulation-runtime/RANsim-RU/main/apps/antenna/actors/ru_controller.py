@@ -179,7 +179,7 @@ class RuController:
             )
             result.append(obj)
 
-        logger.info("update_ues ok: %d UEs", len(result))
+        logger.debug("update_ues ok: %d UEs", len(result))
         return success_response(
             UePositionReadSerializer(result, many=True).data,
             f"updated {len(result)} ues",
