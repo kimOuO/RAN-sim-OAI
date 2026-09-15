@@ -146,7 +146,7 @@ def ric_rnib_clear(ran_name: str, gnb_id_hex: str, plmn_mcc: str = "208", plmn_m
 
 def ric_node_view(meid: str) -> dict | None:
     """GET /v1/nodes/{meid} → 哪個 pod 在看這個 meid(監控頁用)。"""
-    return _gw(f"/v1/nodes/{meid}", None, method="GET", timeout=5.0)
+    return _gw(f"/v1/nodes/{meid}", None, method="GET", timeout=20.0)   # 閘道單筆 GET 實測固定 ~5 s(2026-09-16)
 
 
 def ric_deploy_xapp(scene_run_uuid: str, image: str | None = None, env: dict | None = None) -> dict | None:
@@ -162,4 +162,4 @@ def ric_deploy_xapp(scene_run_uuid: str, image: str | None = None, env: dict | N
 
 def ric_scenario_view(scene_run_uuid: str) -> dict | None:
     """GET /v1/scenarios/{id} → 場景主檔 + 每 node 即時 e2ConnectionStatus / subscriptionCount / xappName。"""
-    return _gw(f"/v1/scenarios/{scene_run_uuid}", None, method="GET", timeout=5.0)
+    return _gw(f"/v1/scenarios/{scene_run_uuid}", None, method="GET", timeout=20.0)   # 同上
