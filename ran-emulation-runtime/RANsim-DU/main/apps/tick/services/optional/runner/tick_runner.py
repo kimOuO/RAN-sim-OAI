@@ -174,6 +174,14 @@ class TickRunner:
         self._body_ms_avg: float = 0.0
         self._body_ms_max: float = 0.0
         self._body_acc: list[float] = []
+        self._phase_acc: dict[str, list[float]] = {}   # 每階段耗時(倍速診斷)
+        self._phase_avg: dict[str, float] = {}
+        # 2026-09-15 倍速診斷:step 5 的 CU POST(18 UE + 2 cell,每 2 tick)佔 tick 約 200 ms(body 預算 250)。
+        # 回應不被使用 → 改丟給背景執行緒依序送(保序);佇列滿代表 CU 跟不上,丟最舊並記 log。
+        import queue as _queue
+        self._report_q: "_queue.Queue[tuple]" = _queue.Queue(maxsize=4000)
+        self._report_dropped = 0
+        self._report_thread: threading.Thread | None = None
         self._achv_window_start_tick: int = 0
         # 改動一 shadow — per-UE 跨 tick 持有的 slot 引擎狀態(backlog/HARQ/slot 時鐘累積用)
         self._slot_states: dict[str, Any] = {}
@@ -196,7 +204,7 @@ class TickRunner:
     def body_ms(self) -> dict[str, float]:
         """近 ~1s 視窗 tick body 的 wall 耗時 {avg, max}(ms)。avg 越接近 wall_tick_ms 就越到上限。"""
         with self._tick_ms_lock:
-            return {"avg": self._body_ms_avg, "max": self._body_ms_max}
+            return {"avg": self._body_ms_avg, "max": self._body_ms_max, **{f"p_{k}": v for k, v in self._phase_avg.items()}}
 
     @property
     def wall_tick_ms(self) -> int:
@@ -510,12 +518,40 @@ class TickRunner:
                 self._achieved_speed_x = round(achieved, 3)
                 if acc:
                     self._body_ms_avg = round(sum(acc) / len(acc), 2); self._body_ms_max = round(max(acc), 2)
+                pa = self._phase_acc; self._phase_acc = {}
+                self._phase_avg = {k: round(sum(v) / len(v), 2) for k, v in pa.items() if v}
             self._achv_window_start_wall = now
             self._achv_window_start_tick = self.status.tick_count
+
+    def _enqueue_report(self, fn, payload: dict) -> None:
+        if self._report_thread is None or not self._report_thread.is_alive():
+            self._report_thread = threading.Thread(target=self._report_worker, name="du-report-sender", daemon=True)
+            self._report_thread.start()
+        try:
+            self._report_q.put_nowait((fn, payload))
+        except Exception:  # noqa: BLE001 — 佇列滿
+            try:
+                self._report_q.get_nowait(); self._report_q.put_nowait((fn, payload))
+            except Exception:  # noqa: BLE001
+                pass
+            self._report_dropped += 1
+            if self._report_dropped % 100 == 1:
+                logger.warning("report queue full: CU 跟不上,已丟 %d 筆(最舊)", self._report_dropped)
+
+    def _report_worker(self) -> None:
+        while True:
+            fn, payload = self._report_q.get()
+            try:
+                fn(payload)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("report send failed: %s", exc)
 
     def _tick_body(self) -> dict[str, Any]:
         self.status.tick_count += 1
         self.status.last_tick_ms = int(time.time() * 1000)
+        _ph_t = [time.perf_counter()]
+        def _ph(name: str) -> None:   # 記上一階段耗時
+            now = time.perf_counter(); self._phase_acc.setdefault(name, []).append((now - _ph_t[0]) * 1000.0); _ph_t[0] = now
 
         # 1) RLC buffer status + 收集 SDU delay samples → PM aggregator
         bo_by_ue: dict[str, int] = {}
@@ -610,6 +646,7 @@ class TickRunner:
             self._ue_registry[u] for u in self._ue_registry if bo_by_ue.get(u, 0) > 0
         ]
 
+        _ph('rlc')
         # 2) Scheduling — 把 UE 依 serving_cell 分組
         prb_per_cell = get_int("SIM_DEFAULT_PRB_PER_CELL", 106)
         # Energy-saving: 跳過 is_active=False 的 cell（FAPI 不發給 RU、PM 不累積）
@@ -757,6 +794,7 @@ class TickRunner:
                     logger.warning("RLC generate_pdu failed for ue=%s: %s", uid, e)
             actual_drained_map[uid] = total_actual
 
+        _ph('sched')
         # 3) Build & dispatch DL TTI request
         # cell_id_map: per-UE 的 serving cell（CU-CP 透過 F1AP 同步進 _ue_registry）
         # → emit 進 PDU.cell_id → RU 用這個當 serving label，不再用 Sionna argmax 自己挑.
@@ -781,6 +819,7 @@ class TickRunner:
         else:
             dispatched = RuClientBusinessService.post_dl_tti_request(encode_dl_tti(dl_msg))
 
+        _ph('dl_tti')
         # 4) Accumulate PM (per-gNB cumulative + per-UE rolling window)
         # 跑 ues_for_measurement: 沒 traffic 的 UE 仍要 accumulate SINR/RSRP/MCS,
         # 否則 MeasurementReport flush 時拿不到 fresh sample, RIC KPM 會凍結.
@@ -956,6 +995,7 @@ class TickRunner:
                 {uid: tbs_map.get(uid, 0) for uid in (u["id"] for u in ues_with_bo)},
             )
 
+        _ph('pm')
         # 5) Periodic measurement report — 從 PM aggregator window 取平均/總和而非當下瞬時
         report_sent = False
         if self.status.tick_count % self.REPORT_EVERY_N_TICKS == 0:
@@ -1033,7 +1073,7 @@ class TickRunner:
                     "throughput_dl_mbps": w["throughput_dl_mbps"],
                     "throughput_ul_mbps": w["throughput_ul_mbps"],
                 }
-                CuClientBusinessService.post_measurement_report(encode_measurement_report(report))
+                self._enqueue_report(CuClientBusinessService.post_measurement_report, encode_measurement_report(report))
 
             # AL2 — flush cell-level PRB% (RRU.PrbTotDl) per active cell
             for cell_id in pm.active_cell_ids():
@@ -1047,9 +1087,7 @@ class TickRunner:
                     tick_count=cw["tick_count"],
                     window_seconds=window_s,
                 )
-                CuClientBusinessService.post_cell_measurement_report(
-                    encode_cell_measurement_report(cell_report),
-                )
+                self._enqueue_report(CuClientBusinessService.post_cell_measurement_report, encode_cell_measurement_report(cell_report))
             report_sent = True
 
         # Phase B — 存「此 tick 即時 stats」給 Dashboard 用(不是 cumulative)
@@ -1133,6 +1171,7 @@ class TickRunner:
             }
         self.last_cell_stats = new_cell_stats
 
+        _ph('report')
         # 6) Advance sfn/slot
         self.status.slot += 1
         if self.status.slot >= self.SLOTS_PER_FRAME:

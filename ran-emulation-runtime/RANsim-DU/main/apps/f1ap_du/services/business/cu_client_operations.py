@@ -8,6 +8,9 @@ from typing import Any
 
 import requests
 
+# 2026-09-15 倍速診斷:量測報告每 tick 18 筆 POST 各開新連線;共用 Session 走 keep-alive
+_session = requests.Session()
+
 from main.utils.env_loader import get_int, get_str
 from main.utils.logger import get_logger
 
@@ -27,7 +30,7 @@ class CuClientBusinessService:
     def post_du_setup(payload: dict[str, Any], timeout: float = 5.0) -> dict[str, Any] | None:
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/du_setup"
         try:
-            r = requests.post(url, json=payload, timeout=timeout)
+            r = _session.post(url, json=payload, timeout=timeout)
         except requests.RequestException as e:
             logger.warning("post_du_setup failed: %s", e)
             return None
@@ -43,7 +46,7 @@ class CuClientBusinessService:
     def post_measurement_report(payload: dict[str, Any], timeout: float = 5.0) -> bool:
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/measurement_report"
         try:
-            r = requests.post(url, json=payload, timeout=timeout)
+            r = _session.post(url, json=payload, timeout=timeout)
             return r.ok
         except requests.RequestException as e:
             logger.warning("post_measurement_report failed: %s", e)
@@ -56,7 +59,7 @@ class CuClientBusinessService:
         """AL2 — cell-level RRU.PrbTotDl (對齊 3GPP TS 28.552)."""
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/cell_measurement_report"
         try:
-            r = requests.post(url, json=payload, timeout=timeout)
+            r = _session.post(url, json=payload, timeout=timeout)
             return r.ok
         except requests.RequestException as e:
             logger.warning("post_cell_measurement_report failed: %s", e)
@@ -69,7 +72,7 @@ class CuClientBusinessService:
         """
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/rlf_report"
         try:
-            r = requests.post(url, json=payload, timeout=timeout)
+            r = _session.post(url, json=payload, timeout=timeout)
             return r.ok
         except requests.RequestException as e:
             logger.warning("post_rlf_report failed: %s", e)
@@ -79,7 +82,7 @@ class CuClientBusinessService:
     def post_ul_rrc_message(payload: dict[str, Any], timeout: float = 5.0) -> bool:
         url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/ul_rrc_message"
         try:
-            r = requests.post(url, json=payload, timeout=timeout)
+            r = _session.post(url, json=payload, timeout=timeout)
             return r.ok
         except requests.RequestException as e:
             logger.warning("post_ul_rrc_message failed: %s", e)
@@ -95,7 +98,7 @@ class CuClientBusinessService:
             "/api/v0.1/CU/F1AP/F1ApRouter/du_configuration_update"
         )
         try:
-            r = requests.post(url, json=payload, timeout=timeout)
+            r = _session.post(url, json=payload, timeout=timeout)
         except requests.RequestException as e:
             logger.warning("post_du_configuration_update failed: %s", e)
             return None

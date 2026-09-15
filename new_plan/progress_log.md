@@ -464,3 +464,16 @@
 - CU `apps.ready` 註冊 `faulthandler.register(SIGUSR1, all_threads=True)`:`docker kill --signal=USR1 cu-<rid>` 即把所有執行緒堆疊印進 docker logs,不需 ptrace(已在 ransim-cu 驗證)。per-run 容器另加 `cap_add=SYS_PTRACE`,py-spy 也可用。
 - health monitor 自動復原:任一角色連續非 running 超過 `PER_RUN_AUTO_RESTART_SEC`(120)→ 對 CU/DU 送 SIGUSR1 留堆疊 → 經自家 API stop/start 整個 run(沿用 RIC 解除登記、容器重建、UE 起場流程),兩次間隔 ≥ `PER_RUN_AUTO_RESTART_COOLDOWN_SEC`(600);原因寫進 scene_run.notes。
 - 實測:`docker pause cu-49117e33` 模擬卡死 → 125 s 判定 → stop 200 / start 201 → 3 分鐘內五個容器重建、歸檔恢復、健康全綠。
+
+## P4-13 DU 達成倍速:量測報告改非同步(2026-09-15)
+
+- 在 DU tick body 加五段計時(`body_ms.p_rlc / p_sched / p_dl_tti / p_pm / p_report`,TickController/read 可見)。corridor_16_24 @2×:body 平均 207–283 ms(預算 250),其中 **p_report ≈ 203 ms 固定**——step 5 每 2 tick 對 CU 依序 POST 18 筆 UE + 2 筆 cell 量測報告,每筆新開連線,回應又不被使用。
+- 修:`cu_client_operations` 共用 `requests.Session`(keep-alive);tick_runner 量測/cell 報告改丟進背景執行緒佇列依序送(保序,佇列 4000 滿則丟最舊並記 log)。
+- 結果:p_report 203 → 3.6 ms;corridor_16_24 @2× 達成 1.89×(修前 0.9–1.5×),body 平均 138 ms;corridor_00_08 @1× 達成 1.0×、body 5.7 ms。歸檔 per_ue 正常、佇列無丟棄。
+- 剩餘大頭 `p_pm` ≈ 110 ms(step 4 的 SLOT_SHADOW 逐 UE slot 引擎),尖峰 max 273 ms 偶爾超預算;要再上 3× 以上得動它。postgres 常態 130–145% CPU 值得查(shared CU 的 KPM 查詢 + 三個 CU 寫入)。
+- DU 容器單獨 `docker restart` 後 tick 不會自己恢復(F1 Setup 通過但 tick_count 0):health monitor 新增「DU is_running=false → degraded」,由自動復原接手(實測 125 s 判定、重建成功)。DU `mac` 補上 0005 migration(bw_mhz / total_prb 欄位定義漂移)。
+
+## 第 4 項 corridor src 站位查核(2026-09-15)
+
+- 不是站位錯。按 UE 到站台距離分箱看 24h cache:src 與 nbr 在 0–20 m 幾乎一樣(3–6 m 約 −47 dB、12–20 m 約 −60 dB);src 的 −107 dB 平均是被「30–50 m 且被走廊轉角/牆完全遮蔽(−160 dB)」的 100 萬個樣本拉低——UE 大部分時間停在 nbr 那一端。方位修正後兩站都正對走廊。
+- 附帶觀察:兩站 0–3 m 內反而只有 −70 dB(3–6 m 是 −47),是 tr38901 天線垂直面在正下方的零點,UE 停在站台正下方時會偏弱;屬模型行為,不改。

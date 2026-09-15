@@ -35,6 +35,9 @@ def dependency_issue(role: str, data: dict) -> str:
         elif role == "du":
             if data.get("last_error"):
                 return f"DU: {str(data['last_error'])[:120]}"
+            # DU 容器被重啟後 tick 不會自己恢復(2026-09-15 實測:HTTP 活著、F1 Setup 通過、tick_count 0),整場靜止但沒人知道
+            if data.get("is_running") is False:
+                return "DU tick 未運行(容器重啟後未恢復?)"
     except Exception:  # noqa: BLE001
         return ""
     return ""
