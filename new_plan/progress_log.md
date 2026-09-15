@@ -426,3 +426,11 @@
 - `default-cell-0` 幽靈:DU F1 Setup 在 cell_state 空時不再塞假 cell,改送空 served_cells(CU serializer 允許空)。run 49117e33 的舊資料(3,778 列、最後 09-13 11:18)由保留期自然清掉;該 run 重啟後不再出現。
 - 監控頁「RIC 端觀測」面板:orchestrator `RicObservationReader`(閘道 scenario + node view)接上前端,顯示 profile / isolation / 控制策略、每個 meid 的 E2 連線與訂閱數、觀測中的 xApp pod(phase / ready),30 s 慢輪詢。
 - 未做:MIMO 增益驗證場景(需 GPU precompute,等 corridor 重算完)。
+
+## corridor_24h 重算完成、切窗、兩個 run 重啟(2026-09-15 上午)
+
+- corridor_24h(src az=180、z-up)於 05:28 本地完成,172,800 tick 全算。與舊 az0 版比:src cell 平均 path gain −107.0 dB(舊 −110.9),nbr 不變 −67.4;src 仍比 nbr 弱約 40 dB,方位修正只拉回 3.9 dB,待查 src 站位/高度。
+- 切出 corridor_00_08 / 08_16 / 16_24(各 57,600 tick,無未算 tick;無路徑比例 29.3 / 16.9 / 19.7%)。
+- **事故**:ransim-postgres 於 00:24 UTC 因「No space left on device」在 WAL redo 時退出,直到 02:56 UTC 才發現拉起(期間兩個 run 的 CU/DU 全部 OperationalError、歸檔停擺)。發現時磁碟已有 83G 空間,postgres volume 僅 1.5G,填滿的不是 DB。docker 用 json-file 且無 log-opts 輪替,per-run CU/DU 日誌量極大(docker logs 一個容器要跑一分多鐘),高度懷疑是容器 json log;確認需要 root 看 /var/lib/docker/containers。
+- 兩個 run 走 orchestrator stop/start 重啟(第二個第一次 DU 未在時限內就緒,重試即成功)。重啟後:十個 instance running、adapter SCTP/E2 Setup 完成、sim CU 無錯;run 49117e33 現在有 UL 欄位(p06 mcs_ul 14、UL SINR 9.38);cell_config 只剩 e0x:src/nbr,default-cell-0 消失;RU/DU 皆載入新切的 cache;閘道兩個 run 各一個 meid CONNECTED、專屬 xApp pod Running(各看到兩個 pod,應是舊 pod 尚未拆完)。槽位對調:388e8e0a 現為 e01、49117e33 為 e02。
+- DU achieved 0.94×(目標 2×,body_ms 平均 498 > 250 目標),既有效能議題。
