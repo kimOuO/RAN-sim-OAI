@@ -458,3 +458,9 @@
 - 新的依賴鏈健康監控有抓到:e2adapter 標 degraded「sim CU 不可達 … Read timed out」、cu 標 starting;但沒有自動復原。
 - 容器內 ptrace 被擋(py-spy 失敗),抓不到堆疊。假設:換手路徑 CU→DU 同步呼叫、DU 再同步回打 CU,把 Daphne 執行緒池佔滿形成環形等待。**待查**:給 CU 容器 CAP_SYS_PTRACE 或加 faulthandler 訊號,下次卡住時 dump。
 - orchestrator stop 也卡:ue_stop 等 180 s → gunicorn worker 預設 30 s 逾時被 SIGKILL,start 同樣。修:ue_stop 45 s 上限、gunicorn `--timeout 600`。復原方式:強拆 10 個容器後 start,07:25 UTC 起兩個 run 恢復正常至今。
+
+## P4-12 CU 卡死可觀測 + run 自動復原(2026-09-15)
+
+- CU `apps.ready` 註冊 `faulthandler.register(SIGUSR1, all_threads=True)`:`docker kill --signal=USR1 cu-<rid>` 即把所有執行緒堆疊印進 docker logs,不需 ptrace(已在 ransim-cu 驗證)。per-run 容器另加 `cap_add=SYS_PTRACE`,py-spy 也可用。
+- health monitor 自動復原:任一角色連續非 running 超過 `PER_RUN_AUTO_RESTART_SEC`(120)→ 對 CU/DU 送 SIGUSR1 留堆疊 → 經自家 API stop/start 整個 run(沿用 RIC 解除登記、容器重建、UE 起場流程),兩次間隔 ≥ `PER_RUN_AUTO_RESTART_COOLDOWN_SEC`(600);原因寫進 scene_run.notes。
+- 實測:`docker pause cu-49117e33` 模擬卡死 → 125 s 判定 → stop 200 / start 201 → 3 分鐘內五個容器重建、歸檔恢復、健康全綠。

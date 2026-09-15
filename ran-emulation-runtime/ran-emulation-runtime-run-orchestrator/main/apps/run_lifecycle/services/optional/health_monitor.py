@@ -40,10 +40,41 @@ def dependency_issue(role: str, data: dict) -> str:
     return ""
 
 
+def _dump_stacks(name: str) -> None:
+    """卡死的容器先留堆疊再重啟:SIGUSR1 → faulthandler(CU 有註冊)寫到容器 stderr。"""
+    try:
+        import docker
+        docker.from_env().containers.get(name).kill(signal="SIGUSR1")
+        time.sleep(2)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dump stacks %s failed: %s", name, exc)
+
+
+def _auto_restart(run_uuid: str, reason: str) -> None:
+    """經自家 API stop → start(重用完整收尾/啟動流程:RIC 解除登記、容器重建、UE 重新起場)。"""
+    base = f"http://127.0.0.1:8000/api/v0.1/Run_orchestrator/Run_lifecycle/LaunchController"
+    body = json.dumps({"scene_run_uuid": run_uuid}).encode()
+    for action in ("stop", "start"):
+        try:
+            req = urllib.request.Request(f"{base}/{action}", data=body, headers={"content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=540) as resp:
+                logger.warning("auto-restart %s %s → HTTP %s", run_uuid, action, resp.status)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("auto-restart %s %s failed: %s", run_uuid, action, exc)
+            if action == "stop":
+                continue   # stop 失敗(容器已死)照樣 start,spawn 會先移除同名容器
+    try:
+        platform_clients.update_scene_run(run_uuid, notes=f"auto-restart {platform_clients.now_iso()}: {reason[:200]}")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class HealthMonitor(threading.Thread):
     def __init__(self, scene_run_uuid: str, instances: dict[str, dict]) -> None:
         super().__init__(name=f"health-{scene_run_uuid[-8:]}", daemon=True)
         self.run_uuid = scene_run_uuid; self.instances = instances; self._stop_evt = threading.Event()
+        self._unhealthy_since: float | None = None   # 任一角色非 running 的起點
+        self._last_restart_at: float = 0.0
 
     def stop(self) -> None:
         self._stop_evt.set()
@@ -53,6 +84,7 @@ class HealthMonitor(threading.Thread):
         while not self._stop_evt.is_set():
             try:
                 st = container_spawner.container_status(self.run_uuid)
+                unhealthy: list[str] = []
                 for role, inst in self.instances.items():
                     alive = False; detail = ""
                     if st.get(role) == "running":
@@ -68,6 +100,26 @@ class HealthMonitor(threading.Thread):
                         detail = f"container {st.get(role, 'absent')}"
                     status = ("degraded" if detail else "running") if alive else ("starting" if st.get(role) == "running" else st.get(role, "absent"))
                     platform_clients.update_run_instance(inst["run_instance_uuid"], status=status, health_detail=detail, **({"last_heartbeat": platform_clients.now_iso()} if alive else {}))
+                    if status != "running":
+                        unhealthy.append(f"{role}:{status}{(' ' + detail) if detail else ''}")
+                # 自動復原(2026-09-15 06:30 CU 卡死 55 分鐘無人處理):連續不健康超過 PER_RUN_AUTO_RESTART_SEC 就重啟整個 run;
+                # 剛 spawn 的 starting 期不算(啟動 60 s 內不判);兩次重啟間隔至少 PER_RUN_AUTO_RESTART_COOLDOWN_SEC。
+                now = time.time()
+                if unhealthy:
+                    self._unhealthy_since = self._unhealthy_since or now
+                    limit = float(getattr(settings, "PER_RUN_AUTO_RESTART_SEC", 120) or 0)
+                    cooldown = float(getattr(settings, "PER_RUN_AUTO_RESTART_COOLDOWN_SEC", 600) or 600)
+                    if limit > 0 and now - self._unhealthy_since >= limit and now - self._last_restart_at >= cooldown:
+                        reason = "; ".join(unhealthy)
+                        logger.error("run %s unhealthy for %.0fs (%s) → auto-restart", self.run_uuid, now - self._unhealthy_since, reason)
+                        self._last_restart_at = now; self._unhealthy_since = None
+                        for role in ("cu", "du"):
+                            if any(u.startswith(f"{role}:") for u in unhealthy):
+                                _dump_stacks(names[role])
+                        threading.Thread(target=_auto_restart, args=(self.run_uuid, reason), name=f"auto-restart-{self.run_uuid[-8:]}", daemon=True).start()
+                        return   # 這條監控由 start 重新建立
+                else:
+                    self._unhealthy_since = None
             except Exception as exc:  # noqa: BLE001
                 logger.warning("health poll %s: %s", self.run_uuid, exc)
             self._stop_evt.wait(settings.PER_RUN_HEALTH_SEC)

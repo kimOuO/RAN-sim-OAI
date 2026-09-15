@@ -10,6 +10,13 @@ class CuCpConfig(AppConfig):
     verbose_name = "CU Control Plane"
 
     def ready(self) -> None:
+        # 2026-09-15:CU 卡死時 `docker kill --signal=USR1 cu-<rid>` 就把所有執行緒堆疊印到 stderr(docker logs)
+        try:
+            import faulthandler
+            import signal
+            faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+        except Exception:
+            pass
         # 啟動 E2 Indication producer（WebSocket push 用）
         # 防止 Django runserver auto-reload 重複啟動：只在 main process 開
         if os.environ.get("RUN_MAIN") == "true" or os.environ.get("RUN_MAIN") is None:
