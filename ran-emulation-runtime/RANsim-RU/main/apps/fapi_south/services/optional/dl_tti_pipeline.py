@@ -392,6 +392,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     # cache 命中 → 跳過 physics
     pos_map = {u.id: u.position for u in psr.ue_positions}
     cached: dict[str, Any] = {}
+    unobserved: set[str] = set()   # physics 失敗的 UE:本 tick 不回報(見 live 分支)
     cache_hits = 0
     miss_ids: list[str] = []
     for ue_id in set(ue_ids):
@@ -434,9 +435,12 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             try:
                 resp = physics_http.compute_paths(psr)
             except physics_http.PhysicsHttpError as exc:
-                logger.warning("physics call failed: %s — fall back to noise-only SINR", exc)
-                resp = PathSolverResponse(channel_matrix={}, path_gain={}, serving_cells={})
-            for ue_id in miss_ids:
+                # 2026-09-15:不再退成 noise-only(SINR −100 會讓 DU 1 s 內宣告 RLF、UE 掉 IDLE 且無法自癒)。
+                # 改成「本 tick 無觀測」:這批 UE 不回 CqiIndication、不進快取,下一 tick 再試。
+                logger.warning("physics call failed: %s — %d UE 本 tick 無觀測(不回報、不觸發 RLF)", exc, len(miss_ids))
+                unobserved.update(miss_ids)
+                resp = None
+            for ue_id in (miss_ids if resp is not None else []):
                 value = {
                     "channel_matrix": (resp.channel_matrix or {}).get(ue_id, {}),
                     "path_gain": (resp.path_gain or {}).get(ue_id, {}),
@@ -461,6 +465,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     out: list[CqiIndication] = []
     ul_ctx: dict[str, dict] = {}   # P6:給第二趟算上行 SINR 用
     for pdu in req.pdus:
+        if pdu.ue_id in unobserved:
+            continue
         bundle = cached.get(pdu.ue_id) or {}
         path_gain_dict = bundle.get("path_gain") or {}
         channel_dict = bundle.get("channel_matrix") or {}

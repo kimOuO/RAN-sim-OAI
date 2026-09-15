@@ -24,7 +24,18 @@ def _base_url() -> str:
     return f"http://{settings.HTTP_PHYSICS_HOST}:{settings.HTTP_PHYSICS_PORT}"
 
 
-def compute_paths(req: PathSolverRequest, *, timeout: float = 5.0) -> PathSolverResponse:
+def _default_timeout() -> float:
+    """live 模式第一批請求會撞到 Sionna engine 重建(warmup ~30 s、天線變更再 ~30 s);5 s 必逾時。
+    2026-09-15:逾時被當成 SINR −100 → DU 1 s 內宣告 RLF → UE 掉到 IDLE 再也回不來。預設放寬到 60 s,env RU_PHYSICS_TIMEOUT_SEC 可調。"""
+    import os
+    try:
+        return float(os.environ.get("RU_PHYSICS_TIMEOUT_SEC", "60") or 60)
+    except ValueError:
+        return 60.0
+
+
+def compute_paths(req: PathSolverRequest, *, timeout: float | None = None) -> PathSolverResponse:
+    timeout = _default_timeout() if timeout is None else timeout
     url = f"{_base_url()}/api/v0.1/Physics/RanCalc/PathSolver/compute"
     body = to_dict(req)
     try:

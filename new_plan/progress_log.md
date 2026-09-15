@@ -434,3 +434,20 @@
 - **事故**:ransim-postgres 於 00:24 UTC 因「No space left on device」在 WAL redo 時退出,直到 02:56 UTC 才發現拉起(期間兩個 run 的 CU/DU 全部 OperationalError、歸檔停擺)。發現時磁碟已有 83G 空間,postgres volume 僅 1.5G,填滿的不是 DB。docker 用 json-file 且無 log-opts 輪替,per-run CU/DU 日誌量極大(docker logs 一個容器要跑一分多鐘),高度懷疑是容器 json log;確認需要 root 看 /var/lib/docker/containers。
 - 兩個 run 走 orchestrator stop/start 重啟(第二個第一次 DU 未在時限內就緒,重試即成功)。重啟後:十個 instance running、adapter SCTP/E2 Setup 完成、sim CU 無錯;run 49117e33 現在有 UL 欄位(p06 mcs_ul 14、UL SINR 9.38);cell_config 只剩 e0x:src/nbr,default-cell-0 消失;RU/DU 皆載入新切的 cache;閘道兩個 run 各一個 meid CONNECTED、專屬 xApp pod Running(各看到兩個 pod,應是舊 pod 尚未拆完)。槽位對調:388e8e0a 現為 e01、49117e33 為 e02。
 - DU achieved 0.94×(目標 2×,body_ms 平均 498 > 250 目標),既有效能議題。
+
+## P5-5 MIMO 增益驗證(2026-09-15)
+
+- cached 模式的 npz 只有純量 path gain,RU 拿不到 H → rank 永遠 1;MIMO 驗證必須走 live。
+- registry 新增天線預設「gNB 2×1 cross tr38901(4-port)」「UE 1×1 cross iso(2-port)」;以 dt_2m(1 UE 定點、2 cell、600 s)為底匯入 `mimo_check`(場景層級綁兩個預設)與 `siso_check`(1×1 對照),流量 60 Mbps 滿載;dt_2m 原場景(2 Mbps)也跑了一輪。三個 scene_run 都留在 registry,可重複跑。
+- **live 啟動缺陷(修)**:Physics 每次 engine 重建 ~30 s(warmup + 天線變更再一次),RU 5 s 逾時 → 退成 SINR −100 → DU 1 s 內宣告 RLF → CU DROP → UE IDLE 後量測鏈不再恢復(整場 per_ue 空)。修法:RU `RU_PHYSICS_TIMEOUT_SEC` 預設 60;physics 失敗改為「本 tick 無觀測」(不回 CqiIndication、不快取,不觸發 RLF);UE `PHYSICS_PUSH_TIMEOUT_SEC` 預設 180,push_scene 等 engine 建好才 attach。修後三輪 physics 失敗 0、RLF 0。
+- 結果(同一 UE 位置,120 個視窗平均):
+
+| 場景 | 流量 | rank | MCS | SINR | RSRP | PRB | 吞吐 |
+|---|---|---|---|---|---|---|---|
+| dt_2m 1×1 | 2 Mbps | 1.00 | 10.5 | 15.7 | −82.3 | 6.1 | 1.99 |
+| mimo_check 4×2 | 2 Mbps | 1.99 | 13.0 | 19.6 | −78.3 | 4.6 | 1.98 |
+| siso_check 1×1 | 60 Mbps | 1.00 | 10.4 | 15.7 | | 106.0 | 34.29 |
+| mimo_check 4×2 | 60 Mbps | 1.99 | 12.9 | 19.6 | | 100.2 | 42.38(峰 45.0) |
+
+- 解讀:rank 2 在 119/120 視窗成立,每層 SINR [16.7, 9.0] dB;第二層比第一層低 7.7 dB,EESM 後 MCS 只從 10.4 升到 12.9,滿載吞吐 +24%(34.3 → 42.4 Mbps),不是 2×——符合單 UE、LOS 主導(奇異值差距大)的預期。同流量下 PRB −25%。每層 SINR 有進歸檔(229/231 視窗;先前用 max(text) 查到 '[]' 是字串排序假象)。
+- 注意:live 模式 physics engine 是全域單例,同時只能跑一個 live run,否則不同天線/場景互相重建。

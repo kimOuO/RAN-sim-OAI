@@ -19,7 +19,9 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_SEC = 30  # apply_override 會重建 Sionna engine(~4s)+ warmup
+# push_scene 是同步的:Physics 會在回應前重建 Sionna engine(warmup ~30 s,天線變更再 ~30 s)。
+# 太短會在 engine 還沒好時就 attach UE → RU 第一批量測逾時(2026-09-15)。env PHYSICS_PUSH_TIMEOUT_SEC 可調。
+_TIMEOUT_SEC = float(__import__("os").environ.get("PHYSICS_PUSH_TIMEOUT_SEC", "180") or 180)
 
 
 def _flatten_gnbs(scenario_gnbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
