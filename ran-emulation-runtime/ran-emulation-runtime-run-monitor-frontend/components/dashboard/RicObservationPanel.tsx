@@ -17,7 +17,7 @@ export function RicObservationPanel({ ric }: { ric: RicObservation | null }) {
         const connected = n.e2ConnectionStatus === 'CONNECTED';
         return (
           <div key={nid} className="inst-row">
-            <span className="inst"><span className={`dot ${connected ? 'ok' : 'bad'}`} /><b className="mono">{n.meid}</b><span className="muted"> · {n.e2ConnectionStatus ?? '?'} · 訂閱 {n.subscriptionCount ?? 0}</span></span>
+            <span className="inst"><span className={`dot ${connected ? 'ok' : 'bad'}`} /><b className="mono">{n.meid}</b><span className="muted"> · {n.e2ConnectionStatus ?? '?'} · 訂閱 {n.subscriptionCount == null ? '查不到' : n.subscriptionCount}</span>{n.degraded?.length ? <span style={{ color: 'var(--warning, #e6a23c)' }}> ⚠ RIC 端異常:{n.degraded.join(', ')}</span> : null}</span>
             {pods.length === 0 ? <span className="inst"><span className="dot warning" /><span className="muted">無 xApp pod 觀測</span></span>
               : pods.map((p) => <span key={p.name} className="inst" title={p.podIP}><span className={`dot ${p.ready && p.phase === 'Running' ? 'ok' : 'warning'}`} /><b className="mono">{p.name}</b><span className="muted"> · {p.phase}{p.ready ? '' : ' · not ready'}</span></span>)}
           </div>
