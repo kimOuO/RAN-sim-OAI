@@ -34,6 +34,32 @@ services:
       - ransim-net
 
   # ── CU（控制面 + 用戶面）───────────────────────────────────
+  # ── PgBouncer(2026-09-16):CU 跑在 daphne/ASGI,Django 每個請求開新 PG 連線(每秒 40+ 次 fork backend,postgres 常態 100%+ CPU)。
+  #    CU 改連這裡:client 端仍每請求連線,但 pgbouncer 保持 server 連線池,postgres 不再 fork。session 模式對 Django 最安全。
+  #    萬用 `*` 對應所有 DB(per-run cu_<rid> 動態建的也涵蓋)。DU/RU 已用 CONN_MAX_AGE 持久連線,直連即可。
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: ransim-pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ransim
+      DB_PASSWORD: "ransim"
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: session
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "60"
+      RESERVE_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "2"
+      SERVER_IDLE_TIMEOUT: "600"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ransim-net
+    restart: unless-stopped
+
   cu:
     build:
       context: ./ran-emulation-runtime/RANsim-CU
@@ -59,8 +85,8 @@ services:
       ANR_XN_AUTO_REVERSE: "on"      # ANR ADD 後由 gNB 經 Xn 自動建反向關係(38.300 步驟4c);off=舊行為
       ANR_XN_SETUP_DELAY_SEC: "2.0"  # XnAP Setup 非瞬時,反向關係延遲此秒數才出現
       KPM_CALIB_URL: "http://kpm-calib:8200/calibrate"
-      DB_HOST: postgres
-      DB_PORT: 5432
+      DB_HOST: pgbouncer   # 2026-09-16 經 pgbouncer
+      DB_PORT: 5432   # pgbouncer 映像預設聽 5432
       DB_NAME: cu_db
       DB_USER: ransim
       DB_PASSWORD: ransim

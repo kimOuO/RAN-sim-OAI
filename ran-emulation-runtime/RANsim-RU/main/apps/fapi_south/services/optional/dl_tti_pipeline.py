@@ -68,7 +68,9 @@ def _ul_tx_power_per_prb_dbm(pg_serv_linear: float) -> float:
     return min(_UL_PCMAX_DBM - 10.0 * math.log10(max(_UL_M_REF_PRB, 1.0)), _UL_P0_DBM + _UL_ALPHA * pl_db)
 
 
-def _build_cell_to_ul_load_map() -> dict[str, float]:
+def _build_cell_to_ul_load_map(req_map: dict | None = None) -> dict[str, float]:
+    if req_map:   # DU 每 tick 帶的 cell_ul_load(2026-09-16:不再經 DB)
+        return {str(k): float(v) for k, v in req_map.items()}
     try:
         from main.apps.antenna.models.cell import Cell
         return {c.name: float(c.ul_load) for c in Cell.objects.all()}
@@ -599,7 +601,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         ))
     # P6:上行 SINR(整批一起算,干擾要看別的 UE)
     try:
-        ul = _compute_ul_sinr_db(ul_ctx, cell_to_freq, _read_inter_freq(), _build_cell_to_ul_load_map())
+        ul = _compute_ul_sinr_db(ul_ctx, cell_to_freq, _read_inter_freq(), _build_cell_to_ul_load_map(getattr(req, "cell_ul_load", None)))
         for ind in out:
             if ind.ue_id in ul:
                 ind.ul_sinr_db = round(ul[ind.ue_id], 2)

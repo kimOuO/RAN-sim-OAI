@@ -1,288 +1,288 @@
 {
- "cu": {
-  "image": "ransim-cu:platform",
-  "env": {
-   "ANR_INTRA_ENABLED": "true",
-   "ANR_NRT_CAPACITY": "8",
-   "ANR_SCHEMA": "v10",
-   "ANR_XN_AUTO_REVERSE": "on",
-   "ANR_XN_SETUP_DELAY_SEC": "2.0",
-   "DB_HOST": "postgres",
-   "DB_NAME": "{db_cu}",
-   "DB_PASSWORD": "ransim",
-   "DB_PORT": "5432",
-   "DB_USER": "ransim",
-   "DJANGO_ALLOWED_HOSTS": "*",
-   "DJANGO_DEBUG": "True",
-   "DJANGO_SECRET_KEY": "change-me",
-   "GNB_ID_HEX": "0x000e00",
-   "GNB_ID_LENGTH": "22",
-   "HO_A3_HYSTERESIS_DB": "1.0",
-   "HO_A3_OFFSET_DB": "2.0",
-   "HO_TTT_MS": "300",
-   "HTTP_CUUP_HOST": "",
-   "HTTP_DU_HOST": "{du}",
-   "HTTP_DU_PORT": "8000",
-   "HTTP_UE_HOST": "{ue}",
-   "HTTP_UE_PORT": "8000",
-   "KPM_CALIB_ENABLE": "on",
-   "KPM_CALIB_URL": "http://kpm-calib:8200/calibrate",
-   "LOG_DIR": "/app/logs",
-   "MEAS_REPORT_MIN_RSRP_DBM": "-110",
-   "OMNIVERSE_URL": "http://10.3.0.217:8001",
-   "PLMN_MCC": "208",
-   "PLMN_MNC": "95",
-   "RAN_FUNC_ID_KPM": "2",
-   "RAN_FUNC_ID_RC": "3",
-   "REESTAB_MIN_RSRP_DBM": "-120",
-   "SERVED_TAC": "0xa000",
-   "SST": "1"
+  "cu": {
+    "image": "ransim-cu:platform",
+    "env": {
+      "ANR_INTRA_ENABLED": "true",
+      "ANR_NRT_CAPACITY": "8",
+      "ANR_SCHEMA": "v10",
+      "ANR_XN_AUTO_REVERSE": "on",
+      "ANR_XN_SETUP_DELAY_SEC": "2.0",
+      "DB_HOST": "pgbouncer",
+      "DB_NAME": "{db_cu}",
+      "DB_PASSWORD": "ransim",
+      "DB_PORT": "5432",
+      "DB_USER": "ransim",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "True",
+      "DJANGO_SECRET_KEY": "change-me",
+      "GNB_ID_HEX": "0x000e00",
+      "GNB_ID_LENGTH": "22",
+      "HO_A3_HYSTERESIS_DB": "1.0",
+      "HO_A3_OFFSET_DB": "2.0",
+      "HO_TTT_MS": "300",
+      "HTTP_CUUP_HOST": "",
+      "HTTP_DU_HOST": "{du}",
+      "HTTP_DU_PORT": "8000",
+      "HTTP_UE_HOST": "{ue}",
+      "HTTP_UE_PORT": "8000",
+      "KPM_CALIB_ENABLE": "on",
+      "KPM_CALIB_URL": "http://kpm-calib:8200/calibrate",
+      "LOG_DIR": "/app/logs",
+      "MEAS_REPORT_MIN_RSRP_DBM": "-110",
+      "OMNIVERSE_URL": "http://10.3.0.217:8001",
+      "PLMN_MCC": "208",
+      "PLMN_MNC": "95",
+      "RAN_FUNC_ID_KPM": "2",
+      "RAN_FUNC_ID_RC": "3",
+      "REESTAB_MIN_RSRP_DBM": "-120",
+      "SERVED_TAC": "0xa000",
+      "SST": "1"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/docs/scenarios",
+        "target": "/app/docs/scenarios",
+        "ro": true
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-CU",
+        "target": "/app",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+        "target": "/opt/ran-sim-protocol",
+        "ro": false
+      }
+    ],
+    "extra_hosts": [
+      "host.docker.internal=host-gateway"
+    ],
+    "command": null
   },
-  "volumes": [
-   {
-    "source": "/home/mitlab/XAPP_DT/docs/scenarios",
-    "target": "/app/docs/scenarios",
-    "ro": true
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-CU",
-    "target": "/app",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
-    "target": "/opt/ran-sim-protocol",
-    "ro": false
-   }
-  ],
-  "extra_hosts": [
-   "host.docker.internal=host-gateway"
-  ],
-  "command": null
- },
- "du": {
-  "image": "ransim-du:platform",
-  "env": {
-   "DB_HOST": "postgres",
-   "DB_NAME": "{db_du}",
-   "DB_PASSWORD": "ransim",
-   "DB_PORT": "5432",
-   "DB_USER": "ransim",
-   "DJANGO_ALLOWED_HOSTS": "*",
-   "DJANGO_DEBUG": "True",
-   "DJANGO_SECRET_KEY": "change-me",
-   "DU_INPROCESS_SINR": "on",
-   "DU_RU_INPROCESS": "on",
-   "HTTP_CU_HOST": "{cu}",
-   "HTTP_CU_PORT": "8000",
-   "HTTP_RU_HOST": "{ru}",
-   "HTTP_RU_PORT": "8000",
-   "LOG_DIR": "/app/logs",
-   "NR_EESM_ENABLED": "off",
-   "NR_MIMO_LAYERS_ENABLED": "on",
-   "NR_TBS_SPEC_MODE": "off",
-   "PLMN_MCC": "208",
-   "PLMN_MNC": "95",
-   "PM_WINDOW_SEC": "1.0",
-   "PRB_OAI_CALIB": "1.0",
-   "RLC_DELAY_MODEL": "calib",
-   "RLC_TX_MAXSIZE_BYTES": "10000000",
-   "SIM_BLER_CURVE_PATH": "/app/main/apps/phy_high/data/bler_curve.csv",
-   "SIM_TICK_MS": "50",
-   "SLOT_DISCARD_TIMER_MS": "300",
-   "SLOT_ENGINE_SHADOW": "on",
-   "SLOT_ENGINE_TAKEOVER": "on",
-   "SLOT_OAI_DELAY_SCOPE": "on",
-   "SLOT_OP_PRB_FLOOR": "2",
-   "SLOT_PIPELINE_SLOTS_MAX": "2",
-   "SLOT_PIPELINE_SLOTS_MIN": "2",
-   "UL_ACK_MODEL": "delayed_ack"
+  "du": {
+    "image": "ransim-du:platform",
+    "env": {
+      "DB_HOST": "postgres",
+      "DB_NAME": "{db_du}",
+      "DB_PASSWORD": "ransim",
+      "DB_PORT": "5432",
+      "DB_USER": "ransim",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "True",
+      "DJANGO_SECRET_KEY": "change-me",
+      "DU_INPROCESS_SINR": "on",
+      "DU_RU_INPROCESS": "on",
+      "HTTP_CU_HOST": "{cu}",
+      "HTTP_CU_PORT": "8000",
+      "HTTP_RU_HOST": "{ru}",
+      "HTTP_RU_PORT": "8000",
+      "LOG_DIR": "/app/logs",
+      "NR_EESM_ENABLED": "off",
+      "NR_MIMO_LAYERS_ENABLED": "on",
+      "NR_TBS_SPEC_MODE": "off",
+      "PLMN_MCC": "208",
+      "PLMN_MNC": "95",
+      "PM_WINDOW_SEC": "1.0",
+      "PRB_OAI_CALIB": "1.0",
+      "RLC_DELAY_MODEL": "calib",
+      "RLC_TX_MAXSIZE_BYTES": "10000000",
+      "SIM_BLER_CURVE_PATH": "/app/main/apps/phy_high/data/bler_curve.csv",
+      "SIM_TICK_MS": "50",
+      "SLOT_DISCARD_TIMER_MS": "300",
+      "SLOT_ENGINE_SHADOW": "on",
+      "SLOT_ENGINE_TAKEOVER": "on",
+      "SLOT_OAI_DELAY_SCOPE": "on",
+      "SLOT_OP_PRB_FLOOR": "2",
+      "SLOT_PIPELINE_SLOTS_MAX": "2",
+      "SLOT_PIPELINE_SLOTS_MIN": "2",
+      "UL_ACK_MODEL": "delayed_ack"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-DU",
+        "target": "/app",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+        "target": "/opt/ran-sim-protocol",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim/data/channel_cache",
+        "target": "/data/channel_cache",
+        "ro": true
+      }
+    ],
+    "extra_hosts": null,
+    "command": null
   },
-  "volumes": [
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-DU",
-    "target": "/app",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
-    "target": "/opt/ran-sim-protocol",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim/data/channel_cache",
-    "target": "/data/channel_cache",
-    "ro": true
-   }
-  ],
-  "extra_hosts": null,
-  "command": null
- },
- "ru": {
-  "image": "ransim-ru:platform",
-  "env": {
-   "DB_HOST": "postgres",
-   "DB_NAME": "{db_ru}",
-   "DB_PASSWORD": "ransim",
-   "DB_PORT": "5432",
-   "DB_USER": "ransim",
-   "DJANGO_ALLOWED_HOSTS": "*",
-   "DJANGO_DEBUG": "True",
-   "DJANGO_SECRET_KEY": "change-me",
-   "HTTP_DU_HOST": "{du}",
-   "HTTP_DU_PORT": "8000",
-   "HTTP_PHYSICS_HOST": "physics",
-   "HTTP_PHYSICS_PORT": "8000",
-   "LOG_DIR": "/app/logs",
-   "RU_CACHE_DIR": "/data/channel_cache",
-   "RU_CHANNEL_CACHE_TTL_SEC": "0.5",
-   "RU_CHANNEL_MODE": "live",
-   "RU_DEFAULT_ANTENNA_COLS": "1",
-   "RU_DEFAULT_ANTENNA_ROWS": "1",
-   "RU_DEFAULT_PATTERN": "tr38901",
-   "RU_DEFAULT_POLARIZATION": "V",
-   "RU_NOISE_FLOOR_DBM": "-98",
-   "RU_NUMEROLOGY": "1",
-   "RU_SCENARIO_ID": "",
-   "RU_SCENE_CALIBRATION_LOSS_DB": "0.0",
-   "RU_TX_POWER_DBM": "23.0"
+  "ru": {
+    "image": "ransim-ru:platform",
+    "env": {
+      "DB_HOST": "postgres",
+      "DB_NAME": "{db_ru}",
+      "DB_PASSWORD": "ransim",
+      "DB_PORT": "5432",
+      "DB_USER": "ransim",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "True",
+      "DJANGO_SECRET_KEY": "change-me",
+      "HTTP_DU_HOST": "{du}",
+      "HTTP_DU_PORT": "8000",
+      "HTTP_PHYSICS_HOST": "physics",
+      "HTTP_PHYSICS_PORT": "8000",
+      "LOG_DIR": "/app/logs",
+      "RU_CACHE_DIR": "/data/channel_cache",
+      "RU_CHANNEL_CACHE_TTL_SEC": "0.5",
+      "RU_CHANNEL_MODE": "live",
+      "RU_DEFAULT_ANTENNA_COLS": "1",
+      "RU_DEFAULT_ANTENNA_ROWS": "1",
+      "RU_DEFAULT_PATTERN": "tr38901",
+      "RU_DEFAULT_POLARIZATION": "V",
+      "RU_NOISE_FLOOR_DBM": "-98",
+      "RU_NUMEROLOGY": "1",
+      "RU_SCENARIO_ID": "",
+      "RU_SCENE_CALIBRATION_LOSS_DB": "0.0",
+      "RU_TX_POWER_DBM": "23.0"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-RU",
+        "target": "/app",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+        "target": "/opt/ran-sim-protocol",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim/data",
+        "target": "/data",
+        "ro": false
+      }
+    ],
+    "extra_hosts": null,
+    "command": null
   },
-  "volumes": [
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-RU",
-    "target": "/app",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
-    "target": "/opt/ran-sim-protocol",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim/data",
-    "target": "/data",
-    "ro": false
-   }
-  ],
-  "extra_hosts": null,
-  "command": null
- },
- "ue": {
-  "image": "ransim-ue:platform",
-  "env": {
-   "CAMP_MIN_RSRP_DBM": "-117",
-   "DJANGO_ALLOWED_HOSTS": "*",
-   "DJANGO_DEBUG": "True",
-   "DJANGO_SECRET_KEY": "change-me",
-   "INJECT_BATCH_MODE": "on",
-   "LOG_DIR": "/app/logs",
-   "OMNIVERSE_KIT_URL": "http://10.3.0.217:8080",
-   "OMNIVERSE_URL": "http://10.3.0.217:8001",
-   "REGISTRY_URL": "http://network-element-registry:8000",
-   "SCENARIO_STORE_URL": "http://10.3.0.217:8001",
-   "SIM_CU_URL": "http://{cu}:8000",
-   "SIM_DU_URL": "http://{du}:8000",
-   "SIM_PHYSICS_URL": "http://physics:8000",
-   "SIM_RU_URL": "http://{ru}:8000",
-   "TRAFFIC_BURST_BYTES": "131072",
-   "UE_LIST_POLL_PERIOD_SEC": "5",
-   "UE_MEASUREMENT_PERIOD_MS": "40",
-   "UE_TRAJECTORY_PERIOD_MS": "100"
+  "ue": {
+    "image": "ransim-ue:platform",
+    "env": {
+      "CAMP_MIN_RSRP_DBM": "-117",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "True",
+      "DJANGO_SECRET_KEY": "change-me",
+      "INJECT_BATCH_MODE": "on",
+      "LOG_DIR": "/app/logs",
+      "OMNIVERSE_KIT_URL": "http://10.3.0.217:8080",
+      "OMNIVERSE_URL": "http://10.3.0.217:8001",
+      "REGISTRY_URL": "http://network-element-registry:8000",
+      "SCENARIO_STORE_URL": "http://10.3.0.217:8001",
+      "SIM_CU_URL": "http://{cu}:8000",
+      "SIM_DU_URL": "http://{du}:8000",
+      "SIM_PHYSICS_URL": "http://physics:8000",
+      "SIM_RU_URL": "http://{ru}:8000",
+      "TRAFFIC_BURST_BYTES": "131072",
+      "UE_LIST_POLL_PERIOD_SEC": "5",
+      "UE_MEASUREMENT_PERIOD_MS": "40",
+      "UE_TRAJECTORY_PERIOD_MS": "100"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-UE",
+        "target": "/app",
+        "ro": false
+      }
+    ],
+    "extra_hosts": [
+      "host.docker.internal=host-gateway"
+    ],
+    "command": null
   },
-  "volumes": [
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-UE",
-    "target": "/app",
-    "ro": false
-   }
-  ],
-  "extra_hosts": [
-   "host.docker.internal=host-gateway"
-  ],
-  "command": null
- },
- "e2adapter": {
-  "image": "ransim-e2adapter:platform",
-  "env": {
-   "ADAPTER_HTTP_PORT": "{e2_port}",
-   "ASN1_SCHEMA_DIR": "/app/asn1",
-   "DJANGO_ALLOWED_HOSTS": "*",
-   "DJANGO_DEBUG": "True",
-   "DJANGO_SECRET_KEY": "change-me",
-   "E2SM_ANR_ENABLE": "on",
-   "E2SM_CCC_ENABLE": "on",
-   "E2SM_FULLKPM_ENABLE": "on",
-   "E2_ADAPTER_LINK_ENABLED": "1",
-   "LOG_DIR": "/app/logs",
-   "RC_MODULE_V10": "on",
-   "RIC_E2TERM_HOST": "10.3.0.71",
-   "RIC_E2TERM_PORT": "36422",
-   "SCTP_BIND_IP": "10.3.0.217",
-   "SIM_CU_URL": "http://127.0.0.1:{cu_port}",
-   "E2_SETUP_RESPONSE_TIMEOUT_SEC": "600",
-   "SCTP_BACKOFF_INITIAL_SEC": "20",
-   "SCTP_BACKOFF_AFTER_SUCCESS_SEC": "20"
+  "e2adapter": {
+    "image": "ransim-e2adapter:platform",
+    "env": {
+      "ADAPTER_HTTP_PORT": "{e2_port}",
+      "ASN1_SCHEMA_DIR": "/app/asn1",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "True",
+      "DJANGO_SECRET_KEY": "change-me",
+      "E2SM_ANR_ENABLE": "on",
+      "E2SM_CCC_ENABLE": "on",
+      "E2SM_FULLKPM_ENABLE": "on",
+      "E2_ADAPTER_LINK_ENABLED": "1",
+      "LOG_DIR": "/app/logs",
+      "RC_MODULE_V10": "on",
+      "RIC_E2TERM_HOST": "10.3.0.71",
+      "RIC_E2TERM_PORT": "36422",
+      "SCTP_BIND_IP": "10.3.0.217",
+      "SIM_CU_URL": "http://127.0.0.1:{cu_port}",
+      "E2_SETUP_RESPONSE_TIMEOUT_SEC": "600",
+      "SCTP_BACKOFF_INITIAL_SEC": "20",
+      "SCTP_BACKOFF_AFTER_SUCCESS_SEC": "20"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-E2Adapter",
+        "target": "/app",
+        "ro": false
+      }
+    ],
+    "extra_hosts": null,
+    "command": null,
+    "network_mode": "host"
   },
-  "volumes": [
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-E2Adapter",
-    "target": "/app",
-    "ro": false
-   }
-  ],
-  "extra_hosts": null,
-  "command": null,
-  "network_mode": "host"
- },
- "physics": {
-  "image": "ransim-physics:platform",
-  "env": {
-   "DB_HOST": "postgres",
-   "DB_NAME": "physics_db",
-   "DB_PASSWORD": "ransim",
-   "DB_PORT": "5432",
-   "DB_USER": "ransim",
-   "DJANGO_ALLOWED_HOSTS": "*",
-   "DJANGO_DEBUG": "True",
-   "DJANGO_SECRET_KEY": "change-me",
-   "ENABLE_FAST_FADING": "false",
-   "LOG_DIR": "/app/logs",
-   "MITSUBA_SCENE_PATH": "/app/scenes/umi_3sector.xml",
-   "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics",
-   "OMNIVERSE_URL": "http://10.3.0.217:8001",
-   "PHY_PATH_GAIN_PER_PORT": "on"
-  },
-  "volumes": [
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim",
-    "target": "/app",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
-    "target": "/opt/ran-sim-protocol",
-    "ro": false
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/scanned-building-assets",
-    "target": "/app/scenes",
-    "ro": true
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/docker-compose-deployment/scene_config.json",
-    "target": "/mnt/srcin/scene_config.json",
-    "ro": true
-   },
-   {
-    "source": "/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps",
-    "target": "/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps",
-    "ro": true
-   }
-  ],
-  "extra_hosts": [
-   "host.docker.internal=host-gateway"
-  ],
-  "command": null,
-  "gpu": true
- }
+  "physics": {
+    "image": "ransim-physics:platform",
+    "env": {
+      "DB_HOST": "postgres",
+      "DB_NAME": "physics_db",
+      "DB_PASSWORD": "ransim",
+      "DB_PORT": "5432",
+      "DB_USER": "ransim",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "True",
+      "DJANGO_SECRET_KEY": "change-me",
+      "ENABLE_FAST_FADING": "false",
+      "LOG_DIR": "/app/logs",
+      "MITSUBA_SCENE_PATH": "/app/scenes/umi_3sector.xml",
+      "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics",
+      "OMNIVERSE_URL": "http://10.3.0.217:8001",
+      "PHY_PATH_GAIN_PER_PORT": "on"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/Physics_sim",
+        "target": "/app",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+        "target": "/opt/ran-sim-protocol",
+        "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/scanned-building-assets",
+        "target": "/app/scenes",
+        "ro": true
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/docker-compose-deployment/scene_config.json",
+        "target": "/mnt/srcin/scene_config.json",
+        "ro": true
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps",
+        "target": "/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps",
+        "ro": true
+      }
+    ],
+    "extra_hosts": [
+      "host.docker.internal=host-gateway"
+    ],
+    "command": null,
+    "gpu": true
+  }
 }

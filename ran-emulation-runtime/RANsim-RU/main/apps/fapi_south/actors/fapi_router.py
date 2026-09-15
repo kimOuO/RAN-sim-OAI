@@ -101,13 +101,8 @@ class FapiRouter:
             return error_response("Validation failed", ser.errors, 400)
 
         req = from_dict(DlTtiRequest, payload)
-        if req.cell_ul_load:   # P6:每 cell UL 負載落 DB(gunicorn 多 worker,不能放 process 全域)
-            try:
-                from main.apps.antenna.models.cell import Cell
-                for cid, load in req.cell_ul_load.items():
-                    Cell.objects.filter(name=cid).update(ul_load=float(load))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("cell_ul_load persist failed: %s", exc)
+        # P6 cell_ul_load:2026-09-16 起不再每 tick 落 DB(每 cell 一個 UPDATE transaction,postgres CPU 大戶);
+        # pipeline 直接用這個請求帶的值,DB 的 Cell.ul_load 只在請求沒帶時當後備。
         cqi_list = dl_tti_pipeline.run(req)
 
         # 推回 DU + 寫入 LastTti

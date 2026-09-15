@@ -53,6 +53,9 @@ DATABASES = {
         "NAME": get_str("DB_NAME", "ru_db"),
         "USER": get_str("DB_USER", "ru"),
         "PASSWORD": get_str("DB_PASSWORD", "ru"),
+        # 2026-09-16:每請求開新 PG 連線 → postgres 每秒 fork 70+ backend、常態 100%+ CPU;改持久連線(env DB_CONN_MAX_AGE)
+        "CONN_MAX_AGE": get_int("DB_CONN_MAX_AGE", 600),
+        "CONN_HEALTH_CHECKS": True,
     },
 }
 

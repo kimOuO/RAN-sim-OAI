@@ -51,6 +51,9 @@ if DB_HOST:
             "PASSWORD": get_str("DB_PASSWORD", ""),
             "HOST": DB_HOST,
             "PORT": get_int("DB_PORT", 5432),
+            # 2026-09-16:CU 跑 daphne/ASGI,Django 每個請求開一條新執行緒;CONN_MAX_AGE>0 會讓連線跟著死掉的執行緒一起漏,
+            # 20 分鐘就把 pgbouncer 池塞滿、HTTP 全部逾時(實測)。所以 CU 一律每請求關閉(0);postgres 端的 fork 成本交給 pgbouncer 吸收。
+            "CONN_MAX_AGE": get_int("DB_CONN_MAX_AGE", 0),
         }
     }
 else:

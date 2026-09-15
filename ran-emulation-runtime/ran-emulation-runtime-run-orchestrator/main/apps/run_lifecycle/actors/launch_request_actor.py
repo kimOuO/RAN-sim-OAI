@@ -29,6 +29,14 @@ def _body(request) -> dict:
 
 
 _SLOT_LOCK = threading.Lock()   # E2 槽位配置序列化(同進程;orchestrator 單 worker)
+_RUN_LOCKS: dict[str, threading.Lock] = {}
+_RUN_LOCKS_GUARD = threading.Lock()
+
+
+def _run_lock(run_uuid: str) -> threading.Lock:
+    """同一 run 的 start / stop 序列化(2026-09-16:手動 stop/start 撞上自動復原的 stop/start → 兩邊各失敗一半,run 變 failed 無容器)。"""
+    with _RUN_LOCKS_GUARD:
+        return _RUN_LOCKS.setdefault(run_uuid, threading.Lock())
 
 class LaunchRequestController:
     @staticmethod
@@ -136,6 +144,14 @@ class LaunchController:
         run_uuid = str(payload.get("scene_run_uuid") or "")
         if not run_uuid:
             return error_response("Validation failed", {"scene_run_uuid": "required"}, 400)
+        _lk = _run_lock(run_uuid); _lk.acquire()
+        try:
+            return LaunchController._start_locked(request, payload, run_uuid)
+        finally:
+            _lk.release()
+
+    @staticmethod
+    def _start_locked(request, payload, run_uuid):
         try:
             tree = platform_clients.read_full_tree(run_uuid)
         except Exception as exc:  # noqa: BLE001
@@ -241,6 +257,14 @@ class LaunchController:
         run_uuid = str(payload.get("scene_run_uuid") or "")
         if not run_uuid:
             return error_response("Validation failed", {"scene_run_uuid": "required"}, 400)
+        _lk = _run_lock(run_uuid); _lk.acquire()
+        try:
+            return LaunchController._stop_locked(request, payload, run_uuid)
+        finally:
+            _lk.release()
+
+    @staticmethod
+    def _stop_locked(request, payload, run_uuid):
         now = TimestampService.get_current_timestamp()
         req_row = SqlDbBusinessService.create_entity(LaunchRequest, {
             UUID_FIELD: UUIDService.generate_uuid("launch_request"), "launch_request_created_at": now, "launch_request_updated_at": now,

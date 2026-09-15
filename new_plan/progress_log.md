@@ -489,3 +489,13 @@
 - 使用者執行日誌輪替腳本 → docker daemon 重啟 → 兩個 run 的容器 exited → 健康監控同時判定並自動重啟 → 兩個 start 併發,`allocate_slot` 都看到對方「不是 running」→ 都拿 slot 1(e01、adapter port 8401):第二個 adapter 起不來(port in use),RIC 登記也互撞。
 - 修:start 內配槽位改在進程鎖 `_SLOT_LOCK` 內完成,且配到後立刻把 `gnb_id_hex / e2_node_id / status=starting` 寫回 registry,used 集合含 starting。健康監控隨後把 49117e33 重啟為 e02/8402 並成功登記 RIC;388e8e0a 手動 stop/start 一次清掉殘留登記。
 - 日誌輪替生效:新容器 LogConfig json-file max-size 200m × max-file 3。
+
+## postgres 常態 100%+ CPU(2026-09-16)
+
+- 歸因:不是慢查詢,是連線 churn——CU/DU/RU 沒設 CONN_MAX_AGE,Django 每個 HTTP 請求開新 PG 連線,量到每秒 70+ 個新 session、170 個 commit,postgres 忙著 fork backend。`synchronous_commit=off` 無效(CPU 不變),證實非 fsync。
+- 修:
+  - DU/RU(gunicorn,固定執行緒)`CONN_MAX_AGE=600` 持久連線 → 兩者的新 session 歸零。
+  - CU(daphne/ASGI,每請求新執行緒)**不能**用 CONN_MAX_AGE:實測連線跟著死掉的執行緒漏,20 分鐘塞滿池、HTTP 全部逾時。改回 0,前面放 **pgbouncer**(compose 新服務 `ransim-pgbouncer`,session 模式、萬用 db、pool 60+20),CU 的 DB_HOST 指 pgbouncer(compose + per_run_template)。client 端仍每請求連線,但 postgres 不再 fork。
+  - RU:P6 加的 cell ul_load 每 tick UPDATE 拿掉,pipeline 直接用 DL TTI 請求帶的 cell_ul_load,DB 只當後備。
+- 結果:兩個 run(一個 2×)postgres CPU 106% → 約 28%;per-run CU 每 DB 4–5 條連線;歸檔、健康全綠。
+- 順帶:同一 run 的 start/stop 加 run 級鎖(手動 stop/start 撞上自動復原造成 run 變 failed 無容器,已補跑)。RIC 端在我方連續重啟期間回 SCTP `control-processing-overload`,恢復後自癒。
