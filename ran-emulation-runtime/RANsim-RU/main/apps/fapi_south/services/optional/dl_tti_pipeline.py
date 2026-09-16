@@ -734,7 +734,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                     # Cat B + predefined-beam 則直接用 beamId 對應的權重做預編碼(O-DU 只送 beamId)。
                     _beams = gob.active_subset(gob.for_config(_antenna_cfg(), _chain), _bc["beams"])
                     if _beams:
-                        _bsel = gob.select(H, _beams)
+                        _bsel = gob.select(H, _beams, top_k=8)   # 階段 D:DU 用前 8 名估 MU 波束互漏
                         beam_id = _bsel.get("beam_id")
                         beam_top = _bsel.get("top") or []
                     if _chain.get("ru_category") == "B" and _beams and beam_id is not None:

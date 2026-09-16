@@ -101,6 +101,8 @@ def get_slot_engine_takeover() -> bool:
 _DU_INPROCESS_SINR = get_bool("DU_INPROCESS_SINR", False)
 # in-process Phase1 Step3:cached mode 下 SINR 改 in-process(同 tick 直算)+ dl_tti HTTP 改非阻塞 → 解放 tick 粒度
 _DU_RU_INPROCESS = get_bool("DU_RU_INPROCESS", False)
+# 階段 D(2026-09-17):MU-MIMO 配對。只對有 GoB 波束回報的 UE 生效,單埠 / 沒波束的 cell 行為不變。
+_MU_MIMO = get_bool("DU_MU_MIMO", True)
 # slot 引擎正式接管 delay KPM(退掉 /30):on 時 RLC delay 走 slot 引擎(現役 PRB 已由 scheduler 改操作點)
 # + cadence,不再用 calib /30。配 pf_scheduler 的 SLOT_ENGINE_TAKEOVER 一起(同 flag),PRB/throughput/delay 自洽。
 _SLOT_ENGINE_TAKEOVER = get_bool("SLOT_ENGINE_TAKEOVER", False)
@@ -153,6 +155,8 @@ class TickRunner:
         # in-memory UE registry — UE info by ue_id (sinr / cell / qos)
         self._ue_registry: dict[str, dict[str, Any]] = {}
         self._pending_rlf_reports: list[dict[str, Any]] = []   # RLF 報告重試佇列(層3防死鎖)
+        self._mu_tick: dict[str, float] = {}         # 本 tick MU 配對的 UE → MU SINR
+        self._mu_pairs_last: dict[str, int] = {}     # 上一 tick 每 cell 配了幾對
         # Phase A — wall_tick_ms (set_speed 改它) / sim_dt_ms (固定) 解耦。
         self._wall_tick_ms: int = max(10, min(500, get_int("SIM_TICK_MS", 500)))
         self._sim_dt_ms: int = self.SIM_DT_MS_DEFAULT
@@ -316,7 +320,7 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None, array_gain_db: float | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None, array_gain_db: float | None = None, beam_top: list | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
@@ -335,6 +339,8 @@ class TickRunner:
             self._ue_registry[ue_id]["beam_id"] = int(beam_id) if beam_id is not None else None
             # 階段 C:RU 的陣列增益(cached 模式 DU 重算 SINR 時加回)
             self._ue_registry[ue_id]["array_gain_db"] = float(array_gain_db or 0.0)
+            # 階段 D:RU 的前 K 名波束相對增益 → MU-MIMO 估兩個 UE 波束互漏
+            self._ue_registry[ue_id]["beam_top"] = [(int(b), float(d)) for b, d in (beam_top or [])]
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -699,14 +705,36 @@ class TickRunner:
             cap = _quota_store.cap_factor(cell_name)
             cell_prb_total[cell_name] = max(1, int(prb_per_cell * cap))
 
+        # 階段 D:MU-MIMO —— 不同波束、互漏夠低的 UE 兩兩一組共用 PRB(本 tick 單層、用 MU SINR)
+        self._mu_tick = {}
+        mu_pairs_by_cell: dict[str, int] = {}
         for cell_name, group in per_cell_alloc.items():
             capped_prb = cell_prb_total.get(cell_name, prb_per_cell)
+            members: dict[str, tuple] = {}
+            sched_group = group
+            if _MU_MIMO and len(group) >= 2:
+                from main.apps.mac.services.optional.scheduler import mu_mimo
+                pairs, singles = mu_mimo.pair(group)
+                if pairs:
+                    sched_group = list(singles)
+                    for u, v, mu, mv in pairs:
+                        vu = mu_mimo.virtual_ue(u, v, mu, mv)
+                        members[vu["id"]] = (u["id"], v["id"])
+                        sched_group.append(vu)
+                        self._mu_tick[u["id"]] = mu
+                        self._mu_tick[v["id"]] = mv
+                    mu_pairs_by_cell[cell_name] = len(pairs)
             alloc = scheduler.allocate(
-                gnb_name=cell_name, ues_on_gnb=group, n_prb_total=capped_prb,
+                gnb_name=cell_name, ues_on_gnb=sched_group, n_prb_total=capped_prb,
                 tick_ms=tick_ms_for_sched,
             )
+            cell_prb_used[cell_name] = sum(alloc.values())   # 一組 MU 的 PRB 只佔一次
+            for vid, (a, b) in members.items():
+                n = alloc.pop(vid, 0)
+                alloc[a] = n
+                alloc[b] = n
             rb_alloc_global.update(alloc)
-            cell_prb_used[cell_name] = sum(alloc.values())
+        self._mu_pairs_last = mu_pairs_by_cell
 
         # 每 tick 把 cell-level usage 餵給 pm aggregator (cell-level, 不從 per-UE sum)
         # 3GPP TS 28.552 RRU.PrbTotDl/Ul 是「以 cell 物理容量為分母的占用率」,
@@ -735,10 +763,11 @@ class TickRunner:
         tbs_map: dict[str, int] = {}
         for ue in ues_for_measurement:
             uid = ue["id"]
-            mcs_ctl.update(uid, ue["sinr_db"], self.status.last_tick_ms)
+            _sinr_sched = self._mu_tick.get(uid, ue["sinr_db"])   # MU 配對時用 MU SINR
+            mcs_ctl.update(uid, _sinr_sched, self.status.last_tick_ms)
             mcs = mcs_ctl.get_mcs(uid)
             mcs_map[uid] = mcs
-            _, bps_re = sinr_to_mcs(ue["sinr_db"])
+            _, bps_re = sinr_to_mcs(_sinr_sched)
             mbps = mcs_to_throughput_mbps(mcs=mcs, bps_re=bps_re, n_rb=rb_alloc_global.get(uid, 0))
             # 每 tick 對應 bytes — 用 sim-time (=throughput × sim-second-per-tick)
             tick_s = self._sim_dt_ms / 1000.0
@@ -815,7 +844,7 @@ class TickRunner:
             cell_id_map=cell_id_map,
             # A2:把 RU 回報的 RI / PMI 帶回 PDU。以前沒帶 → layers 永遠 1、pmi 永遠 0,
             # 預編碼形同虛設(rank 只影響 slot 引擎的吞吐估算)。
-            rank_map={ue["id"]: int(ue.get("rank", 1) or 1) for ue in ues_for_measurement},
+            rank_map={ue["id"]: (1 if ue["id"] in self._mu_tick else int(ue.get("rank", 1) or 1)) for ue in ues_for_measurement},
             pmi_map={ue["id"]: int(ue.get("pmi", 0) or 0) for ue in ues_for_measurement},
             cell_ul_load=getattr(self, "_cell_ul_load_last", {}),   # P6:上一 tick 每 cell UL PRB 負載 → RU 算上行干擾
         )
@@ -918,13 +947,16 @@ class TickRunner:
                     self._slot_states.pop(uid, None)
                     self._slot_states_op.pop(uid, None)
                     continue
-                sinr = ue.get("sinr_db", 0.0)
+                sinr = self._mu_tick.get(uid, ue.get("sinr_db", 0.0))
+                _mu = uid in self._mu_tick
+                _nl = 1 if _mu else ue.get("rank", 1)
+                _sl = None if _mu else (tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None)
                 st = self._slot_states.setdefault(uid, SlotEngineState())
                 st_op = self._slot_states_op.setdefault(uid, SlotEngineState())
                 # Phase1 反事實:若 scheduler 改用操作點 MCS 算 PRB 需求,會給多少 PRB
                 op_eff = _eff_for_mcs(_mcs_at_op_point(sinr, 0.1))
                 bytes_per_prb = nr_resources.bytes_per_prb_tick(
-                    op_eff, tick_s, n_layers=ue.get("rank", 1),
+                    op_eff, tick_s, n_layers=_nl,
                 )
                 bo = bo_by_ue.get(uid, 0)
                 prb_now = rb_alloc_global.get(uid, 0)
@@ -943,8 +975,8 @@ class TickRunner:
                             seed=self.status.tick_count,
                             sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive pipeline 延遲
                             sched_pipeline_slots=(_pipe_slots if _SLOT_ENGINE_TAKEOVER else 2),
-                            n_layers=ue.get("rank", 1),
-                            sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl"),
+                            n_layers=_nl,
+                            sinr_layers=_sl, mcs_hint=ue.get("mcs_dl"),
                             # 2026-09-16:以前只在 takeover 時套 discard,影子模式一律 0 → 佇列無限長大(VM 當機事故)。
                             # 現在照設定值套用;CCO 劇本要讓延遲真實爬可 set_discard_timer_ms(0),記憶體仍有位元組上限保護。
                             discard_timer_ms=_SLOT_DISCARD_TIMER_MS,
@@ -956,8 +988,8 @@ class TickRunner:
                         sim_dt_ms=self._sim_dt_ms, state=st_op,
                         params=SlotParams(seed=self.status.tick_count,
                                           sched_period_slots=_SLOT_CADENCE_PERIOD,
-                                          n_layers=ue.get("rank", 1),
-                                          sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl"),
+                                          n_layers=_nl,
+                                          sinr_layers=_sl, mcs_hint=ue.get("mcs_dl"),
                                           discard_timer_ms=_SLOT_DISCARD_TIMER_MS),   # 同上;以前完全沒傳
                     )
                 except Exception as e:  # shadow 絕不可擋 tick

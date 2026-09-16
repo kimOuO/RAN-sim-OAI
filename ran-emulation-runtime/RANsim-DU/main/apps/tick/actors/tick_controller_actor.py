@@ -126,6 +126,8 @@ class TickController:
                 "ue_latest": ue_latest,         # 瞬時 RSRP/SINR/neighbors
                 "last_ue_stats": runner.last_ue_stats,      # ← per-tick 即時 throughput/delay/PRB/MCS
                 "last_cell_stats": runner.last_cell_stats,  # ← per-tick 即時 cell PRB / %
+                "mu_pairs_last": dict(getattr(runner, "_mu_pairs_last", {})),   # 階段 D:每 cell MU 配對數
+                "mu_ues_last": sorted(getattr(runner, "_mu_tick", {}).keys()),
                 "gnbs": pm.snapshot(),          # 累積平均(舊行為,還在以避免破壞既有用例)
             },
             "PM dumped",
