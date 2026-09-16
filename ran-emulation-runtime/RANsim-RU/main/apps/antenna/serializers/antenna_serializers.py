@@ -25,6 +25,8 @@ class AntennaConfigWriteSerializer(serializers.Serializer):
     # 三層天線(2026-09-16;舊呼叫端不帶 → 用預設值,行為等同「一片元件 = 一個 TXRU = 一個埠」)
     panels_mg = serializers.IntegerField(required=False, default=1, min_value=1, max_value=8)
     panels_ng = serializers.IntegerField(required=False, default=1, min_value=1, max_value=8)
+    panel_v_spacing = serializers.FloatField(required=False, default=0.0, min_value=0.0, max_value=20.0)
+    panel_h_spacing = serializers.FloatField(required=False, default=0.0, min_value=0.0, max_value=20.0)
     trx_v_group = serializers.IntegerField(required=False, default=1, min_value=1, max_value=16)
     trx_count = serializers.IntegerField(required=False, default=0, min_value=0, max_value=1024)
     electrical_tilt_deg = serializers.FloatField(required=False, default=0.0, min_value=-30.0, max_value=30.0)
@@ -55,6 +57,8 @@ class AntennaConfigReadSerializer(serializers.ModelSerializer):
             "horizontal_spacing",
             "panels_mg",
             "panels_ng",
+            "panel_v_spacing",
+            "panel_h_spacing",
             "trx_v_group",
             "trx_count",
             "electrical_tilt_deg",

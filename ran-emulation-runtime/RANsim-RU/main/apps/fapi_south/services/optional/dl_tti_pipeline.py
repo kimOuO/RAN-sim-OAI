@@ -441,7 +441,9 @@ def _synth_cached_h(ccache, tick_idx: int, ue_id: str, gains: dict) -> dict:
     from main.apps.beamforming.services.optional import path_synth
     tx = {"rows": cfg.rows, "cols": cfg.cols, "polarization": cfg.polarization,
           "vertical_spacing": cfg.vertical_spacing, "horizontal_spacing": cfg.horizontal_spacing,
-          "panels_mg": getattr(cfg, "panels_mg", 1) or 1, "panels_ng": getattr(cfg, "panels_ng", 1) or 1}
+          "panels_mg": getattr(cfg, "panels_mg", 1) or 1, "panels_ng": getattr(cfg, "panels_ng", 1) or 1,
+          "panel_v_spacing": getattr(cfg, "panel_v_spacing", 0.0) or 0.0,
+          "panel_h_spacing": getattr(cfg, "panel_h_spacing", 0.0) or 0.0}
     rx = {"rows": getattr(cfg, "ue_rows", 1) or 1, "cols": getattr(cfg, "ue_cols", 1) or 1,
           "polarization": getattr(cfg, "ue_polarization", "") or "V"}
     out = {}

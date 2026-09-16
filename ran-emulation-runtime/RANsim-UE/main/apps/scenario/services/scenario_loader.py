@@ -360,6 +360,7 @@ def _preset_to_array(p: dict) -> dict:
             "pattern": str(p.get("pattern") or "tr38901"), "vertical_spacing": float(p.get("v_spacing") or 0.5), "horizontal_spacing": float(p.get("h_spacing") or 0.5),
             # 三層天線(2026-09-16):元件層以外的兩層一併帶給 RU;舊 preset 沒這些欄位就用預設(= 一片元件一個埠)
             "panels_mg": int(p.get("panels_mg") or 1), "panels_ng": int(p.get("panels_ng") or 1),
+            "panel_v_spacing": float(p.get("panel_v_spacing") or 0.0), "panel_h_spacing": float(p.get("panel_h_spacing") or 0.0),
             "trx_v_group": int(p.get("trx_v_group") or 1), "trx_count": int(p.get("trx_count") or 0),
             "electrical_tilt_deg": float(p.get("electrical_tilt_deg") or 0.0),
             "csi_ports": int(p.get("csi_ports") or 0),
