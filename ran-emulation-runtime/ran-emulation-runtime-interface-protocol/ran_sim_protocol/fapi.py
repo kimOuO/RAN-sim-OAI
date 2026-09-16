@@ -73,6 +73,9 @@ class CqiIndication:
     # None / 空 list = 沒有 GoB(單埠或 Cat A 未設定)。
     beam_id: int | None = None
     beam_rsrp_top: list = field(default_factory=list)
+    # 階段 C(2026-09-17):最佳單層預編碼的陣列增益(dB,sinr_db 已含)。
+    # DU cached 模式自己用 path gain 重算寬頻 SINR 時要把它加回去,否則大陣列的增益會被蓋掉。
+    array_gain_db: float = 0.0
     # RSRP from path_gain (RU 端 dl_tti_pipeline 算)；
     # 預設 -200 表示未填（保持 backward compat），DU 收到 -200 會用估算 fallback。
     rsrp_dbm: float = -200.0

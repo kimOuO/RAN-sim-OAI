@@ -55,6 +55,45 @@ FLUSH_EVERY = 2000
 CHECKPOINT_EVERY = 10000
 # 分段結束的離開碼。外層 loop 看到這個就再開一個行程接著跑;0 才是真的做完。
 SEGMENT_EXIT_CODE = 75
+# 階段 C(2026-09-17):每 (tick, UE, cell) 另存前 K 條路徑的參數到 <scenario>.paths/,
+# RU 依天線設定重建元件層 H(cached 模式才有 MIMO / 波束)。0 = 只存 path gain(舊行為)。
+PATHS_TOP_K = int(os.environ.get("PRECOMPUTE_PATHS_K", "6"))
+
+
+class PathSidecar:
+    """<scenario>.paths/ 目錄:a.npy (T,U,C,K,2,2) complex64、kt.npy / kr.npy (T,U,C,K,3) float16、meta.json。
+    用 memmap 直接寫檔 —— 24h 約 1 GB,不必整包放記憶體;RU 端也用 mmap 讀,多個 RU 共用 page cache。"""
+
+    def __init__(self, scenario_id: str, shape: tuple[int, int, int], k: int, meta: dict, resume: bool):
+        import json
+        from numpy.lib.format import open_memmap
+        self.dir = CACHE_DIR / f"{scenario_id}.paths"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        T, U, C = shape
+        mode = "r+" if resume and (self.dir / "a.npy").exists() else "w+"
+        self.a = open_memmap(self.dir / "a.npy", mode=mode, dtype=np.complex64, shape=(T, U, C, k, 2, 2))
+        self.kt = open_memmap(self.dir / "kt.npy", mode=mode, dtype=np.float16, shape=(T, U, C, k, 3))
+        self.kr = open_memmap(self.dir / "kr.npy", mode=mode, dtype=np.float16, shape=(T, U, C, k, 3))
+        self.meta = {**meta, "top_k": k, "shape": [T, U, C], "complete": False}
+        self._json = json
+        self.write_meta()
+        print(f"[precompute] path sidecar {self.dir} mode={mode} K={k}")
+
+    def write_meta(self, **extra) -> None:
+        self.meta.update(extra)
+        tmp = self.dir / "meta.json.tmp"
+        tmp.write_text(self._json.dumps(self.meta, ensure_ascii=False, indent=1))
+        tmp.replace(self.dir / "meta.json")
+
+    def put(self, t: int, u: int, c: int, triple) -> None:
+        aa, kt, kr = triple
+        self.a[t, u, c] = aa
+        self.kt[t, u, c] = kt
+        self.kr[t, u, c] = kr
+
+    def flush(self) -> None:
+        for m in (self.a, self.kt, self.kr):
+            m.flush()
 
 
 def _flush_drjit() -> int:
@@ -212,6 +251,9 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
                 f"[precompute] WARN scenario override failed, fall back to scene_config: {e}",
                 file=sys.stderr,
             )
+    tx_meta = SionnaBusinessService.enable_path_params() if PATHS_TOP_K > 0 else None
+    sidecar: PathSidecar | None = None
+    last_paths: dict | None = None
     print("[precompute] Sionna ready")
 
     # 3. 預備儲存結構 — gnb_cell_names 在第一個 tick 後才知道,先空著
@@ -271,10 +313,14 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
 
         # Stationary fast-path:全部 UE 都沒動 → 複用上次 path_gain
         if all_stationary and last_path_gain is not None:
-            result = {"path_gain_linear": last_path_gain}
+            result = {"path_gain_linear": last_path_gain, "paths": last_paths}
         else:
             try:
-                result = SionnaBusinessService.compute_paths(ue_positions=ue_positions)
+                if PATHS_TOP_K > 0:
+                    result = SionnaBusinessService.compute_path_params(ue_positions=ue_positions, top_k=PATHS_TOP_K)
+                    last_paths = result.get("paths")
+                else:
+                    result = SionnaBusinessService.compute_paths(ue_positions=ue_positions)
                 sionna_call_count += 1
             except Exception as e:
                 _patch_status(scenario_id, precompute_status="failed", precompute_error=f"tick {tick_idx}: {e}")
@@ -298,6 +344,20 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
                 fill_value=np.nan, dtype=np.float32,
             )
             print(f"[precompute] cells={len(cell_names)}: {cell_names}")
+        if PATHS_TOP_K > 0 and sidecar is None:
+            sidecar = PathSidecar(scenario_id, (total_ticks, len(ue_names), len(cell_names)), PATHS_TOP_K,
+                                  {"ue_names": ue_names, "cell_names": cell_names, "tick_ms": tick_ms,
+                                   "tx_orientation": tx_meta["orientation"], "wavelength_m": tx_meta["wavelength_m"],
+                                   "gnb_pattern": tx_meta["gnb_pattern"], "ue_pattern": tx_meta["ue_pattern"],
+                                   "frame": "sionna", "a_axes": "[tick, ue, cell, path, rx_pol(V,H), tx_pol(V,H)]"},
+                                  resume=resume_from > 0)
+        if sidecar is not None:
+            per_paths = result.get("paths") or {}
+            for ue_idx, ue_name in enumerate(ue_names):
+                for cell_idx, cell_name in enumerate(cell_names):
+                    trip = (per_paths.get(ue_name) or {}).get(cell_name)
+                    if trip is not None:
+                        sidecar.put(tick_idx, ue_idx, cell_idx, trip)
 
         # 填值:cache[tick, ue, cell] = 10 log10(path_gain_linear)
         for ue_idx, ue_name in enumerate(ue_names):
@@ -335,6 +395,9 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
                      cell_names=np.array(cell_names or []),
                      next_tick=np.int32(next_tick))
             tmp.replace(ckpt_path)      # 原子換檔,避免存到一半被殺留下壞檔
+            if sidecar is not None:     # 路徑檔先落地,checkpoint 才算數
+                sidecar.flush()
+                sidecar.write_meta(filled_upto=int(next_tick))
 
         if (tick_idx + 1) % CHECKPOINT_EVERY == 0 and cache_3d is not None:
             _save_ckpt(tick_idx + 1)
@@ -365,6 +428,9 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
         total_ticks=np.int32(total_ticks),
     )
     size_bytes = out_path.stat().st_size
+    if sidecar is not None:
+        sidecar.flush()
+        sidecar.write_meta(filled_upto=int(total_ticks), complete=True)
 
     elapsed = time.perf_counter() - t_start
     print(

@@ -165,7 +165,7 @@ def _freq_overlaps(a: tuple[float, float], b: tuple[float, float]) -> bool:
     return df_mhz < (a[1] + b[1]) / 2.0
 
 
-def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None) -> float:
+def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None, extra_gain_db: float = 0.0) -> float:
     """對齊 RU _compute_sinr_db_with_real_interference:
     SINR = serving_rx / (Σ其他cell_rx + noise),rx_mw = TX_mW × path_gain_linear。
     假設各 cell 同 TX power(_TX_POWER_DBM,scenario 23dBm 場景成立)。"""
@@ -194,13 +194,13 @@ def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None) ->
                 continue  # 頻段不重疊 → 不互擾
             interference_mw += tx_mw * pg
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
-    sinr_lin = serving_mw / (interference_mw + noise_mw)
+    sinr_lin = serving_mw / (interference_mw + noise_mw) * 10.0 ** (float(extra_gain_db or 0.0) / 10.0)   # 陣列增益在失真上限之前
     if _EVM_SNR_DB > 0 and sinr_lin > 0:
         sinr_lin = 1.0 / (1.0 / sinr_lin + 10.0 ** (-_EVM_SNR_DB / 10.0))
     return 10.0 * math.log10(sinr_lin) if sinr_lin > 0 else float("-inf")
 
 
-def sinr_for_ue(sim_time_ms: float, ue_id: str, serving_cell_id: str | None) -> float | None:
+def sinr_for_ue(sim_time_ms: float, ue_id: str, serving_cell_id: str | None, extra_gain_db: float = 0.0) -> float | None:
     """in-process SINR:cached 才有。sim_time_ms → cache tick(處理 sim_dt ≠ cache_tick_ms 的映射)。"""
     c = get_du_cache()
     if c is None:
@@ -212,7 +212,7 @@ def sinr_for_ue(sim_time_ms: float, ue_id: str, serving_cell_id: str | None) -> 
     serving_tx = cell_id_to_tx(serving_cell_id) if serving_cell_id else best
     if serving_tx not in gains:
         serving_tx = best   # serving cell 不在 cache → 退 argmax
-    return compute_sinr_db(gains, serving_tx)
+    return compute_sinr_db(gains, serving_tx, extra_gain_db)
 
 
 _singleton: DuChannelCache | None = None

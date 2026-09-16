@@ -427,6 +427,31 @@ def _antenna_cfg():
     return _ANT_CACHE["cfg"]
 
 
+def _synth_cached_h(ccache, tick_idx: int, ue_id: str, gains: dict) -> dict:
+    """cached 模式:由路徑參數重建每個 cell 的元件層 H(n_rx_elem, n_tx_elem)。沒有路徑檔回 {}。"""
+    if getattr(ccache, "paths", None) is None or not gains:
+        return {}
+    cfg = _antenna_cfg()
+    if cfg is None:
+        return {}
+    from main.apps.beamforming.services.optional import path_synth
+    tx = {"rows": cfg.rows, "cols": cfg.cols, "polarization": cfg.polarization,
+          "vertical_spacing": cfg.vertical_spacing, "horizontal_spacing": cfg.horizontal_spacing,
+          "panels_mg": getattr(cfg, "panels_mg", 1) or 1, "panels_ng": getattr(cfg, "panels_ng", 1) or 1}
+    rx = {"rows": getattr(cfg, "ue_rows", 1) or 1, "cols": getattr(cfg, "ue_cols", 1) or 1,
+          "polarization": getattr(cfg, "ue_polarization", "") or "V"}
+    out = {}
+    for tx_name in gains:
+        hit = ccache.lookup_paths(tick_idx, ue_id, tx_name)
+        if hit is None:
+            continue
+        A, kt, kr, orient = hit
+        H = path_synth.synthesize(A, kt, kr, tx=tx, rx=rx, tx_orientation=orient, fading=True)
+        if np.any(H):
+            out[tx_name] = H
+    return out
+
+
 def _to_complex_matrix(raw: Any) -> np.ndarray:
     """Physics 回傳的 channel_matrix 元素可能是 [re,im] / {re,im} / 複數 string；統一吃成 ndarray。
 
@@ -527,7 +552,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             for ue_id in miss_ids:
                 gains, serving_tx = ccache.lookup(tick_idx, ue_id)
                 value = {
-                    "channel_matrix": {},          # MVP 不從 cache 還原 MIMO matrices
+                    # 階段 C:有路徑檔就依目前天線設定重建元件層 H(與 live 同一條 MIMO 路徑)
+                    "channel_matrix": _synth_cached_h(ccache, tick_idx, ue_id, gains),
                     "path_gain": gains,
                     "serving_cell": serving_tx,
                 }
@@ -675,6 +701,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         rank_pmi = int(pdu.pmi)
         beam_id: int | None = None
         beam_top: list = []
+        array_gain_db = 0.0
         if H_raw is None:
             rank = 1
         else:
@@ -706,7 +733,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                     rank = int(_sel["rank"])
                     rank_pmi = int(_sel["pmi"])
                     # 寬頻 SINR 改由「最佳單層預編碼」的陣列增益推導 → 天線變大 SINR 才會變好
-                    sinr_db = float(sinr_db) + 10.0 * math.log10(max(float(_sel["rank1_gain"]), 1e-12))
+                    array_gain_db = 10.0 * math.log10(max(float(_sel["rank1_gain"]), 1e-12))
+                    sinr_db = float(sinr_db) + array_gain_db
                     sinr_per_layer = [10.0 * math.log10(max(_apply_evm_lin(g), 1e-12)) for g in _sel["layer_sinr_lin"]]
                 else:
                     rank = 1
@@ -735,6 +763,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             sinr_per_layer_db=[round(v, 2) for v in sinr_per_layer],
             pmi=int(rank_pmi),   # A2:RU 代 UE 選的 PMI,DU 下一輪照這個下 PDU
             beam_id=beam_id, beam_rsrp_top=beam_top,   # B1:GoB 波束(O-RAN WG1 每波束 KPI)
+            array_gain_db=round(float(array_gain_db), 2),
             rsrp_dbm=rsrp_dbm,
             serving_cell=serving_label,
             neighbors=neighbors_list,

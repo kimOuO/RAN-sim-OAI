@@ -47,6 +47,30 @@ np.savez_compressed(out, path_gain_db=seg,
                     duration_sec=np.float32(t1 - t0),
                     total_ticks=np.int32(i1 - i0))
 size = os.path.getsize(out)
+
+# 階段 C:24h 有路徑檔就一起切(同一段 tick),RU 才能在 cached 模式重建多天線 H
+src_paths = f"{CACHE}/corridor_24h.paths"
+if os.path.exists(f"{src_paths}/meta.json"):
+    from numpy.lib.format import open_memmap
+    meta = json.load(open(f"{src_paths}/meta.json"))
+    if int(meta.get("filled_upto", 0)) < i1:
+        print(f"路徑檔只算到 tick {meta.get('filled_upto')},這段不切路徑")
+    else:
+        dst = f"{CACHE}/{sid}.paths"
+        os.makedirs(dst, exist_ok=True)
+        for name in ("a", "kt", "kr"):
+            srcm = np.load(f"{src_paths}/{name}.npy", mmap_mode="r")
+            outm = open_memmap(f"{dst}/{name}.npy", mode="w+", dtype=srcm.dtype, shape=(i1 - i0,) + srcm.shape[1:])
+            for b in range(i0, i1, 4096):          # 分塊複製,不整段載入記憶體
+                e = min(b + 4096, i1)
+                outm[b - i0:e - i0] = srcm[b:e]
+            outm.flush()
+        meta.update(shape=[i1 - i0] + meta["shape"][1:], filled_upto=i1 - i0, complete=True,
+                    ue_names=[u["name"] for u in sc["ues"]],   # 與切片 npz 同一份 UE 清單
+                    carved_from="corridor_24h", carved_ticks=[i0, i1])
+        json.dump(meta, open(f"{dst}/meta.json", "w"), ensure_ascii=False, indent=1)
+        print(f"路徑檔 → {dst}")
+
 v = seg[~np.isnan(seg)]
 print(f"寫出 {out}  {size/1e6:.1f} MB  值域 {v.min():.1f} ~ {v.max():.1f} dB")
 

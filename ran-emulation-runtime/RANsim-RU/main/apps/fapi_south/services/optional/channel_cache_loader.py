@@ -42,7 +42,10 @@ class ChannelCache:
         self.tick_ms: int = 500
         self.total_ticks: int = 0
         self._ue_idx: dict[str, int] = {}              # ue_name → idx
+        # 階段 C:路徑參數(有 <scenario>.paths/ 才有);mmap 唯讀,多個 RU 共用 page cache
+        self.paths: dict | None = None
         self._load()
+        self._load_paths()
 
     def _load(self):
         path = CACHE_DIR / f"{self.scenario_id}.npz"
@@ -61,6 +64,42 @@ class ChannelCache:
             self.scenario_id, self.total_ticks, len(self.ue_names),
             len(self.cell_names), self.tick_ms,
         )
+
+    def _load_paths(self) -> None:
+        import json
+        d = CACHE_DIR / f"{self.scenario_id}.paths"
+        try:
+            meta = json.loads((d / "meta.json").read_text())
+            if not meta.get("complete"):
+                logger.warning("path sidecar %s 未完成(filled_upto=%s),cached 模式維持單天線", d, meta.get("filled_upto"))
+                return
+            self.paths = {
+                "a": np.load(d / "a.npy", mmap_mode="r"),
+                "kt": np.load(d / "kt.npy", mmap_mode="r"),
+                "kr": np.load(d / "kr.npy", mmap_mode="r"),
+                "ue_idx": {n: i for i, n in enumerate(meta["ue_names"])},
+                "cell_idx": {n: i for i, n in enumerate(meta["cell_names"])},
+                "orientation": meta.get("tx_orientation") or {},
+                "ticks": int(meta["shape"][0]),
+            }
+            logger.info("ChannelCache paths loaded: %s K=%s ticks=%d", d, meta.get("top_k"), self.paths["ticks"])
+        except FileNotFoundError:
+            self.paths = None
+        except Exception as exc:  # noqa: BLE001 — 路徑檔壞了就退回舊行為,不影響 path gain
+            logger.warning("path sidecar %s 讀取失敗:%s", d, exc)
+            self.paths = None
+
+    def lookup_paths(self, tick_idx: int, ue_id: str, tx_name: str):
+        """回傳 (A (K,2,2), k_t (K,3), k_r (K,3), tx_orientation) 或 None。"""
+        p = self.paths
+        if p is None:
+            return None
+        ui, ci = p["ue_idx"].get(ue_id), p["cell_idx"].get(tx_name)
+        if ui is None or ci is None:
+            return None
+        t = max(0, min(int(tick_idx), p["ticks"] - 1))
+        return (np.asarray(p["a"][t, ui, ci]), np.asarray(p["kt"][t, ui, ci], dtype=np.float64),
+                np.asarray(p["kr"][t, ui, ci], dtype=np.float64), tuple(p["orientation"].get(tx_name, (0.0, 0.0, 0.0))))
 
     def lookup(
         self, tick_idx: int, ue_id: str,

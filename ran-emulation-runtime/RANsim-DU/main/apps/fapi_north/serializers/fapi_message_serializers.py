@@ -19,6 +19,7 @@ class CqiIndicationSerializer(serializers.Serializer):
     # B1(2026-09-16):O-RAN Cat B 的 GoB 波束。舊 RU 不帶 → None。
     beam_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     beam_rsrp_top = serializers.ListField(required=False, default=list)
+    array_gain_db = serializers.FloatField(required=False, default=0.0)   # 階段 C:cached 重算 SINR 要加回
     # RU 從 Sionna path_gain 算的真 RSRP (RU 0.x 版本沒帶，預設 -200 表「未填」)
     rsrp_dbm = serializers.FloatField(default=-200.0)
     serving_cell = serializers.CharField(default="", allow_blank=True)

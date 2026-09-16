@@ -316,7 +316,7 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None, array_gain_db: float | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
@@ -333,6 +333,8 @@ class TickRunner:
                 self._ue_registry[ue_id]["pmi"] = int(pmi)
             # B1:GoB 波束 id(Cat B predefined-beam);None 表示這個 cell 沒有 GoB
             self._ue_registry[ue_id]["beam_id"] = int(beam_id) if beam_id is not None else None
+            # 階段 C:RU 的陣列增益(cached 模式 DU 重算 SINR 時加回)
+            self._ue_registry[ue_id]["array_gain_db"] = float(array_gain_db or 0.0)
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -640,7 +642,7 @@ class TickRunner:
             from main.apps.fapi_north.services.optional.channel_cache_du import sinr_for_ue
             _now_sim = self.status.tick_count * self._sim_dt_ms
             for ue in ues_for_measurement:
-                _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"))
+                _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"), extra_gain_db=ue.get("array_gain_db", 0.0))
                 if _ip is not None and _ip > -200:
                     ue["sinr_db"] = _ip
         # P1-1(2026-08-12):RLF 偵測 — 每 CONNECTED UE 餵當前 SINR 進 T310 狀態機。

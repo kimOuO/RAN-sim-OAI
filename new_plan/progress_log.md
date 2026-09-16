@@ -831,3 +831,27 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - 測試:
   - 新增 `test_rc_beam_control.py`(7 項);`test_rfd_round_trip` 原本就壞(v10 模組編碼、舊模組解碼 → bitlen overflow),改用 `_rc_ies()` 解碼。adapter 全部 22 項通過。
   - 端到端(e01,用 adapter 會送出的 payload 打 CU):`e01:nbr` 設成下傾 6.5° / 波束 [0,1] / 層數 1,RU 讀回一致,`e01:src` 沒變;不存在的 cell、沒帶參數都回 409;還原後回到預設。
+
+## 2026-09-17 天線收尾 2:階段 C(cached 模式也有 MIMO / 波束)
+
+**做法**:不存整個 H,改存每 (tick, UE, cell) 前 K 條路徑的參數,RU 依當下天線設定重建元件層 H。
+- 預算時陣列改成 1×1、雙極化 VH,每條路徑存 A_k(2×2 極化耦合係數,已含元件方向圖)、k_t、k_r(離開 / 到達方向),以及每個 tx 的 orientation。
+- RU `path_synth.synthesize` 用 Sionna synthetic array 同一公式重建:H = Σ c(ζ_r)ᵀ A_k c(ζ_t) · e^{j2π(R·p)·k} · 隨機相位;±45° 斜極化由 V/H 線性組合(tr38901_2)。多面板依 TR 38.901 擺位(RU 沒有面板間距欄位,暫用緊鄰)。
+- 換天線設定不必重算 cache。
+
+**驗證**
+- 重建 vs Sionna 直接用整個陣列(`experiment_c_path_synth.py`,3 種陣列 × 3 個 UE,含 cross / VH / 非零 orientation):最大相對誤差 1.8e-5。
+- corridor 場景截斷誤差(`experiment_c_topk.py`,tick 150000,33 組 UE×cell,8×8 cross):K=8 時捕捉功率最差 97.7%、H 誤差 90% 分位 3.6%、最差 14% → 取 K=8。
+- RU 單元測試 `test_path_synth.py` 6 項通過(元件順序、正面 / 端射相位、斜極化、旋轉、fading 保功率)。
+- e2e_check 重新預算(K=8)後,在 e04 執行期換天線:
+  - 1×1:SINR 15.5 dB,rank 1。
+  - 8T8R + UE 2 埠:SINR 約 22.4 dB,rank 2 佔 30/44,beam 3,MCS 16。
+  - 32T32R Cat B:rank 2 佔 45/45,兩層各約 21–22 dB,寬頻 23–25 dB,beam 8,MCS 17–19。
+  - 測完已還原成 1×1。
+
+**其他修改**
+- 預算:`PRECOMPUTE_PATHS_K`(預設 6,corridor 用 8),寫入 `<scenario>.paths/`(a / kt / kr 用 memmap,另有 meta.json),checkpoint 前先 flush;`carve_window.py` 會一起切路徑檔。
+- RU:ChannelCache 以 mmap 讀路徑檔(未完成的不用);cached 分支用 `_synth_cached_h` 產生每個 cell 的 H,之後走和 live 相同的流程。
+- DU cached 模式自己重算寬頻 SINR 時,以前會蓋掉陣列增益 → CqiIndication 新增 `array_gain_db`,DU 在失真上限之前加回。
+- physics 的 CUDA 再次靜默失效(對其他容器下 `docker update` 後),已重啟 physics 恢復。
+- 進行中:corridor_24h 以 K=8 重算(約 1.4 GB,預計 8 小時以上),完成後切三段並重啟三個 corridor run。舊檔備份為 `corridor_24h.pre_paths.npz`。

@@ -487,3 +487,20 @@ class SionnaBusinessService:
         # 序列化 Sionna scene mutation。多 thread 同時改 scene.receivers 會 race 噴 drjit reshape error。
         with cls._engine_lock:
             return cls._engine.compute_paths(ue_positions=ue_positions)
+
+    # ── 階段 C:cached 模式的路徑參數(precompute 專用)────────────────────
+    @classmethod
+    def enable_path_params(cls) -> dict[str, Any]:
+        """引擎陣列換成 1×1 VH,回傳 tx_meta(orientation / 波長 / 方向圖)。"""
+        cls.ensure_loaded()
+        assert cls._engine is not None
+        with cls._engine_lock:
+            cls._engine.use_path_param_arrays()
+            return cls._engine.tx_meta()
+
+    @classmethod
+    def compute_path_params(cls, *, ue_positions: list[dict[str, Any]], top_k: int = 6) -> dict[str, Any]:
+        cls.ensure_loaded()
+        assert cls._engine is not None
+        with cls._engine_lock:
+            return cls._engine.compute_path_params(ue_positions=ue_positions, top_k=top_k)

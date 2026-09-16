@@ -267,6 +267,85 @@ class SionnaEngine:
         finally:
             self._scene.remove("__warmup__")
 
+    # ── 階段 C(2026-09-17):cached 模式存「路徑參數」,RU 依天線設定自己組 H ──────────
+    # 陣列換成 1×1、雙極化 VH:每條路徑只剩 (rx_pol, tx_pol) 的 2×2 係數 + 離開/到達方向。
+    # 任何平面陣列的元件層 H 都能由這兩樣重建(Sionna synthetic array 本來就是這樣算的:
+    # 單一元件的係數 × exp(j2π·(R·p_m)·k̂/λ)),±45° 斜極化則是 V/H 的線性組合
+    # (polarization model tr38901_2 對斜角 ζ 線性:F = G·(cos ζ, sin ζ))。
+    def use_path_param_arrays(self) -> None:
+        rt = self._rt
+        self._scene.tx_array = rt.PlanarArray(num_rows=1, num_cols=1, pattern=self.gnb_antenna_pattern, polarization="VH")
+        self._scene.rx_array = rt.PlanarArray(num_rows=1, num_cols=1, pattern=self.ue_antenna_pattern, polarization="VH")
+        self._path_param_mode = True
+        logger.info("path-param arrays: tx 1x1 %s/VH, rx 1x1 %s/VH", self.gnb_antenna_pattern, self.ue_antenna_pattern)
+
+    def tx_meta(self) -> dict[str, Any]:
+        """每個 tx 的 orientation(Sionna 弧度)與波長,RU 重建陣列相位要用。"""
+        import numpy as np
+        f = lambda v: float(np.array(v).ravel()[0])  # noqa: E731 — drjit Float → python float
+        orient = {}
+        for c in self._cell_entries:
+            o = self._scene.get(c["tx_name"]).orientation
+            orient[c["tx_name"]] = [f(o.x), f(o.y), f(o.z)]
+        return {"orientation": orient, "wavelength_m": f(self._scene.wavelength),
+                "gnb_pattern": self.gnb_antenna_pattern, "ue_pattern": self.ue_antenna_pattern}
+
+    def compute_path_params(self, *, ue_positions: list[dict[str, Any]], top_k: int = 6) -> dict[str, Any]:
+        """回傳 {path_gain_linear, paths}。
+
+        paths[ue][tx] = (a, k_t, k_r):
+          a   (K, 2, 2) complex  [path, rx_pol(V,H), tx_pol(V,H)]
+          k_t (K, 3)             離開方向單位向量(Sionna 座標)
+          k_r (K, 3)             到達方向單位向量
+        依 Σ|a|² 取前 K 條;不足補 0。
+        path_gain 只用 V→V 分量 + 每 path 隨機相位,與 V 極化 1×1 的 compute_paths 同義(舊 cache 可比)。
+        """
+        import numpy as np
+        rt = self._rt
+        scene = self._scene
+        for name in list(scene.receivers.keys()):
+            scene.remove(name)
+        for u in ue_positions:
+            rx = rt.Receiver(name=u["id"], position=self._to_sionna(u["position"]))
+            scene.add(rx)
+        paths = self._solver(scene=scene, max_depth=self.max_depth, los=True,
+                             specular_reflection=True, diffuse_reflection=True,
+                             refraction=True, diffraction=True)
+        ar, ai = paths.a
+        a = np.array(ar) + 1j * np.array(ai)          # [rx, 2, tx, 2, P]
+        th_t, ph_t = np.array(paths.theta_t), np.array(paths.phi_t)   # [rx, tx, P]
+        th_r, ph_r = np.array(paths.theta_r), np.array(paths.phi_r)
+        valid = np.array(paths.valid).astype(bool)
+        if a.ndim != 5 or th_t.ndim != 3:
+            raise RuntimeError(f"unexpected path tensor shapes a={a.shape} theta={th_t.shape}")
+        a = a * valid[:, None, :, None, :]
+
+        def _k(th, ph):
+            return np.stack([np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)], axis=-1)
+
+        k_t_all, k_r_all = _k(th_t, ph_t), _k(th_r, ph_r)
+        tx_names = [c["tx_name"] for c in self._cell_entries]
+        K = int(top_k)
+        path_gain: dict[str, dict[str, float]] = {}
+        out: dict[str, dict[str, tuple]] = {}
+        for i, u in enumerate(ue_positions):
+            pg_u, p_u = {}, {}
+            for j, tx in enumerate(tx_names):
+                c = a[i, :, j, :, :]                                    # (2, 2, P)
+                vv = c[0, 0, :]
+                ph = np.exp(1j * np.random.uniform(0.0, 2.0 * np.pi, vv.shape[-1]))
+                pg_u[tx] = float(np.abs(np.sum(vv * ph)) ** 2)
+                power = np.sum(np.abs(c) ** 2, axis=(0, 1))
+                order = np.argsort(power)[::-1][:K]
+                aa = np.zeros((K, 2, 2), np.complex64); kt = np.zeros((K, 3), np.float32); kr = np.zeros((K, 3), np.float32)
+                n = len(order)
+                aa[:n] = np.transpose(c[:, :, order], (2, 0, 1))
+                kt[:n] = k_t_all[i, j, order]; kr[:n] = k_r_all[i, j, order]
+                p_u[tx] = (aa, kt, kr)
+            path_gain[u["id"]] = pg_u
+            out[u["id"]] = p_u
+        return {"path_gain_linear": path_gain, "paths": out}
+
     def compute_paths(self, *, ue_positions: list[dict[str, Any]]) -> dict[str, Any]:
         """per-tick 光追。
 
