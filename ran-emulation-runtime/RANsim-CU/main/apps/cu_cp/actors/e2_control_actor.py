@@ -159,8 +159,14 @@ class E2ControlActor:
                     applied.append(_cell_energy_saving(cid, act, ric_req_id))
                 else:
                     # 硬開關(administrativeState LOCKED/UNLOCKED):即時
-                    _handle_cell_on_off(cid, {"action": act}, ric_req_id)
-                    applied.append({"cell_id": cid, "action": act, "mode": "hard"})
+                    # 2026-09-17:以前不看結果,DU 找不到 cell 也照回 ACK(RIC 會誤以為成功)
+                    r = _handle_cell_on_off(cid, {"action": act}, ric_req_id)
+                    if getattr(r, "status_code", 200) >= 400:
+                        failed.append({"cell": cid, "reason": _response_message(r)})
+                    else:
+                        applied.append({"cell_id": cid, "action": act, "mode": "hard"})
+            if failed and not applied:
+                return error_response(f"CCC cell control rejected: {failed}", status=409)   # 409:adapter 不會把它當成 CU 不可達
             return success_response(
                 {"ric_req_id": ric_req_id, "service_model": "CCC",
                  "applied": applied, "failed": failed},
@@ -623,6 +629,13 @@ def _handle_slice_prb_quota(
 # ────────────────────────────────────────────────────────────
 # (Style 2, Action 7) Cell On/Off — energy saving xApp
 # ────────────────────────────────────────────────────────────
+
+def _response_message(resp: Any) -> str:
+    try:
+        return str(json.loads(resp.content or b"{}").get("message") or "")[:200]
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 def _handle_cell_on_off(
     cell_id: str, message: dict[str, Any], ric_req_id: dict[str, int]

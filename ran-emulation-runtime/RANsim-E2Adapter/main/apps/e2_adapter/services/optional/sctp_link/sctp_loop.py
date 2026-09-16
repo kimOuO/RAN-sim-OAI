@@ -1317,6 +1317,7 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
         _send_control_failure(
             sock, ric_req_id, e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
             cause=("ricRequest", "control-message-invalid"),
+            call_process_id=b"", style=2, action=0,
             reason="CCC control has no actionable cell state change",
         )
         return
@@ -1330,7 +1331,15 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
             params={"cell": c.get("cell_id", ""), "op": c.get("action", "")},
         )
     logger.info("CCC control → sim CU: %s", payload["cells"])
-    sim_http_client.call_control_request(payload)
+    # 2026-09-17:以前不看結果一律 ACK;CU 找不到 cell / DU 拒絕時要回 ControlFailure
+    if sim_http_client.call_control_request(payload) is None:
+        _send_control_failure(
+            sock, ric_req_id, e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
+            cause=("ricRequest", "control-message-invalid"),
+            call_process_id=b"", style=2, action=0,
+            reason=f"sim CU rejected CCC cell control: {payload['cells']}",
+        )
+        return
 
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
