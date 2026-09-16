@@ -123,7 +123,10 @@ def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_f
     node = {"nodeId": "cu", "meid": meid, "plmnId": _plmn_tbcd(), "nbIdBits": (format(int(gnb_id_hex, 16), "022b") if gnb_id_hex else None)}
     body = {"scenarioId": scene_run_uuid, "labels": {"scene_name": scene_name}, "profile": profile or settings.RIC_GATEWAY_PROFILE,
             "nodes": [node], "ranFunctions": ran_functions or [2, 3, 4, 5, 6],
-            "controlPolicy": {"allowedStyles": ["rc-reportcgi", "anr-add"], "allowWrite": True}}
+            "controlPolicy": {"allowedStyles": ["rc-reportcgi", "anr-add"], "allowWrite": True},
+            # 2026-09-16 RIC 端新增:開場時自動清掉同 meid 的殘留 E2 關聯(拆臨時節點後 m-release 無 Removal 留下的)。
+            # 只清「沒有 xApp 在收」的節點;常駐 e00 會被閘道擋下(409 ran-live)。
+            "cleanStale": True}
     gw = _gw("/v1/scenarios", body)
     # 2026-09-16:409 meid-already-bound = 閘道還留著上一輪(通常是 DELETE 逾時)綁這個 meid 的舊場景 → 找出來 DELETE 再登記一次
     if isinstance(gw, dict) and gw.get("error") == 409 and "meid-already-bound" in str(gw.get("body", "")):
