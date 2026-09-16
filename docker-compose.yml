@@ -16,6 +16,8 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: ransim-postgres
+    # 2026-09-16:預設 max_connections=100,開三個 run(4 個 cu_* DB 各一個 pgbouncer pool)就撞滿。
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: ransim
       POSTGRES_PASSWORD: ransim
@@ -48,8 +50,10 @@ services:
       AUTH_TYPE: scram-sha-256
       POOL_MODE: session
       MAX_CLIENT_CONN: "1000"
-      DEFAULT_POOL_SIZE: "60"
-      RESERVE_POOL_SIZE: "20"
+      # 2026-09-16:pool 是「每個 database」算的。開三個 run 時有 4 個 cu_* DB,
+      # 60+20 會要到 320 條 server 連線 → 撞 postgres max_connections。15+5 × 4 DB = 80。
+      DEFAULT_POOL_SIZE: "15"
+      RESERVE_POOL_SIZE: "5"
       MIN_POOL_SIZE: "2"
       SERVER_IDLE_TIMEOUT: "600"
       IGNORE_STARTUP_PARAMETERS: extra_float_digits

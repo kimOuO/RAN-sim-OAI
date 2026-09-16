@@ -517,3 +517,29 @@
 - 驗證:後端 8 個 app 讀端點 + 舊劇本相容端點全通(68 場景 / 149 gNB / 282 UE 完整);兩個前端 tsc 通過、3011/3012 回應;e2e_check 經新後端 start/stop 全鏈通過(UE 由 read_full_tree 取場景、五容器健康、歸檔、收尾)。
 - 踩到:歷史遷移的小寫 lazy ref(`'preset_catalog.antennapreset'`)要另外改;容器內產生的 root 檔案用 docker chown 處理;orchestrator 在後端換名期間 DNS 失敗導致兩個舊 run 的 health thread 停擺,重啟 orchestrator 恢復。
 - RIC 端(2026-09-16 04:xx 本地)確認修好:submgr 與 rtmgr 互鎖 + xApp 重試無退避。我方 8401/8402 pdu_sent 11 萬 / 13 萬、gateway subscriptionCount 各 6。e03(e2e_check 測試 run)在我方已無 adapter、閘道未登記,RIC e2term 仍留其關聯 = m-release 無 E2 Removal、我方關機只送 Reset 的已知限制,請 RIC 端手動移除。主機上三條 SCTP 關聯 = e01、e02 + 共用 e00(依決策保留)。
+
+## P7-A1 三層天線模型:資料模型 + RU 數學核心(2026-09-16)
+
+依 `new_plan/ru_antenna_mimo_plan.md` 階段 A1。把「元件 / TXRU / CSI-RS 埠」從一個 `rows×cols` 拆成三層。
+
+- **registry `antenna_preset` 擴充**(migration 0004,舊欄位語意不變:`rows`/`cols` = 單面板元件排列 M/N):
+  新增 `panels_mg/ng`、`panel_v/h_spacing`、`trx_v_group`、`trx_count`、`electrical_tilt_deg`、
+  `csi_ports`、`port_n1/n2`、`ru_category`(O-RAN Cat A/B)、`bf_method`、`gob_az/el_beams`。
+- **內建 preset 15 筆**(`seed_antenna_presets` 指令,冪等,`--update` 可覆寫):1×1 iso(OAI)、
+  TR 38.901 §7.8.1 大尺度校準(10×1)、§7.8.2 完整校準 Config 1(雙面板 4×4 雙極化)、
+  2T2R / 4T4R / 8T8R(Cat A)、16T16R / 32T32R / 64T64R(Cat B, predefined beam)、UE 1/2/4 埠。
+  64T64R = 192 元件(12×8 雙極化)→ 每 TXRU 垂直帶 3 片 → 64 TRX → 再虛擬化成 32 埠 (N1,N2)=(8,2)。
+- **RU `virtualization.py`**(元件 → TXRU):權重直接用 **TR 38.901 式 (7.3-1)**
+  `w_m = (1/√M)·exp(−j2π/λ·(m−1)·d_V·cos θ_etilt)`,θ_etilt = 90° + 電子下傾。
+  元件索引順序對齊 Sionna RT(查 `paths.py:818` 的張量維度確認:**極化慢、位置快;位置又是 col 慢、row 快**)。
+  另有 `port_mapping()` 做 TRX → 埠的第二層合併(64 TRX → 32 埠)。
+- **RU `codebook_type1.py`**(TXRU/埠 → 層):**TS 38.214 §5.2.2.2.1 Type I 單面板參數化產生器**,
+  涵蓋 2–32 埠、rank 1–4。原 `codebook.py` 其實是 **TS 38.211 §6.3.1.5 的 PUSCH 表**(照抄 OAI,只有 2/4 埠),
+  用在下行是權宜;新模組才是 PMI/RI 回報講的那一個,舊表保留作 UL 與回歸對照。
+- 驗證:窮舉 **12,246 個 PMI**,形狀 (ports×layers)、總功率 = 1、層間正交全數通過。
+  2 埠 rank 1 的 4 個 W 與 OAI 表的非退化 4 項逐項相符。
+  64T64R 的 W_virt (192×64):每欄功率 1、每片元件只屬於一個 TRX;電子下傾 6°、d_V 0.8λ 時相位遞增 30.1°(理論 2π·0.8·sin6° = 30.1°)。
+- 踩到:照 Table 5.2.2.2.1-3 字面取 (2O1,0)…(4O1,0) 當第二道波束偏移,在 N1=2 時 2·O1 ≡ 0 (mod N1·O1),
+  第二道波束退化成第一道 → rank 3/4 層間不正交。改成由 (N1,N2) 推出不繞回的組合。
+- 附帶修:pgbouncer pool 是「每個 database」算的,60+20 在三個 run(4 個 cu_* DB)時要 320 條 server 連線,
+  撞爆 postgres 預設 max_connections=100。pool 改 15+5,postgres `max_connections=300`。
