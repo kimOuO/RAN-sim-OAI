@@ -881,3 +881,22 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - **func2 假流量(e03)**:CU 的 KPM 校正 hook 會把數值換成 kpm-calib 的輸出,但 kpm-calib 對全 0 的輸入仍回 ~320 kbps / PRB ~1%。corridor_00_08 在 7.3 h 前本來就沒有流量,RIC 卻在 func2 看到 DRB.UEThpDl 約 54 萬 bps。修正:原始值為 0 的指標不做校正。修正後 e03 的 func2 回 0 / 0 / 0。
 - e00(共用 stack)沒有 CONNECTED UE,所以 func2 沒有指示可送,不是故障;RIC 端會把它排除在 mobiflow 的自動重訂之外。
 - e00 在 12:16 前重連 173 次、e04 每 22 秒重連:都是主機 SCTP 設定開機後沒生效造成,已修(922fe59),RIC 端已結案。
+
+## 2026-09-17 RIC 經閘道下 2-8(天線 / 波束控制)實測 — e04,全部成功
+
+e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:gnbDT_c0,使用 beam 8。RIC 經閘道送 7 步,間隔 30 秒(UTC 17:26:34–17:29:35)。adapter 紀錄的 instId 17–23 與 RIC 端一一對上。
+
+| 步驟 | 參數 | 回覆 | 我方 KPM(平均) |
+|---|---|---|---|
+| 基準 | — | — | SINR 23.83,rank 2,beam 8 |
+| 1 | max_layers=1 | ACK | rank 1 佔 27/31(其餘 4 筆在切換過渡期),SINR 23.66 |
+| 2 | max_layers=0, txru 50% | ACK | rank 2,SINR 21.83(−2.0 dB) |
+| 3 | txru 100%, taylor | ACK | SINR 22.59(−1.2 dB;RIC 量到 −0.98) |
+| 4 | none, beam 8 −6 dB | ACK | SINR 17.67(−5.3 dB),每層 SINR 也下降 |
+| 5 | beams 0,1 | ACK | beam 換成 1,SINR 9.48(RIC 量到 7.5,約 5–15 秒後到最低) |
+| 6 | tilt 0, beams 全部, 8:0 | ACK | 恢復:SINR 23.87,beam 8 |
+| 7 | nci=123(負面測試) | ControlFailure(ricRequest/control-message-invalid) | 設定不變 |
+
+- 第 3 步比原本預估多掉約 0.5 dB:原本 −0.5 dB 的預估來自先前單次的量測。以 Taylor(8) 的加窗效率計算,單一方向損失 −0.64 dB,水平、垂直兩個方向合計 −1.29 dB,再經 29 dB 失真上限壓縮後約為 −1 dB,與實測相符。TXRU 確實已回到 100%:若仍是 50%,SINR 應約 20.8 dB,實測是 22.6 dB。
+- 監控(ric_ctrl_watch,1 小時)在 RIC 回報確認後提前結束。它標記的 FAIL 只有第 7 步,是預期的負面結果。
+- e04 的天線是在執行期改的,run 重啟後會回到 1×1。
