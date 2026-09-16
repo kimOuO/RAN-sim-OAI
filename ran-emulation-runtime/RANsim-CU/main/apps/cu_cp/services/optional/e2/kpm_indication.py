@@ -107,6 +107,10 @@ def _apply_calibration(meas_data: list, last_meas, ue, serving_cell: str) -> Non
         cal = res.get("calibrated", {})
         for md in meas_data:
             wk = _NAME2WIRE.get(md["name"])
+            # 2026-09-17:原始值是 0(沒流量 / cell 沒用 PRB)就不校正。kpm-calib 的模型有底值,
+            # 輸入全 0 仍回 ~320 kbps、PRB ~1% → RIC 在沒流量的場景看到假流量(e03 事件)。
+            if md.get("value") in (0, 0.0):
+                continue
             if wk and wk in cal:
                 md["value"] = cal[wk]
     except Exception:  # noqa: BLE001 — 校正失敗絕不擋 KPM,保留 raw

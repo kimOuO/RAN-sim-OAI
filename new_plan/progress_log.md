@@ -872,3 +872,12 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
   - beam 8 −6 dB:18.9 dB。
   - 測完全部還原,天線改回 1×1。
 - 尚未做:E2SM-KPM 對 RIC 的每波束量測;目前 RIC 只能從 per-UE 的 beam_id 自己統計。
+
+## 2026-09-17 RIC 回覆處理
+
+- 閘道 0.8.4 場景啟用:orchestrator 在宣告 + 部署 xApp 後,每 5 秒呼叫一次 `activate`(最多 180 秒,409 時繼續等)。重啟四個 run 後都自動變成 active。啟用時的 warnings(還沒有訂閱)屬正常,訂閱隨後建立。
+- `controlPolicy.allowedStyles` 改用 env `RIC_GATEWAY_ALLOWED_STYLES`,compose 設為 RIC 端提供的名稱:rc-reportcgi, anr-add, 3-1, 2-6, ccc-lock, ccc-unlock。RC 2/8 在 RIC 端還沒有編碼,預定名稱 `2-8`。
+- platform_clients 原本的 meid 佔用重試引用了未定義的 `logger`(NameError),已補上。
+- **func2 假流量(e03)**:CU 的 KPM 校正 hook 會把數值換成 kpm-calib 的輸出,但 kpm-calib 對全 0 的輸入仍回 ~320 kbps / PRB ~1%。corridor_00_08 在 7.3 h 前本來就沒有流量,RIC 卻在 func2 看到 DRB.UEThpDl 約 54 萬 bps。修正:原始值為 0 的指標不做校正。修正後 e03 的 func2 回 0 / 0 / 0。
+- e00(共用 stack)沒有 CONNECTED UE,所以 func2 沒有指示可送,不是故障;RIC 端會把它排除在 mobiflow 的自動重訂之外。
+- e00 在 12:16 前重連 173 次、e04 每 22 秒重連:都是主機 SCTP 設定開機後沒生效造成,已修(922fe59),RIC 端已結案。
