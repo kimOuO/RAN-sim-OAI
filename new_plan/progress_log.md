@@ -543,3 +543,24 @@
   第二道波束退化成第一道 → rank 3/4 層間不正交。改成由 (N1,N2) 推出不繞回的組合。
 - 附帶修:pgbouncer pool 是「每個 database」算的,60+20 在三個 run(4 個 cu_* DB)時要 320 條 server 連線,
   撞爆 postgres 預設 max_connections=100。pool 改 15+5,postgres `max_connections=300`。
+- **三層貫通 RU 訊號鏈**(同日稍晚):
+  - RU `AntennaConfig` 加同一組三層欄位(migration 0007),write serializer 全可選(舊呼叫端 = 一片元件一個埠)。
+  - 新 `array_chain.py`:把 `virtualization.build()`(元件→TRX)與 `port_mapping()`(TRX→埠)乘好並依設定簽章快取;
+    `to_ports(H_elem, cfg)` 把物理回來的元件層 H 壓到埠層。元件數對不上時原樣回傳(相容舊 cache)。
+  - `precoder.apply_pmi(..., layout=(N1,N2))` 走 TS 38.214 Type I;不給 layout 沿用舊 OAI 表;單埠直接跳過預編碼。
+  - `dl_tti_pipeline` 先 `to_ports` 再預編碼,rank / 每層 SINR 改看埠層通道。
+  - registry preset 三層欄位經 `read_full_tree` → UE loader `_preset_to_array` → `ru_client.update_antenna` 一路帶到 RU。
+- **前端**:網路元件管理的天線分頁改三層顯示(圖樣 / M×N / 極化 / 面板 Mg,Ng / dV,dH / 增益 / **元件數(推導)** /
+  每TRX垂直 / TRX / 電子下傾 / CSI 埠 / **(N1,N2)(推導)** / O-RU Cat / BF 方法 / GoB 方位,仰角)。
+- **實測(mimo_check 場景,單 UE 定點 LOS,UE 2 埠)**:
+
+| gNB preset | 元件 | TRX | 埠 | (N1,N2) | Cat | rank | MCS | SINR | 吞吐 Mbps |
+|---|---|---|---|---|---|---|---|---|---|
+| 4T4R(舊測) | 4 | 4 | 4 | (2,1) | A | 1.99 | 13.0 | 19.6 | 42.4 |
+| 8T8R | 8 | 8 | 8 | (2,2) | A | 1.98 | 12.9 | 19.5 | 40.5 |
+| 32T32R | 128 | 32 | 32 | (8,2) | B | 2.00 | 13.0 | 19.7 | 41.2 |
+
+  8 埠與 32 埠在舊 OAI 表下會直接丟 CodebookError 退回 rank 1,現在 codebook 錯誤 0、RLF 0、physics 失敗 0。
+  32T32R 的 chain 實測為 (128×32) 非單位矩陣,每埠由 4 片元件合成、每埠功率 1。rank 停在 2 是因為 UE 只有 2 埠(rank ≤ min(rx,tx)),符合預期。
+- **已知落差(列入 A2)**:SINR 目前仍由純量 path_gain 算,沒有把陣列的相干合成增益算進去,所以 4/8/32 埠的 SINR 幾乎一樣。
+  正確做法是 SINR 改由預編碼後的有效通道 H_eff 推導。這是 A2(RU 端 RI/PMI 選擇)要一起處理的。

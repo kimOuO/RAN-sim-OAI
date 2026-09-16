@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from main.apps.beamforming.services.optional import codebook
+from main.apps.beamforming.services.optional import codebook, codebook_type1
 
 
 def _normalization(num_ports: int, num_layers: int) -> float:
@@ -15,13 +15,23 @@ def _normalization(num_ports: int, num_layers: int) -> float:
     return 1.0 / np.sqrt(num_ports)
 
 
-def apply_pmi(H: np.ndarray, *, pmi: int, layers: int) -> np.ndarray:
+def apply_pmi(H: np.ndarray, *, pmi: int, layers: int,
+              layout: tuple[int, int] | None = None) -> np.ndarray:
     """H: (num_rx, num_ports) channel matrix。
     回傳 H_eff: (num_rx, num_layers) 等效 channel（已正規化）。
+
+    layout = (N1, N2) 時走 **TS 38.214 §5.2.2.2.1 Type I 單面板**(下行 CSI 的 codebook,
+    2–32 埠);None 則沿用舊的 TS 38.211 §6.3.1.5 PUSCH 表(只有 2 / 4 埠)。
     """
     if H.ndim != 2:
         raise ValueError(f"H must be 2D (num_rx, num_ports), got {H.shape}")
     num_rx, num_ports = H.shape
+    if num_ports <= 1:
+        return H[:, :1]   # 單埠無預編碼
+    if layout is not None:
+        # Type I 的 W 已含 1/√(layers·ports) 正規化,不再乘 _normalization
+        W = codebook_type1.precoder(pmi=pmi, layers=layers, ports=num_ports, n1=layout[0], n2=layout[1])
+        return H @ W
     W = codebook.lookup(pmi=pmi, layers=layers, ports=num_ports)
     norm = _normalization(num_ports, layers)
     return (H @ W) * norm

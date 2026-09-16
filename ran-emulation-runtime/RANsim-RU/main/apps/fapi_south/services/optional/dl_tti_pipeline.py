@@ -13,7 +13,7 @@ from django.conf import settings
 from ran_sim_protocol.fapi import CqiIndication, DlTtiRequest
 from ran_sim_protocol.physics import PathSolverResponse
 
-from main.apps.beamforming.services.optional import codebook, precoder, sinr_estimator
+from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, precoder, sinr_estimator
 from main.apps.fapi_south.services.optional.channel_cache_loader import (
     get_channel_cache, is_cached_mode,
 )
@@ -324,6 +324,23 @@ def _path_gain_to_rsrp_dbm(
     )
 
 
+_ANT_CACHE: dict[str, object] = {"at": 0.0, "cfg": None}
+
+
+def _antenna_cfg():
+    """目前的 AntennaConfig(2 秒快取;陣列設定很少變,但每 tick 每 UE 都要用)。"""
+    import time as _t
+    now = _t.time()
+    if now - float(_ANT_CACHE["at"] or 0) > 2.0:
+        try:
+            from main.apps.antenna.models.antenna_config import AntennaConfig
+            _ANT_CACHE["cfg"] = AntennaConfig.objects.order_by("-antenna_config_updated_at").first()
+        except Exception:  # noqa: BLE001 — 沒設定就當 1×1
+            _ANT_CACHE["cfg"] = None
+        _ANT_CACHE["at"] = now
+    return _ANT_CACHE["cfg"]
+
+
 def _to_complex_matrix(raw: Any) -> np.ndarray:
     """Physics 回傳的 channel_matrix 元素可能是 [re,im] / {re,im} / 複數 string；統一吃成 ndarray。
 
@@ -562,8 +579,12 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             rank = 1
         else:
             try:
-                H = _to_complex_matrix(H_raw)
-                H_eff = precoder.apply_pmi(H, pmi=pdu.pmi, layers=pdu.layers)
+                H_elem = _to_complex_matrix(H_raw)
+                # 三層天線(2026-09-16):physics 回的是**元件層**,先經 virtualization + 埠映射
+                # 壓到**埠層**,PMI / RI 才是 TS 38.214 講的那個埠數。舊 1×1 設定下 chain = 單位矩陣。
+                H, _chain = array_chain.to_ports(H_elem, _antenna_cfg())
+                _layout = _chain.get("layout")
+                H_eff = precoder.apply_pmi(H, pmi=pdu.pmi, layers=pdu.layers, layout=_layout)
                 # RI 是「通道」能撐幾層,要看未預編碼的 H;用 H_eff(已被 DU 目前的 layers 壓成 layers 欄)
                 # 會永遠回報 DU 現在給的層數 → rank 卡在 1(2026-09-13 P5-3 實測)。上限 min(rx_ant, tx_ant, 4)。
                 rank = min(sinr_estimator.estimate_rank(H), int(min(H.shape)), 4) if H.size else 1
@@ -573,7 +594,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                     _s = np.linalg.svd(H, compute_uv=False)
                     _s1 = float(_s[0]) if _s.size and float(_s[0]) > 0 else 1.0
                     sinr_per_layer = [float(sinr_db) - 10.0 * math.log10(rank) + 20.0 * math.log10(max(float(_s[i]), 1e-12) / _s1) for i in range(int(rank))]
-            except codebook.CodebookError as exc:
+            except (codebook.CodebookError, codebook_type1.CodebookError, ValueError) as exc:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
                 rank = 1
 

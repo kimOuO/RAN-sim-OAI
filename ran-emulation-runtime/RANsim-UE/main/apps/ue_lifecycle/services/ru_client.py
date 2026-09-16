@@ -107,7 +107,11 @@ def update_antenna(tx: dict[str, Any], ue: dict[str, Any] | None = None) -> bool
     """P5:把 registry 的天線 preset 推到 RU(RU 再帶進 Physics 的 tx_config / rx_config)。
     tx / ue:{rows, cols, polarization, pattern, vertical_spacing, horizontal_spacing}"""
     url = f"{settings.SIM_RU_URL.rstrip('/')}/api/v0.1/RU/Config/RuController/update_antenna"
-    body: dict[str, Any] = {k: tx[k] for k in ("rows", "cols", "polarization", "pattern", "vertical_spacing", "horizontal_spacing") if k in tx}
+    _TX_KEYS = ("rows", "cols", "polarization", "pattern", "vertical_spacing", "horizontal_spacing",
+                # 三層天線(2026-09-16):TRX / 埠層
+                "panels_mg", "panels_ng", "trx_v_group", "trx_count", "electrical_tilt_deg",
+                "csi_ports", "port_n1", "port_n2", "ru_category")
+    body: dict[str, Any] = {k: tx[k] for k in _TX_KEYS if k in tx}
     if ue:
         body.update({"ue_rows": ue.get("rows"), "ue_cols": ue.get("cols"), "ue_pattern": ue.get("pattern"), "ue_polarization": ue.get("polarization")})
     try:

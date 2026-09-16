@@ -357,7 +357,14 @@ def positions_to_waypoints(positions: list[list[float]]) -> list[dict[str, float
 def _preset_to_array(p: dict) -> dict:
     """registry AntennaPreset → RU update_antenna / Physics 用的陣列 dict。"""
     return {"rows": int(p.get("rows") or 1), "cols": int(p.get("cols") or 1), "polarization": str(p.get("polarization") or "V"),
-            "pattern": str(p.get("pattern") or "tr38901"), "vertical_spacing": float(p.get("v_spacing") or 0.5), "horizontal_spacing": float(p.get("h_spacing") or 0.5)}
+            "pattern": str(p.get("pattern") or "tr38901"), "vertical_spacing": float(p.get("v_spacing") or 0.5), "horizontal_spacing": float(p.get("h_spacing") or 0.5),
+            # 三層天線(2026-09-16):元件層以外的兩層一併帶給 RU;舊 preset 沒這些欄位就用預設(= 一片元件一個埠)
+            "panels_mg": int(p.get("panels_mg") or 1), "panels_ng": int(p.get("panels_ng") or 1),
+            "trx_v_group": int(p.get("trx_v_group") or 1), "trx_count": int(p.get("trx_count") or 0),
+            "electrical_tilt_deg": float(p.get("electrical_tilt_deg") or 0.0),
+            "csi_ports": int(p.get("csi_ports") or 0),
+            "port_n1": int(p.get("port_n1") or 0), "port_n2": int(p.get("port_n2") or 0),
+            "ru_category": str(p.get("ru_category") or "A")}
 
 
 def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:

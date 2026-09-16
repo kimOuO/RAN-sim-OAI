@@ -22,6 +22,17 @@ class AntennaConfigWriteSerializer(serializers.Serializer):
     pattern = serializers.ChoiceField(choices=_PATTERN_VALUES)
     vertical_spacing = serializers.FloatField(required=False, default=0.5, min_value=0.1, max_value=4.0)
     horizontal_spacing = serializers.FloatField(required=False, default=0.5, min_value=0.1, max_value=4.0)
+    # 三層天線(2026-09-16;舊呼叫端不帶 → 用預設值,行為等同「一片元件 = 一個 TXRU = 一個埠」)
+    panels_mg = serializers.IntegerField(required=False, default=1, min_value=1, max_value=8)
+    panels_ng = serializers.IntegerField(required=False, default=1, min_value=1, max_value=8)
+    trx_v_group = serializers.IntegerField(required=False, default=1, min_value=1, max_value=16)
+    trx_count = serializers.IntegerField(required=False, default=0, min_value=0, max_value=1024)
+    electrical_tilt_deg = serializers.FloatField(required=False, default=0.0, min_value=-30.0, max_value=30.0)
+    csi_ports = serializers.IntegerField(required=False, default=0, min_value=0, max_value=32)
+    port_n1 = serializers.IntegerField(required=False, default=0, min_value=0, max_value=16)
+    port_n2 = serializers.IntegerField(required=False, default=0, min_value=0, max_value=16)
+    ru_category = serializers.ChoiceField(required=False, default='A', choices=['A', 'B'])
+
     ue_rows = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=16)
     ue_cols = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=16)
     ue_pattern = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=32)
@@ -39,5 +50,14 @@ class AntennaConfigReadSerializer(serializers.ModelSerializer):
             "pattern",
             "vertical_spacing",
             "horizontal_spacing",
+            "panels_mg",
+            "panels_ng",
+            "trx_v_group",
+            "trx_count",
+            "electrical_tilt_deg",
+            "csi_ports",
+            "port_n1",
+            "port_n2",
+            "ru_category",
             "antenna_config_updated_at",
         ]

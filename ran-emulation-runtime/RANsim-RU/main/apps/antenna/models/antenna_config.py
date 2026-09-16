@@ -34,6 +34,18 @@ class AntennaConfig(models.Model):
     pattern = models.CharField(max_length=32, choices=PATTERN_CHOICES)
     vertical_spacing = models.FloatField(default=0.5)
     horizontal_spacing = models.FloatField(default=0.5)
+    # ── 三層天線模型(2026-09-16):rows/cols 語意不變 = 單面板元件排列 M/N ──
+    # 元件層 (Mg,Ng,M,N,P) ──W_virt(TR 38.901 式 7.3-1)──▶ TRX 層 ──合併──▶ CSI-RS 埠層 (N1,N2)
+    panels_mg = models.PositiveIntegerField(default=1)
+    panels_ng = models.PositiveIntegerField(default=1)
+    trx_v_group = models.PositiveIntegerField(default=1)     # 每 TXRU 垂直帶幾片同極化元件
+    trx_count = models.PositiveIntegerField(default=0)       # 0 = 自動推
+    electrical_tilt_deg = models.FloatField(default=0.0)     # 正 = 往下
+    csi_ports = models.PositiveIntegerField(default=0)       # 0 = 等於 trx_count
+    port_n1 = models.PositiveIntegerField(default=0)         # TS 38.214 Type I
+    port_n2 = models.PositiveIntegerField(default=0)
+    ru_category = models.CharField(max_length=1, default='A')   # O-RAN WG4 CUS-plane
+
     # UE 端陣列(P5;None = 用 env UE_ARRAY_* / 1×1)
     ue_rows = models.PositiveIntegerField(null=True, blank=True)
     ue_cols = models.PositiveIntegerField(null=True, blank=True)
