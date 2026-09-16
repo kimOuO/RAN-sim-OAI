@@ -7,6 +7,7 @@ import { GnbLoadBoard } from '@/components/dashboard/GnbLoadBoard';
 import { Panel } from '@/components/dashboard/Panel';
 import { RangeBar } from '@/components/dashboard/RangeBar';
 import { RanRuntimePanel } from '@/components/dashboard/RanRuntimePanel';
+import { BeamUsagePanel } from '@/components/dashboard/BeamUsagePanel';
 import { RicObservationPanel } from '@/components/dashboard/RicObservationPanel';
 import { RicCommandTimeline } from '@/components/dashboard/RicCommandTimeline';
 import { StatTile } from '@/components/dashboard/StatTile';
@@ -57,6 +58,7 @@ export default function RunDashboardPage() {
         <Panel title="每 cell UE 數" span={4}><TimeSeriesChart series={p.charts.ueCount} yMin={0} xLabels={p.xLabels} digits={0} /></Panel>
         <Panel title="RAN 模擬執行狀況" sub={p.perRun ? 'per-run 容器 · UE driver / DU / E2' : '共用容器 · UE driver / DU / E2'} span={6}><RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} instances={p.instances} /></Panel>
         <Panel title="RIC 端觀測" sub="閘道登記 · E2 node 連線 · 觀測中的 xApp pod(30 s 更新)" span={6}><RicObservationPanel ric={p.ric} /></Panel>
+        <Panel title="波束使用分佈" sub="每 cell 的 GoB 波束(色深 = 使用比例,數字 = 平均 SINR);O-RAN WG1 §4.6.4.1 每波束統計" span={6}><BeamUsagePanel cells={p.beamCells} /></Panel>
         <Panel title="換手 / RLF · 每分鐘" span={3}><ColumnChart groups={[{ name: 'HO', color: STATUS.good, cols: p.eventBars.ho.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }, { name: 'RLF', color: STATUS.critical, cols: p.eventBars.rlf.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }]} /></Panel>
         <Panel title="SINR 分布(當下)" sub={`${p.ueRows.length} UE`} span={3}><ColumnChart groups={[{ name: 'UE', color: 'var(--cyan)', cols: p.sinrHist.map((b) => ({ label: `${b.x0}`, value: b.n })) }]} unit=" UE" /></Panel>
         <Panel title="UE 逐一觀測" sub="SINR 走勢 + serving cell 色帶,點選看全指標" span={12} table={rawTable}>

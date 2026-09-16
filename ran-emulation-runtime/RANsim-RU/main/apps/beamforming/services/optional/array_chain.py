@@ -23,12 +23,16 @@ _cache: dict[tuple, dict[str, Any]] = {}
 _CACHE_MAX = 8
 
 
-def signature(cfg: Any) -> tuple:
-    """AntennaConfig(或任何有同名屬性的物件)→ 快取鍵。"""
+def signature(cfg: Any, etilt: float | None = None) -> tuple:
+    """AntennaConfig(或任何有同名屬性的物件)→ 快取鍵。
+
+    etilt 不為 None 時覆寫電子下傾(B2:per-cell 的 RIC 控制值疊在 preset 預設值之上)。
+    """
     g = lambda k, d=0: getattr(cfg, k, d)  # noqa: E731
+    _tilt = float(g("electrical_tilt_deg", 0.0)) if etilt is None else float(etilt)
     return (int(g("rows", 1)), int(g("cols", 1)), str(g("polarization", "V")),
             int(g("panels_mg", 1)), int(g("panels_ng", 1)),
-            int(g("trx_v_group", 1)), int(g("trx_count", 0)), float(g("electrical_tilt_deg", 0.0)),
+            int(g("trx_v_group", 1)), int(g("trx_count", 0)), _tilt,
             int(g("csi_ports", 0)), int(g("port_n1", 0)), int(g("port_n2", 0)),
             float(g("vertical_spacing", 0.5)), str(g("ru_category", "A")))
 
@@ -61,9 +65,9 @@ def _derive(sig: tuple) -> dict[str, Any]:
             "layout": layout, "ru_category": cat}
 
 
-def get(cfg: Any) -> dict[str, Any]:
+def get(cfg: Any, etilt: float | None = None) -> dict[str, Any]:
     """回傳 {chain, n_elem, n_trx, n_ports, layout, ru_category}。"""
-    sig = signature(cfg)
+    sig = signature(cfg, etilt)
     with _lock:
         hit = _cache.get(sig)
         if hit is not None:
@@ -76,9 +80,9 @@ def get(cfg: Any) -> dict[str, Any]:
     return built
 
 
-def to_ports(H_elem: np.ndarray, cfg: Any) -> tuple[np.ndarray, dict[str, Any]]:
+def to_ports(H_elem: np.ndarray, cfg: Any, etilt: float | None = None) -> tuple[np.ndarray, dict[str, Any]]:
     """H(rx, n_elem) → H(rx, n_ports)。元件數對不上就原樣回傳(舊 cache / 舊 physics)。"""
-    info = get(cfg)
+    info = get(cfg, etilt)
     chain = info["chain"]
     if H_elem.ndim != 2 or H_elem.shape[1] != chain.shape[0]:
         return H_elem, {**info, "applied": False}

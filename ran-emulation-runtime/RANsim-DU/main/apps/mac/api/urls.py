@@ -13,6 +13,7 @@ urlpatterns = [
     path("MacCellController/replace_cells", MacCellController.replace_cells, name="mac_cell_replace_cells"),
     path("MacCellController/disable", MacCellController.disable, name="mac_cell_disable"),
     path("MacCellController/enable", MacCellController.enable, name="mac_cell_enable"),
+    path("MacCellController/set_beam_control", MacCellController.set_beam_control, name="mac_cell_beam_control"),
     path("MacUeStateController/read", MacUeStateController.read, name="mac_ue_read"),
     path("MacHarqController/read", MacHarqController.read, name="mac_harq_read"),
     # per-scenario 物理參數(inter-freq / discard / tx_power)— 劇本 start 套用,免 DU 專用 env

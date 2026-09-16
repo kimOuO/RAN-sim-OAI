@@ -624,3 +624,30 @@ rank / PMI / 每層 SINR 從 P5-3(2026-09-13)起都是拿這個錯形狀算的,
   方位候選 −61.0° … +61.0°(16 個)、仰角 −4.5 / 0 / +4.5 / +9.0°;
   選到 beamId 8,次佳低 1.65 dB、第三低 3.82 dB;歸檔與 CU 表都看得到 `beam=8 rank=2 sinr=32.6 每層=[29.55, 27.51]`。
 - 踩到:DU 的 `CqiIndicationSerializer` 是明確欄位白名單,新欄位沒加就會被吃掉 —— beam_id 一開始整條鏈都是 null。
+
+## P7-B2 波束的 RIC 控制 + 監控頁波束分佈(2026-09-16)
+
+- **per-cell 波束狀態**(RU `Cell` 模型,migration 0009):`electrical_tilt_deg`、`active_beam_ids`(GoB 子集,空 = 全部)、
+  `max_layers`(0 = 用全域)。語意對齊 O-RAN WG1 §4.6:前兩者屬 O1 / OFH M-plane 慢迴路,
+  `max_layers` 屬 E2 快迴路;我方目前只有 E2 通道,三者先都走 E2,程式內已註記之後接 O1 時分流。
+- **控制鏈**:xApp → adapter → CU `E2/Control/request` **RC (style 2, action 8) = Antenna/Beam Control**
+  → `DuClientBusinessService.post_beam_control` → DU `MacCellController/set_beam_control`(純轉送,DU 不存狀態)
+  → RU `BeamController/set`(部分更新)。另有 `BeamController/read` 讀回目前設定。
+- **RU 套用**:`array_chain.to_ports(..., etilt=)` 讓電子下傾 per-cell 生效(疊在 preset 預設值之上);
+  `gob.active_subset()` 篩 GoB;`max_layers` 同時作用在 Cat A 的 Type I 搜尋與 Cat B 的 `_cat_b_select`。
+- **實測(32T32R Cat B,單 UE 定點)**:
+
+| 步驟 | 控制 | SINR | rank | beam |
+|---|---|---|---|---|
+| 基準 | — | 32.56 dB | 2 | 8 |
+| 1 | 電子下傾 +10° | 33.14 dB | 2 | 8 |
+| 2 | 最大層數 = 1 | 33.14 dB | **1** | 8 |
+| 3 | GoB 只留 beam 0/1/2 | **15.25 dB** | 1 | **1** |
+| 4 | 回滾(下傾 0、層數 4、全波束) | 32.56 dB | 2 | 8 |
+
+  第 4 步逐項回到基準值,證明控制可回滾、無殘留。
+- **監控頁**:新增「波束使用分佈」面板,每 cell 列出用過的波束(色深 = 使用比例,數字 = 該波束平均 SINR),
+  對應 O-RAN WG1 §4.6.4.1 的每波束統計需求。
+- 踩到:(1) 用 heredoc 把方法附加到檔案尾端會掉到 class 外面 → DU URL 反射不到、整個 DU 起不來,
+  run start 因健康檢查失敗回滾;(2) CU 判成功時看 `success` 欄,但 DU 的 wrapper 用的是 `status: "success"`,
+  控制其實生效卻回報失敗;(3) `active_subset` 篩過的清單不能再用 beam_id 當索引。

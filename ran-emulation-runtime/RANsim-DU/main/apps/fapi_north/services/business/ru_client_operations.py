@@ -38,3 +38,15 @@ class RuClientBusinessService:
         except requests.RequestException as e:
             logger.warning("post_ul_tti_request failed: %s", e)
             return False
+
+    @staticmethod
+    def post_beam_control(payload: dict[str, Any], timeout: float = 5.0) -> dict[str, Any]:
+        """B2(2026-09-16):把 RIC 的波束控制轉給 RU(電子下傾 / GoB 子集 / 最大層數)。"""
+        import requests
+        url = f"{RuClientBusinessService._base_url()}/api/v0.1/RU/Config/BeamController/set"
+        try:
+            r = requests.post(url, json=payload, timeout=timeout)
+            body = r.json() if r.content else {}
+            return {"ok": r.status_code == 200, "status": r.status_code, "body": body}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "status": 0, "error": str(exc)}

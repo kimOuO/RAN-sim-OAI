@@ -145,6 +145,15 @@ def for_config(cfg: Any, chain_info: dict) -> list[Beam]:
     return _cache[key]
 
 
+def active_subset(beams: list[Beam], active_ids: list | None) -> list[Beam]:
+    """B2:RIC 指定的 GoB 子集。空 / None = 全部可用。找不到任何一個就退回全部。"""
+    if not active_ids:
+        return beams
+    want = {int(x) for x in active_ids}
+    sub = [b for b in beams if b.beam_id in want]
+    return sub or beams
+
+
 def select(H_port: np.ndarray, beams: list[Beam], *, top_k: int = 3) -> dict:
     """在 GoB 裡挑最佳波束。H_port: (rx, ports)。
 

@@ -97,6 +97,13 @@ class DuClientBusinessService:
         )
 
     @staticmethod
+    def post_beam_control(payload: dict[str, Any]) -> dict[str, Any]:
+        """B2(2026-09-16):RC (2,8) 波束控制 → DU → RU。"""
+        return DuClientBusinessService._post(
+            "/api/v0.1/DU/MAC/MacCellController/set_beam_control", payload,
+        )
+
+    @staticmethod
     def post_cell_enable(cell_id: str) -> dict[str, Any]:
         return DuClientBusinessService._post(
             "/api/v0.1/DU/MAC/MacCellController/enable", {"cell_id": cell_id},

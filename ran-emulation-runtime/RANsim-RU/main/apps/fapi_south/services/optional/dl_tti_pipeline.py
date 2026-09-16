@@ -324,12 +324,32 @@ def _path_gain_to_rsrp_dbm(
     )
 
 
-_MAX_RANK = get_int("RU_MAX_RANK", 4)   # cell 可支援的最大層數(之後由 E2 控制)
+_MAX_RANK = get_int("RU_MAX_RANK", 4)   # cell 預設最大層數;per-cell 可由 E2 控制覆寫
+_BEAM_CTRL_CACHE: dict[str, object] = {"at": 0.0, "map": {}}
+
+
+def _beam_ctrl(cell_name: str) -> dict:
+    """B2:某個 cell 目前的波束控制狀態(RIC 可改;2 秒快取)。"""
+    import time as _t
+    now = _t.time()
+    if now - float(_BEAM_CTRL_CACHE["at"] or 0) > 2.0:
+        try:
+            from main.apps.antenna.models.cell import Cell
+            _BEAM_CTRL_CACHE["map"] = {
+                c.name: {"etilt": float(c.electrical_tilt_deg or 0.0),
+                         "beams": list(c.active_beam_ids or []),
+                         "max_layers": int(c.max_layers or 0)}
+                for c in Cell.objects.all()
+            }
+        except Exception:  # noqa: BLE001
+            _BEAM_CTRL_CACHE["map"] = {}
+        _BEAM_CTRL_CACHE["at"] = now
+    return (_BEAM_CTRL_CACHE["map"] or {}).get(cell_name) or {"etilt": 0.0, "beams": [], "max_layers": 0}
 _CSI_CACHE: dict[tuple, dict] = {}
 _CSI_CACHE_MAX = 512
 
 
-def _cat_b_select(H: np.ndarray, beam, gamma_ref_lin: float, layout) -> dict:
+def _cat_b_select(H: np.ndarray, beam, gamma_ref_lin: float, layout, max_rank: int = 4) -> dict:
     """O-RAN Cat B predefined-beam:波束由 O-RU 的 GoB 決定,只在該波束上挑層數。
 
     rank 1 = 兩個極化同相送一道波束;rank 2 = 同一道波束用雙極化送兩層
@@ -343,7 +363,7 @@ def _cat_b_select(H: np.ndarray, beam, gamma_ref_lin: float, layout) -> dict:
     rank1_gain = float(np.sum(np.abs(He1) ** 2))
     best = {"rank": 1, "pmi": int(beam.beam_id), "layer_sinr_lin": [float(g1[0])],
             "rank1_gain": rank1_gain, "capacity": float(np.log2(1.0 + g1[0]))}
-    if H.shape[0] >= 2:
+    if H.shape[0] >= 2 and int(max_rank) >= 2:   # B2:RIC 可把 cell 的最大層數壓到 1
         W2 = gob.rank2_weights(n1, n2, beam.l, beam.m, o1, o2)
         g2 = csi_selection.layer_sinr(Hn @ W2, gamma_ref_lin)
         c2 = float(np.sum(np.log2(1.0 + g2)))
@@ -353,14 +373,15 @@ def _cat_b_select(H: np.ndarray, beam, gamma_ref_lin: float, layout) -> dict:
     return best
 
 
-def _csi_for(ue_id: str, H: np.ndarray, gamma_ref_lin: float, layout) -> dict:
+def _csi_for(ue_id: str, H: np.ndarray, gamma_ref_lin: float, layout, max_rank: int | None = None) -> dict:
     """RI/PMI 選擇(有快取)。鍵含通道指紋 → UE 沒動就不重算(等效於 CSI 回報週期)。"""
+    max_rank = int(max_rank or _MAX_RANK)
     key = (ue_id, H.shape, round(float(np.sum(np.abs(H) ** 2)), 6),
-           round(float(np.real(H.ravel()[0])), 4), round(math.log10(max(gamma_ref_lin, 1e-12)), 2), layout)
+           round(float(np.real(H.ravel()[0])), 4), round(math.log10(max(gamma_ref_lin, 1e-12)), 2), layout, max_rank)
     hit = _CSI_CACHE.get(key)
     if hit is not None:
         return hit
-    sel = csi_selection.select(H, gamma_ref_lin=gamma_ref_lin, layout=layout, max_rank=_MAX_RANK)
+    sel = csi_selection.select(H, gamma_ref_lin=gamma_ref_lin, layout=layout, max_rank=max_rank)
     if len(_CSI_CACHE) >= _CSI_CACHE_MAX:
         _CSI_CACHE.clear()
     _CSI_CACHE[key] = sel
@@ -639,21 +660,27 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 H_elem = _to_complex_matrix(H_raw)
                 # 三層天線(2026-09-16):physics 回的是**元件層**,先經 virtualization + 埠映射
                 # 壓到**埠層**,PMI / RI 才是 TS 38.214 講的那個埠數。舊 1×1 設定下 chain = 單位矩陣。
-                H, _chain = array_chain.to_ports(H_elem, _antenna_cfg())
+                # B2:per-cell 的 RIC 控制值(電子下傾疊在 preset 之上)
+                _bc = _beam_ctrl(serving_label or "")
+                _etilt = (float(getattr(_antenna_cfg(), "electrical_tilt_deg", 0.0) or 0.0)
+                          + float(_bc["etilt"])) if _bc["etilt"] else None
+                H, _chain = array_chain.to_ports(H_elem, _antenna_cfg(), etilt=_etilt)
                 _layout = _chain.get("layout")
                 if H.size and H.shape[1] > 1 and sinr_db != -float("inf"):
                     _g_ref = 10.0 ** (float(sinr_db) / 10.0)
                     # B1(2026-09-16):GoB。Cat A 也算,只是拿來當 KPI(O-RAN WG1 §4.6.4.1 要每波束 RSRP);
                     # Cat B + predefined-beam 則直接用 beamId 對應的權重做預編碼(O-DU 只送 beamId)。
-                    _beams = gob.for_config(_antenna_cfg(), _chain)
+                    _beams = gob.active_subset(gob.for_config(_antenna_cfg(), _chain), _bc["beams"])
                     if _beams:
                         _bsel = gob.select(H, _beams)
                         beam_id = _bsel.get("beam_id")
                         beam_top = _bsel.get("top") or []
                     if _chain.get("ru_category") == "B" and _beams and beam_id is not None:
-                        _sel = _cat_b_select(H, _beams[beam_id], _g_ref, _layout)
+                        # 注意:_beams 可能已被 active_subset 篩過,不能用 beam_id 當索引
+                        _b = next((b for b in _beams if b.beam_id == beam_id), _beams[0])
+                        _sel = _cat_b_select(H, _b, _g_ref, _layout, max_rank=(_bc["max_layers"] or _MAX_RANK))
                     else:
-                        _sel = _csi_for(pdu.ue_id, H, _g_ref, _layout)
+                        _sel = _csi_for(pdu.ue_id, H, _g_ref, _layout, max_rank=(_bc["max_layers"] or _MAX_RANK))
                     rank = int(_sel["rank"])
                     rank_pmi = int(_sel["pmi"])
                     # 寬頻 SINR 改由「最佳單層預編碼」的陣列增益推導 → 天線變大 SINR 才會變好

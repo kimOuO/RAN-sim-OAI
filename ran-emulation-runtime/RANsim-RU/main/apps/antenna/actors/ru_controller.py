@@ -10,6 +10,7 @@ import json
 import os
 
 from django.db import transaction
+from django.http import HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -21,6 +22,7 @@ from main.apps.antenna.serializers.antenna_serializers import (
     AntennaConfigWriteSerializer,
 )
 from main.apps.antenna.serializers.cell_serializers import (
+    BeamControlWriteSerializer,
     CellListWriteSerializer,
     CellReadSerializer,
 )
@@ -260,3 +262,53 @@ class RuController:
         set_inter_freq(enabled)
         logger.info("set_inter_freq: %s", enabled)
         return success_response({"inter_freq": enabled}, "inter_freq applied", 200)
+
+
+class BeamController:
+    """B2(2026-09-16):RIC 可控的波束狀態(per cell)。
+
+    O-RAN 語意:electrical_tilt / active_beam_ids 是 O1 / OFH M-plane 的慢迴路,
+    max_layers 是 E2 的快迴路。我方目前只有 E2 通道,所以三者都經 CU 的 RC (2,8) 進來,
+    註記在這裡,之後接 O1 模擬端點時再分流。
+    """
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def set(request: HttpRequest):
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        ser = BeamControlWriteSerializer(data=payload)
+        if not ser.is_valid():
+            return error_response("Validation failed", ser.errors, 400)
+        v = ser.validated_data
+        cell = Cell.objects.filter(name=v["cell_id"]).first()
+        if cell is None:
+            return error_response("Not found", f"cell {v['cell_id']}", 404)
+        changed = {}
+        if v.get("electrical_tilt_deg") is not None:
+            cell.electrical_tilt_deg = float(v["electrical_tilt_deg"]); changed["electrical_tilt_deg"] = cell.electrical_tilt_deg
+        if v.get("active_beam_ids") is not None:
+            cell.active_beam_ids = [int(x) for x in v["active_beam_ids"]]; changed["active_beam_ids"] = cell.active_beam_ids
+        if v.get("max_layers") is not None:
+            cell.max_layers = int(v["max_layers"]); changed["max_layers"] = cell.max_layers
+        if changed:
+            cell.cell_updated_at = TimestampService.get_current_timestamp()
+            cell.save()
+        logger.info("set_beam_control %s → %s", cell.name, changed)
+        return success_response({"cell_id": cell.name, "changed": changed,
+                                 "electrical_tilt_deg": cell.electrical_tilt_deg,
+                                 "active_beam_ids": cell.active_beam_ids,
+                                 "max_layers": cell.max_layers}, "beam control applied", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def read(request: HttpRequest):
+        rows = [{"cell_id": c.name, "electrical_tilt_deg": c.electrical_tilt_deg,
+                 "active_beam_ids": c.active_beam_ids or [], "max_layers": c.max_layers,
+                 "mechanical_tilt_deg": c.tilt_deg, "azimuth_deg": c.azimuth_deg}
+                for c in Cell.objects.all().order_by("name")]
+        return success_response(rows, "ok", 200)

@@ -13,6 +13,12 @@ class Cell(models.Model):
     pci = models.IntegerField(db_index=True)
     azimuth_deg = models.FloatField(default=0.0)
     tilt_deg = models.FloatField(default=0.0)   # 機械下傾,正 = 往下(P5,進 Sionna orientation)
+    # B2(2026-09-16):RIC 可控的波束狀態。語意對齊 O-RAN WG1 §4.6:
+    #   electrical_tilt_deg / active_beam_ids 屬 O1 / OFH M-plane 的慢迴路,
+    #   max_layers 屬 E2 的快迴路。這裡都存在 cell 上,由 set_beam_control 端點改。
+    electrical_tilt_deg = models.FloatField(default=0.0)       # 正 = 往下;疊在天線 preset 的預設值之上
+    active_beam_ids = models.JSONField(default=list, blank=True)  # GoB 子集;空 = 全部可用
+    max_layers = models.PositiveIntegerField(default=0)        # 0 = 用全域 RU_MAX_RANK
     ul_load = models.FloatField(default=0.0)    # 上一 tick UL PRB 負載 0–1(DU 經 dl_tti 推來;P6 上行干擾用)
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)

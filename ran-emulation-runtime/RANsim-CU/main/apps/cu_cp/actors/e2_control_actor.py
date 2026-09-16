@@ -122,6 +122,12 @@ class E2ControlActor:
       (2, 7) = Radio Resource Allocation / Cell On/Off     ← Energy-saving xApp 用
                   control_header.cell_id required
                   control_message.action: 'enable' | 'disable'
+      (2, 8) = Antenna / Beam Control                      ← B2(2026-09-16)mMIMO 用
+                  control_header.cell_id required
+                  control_message.{electrical_tilt_deg?, active_beam_ids?, max_layers?}
+                  ★ 前兩者在 O-RAN 是 O1 / OFH M-plane 的慢迴路(WG1 §4.6.3.1/§4.6.3.3),
+                    max_layers 才是 E2 快迴路。我方目前只有 E2 通道,先都走這裡,
+                    之後接 O1 模擬端點時再分流。
     """
 
     @staticmethod
@@ -192,6 +198,24 @@ class E2ControlActor:
             return _handle_handover(ue_id, message, ric_req_id, ue_src=ue_src)
         if style == 2 and action_id == 6:
             return _handle_slice_prb_quota(header, message, ric_req_id)
+        if style == 2 and action_id == 8:
+            cid = header.get("cell_id") or header.get("node")
+            if not cid:
+                return error_response("cell_id required for style=2 action=8 (beam control)", status=400)
+            msg = body.get("control_message") or {}
+            payload = {"cell_id": cid}
+            for k in ("electrical_tilt_deg", "active_beam_ids", "max_layers"):
+                if msg.get(k) is not None:
+                    payload[k] = msg[k]
+            if len(payload) == 1:
+                return error_response("control_message must contain at least one of "
+                                      "electrical_tilt_deg / active_beam_ids / max_layers", status=400)
+            res = DuClientBusinessService.post_beam_control(payload) or {}
+            # DU 用 utils/response 的 wrapper:{status:"success"|..., message, data}
+            ok = str(res.get("status", "")).lower() == "success" or bool(res.get("success"))
+            logger.info("RC(2,8) beam control %s → %s", payload, str(res)[:200])
+            return (success_response(res.get("data") or res, "beam control applied", 200) if ok
+                    else error_response("beam control failed", res, 502))
         if style == 2 and action_id == 7:
             if not cell_id:
                 return error_response("cell_id required for style=2 action=7 (cell on/off)", status=400)

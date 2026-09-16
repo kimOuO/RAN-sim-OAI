@@ -55,3 +55,19 @@ class CellReadSerializer(serializers.ModelSerializer):
 
     def get_position(self, obj: Cell):
         return [obj.position_x, obj.position_y, obj.position_z]
+
+
+class BeamControlWriteSerializer(serializers.Serializer):
+    """B2(2026-09-16):RIC 對單一 cell 的波束控制(部分更新,沒帶的欄位不動)。
+
+    語意對齊 O-RAN WG1 §4.6:
+      electrical_tilt_deg / active_beam_ids → O1 / OFH M-plane 的慢迴路
+      max_layers                            → E2 的快迴路
+    """
+    cell_id = serializers.CharField(max_length=128)
+    electrical_tilt_deg = serializers.FloatField(required=False, allow_null=True, default=None,
+                                                 min_value=-30.0, max_value=30.0)
+    active_beam_ids = serializers.ListField(child=serializers.IntegerField(min_value=0), required=False,
+                                            allow_null=True, default=None)
+    max_layers = serializers.IntegerField(required=False, allow_null=True, default=None,
+                                          min_value=0, max_value=4)

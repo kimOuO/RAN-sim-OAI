@@ -207,6 +207,29 @@ class MacCellController:
         return success_response(CellStateReadSerializer(obj.__dict__).data, "Updated")
 
 
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def set_beam_control(request):
+        """B2:RIC → CU → DU → RU 的波束控制轉送。DU 自己不存狀態(波束是 O-RU 的東西)。
+
+        body: {cell_id, electrical_tilt_deg?, active_beam_ids?, max_layers?}
+        """
+        import json as _json
+        from main.apps.fapi_north.services.business.ru_client_operations import RuClientBusinessService
+        try:
+            payload = _json.loads(request.body or b"{}")
+        except _json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        if not payload.get("cell_id"):
+            return error_response("Validation failed", {"cell_id": "required"}, 400)
+        res = RuClientBusinessService.post_beam_control(payload)
+        if not res.get("ok"):
+            return error_response("RU rejected beam control", res, 502)
+        return success_response((res.get("body") or {}).get("data") or {}, "beam control forwarded", 200)
+
+
 def _upsert_with_created_flag(model_class, lookup_field, lookup_value, data):
     """upsert + 回傳 (obj, was_created)。Business Service 通用 API 不暴露 created flag。"""
     obj, created = model_class.objects.update_or_create(

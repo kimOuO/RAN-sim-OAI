@@ -6,6 +6,7 @@ import { usePolling } from '@/hooks/base/usePolling';
 import { listControlEvents, listHandoverEvents, listKpmSamples, listLaunchRequests } from '@/services/api/archive';
 import { DU_API, E2ADAPTER_API, UE_API } from '@/config';
 import { getDuTick, getE2AdapterStatus, getRicObservation, getRun, getSceneTree, getUeDriverStatus, listDuCells, listRunInstances, listScenes, runtimeBase } from '@/services/api/runs';
+import { beamUsage } from '@/hooks/feature/beamDerive';
 import { allCells, allUes, bucketEvents, cellColorMap, cellSeries, groupCellsByGnb, histogram, latestUes, mean, meanMcsByCell, meanRlcDelayByCell, meanSinrByCell, prbDl, prbUl, thpDlByCell, thpUlByCell, ueCountByCell, ueSeries, ueServingStrip } from '@/hooks/feature/kpmDerive';
 import type { KpmSample } from '@/types/telemetry';
 
@@ -74,6 +75,6 @@ export function useRunDashboardPage(runUuid: string) {
     run: run.data, sceneName: (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid)?.legacy_scenario_id ?? '', status: run.status, error: run.error,
     all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
     handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], commandImpact, launches: launches.data ?? [],
-    duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, instances: instances.data ?? [], ric: ric.data ?? null, perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,
+    duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, instances: instances.data ?? [], ric: ric.data ?? null, beamCells: beamUsage(view), perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,
   };
 }
