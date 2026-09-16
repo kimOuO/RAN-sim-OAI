@@ -1257,7 +1257,7 @@ _REQUIRED_RAN_PARAMS: dict[tuple[int, int], set[int]] = {
 }
 # 必要以外還可帶的 ranP(沒列的 = 只能帶必要的)
 _OPTIONAL_RAN_PARAMS: dict[tuple[int, int], set[int]] = {
-    (2, 8): {2, 3, 4},   # tilt / active beams / max layers,至少一個由 CU 檢查
+    (2, 8): {2, 3, 4, 5, 6, 7},   # tilt / beams / layers / TRX 比例 / taper / 每波束功率,至少一個由 CU 檢查
 }
 # Sim CU's hardcoded RC ran_function_id (must match rc-probe expectation)
 _RC_RAN_FUNCTION_ID = 3

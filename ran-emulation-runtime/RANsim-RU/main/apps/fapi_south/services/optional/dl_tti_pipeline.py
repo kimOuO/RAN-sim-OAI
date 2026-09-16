@@ -13,7 +13,7 @@ from django.conf import settings
 from ran_sim_protocol.fapi import CqiIndication, DlTtiRequest
 from ran_sim_protocol.physics import PathSolverResponse
 
-from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, csi_selection, gob, precoder, sinr_estimator
+from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, csi_selection, gob, precoder, sinr_estimator, virtualization
 from main.apps.fapi_south.services.optional.channel_cache_loader import (
     get_channel_cache, is_cached_mode,
 )
@@ -360,13 +360,17 @@ def _beam_ctrl(cell_name: str) -> dict:
             _BEAM_CTRL_CACHE["map"] = {
                 c.name: {"etilt": float(c.electrical_tilt_deg or 0.0),
                          "beams": list(c.active_beam_ids or []),
-                         "max_layers": int(c.max_layers or 0)}
+                         "max_layers": int(c.max_layers or 0),
+                         "trx_ratio": float(getattr(c, "trx_active_ratio", 1.0) or 1.0),
+                         "taper": str(getattr(c, "beam_taper", "") or ""),
+                         "beam_pwr": dict(getattr(c, "beam_power_offsets_db", None) or {})}
                 for c in Cell.objects.all()
             }
         except Exception:  # noqa: BLE001
             _BEAM_CTRL_CACHE["map"] = {}
         _BEAM_CTRL_CACHE["at"] = now
-    return (_BEAM_CTRL_CACHE["map"] or {}).get(cell_name) or {"etilt": 0.0, "beams": [], "max_layers": 0}
+    return (_BEAM_CTRL_CACHE["map"] or {}).get(cell_name) or {"etilt": 0.0, "beams": [], "max_layers": 0,
+                                                              "trx_ratio": 1.0, "taper": "", "beam_pwr": {}}
 _CSI_CACHE: dict[tuple, dict] = {}
 _CSI_CACHE_MAX = 512
 
@@ -713,7 +717,16 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 _bc = _beam_ctrl(serving_label or "")
                 _etilt = (float(getattr(_antenna_cfg(), "electrical_tilt_deg", 0.0) or 0.0)
                           + float(_bc["etilt"])) if _bc["etilt"] else None
-                H, _chain = array_chain.to_ports(H_elem, _antenna_cfg(), etilt=_etilt)
+                # 2026-09-17:節能關 TXRU / 波束加窗 —— 元件層權重,在虛擬化之前乘上
+                _cfg = _antenna_cfg()
+                if _cfg is not None and (_bc.get("trx_ratio", 1.0) < 0.999 or _bc.get("taper")):
+                    _ew = virtualization.element_weights(
+                        rows=_cfg.rows, cols=_cfg.cols, polarization=_cfg.polarization,
+                        panels_mg=getattr(_cfg, "panels_mg", 1) or 1, panels_ng=getattr(_cfg, "panels_ng", 1) or 1,
+                        trx_active_ratio=_bc.get("trx_ratio", 1.0), taper=_bc.get("taper", ""))
+                    if _ew is not None and H_elem.ndim == 2 and H_elem.shape[1] == _ew.size:
+                        H_elem = H_elem * _ew[None, :]
+                H, _chain = array_chain.to_ports(H_elem, _cfg, etilt=_etilt)
                 _layout = _chain.get("layout")
                 if H.size and H.shape[1] > 1 and sinr_db != -float("inf"):
                     _g_ref = _apply_evm_lin(10.0 ** (float(sinr_db) / 10.0))   # 選 rank 也要看失真上限,否則近場永遠選滿層
@@ -734,8 +747,14 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                     rank_pmi = int(_sel["pmi"])
                     # 寬頻 SINR 改由「最佳單層預編碼」的陣列增益推導 → 天線變大 SINR 才會變好
                     array_gain_db = 10.0 * math.log10(max(float(_sel["rank1_gain"]), 1e-12))
+                    # Cat B 每波束功率(WG1 §4.6.3):RIC 壓低某道波束 → 用它的 UE 訊號跟著降
+                    _pwr = 0.0
+                    if _chain.get("ru_category") == "B" and beam_id is not None:
+                        _pwr = float((_bc.get("beam_pwr") or {}).get(str(beam_id), 0.0))
+                    array_gain_db += _pwr
                     sinr_db = float(sinr_db) + array_gain_db
-                    sinr_per_layer = [10.0 * math.log10(max(_apply_evm_lin(g), 1e-12)) for g in _sel["layer_sinr_lin"]]
+                    sinr_per_layer = [10.0 * math.log10(max(_apply_evm_lin(g * 10.0 ** (_pwr / 10.0)), 1e-12))
+                                      for g in _sel["layer_sinr_lin"]]
                 else:
                     rank = 1
             except (codebook.CodebookError, codebook_type1.CodebookError, ValueError) as exc:

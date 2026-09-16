@@ -294,6 +294,13 @@ class BeamController:
             cell.active_beam_ids = [int(x) for x in v["active_beam_ids"]]; changed["active_beam_ids"] = cell.active_beam_ids
         if v.get("max_layers") is not None:
             cell.max_layers = int(v["max_layers"]); changed["max_layers"] = cell.max_layers
+        if v.get("trx_active_ratio") is not None:
+            cell.trx_active_ratio = float(v["trx_active_ratio"]); changed["trx_active_ratio"] = cell.trx_active_ratio
+        if v.get("beam_taper") is not None:
+            cell.beam_taper = "" if v["beam_taper"] == "none" else v["beam_taper"]; changed["beam_taper"] = cell.beam_taper
+        if v.get("beam_power_offsets_db") is not None:
+            cell.beam_power_offsets_db = {str(int(k)): float(x) for k, x in v["beam_power_offsets_db"].items()}
+            changed["beam_power_offsets_db"] = cell.beam_power_offsets_db
         if changed:
             cell.cell_updated_at = TimestampService.get_current_timestamp()
             cell.save()
@@ -301,7 +308,9 @@ class BeamController:
         return success_response({"cell_id": cell.name, "changed": changed,
                                  "electrical_tilt_deg": cell.electrical_tilt_deg,
                                  "active_beam_ids": cell.active_beam_ids,
-                                 "max_layers": cell.max_layers}, "beam control applied", 200)
+                                 "max_layers": cell.max_layers,
+                                 "trx_active_ratio": cell.trx_active_ratio, "beam_taper": cell.beam_taper,
+                                 "beam_power_offsets_db": cell.beam_power_offsets_db}, "beam control applied", 200)
 
     @staticmethod
     @csrf_exempt
@@ -309,6 +318,8 @@ class BeamController:
     def read(request: HttpRequest):
         rows = [{"cell_id": c.name, "electrical_tilt_deg": c.electrical_tilt_deg,
                  "active_beam_ids": c.active_beam_ids or [], "max_layers": c.max_layers,
+                 "trx_active_ratio": c.trx_active_ratio, "beam_taper": c.beam_taper,
+                 "beam_power_offsets_db": c.beam_power_offsets_db or {},
                  "mechanical_tilt_deg": c.tilt_deg, "azimuth_deg": c.azimuth_deg}
                 for c in Cell.objects.all().order_by("name")]
         return success_response(rows, "ok", 200)

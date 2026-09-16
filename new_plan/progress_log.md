@@ -855,3 +855,20 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - DU cached 模式自己重算寬頻 SINR 時,以前會蓋掉陣列增益 → CqiIndication 新增 `array_gain_db`,DU 在失真上限之前加回。
 - physics 的 CUDA 再次靜默失效(對其他容器下 `docker update` 後),已重啟 physics 恢復。
 - 進行中:corridor_24h 以 K=8 重算(約 1.4 GB,預計 8 小時以上),完成後切三段並重啟三個 corridor run。舊檔備份為 `corridor_24h.pre_paths.npz`。
+
+## 2026-09-17 天線收尾 3:其餘 O1 天線控制 + 每波束統計
+
+- RU Cell 新增三個 per-cell 控制(migration 0010),BeamController set / read 已支援:
+  - `trx_active_ratio`:節能關 TXRU。每片面板每個極化只留中間幾欄,不重新正規化,所以總功率和陣列增益一起降。
+  - `beam_taper`:none / hamming / taylor。Taylor 窗自己實作(與 scipy 同算法),正規化成總功率不變,效果是主瓣變寬。
+  - `beam_power_offsets_db`:Cat B 每道波束的功率偏移;選到該波束時,寬頻 SINR、各層 SINR 和 array_gain_db 都一起調整。
+- 實作位置:`virtualization.element_weights` 產生元件層權重,pipeline 在虛擬化之前乘到 H_elem 上。
+- E2:RC 2/8 新增 ranP 5(TRX 比例,百分比)、6(taper 字串)、7(每波束功率,`"beamId:dB,…"`,只接受 ≤ 0);RFD 已宣告,adapter 允許這三個參數,CU 會轉送。adapter 測試 24 項通過。
+- 歸檔:per_cell 新增 `beams`,內容為 {beam_id: ue_count, rsrp_avg_dbm, sinr_avg_db, sinr_min_db, prb_dl, thp_dl_mbps},另有 `beam_switches`(同一 cell 內換波束的次數,換 cell 不算)。
+- e04 驗證(32T32R Cat B,UE 2 埠,經 CU RC 2/8):
+  - 基準:23.9 dB,rank 2,beam 8。
+  - TRX 50%:21.7 dB。原始值約少 6 dB,被 29 dB 失真上限壓縮。
+  - taylor:23.4 dB。
+  - beam 8 −6 dB:18.9 dB。
+  - 測完全部還原,天線改回 1×1。
+- 尚未做:E2SM-KPM 對 RIC 的每波束量測;目前 RIC 只能從 per-UE 的 beam_id 自己統計。

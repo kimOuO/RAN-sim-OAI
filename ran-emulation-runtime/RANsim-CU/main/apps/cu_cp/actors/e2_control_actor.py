@@ -211,12 +211,14 @@ class E2ControlActor:
             if not cid:
                 return error_response("cell_id / target_cgi required for style=2 action=8 (beam control)", status=409)
             payload = {"cell_id": cid}
-            for k in ("electrical_tilt_deg", "active_beam_ids", "max_layers"):
+            for k in ("electrical_tilt_deg", "active_beam_ids", "max_layers",
+                      "trx_active_ratio", "beam_taper", "beam_power_offsets_db"):
                 if msg.get(k) is not None:
                     payload[k] = msg[k]
             if len(payload) == 1:
                 return error_response("control_message must contain at least one of "
-                                      "electrical_tilt_deg / active_beam_ids / max_layers", status=409)
+                                      "electrical_tilt_deg / active_beam_ids / max_layers / trx_active_ratio / "
+                                      "beam_taper / beam_power_offsets_db", status=409)
             res = DuClientBusinessService.post_beam_control(payload) or {}
             # DU 用 utils/response 的 wrapper:{status:"success"|..., message, data}
             ok = str(res.get("status", "")).lower() == "success" or bool(res.get("success"))

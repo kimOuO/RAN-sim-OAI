@@ -71,3 +71,10 @@ class BeamControlWriteSerializer(serializers.Serializer):
                                             allow_null=True, default=None)
     max_layers = serializers.IntegerField(required=False, allow_null=True, default=None,
                                           min_value=0, max_value=4)
+    # 2026-09-17:節能關 TXRU、波束寬度(加窗)、每波束功率 —— 同屬 O1 慢迴路
+    trx_active_ratio = serializers.FloatField(required=False, allow_null=True, default=None,
+                                              min_value=0.05, max_value=1.0)
+    beam_taper = serializers.ChoiceField(choices=["", "none", "hamming", "taylor"], required=False,
+                                         allow_null=True, default=None)
+    beam_power_offsets_db = serializers.DictField(child=serializers.FloatField(min_value=-30.0, max_value=0.0),
+                                                  required=False, allow_null=True, default=None)

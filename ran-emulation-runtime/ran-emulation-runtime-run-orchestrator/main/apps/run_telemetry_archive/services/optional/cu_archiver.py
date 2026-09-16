@@ -61,6 +61,7 @@ class RunArchiver(threading.Thread):
         last = RunKpmSample.objects.filter(f_scene_run_uuid=scene_run_uuid).order_by("-window_index").first()
         self.window_index = (last.window_index + 1) if last else 0
         self.ticks_so_far = (last.sim_time_ms // self.sim_dt_ms) if last else 0   # CellMeasurementLog.tick_count 是「窗內 tick 數」,累計才是 sim-time
+        self._last_beam: dict = {}   # ue → (cell, beam_id),算波束切換次數
         self.stats = {"samples": 0, "handover": 0, "rlf": 0, "control": 0, "polls": 0, "errors": 0}
         self._cu = f"http://{cu_host or settings.HTTP_CU_HOST}:{8000 if cu_host else settings.HTTP_CU_PORT}/api/v0.1/CU/Logs/TelemetryExportReader/read"   # per-run CU(P4-1)或共用 CU
         self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{e2_port or settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"   # per-run adapter(P4-2)或共用
@@ -143,6 +144,7 @@ class RunArchiver(threading.Thread):
             by_win[w]["tick"] = max(int(c.get("tick_count") or 0), int(by_win[w]["tick"] or 0))
         for w in sorted(by_win):
             b = by_win[w]
+            _merge_beam_stats(b["per_cell"], b["per_ue"], self._last_beam)
             tick = b["tick"]
             if tick is not None:
                 self.ticks_so_far += int(tick)
@@ -151,6 +153,46 @@ class RunArchiver(threading.Thread):
                 "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"], "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
             self.window_index += 1
             self.stats["samples"] += 1
+
+
+def beam_stats(per_ue: dict, last_beam: dict) -> dict:
+    """每 cell 每波束的統計(O-RAN WG1 §4.6.4.1 每波束 KPI)+ 波束切換次數。
+
+    回傳 {cell: {"beams": {beam_id: {ue_count, rsrp_avg_dbm, sinr_avg_db, sinr_min_db, prb_dl, thp_dl_mbps}},
+                 "beam_switches": n}};沒有 beam_id(單埠 / Cat A 未設 GoB)的 UE 不計。
+    last_beam 是 {ue: (cell, beam)},原地更新:同 cell 內 beam 變了才算一次切換(換 cell 算換手,不算)。
+    """
+    out: dict = {}
+    for ue, v in per_ue.items():
+        cell, beam = v.get("serving_cell") or "", v.get("beam_id")
+        if not cell or beam is None:
+            continue
+        c = out.setdefault(cell, {"beams": {}, "beam_switches": 0})
+        acc = c["beams"].setdefault(str(beam), {"ue_count": 0, "_rsrp": [], "_sinr": [], "prb_dl": 0, "thp_dl_mbps": 0.0})
+        acc["ue_count"] += 1
+        if isinstance(v.get("rsrp_dbm"), (int, float)):
+            acc["_rsrp"].append(float(v["rsrp_dbm"]))
+        if isinstance(v.get("sinr_db"), (int, float)) and v["sinr_db"] > -99:
+            acc["_sinr"].append(float(v["sinr_db"]))
+        acc["prb_dl"] += int(v.get("rb_width_dl") or 0)
+        acc["thp_dl_mbps"] += float(v.get("throughput_dl_mbps") or 0.0)
+        prev = last_beam.get(ue)
+        if prev is not None and prev[0] == cell and prev[1] != beam:
+            c["beam_switches"] += 1
+        last_beam[ue] = (cell, beam)
+    for c in out.values():
+        for acc in c["beams"].values():
+            r, q = acc.pop("_rsrp"), acc.pop("_sinr")
+            acc["rsrp_avg_dbm"] = round(sum(r) / len(r), 2) if r else None
+            acc["sinr_avg_db"] = round(sum(q) / len(q), 2) if q else None
+            acc["sinr_min_db"] = round(min(q), 2) if q else None
+            acc["thp_dl_mbps"] = round(acc["thp_dl_mbps"], 3)
+    return out
+
+
+def _merge_beam_stats(per_cell: dict, per_ue: dict, last_beam: dict) -> None:
+    for cell, st in beam_stats(per_ue, last_beam).items():
+        per_cell.setdefault(cell, {}).update(st)
 
 
 def start_archiver(scene_run_uuid: str, sim_dt_ms: int, cu_host: str | None = None, e2_port: int | None = None) -> RunArchiver:

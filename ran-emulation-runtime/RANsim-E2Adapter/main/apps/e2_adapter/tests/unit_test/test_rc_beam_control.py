@@ -21,7 +21,8 @@ def _elem(pid, kind, val):
             "ranParameter-valueType": ("ranP-Choice-ElementTrue", {"ranParameter-value": (kind, val)})}
 
 
-def build_beam_pdu(*, tilt=None, beams=None, layers=None, with_cell=True, ran_func_id=3) -> bytes:
+def build_beam_pdu(*, tilt=None, beams=None, layers=None, trx_pct=None, taper=None, pwr=None,
+                   with_cell=True, ran_func_id=3) -> bytes:
     rt = _load_runtime()
     ch = rt.E2SM_RC_IEs.E2SM_RC_ControlHeader
     cm = rt.E2SM_RC_IEs.E2SM_RC_ControlMessage
@@ -47,6 +48,12 @@ def build_beam_pdu(*, tilt=None, beams=None, layers=None, with_cell=True, ran_fu
         ranp.append(_elem(3, "valuePrintableString", beams))
     if layers is not None:
         ranp.append(_elem(4, "valueInt", layers))
+    if trx_pct is not None:
+        ranp.append(_elem(5, "valueInt", trx_pct))
+    if taper is not None:
+        ranp.append(_elem(6, "valuePrintableString", taper))
+    if pwr is not None:
+        ranp.append(_elem(7, "valuePrintableString", pwr))
     cm.set_val({"ric-controlMessage-formats": ("controlMessage-Format1", {"ranP-List": ranp})})
     pdu.set_val(("initiatingMessage", {
         "procedureCode": 4, "criticality": "reject",
@@ -69,7 +76,7 @@ class BeamControlAdvertisementTests(TestCase):
         acts = {a["ric-ControlAction-ID"]: a for a in s2["ric-ControlAction-List"]}
         self.assertIn(6, acts)
         self.assertIn(8, acts)
-        self.assertEqual([p["ranParameter-ID"] for p in acts[8]["ran-ControlActionParameters-List"]], [1, 2, 3, 4])
+        self.assertEqual([p["ranParameter-ID"] for p in acts[8]["ran-ControlActionParameters-List"]], [1, 2, 3, 4, 5, 6, 7])
 
 
 class BeamControlDecodeTests(TestCase):
@@ -91,6 +98,22 @@ class BeamControlDecodeTests(TestCase):
         self.assertEqual(m["max_layers"], 1)
         self.assertNotIn("electrical_tilt_deg", m)
         self.assertNotIn("active_beam_ids", m)
+
+    def test_energy_saving_taper_and_beam_power(self):
+        m = e2sm_rc_codec.to_sim_control_payload(e2sm_rc_codec.decode_ric_control_request(
+            build_beam_pdu(trx_pct=50, taper="Taylor", pwr="3:-3, 5:-6,x:1,7:2")))["control_message"]
+        self.assertAlmostEqual(m["trx_active_ratio"], 0.5)
+        self.assertEqual(m["beam_taper"], "taylor")
+        self.assertEqual(m["beam_power_offsets_db"], {"3": -3.0, "5": -6.0, "7": 0.0})
+
+    def test_new_params_pass_adapter_check(self):
+        from main.apps.e2_adapter.services.optional.sctp_link import sctp_loop
+        sent = []
+        with patch.object(sctp_loop, "_send_sctp", side_effect=lambda s, d, ppid=70: sent.append(d) or True), \
+             patch("main.apps.e2_adapter.services.optional.sim_bridge.sim_http_client.call_control_request",
+                   return_value={"ok": 1}) as call:
+            sctp_loop._handle_control_req(sock=None, raw_pdu=build_beam_pdu(trx_pct=50, taper="hamming", pwr=""))
+        call.assert_called_once()
 
     def test_empty_beam_string_means_reset(self):
         m = e2sm_rc_codec.to_sim_control_payload(

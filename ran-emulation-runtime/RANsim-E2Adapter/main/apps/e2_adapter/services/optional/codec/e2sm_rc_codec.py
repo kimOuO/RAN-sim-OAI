@@ -490,6 +490,9 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
         #   ranP[2] = Electrical Tilt(valueInt,0.1° 單位;或 valueReal,度)
         #   ranP[3] = Active Beam IDs(valuePrintableString "0,3,5";空字串 = 全部可用)
         #   ranP[4] = Max Layers(valueInt,0 = 不限)
+        #   ranP[5] = TRX Active Ratio(valueInt,百分比 1–100;節能關 TXRU)
+        #   ranP[6] = Beam Taper(valuePrintableString none / hamming / taylor;波束寬度)
+        #   ranP[7] = Beam Power Offsets(valuePrintableString "beamId:dB,…",dB ≤ 0)
         # 沒帶的參數不改。
         def _scalar(pid):
             pv = params.get(pid)
@@ -510,6 +513,30 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
         t, v = _scalar(4)
         if t == "valueInt":
             msg["max_layers"] = int(v)
+
+        def _text(pid):
+            t, v = _scalar(pid)
+            if t == "valueOctS":
+                return bytes.fromhex(v).decode("utf-8", "replace")
+            return str(v) if t == "valuePrintableString" else None
+
+        t, v = _scalar(5)
+        if t == "valueInt":
+            msg["trx_active_ratio"] = max(1, min(100, int(v))) / 100.0
+        taper = _text(6)
+        if taper is not None:
+            msg["beam_taper"] = taper.strip().lower() or "none"
+        offs = _text(7)
+        if offs is not None:
+            pairs = {}
+            for item in offs.replace(" ", "").split(","):
+                if ":" in item:
+                    k, _, x = item.partition(":")
+                    try:
+                        pairs[str(int(k))] = min(0.0, float(x))
+                    except ValueError:
+                        continue
+            msg["beam_power_offsets_db"] = pairs
         logger.info("Beam control decode: ranP ids=%s -> %s", sorted(params.keys()), msg)
         base["action"] = "control_beam"
         base["control_message"] = msg
@@ -659,6 +686,9 @@ def encode_rc_ran_function_description() -> bytes:
                 {"ranParameter-ID": 2, "ranParameter-name": "Electrical Tilt (0.1 deg)"},
                 {"ranParameter-ID": 3, "ranParameter-name": "Active Beam IDs"},
                 {"ranParameter-ID": 4, "ranParameter-name": "Max Layers"},
+                {"ranParameter-ID": 5, "ranParameter-name": "TRX Active Ratio (percent)"},
+                {"ranParameter-ID": 6, "ranParameter-name": "Beam Taper"},
+                {"ranParameter-ID": 7, "ranParameter-name": "Beam Power Offsets"},
             ],
             **({"ueGroup-ControlAction-Supported": "false"} if _rc_v10_enabled() else {}),
         }],

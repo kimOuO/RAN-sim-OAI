@@ -19,6 +19,10 @@ class Cell(models.Model):
     electrical_tilt_deg = models.FloatField(default=0.0)       # 正 = 往下;疊在天線 preset 的預設值之上
     active_beam_ids = models.JSONField(default=list, blank=True)  # GoB 子集;空 = 全部可用
     max_layers = models.PositiveIntegerField(default=0)        # 0 = 用全域 RU_MAX_RANK
+    # 2026-09-17(WG1 §4.6.3 其餘 O1 控制):
+    trx_active_ratio = models.FloatField(default=1.0)          # 開著的 TXRU 比例(節能:64T→32T = 0.5)
+    beam_taper = models.CharField(max_length=16, default="", blank=True)  # ""/hamming/taylor:加窗 → 波束變寬、旁瓣變低
+    beam_power_offsets_db = models.JSONField(default=dict, blank=True)    # {beam_id: dB(≤0)},Cat B 每波束功率
     ul_load = models.FloatField(default=0.0)    # 上一 tick UL PRB 負載 0–1(DU 經 dl_tti 推來;P6 上行干擾用)
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)

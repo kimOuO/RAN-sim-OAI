@@ -98,3 +98,62 @@ def port_mapping(n_trx: int, n_ports: int) -> np.ndarray:
     for p in range(n_ports):
         W[p * g:(p + 1) * g, p] = 1.0 / np.sqrt(g)
     return W
+
+
+def element_weights(*, rows: int, cols: int, polarization: str = "V", panels_mg: int = 1, panels_ng: int = 1,
+                    trx_active_ratio: float = 1.0, taper: str = "") -> np.ndarray | None:
+    """元件層的實數權重(n_elem,),乘在 H_elem 的 tx 維;全 1 時回 None(不必乘)。
+
+    - trx_active_ratio < 1:每片面板每個極化只留中間 ceil(ratio·N) 欄,其餘清零。
+      關掉的 PA 不發射 → 總功率與陣列增益一起下降(64T→32T 約少 6 dB),不重新正規化。
+    - taper = hamming / taylor:對水平、垂直位置加窗(可分離),正規化成總功率不變 →
+      主瓣變寬、旁瓣變低(WG1 §4.6.3.1 beam width 控制)。
+    """
+    M, N = int(rows), int(cols)
+    P = n_pol(polarization)
+    n_panel = int(panels_mg) * int(panels_ng)
+    col_w = np.ones(N)
+    row_w = np.ones(M)
+    taper = (taper or "").lower()
+    if taper in ("hamming", "taylor"):
+        def _win(n):
+            if n <= 2:
+                return np.ones(n)
+            return np.hamming(n) if taper == "hamming" else _taylor(n)
+        col_w, row_w = _win(N), _win(M)
+    ratio = float(trx_active_ratio or 1.0)
+    active = np.ones(N, dtype=bool)
+    if ratio < 0.999:
+        keep = max(1, int(np.ceil(ratio * N)))
+        start = (N - keep) // 2
+        active[:] = False
+        active[start:start + keep] = True
+    grid = (col_w * active)[:, None] * row_w[None, :]            # (N, M):col 慢、row 快
+    per_panel = grid.reshape(-1)
+    w = np.tile(per_panel, n_panel * P)
+    if taper in ("hamming", "taylor"):
+        on = w > 0
+        w[on] = w[on] * np.sqrt(on.sum() / np.sum(w[on] ** 2))   # 加窗不改總功率
+    if np.allclose(w, 1.0):
+        return None
+    return w
+
+
+def _taylor(n: int, nbar: int = 4, sll: float = 30.0) -> np.ndarray:
+    """Taylor 窗(與 scipy.signal.windows.taylor 相同算法;RU 容器沒有 scipy)。"""
+    B = 10 ** (sll / 20.0)
+    A = np.arccosh(B) / np.pi
+    s2 = nbar ** 2 / (A ** 2 + (nbar - 0.5) ** 2)
+    ma = np.arange(1, nbar)
+    m2 = ma * ma
+    signs = np.where(ma % 2 == 1, 1.0, -1.0)
+    Fm = np.empty(nbar - 1)
+    for i in range(nbar - 1):
+        numer = signs[i] * np.prod(1 - m2[i] / s2 / (A ** 2 + (ma - 0.5) ** 2))
+        denom = 2 * np.prod(1 - m2[i] / m2[:i]) * np.prod(1 - m2[i] / m2[i + 1:])
+        Fm[i] = numer / denom
+
+    def _w(x):
+        return 1 + 2 * np.cos(2 * np.pi * np.outer(np.atleast_1d(x) - n / 2.0 + 0.5, ma) / n) @ Fm
+
+    return _w(np.arange(n)) / _w((n - 1) / 2.0)
