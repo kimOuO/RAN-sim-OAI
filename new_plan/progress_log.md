@@ -766,3 +766,14 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - SINR 最高到 79 dB、corridor 有 58–80% 的樣本 > 40 dB。corridor 牆面把另一個 cell 的干擾完全擋掉,
   靠近基站的 UE 只剩熱雜訊,模型上說得通;但 TS 38.133 規定 SS-SINR 可回報範圍只到 40 dB。9/13 起就是如此。
 - KPM API 單次回應仍有 18 MB,監控頁每 3 秒拉一次,可再改成增量拉取。
+
+## 2026-09-16 RIC 連線回歸(SCTP 主機設定修好之後)
+
+- 前提:使用者用 sudo 跑過 `host_setup_sctp.sh`;`ransim-sctp.service` 已啟用,5 個 adapter 都 SCTP 連線、E2 Setup 完成。
+- 狀況:adapter 自己回報已連線,但 RIC 閘道把 corridor_16_24(e01)記成 `DISCONNECTED`、訂閱 0;那份註冊是重開機前留下的(`addedAt` 比 adapter 最後一次連上還早約 27 分鐘)。
+  RIC 對外入口沒開 e2mgr 查詢,只能從閘道看。處理方式:把這個場景停掉再啟動 → 閘道 gen 12→13,狀態變 CONNECTED,訂閱 5。
+- 逐步加場景(每加一個就等閘道狀態穩定):e01 → e02 → e03 → e04,每個場景都有自己的一組 xApp(a6/k5),訂閱數會從 1–2 慢慢長到 5。
+- 四個場景同時跑:閘道 4/4 CONNECTED、訂閱都是 5;每個 adapter 在驗證期間持續送出 PDU(約 +41~48);本地檢查 4/4 都 14/14 PASS,cell 隔離也正確。
+- 注意:場景剛啟動時 UE driver 會短暫停在 `phase=preparing`,屬正常,暖機完就轉成 running。
+- 已知問題:重開機或 RIC 斷線後,閘道可能留著舊的 DISCONNECTED 註冊,目前要手動 stop/start 那個場景。
+- 還沒處理:omniver_kit 記憶體洩漏;第 3、6 項(容器記憶體上限、health monitor 記憶體檢查)。
