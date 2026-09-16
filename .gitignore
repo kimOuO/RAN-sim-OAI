@@ -60,6 +60,8 @@ ran-emulation-runtime/RANsim-CU/tmp/fixture_barred.json
 ran-scene-management/ran-scene-management-scene-editor-frontend/tsconfig.tsbuildinfo
 ran-emulation-runtime/Physics_sim/data/channel_cache/.mode
 ran-emulation-runtime/Physics_sim/data/channel_cache/*.npz
+ran-emulation-runtime/Physics_sim/data/channel_cache/*.paths/
+ran-emulation-runtime/Physics_sim/data/channel_cache/.mode.*
 ran-emulation-runtime/Physics_sim/tmp/
 ran-emulation-runtime/RANsim-CU/tmp/
 ran-emulation-runtime/RANsim-DU/tmp/
