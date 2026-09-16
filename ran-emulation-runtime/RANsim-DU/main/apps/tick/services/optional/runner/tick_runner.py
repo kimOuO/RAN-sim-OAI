@@ -316,7 +316,7 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
@@ -328,6 +328,9 @@ class TickRunner:
             self._ue_registry[ue_id]["sinr_layers"] = list(sinr_layers) if sinr_layers else None
             # P6:RU 算的上行 SINR@gNB;None = 舊 RU
             self._ue_registry[ue_id]["ul_sinr_db"] = float(ul_sinr_db) if ul_sinr_db is not None else None
+            # A2(2026-09-16):RU 代 UE 選的 PMI → 下一輪 DL TTI 照這個下,預編碼才真的會動
+            if pmi is not None:
+                self._ue_registry[ue_id]["pmi"] = int(pmi)
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -806,6 +809,10 @@ class TickRunner:
             mcs_map=mcs_map,
             tbs_map=tbs_map,
             cell_id_map=cell_id_map,
+            # A2:把 RU 回報的 RI / PMI 帶回 PDU。以前沒帶 → layers 永遠 1、pmi 永遠 0,
+            # 預編碼形同虛設(rank 只影響 slot 引擎的吞吐估算)。
+            rank_map={ue["id"]: int(ue.get("rank", 1) or 1) for ue in ues_for_measurement},
+            pmi_map={ue["id"]: int(ue.get("pmi", 0) or 0) for ue in ues_for_measurement},
             cell_ul_load=getattr(self, "_cell_ul_load_last", {}),   # P6:上一 tick 每 cell UL PRB 負載 → RU 算上行干擾
         )
         # in-process Step3:in-process mode 下 SINR 已自算,dl_tti 只供 RU 端 KPM/viz → 改非阻塞

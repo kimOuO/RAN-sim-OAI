@@ -48,7 +48,7 @@ class FapiRouterController:
         else:
             noise_floor_dbm = get_float("DU_NOISE_FLOOR_DBM", -95.0)
             rsrp_for_pm = noise_floor_dbm + float(v["sinr_db"])  # legacy fallback
-        get_tick_runner().update_ue_sinr(v["ue_id"], float(v["sinr_db"]), rsrp_dbm=rsrp_for_pm, rank=v.get("rank"), sinr_layers=v.get("sinr_per_layer_db") or None, ul_sinr_db=v.get("ul_sinr_db"))
+        get_tick_runner().update_ue_sinr(v["ue_id"], float(v["sinr_db"]), rsrp_dbm=rsrp_for_pm, rank=v.get("rank"), sinr_layers=v.get("sinr_per_layer_db") or None, ul_sinr_db=v.get("ul_sinr_db"), pmi=v.get("pmi"))
 
         # 緩存 neighbor measurements（A3 evaluator 用）— 每次覆蓋，要 fresh 量測
         neighbors = v.get("neighbors") or []

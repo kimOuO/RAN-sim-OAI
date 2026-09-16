@@ -564,3 +564,41 @@
   32T32R 的 chain 實測為 (128×32) 非單位矩陣,每埠由 4 片元件合成、每埠功率 1。rank 停在 2 是因為 UE 只有 2 埠(rank ≤ min(rx,tx)),符合預期。
 - **已知落差(列入 A2)**:SINR 目前仍由純量 path_gain 算,沒有把陣列的相干合成增益算進去,所以 4/8/32 埠的 SINR 幾乎一樣。
   正確做法是 SINR 改由預編碼後的有效通道 H_eff 推導。這是 A2(RU 端 RI/PMI 選擇)要一起處理的。
+
+## P7-A2 RI / PMI 選擇 + 有效通道 SINR(2026-09-16)
+
+### ★ 先修一個從 P5-3 就存在的重大 bug:H 的形狀一直是錯的
+physics(`path_solver_actor._serialize_h`)把複數矩陣序列化成**最後一軸 [re, im]**,
+所以 (num_rx, num_tx) 的 H 在 JSON 裡是 (num_rx, num_tx, 2) 的實數陣列。
+RU 的 `_to_complex_matrix` 用 `np.vectorize` 逐**純量**coerce,`len(x)==2` 那條分支永遠不命中,
+3D 結果又被下面的 polarization 分支 reshape 成 `(num_rx × num_tx, 2)` ——
+**H 變成「num_rx×num_tx 根接收天線 × 2 個發射埠」**。
+實測 8×8 cross 的 gNB + 2 埠 UE:H 應該是 (2, 128),實際拿到 (256, 2)。
+rank / PMI / 每層 SINR 從 P5-3(2026-09-13)起都是拿這個錯形狀算的,
+先前「rank 2、+24% 吞吐」的結論要以本次之後的數字為準。修法:先攔截標準 [re,im] 格式再轉。
+
+### A2 本體
+- 新 `csi_selection.py`:RU 代 UE 做 CSI 回報(TS 38.214 §5.2.2)。
+  - 每層 SINR 用 **MMSE 接收機**公式 `γ_i = 1/[(I + γ_ref·H_effᴴH_eff)⁻¹]_ii − 1`。
+    ★ 一開始用 `γ_i = γ_ref·‖H_eff[:,i]‖²`(假設層間不干擾),純 LOS(真 rank 1)會被選成 rank 2
+    且兩層都「很好」;MMSE 公式會自動把落在同一空間特徵上的層壓下去。
+  - 兩階段搜尋:先在 DFT 波束網格(≤ 256 個)挑最佳波束,再窮舉 i1_3 / i2 / rank(≲ 30 個候選)精算容量。
+  - 結果依通道指紋快取(UE 沒動就不重算,等效 CSI 回報週期)。
+- 寬頻 SINR 改由**最佳單層預編碼的陣列增益**推導:`sinr_db += 10log10(rank1_gain)`,
+  天線變大 SINR 才會真的變好(RLF / CQI 都吃這個值)。
+- **DU 以前從來沒把 RI / PMI 帶進 PDU**:`build_dl_tti` 的 `rank_map` / `pmi_map` 兩個參數
+  從來沒人傳,所以 layers 永遠 1、pmi 永遠 0,預編碼形同虛設(rank 只影響 slot 引擎的吞吐估算)。
+  現在 tick_runner 從 registry 帶入,`update_ue_sinr` 也存 RU 選的 PMI。
+
+### 實測(mimo_check,單 UE 定點,UE 2 埠;直接打 RU 的 dl_tti 端點,不經歸檔)
+| gNB | 埠 | SINR | rank | 每層 SINR(dB) | 相對 4 埠 |
+|---|---|---|---|---|---|
+| 4T4R | 4 | 27.2 | 2 | 24.2 / 2.6 | — |
+| 8T8R | 8 | 30.3 | 2 | 27.2 / 5.7 | +3.1 dB(理論 +3.0) |
+| 32T32R | 32 | 35.6 | 1 | 35.6 | +8.4 dB(理論 +9.0,差額為 codebook 量化) |
+
+- 三組的 per-port path_gain 完全相同(−81.28 dB),證實 `PHY_PATH_GAIN_PER_PORT` 的正規化正確、
+  陣列增益只由 codebook 算一次,沒有雙重計算。
+- 32T32R 選 rank 1(波束太集中,第二層不划算);4/8 埠選 rank 2 但第二層很弱 —— 符合單 UE LOS 的預期。
+- codebook 錯誤 0、RLF 0。
+- 教訓:比較不同設定時不要直接查歸檔(會混到前一輪的樣本),改打 RU 端點拿當下值。

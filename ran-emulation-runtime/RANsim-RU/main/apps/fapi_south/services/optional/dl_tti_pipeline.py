@@ -13,14 +13,14 @@ from django.conf import settings
 from ran_sim_protocol.fapi import CqiIndication, DlTtiRequest
 from ran_sim_protocol.physics import PathSolverResponse
 
-from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, precoder, sinr_estimator
+from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, csi_selection, precoder, sinr_estimator
 from main.apps.fapi_south.services.optional.channel_cache_loader import (
     get_channel_cache, is_cached_mode,
 )
 from main.apps.physics_client.services.optional import physics_http
 from main.apps.physics_client.services.optional.channel_cache import default_cache, quantize_position
 from main.apps.physics_client.services.optional.payload_builder import build_path_solver_request
-from main.utils.env_loader import get_bool, get_float
+from main.utils.env_loader import get_bool, get_float, get_int
 from main.utils.logger import get_logger
 
 
@@ -324,6 +324,25 @@ def _path_gain_to_rsrp_dbm(
     )
 
 
+_MAX_RANK = get_int("RU_MAX_RANK", 4)   # cell 可支援的最大層數(之後由 E2 控制)
+_CSI_CACHE: dict[tuple, dict] = {}
+_CSI_CACHE_MAX = 512
+
+
+def _csi_for(ue_id: str, H: np.ndarray, gamma_ref_lin: float, layout) -> dict:
+    """RI/PMI 選擇(有快取)。鍵含通道指紋 → UE 沒動就不重算(等效於 CSI 回報週期)。"""
+    key = (ue_id, H.shape, round(float(np.sum(np.abs(H) ** 2)), 6),
+           round(float(np.real(H.ravel()[0])), 4), round(math.log10(max(gamma_ref_lin, 1e-12)), 2), layout)
+    hit = _CSI_CACHE.get(key)
+    if hit is not None:
+        return hit
+    sel = csi_selection.select(H, gamma_ref_lin=gamma_ref_lin, layout=layout, max_rank=_MAX_RANK)
+    if len(_CSI_CACHE) >= _CSI_CACHE_MAX:
+        _CSI_CACHE.clear()
+    _CSI_CACHE[key] = sel
+    return sel
+
+
 _ANT_CACHE: dict[str, object] = {"at": 0.0, "cfg": None}
 
 
@@ -348,9 +367,18 @@ def _to_complex_matrix(raw: Any) -> np.ndarray:
     把 polarization 那軸 squeeze 進 num_rx：reshape 成 `(num_rx*num_pol, num_tx_ports)`。
     precoder 跟 sinr_estimator 都吃 2D `(num_rx_total, num_ports)`。
     """
-    if isinstance(raw, np.ndarray):
+    if isinstance(raw, np.ndarray) and np.iscomplexobj(raw):
         H = raw.astype(np.complex128)
     else:
+        # ★ 2026-09-16:physics(path_solver_actor)把複數序列化成 **最後一軸 [re, im]**,
+        #   所以 (num_rx, num_tx) 的 H 在 JSON 裡是 (num_rx, num_tx, 2) 的實數陣列。
+        #   舊版用 np.vectorize 逐「純量」coerce,len(x)==2 那條分支永遠不會命中,
+        #   結果 3D 被下面的 polarization 分支 reshape 成 (num_rx*num_tx, 2)——
+        #   H 變成「num_rx*num_tx 根接收天線 × 2 個發射埠」。rank / PMI / 每層 SINR
+        #   從 P5-3 起都是拿這個錯形狀算的。這裡先攔截標準的 [re, im] 格式。
+        _plain = np.asarray(raw)
+        if _plain.dtype != object and not np.iscomplexobj(_plain) and _plain.ndim >= 3 and _plain.shape[-1] == 2:
+            return (_plain[..., 0] + 1j * _plain[..., 1]).astype(np.complex128)
         arr = np.array(raw, dtype=object)
 
         def _coerce(x):
@@ -573,8 +601,11 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         if sinr_db != -float("inf"):
             sinr_db -= _SINR_INTERFERENCE_PENALTY_DB
 
-        # rank:有 H matrix 就走 SVD(支援 MIMO),沒有就 rank=1(SISO)
+        # RI / PMI:A2(2026-09-16)。以前 DU 固定送 layers=1 / pmi=0,RU 只拿未預編碼的 H
+        # 做 SVD 猜 rank,預編碼其實沒在動。現在 RU 代 UE 做 CSI 選擇(TS 38.214 §5.2.2):
+        # 對候選 (rank, PMI) 算 MMSE 每層 SINR,挑容量最大的回報,DU 下一輪就照這個下 PDU。
         sinr_per_layer: list[float] = []
+        rank_pmi = int(pdu.pmi)
         if H_raw is None:
             rank = 1
         else:
@@ -584,16 +615,16 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 # 壓到**埠層**,PMI / RI 才是 TS 38.214 講的那個埠數。舊 1×1 設定下 chain = 單位矩陣。
                 H, _chain = array_chain.to_ports(H_elem, _antenna_cfg())
                 _layout = _chain.get("layout")
-                H_eff = precoder.apply_pmi(H, pmi=pdu.pmi, layers=pdu.layers, layout=_layout)
-                # RI 是「通道」能撐幾層,要看未預編碼的 H;用 H_eff(已被 DU 目前的 layers 壓成 layers 欄)
-                # 會永遠回報 DU 現在給的層數 → rank 卡在 1(2026-09-13 P5-3 實測)。上限 min(rx_ant, tx_ant, 4)。
-                rank = min(sinr_estimator.estimate_rank(H), int(min(H.shape)), 4) if H.size else 1
-                _ = H_eff
-                # 每層 SINR:等功率分 rank 層,第 i 層相對第 1 層差 20log10(σi/σ1)(P5-4)
-                if sinr_db != -float("inf") and H.size:
-                    _s = np.linalg.svd(H, compute_uv=False)
-                    _s1 = float(_s[0]) if _s.size and float(_s[0]) > 0 else 1.0
-                    sinr_per_layer = [float(sinr_db) - 10.0 * math.log10(rank) + 20.0 * math.log10(max(float(_s[i]), 1e-12) / _s1) for i in range(int(rank))]
+                if H.size and H.shape[1] > 1 and sinr_db != -float("inf"):
+                    _g_ref = 10.0 ** (float(sinr_db) / 10.0)
+                    _sel = _csi_for(pdu.ue_id, H, _g_ref, _layout)
+                    rank = int(_sel["rank"])
+                    rank_pmi = int(_sel["pmi"])
+                    # 寬頻 SINR 改由「最佳單層預編碼」的陣列增益推導 → 天線變大 SINR 才會變好
+                    sinr_db = float(sinr_db) + 10.0 * math.log10(max(float(_sel["rank1_gain"]), 1e-12))
+                    sinr_per_layer = [10.0 * math.log10(max(g, 1e-12)) for g in _sel["layer_sinr_lin"]]
+                else:
+                    rank = 1
             except (codebook.CodebookError, codebook_type1.CodebookError, ValueError) as exc:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
                 rank = 1
@@ -615,7 +646,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             cqi=int(cqi),
             rank=int(rank),
             sinr_per_layer_db=[round(v, 2) for v in sinr_per_layer],
-            pmi=int(pdu.pmi),
+            pmi=int(rank_pmi),   # A2:RU 代 UE 選的 PMI,DU 下一輪照這個下 PDU
             rsrp_dbm=rsrp_dbm,
             serving_cell=serving_label,
             neighbors=neighbors_list,
