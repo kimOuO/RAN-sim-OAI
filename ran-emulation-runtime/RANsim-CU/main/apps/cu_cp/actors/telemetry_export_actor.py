@@ -21,7 +21,7 @@ _TABLES = {
     "measurement": (MeasurementLog, ("id", "ue_id", "serving_cell", "rsrp_dbm", "sinr_db", "throughput_dl_mbps", "throughput_ul_mbps",
                                      "mcs_dl", "rb_width_dl", "mimo_rank", "pdcp_sdu_volume_dl", "pdcp_sdu_volume_ul",
                                      "rlc_sdu_delay_dl_ms", "qos_5qi", "neighbor_cells_json", "recorded_at",
-                                     "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json")),
+                                     "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id")),
     "cell": (CellMeasurementLog, ("id", "cell_id", "prb_pct_dl", "prb_pct_ul", "tick_count", "window_seconds", "recorded_at")),
     "handover": (HandoverEvent, ("id", "ue_id", "source_cell", "target_cell", "trigger", "status", "started_at", "completed_at",
                                  "failure_cause", "mro_class")),

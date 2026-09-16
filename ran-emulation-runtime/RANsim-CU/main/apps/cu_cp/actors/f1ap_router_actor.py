@@ -368,6 +368,7 @@ class F1ApRouterActor:
             "neighbor_cells_json": d["neighbor_cells"],
             "mcs_ul": d.get("mcs_ul", 0), "rb_width_ul": d.get("rb_width_ul", 0),
             "ul_sinr_db": d.get("ul_sinr_db"), "sinr_layers_json": d.get("sinr_layers_db") or [],
+            "beam_id": d.get("beam_id"),
             "serving_cell": ue.serving_cell or "",
             "recorded_at": now,
         })

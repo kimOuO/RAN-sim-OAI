@@ -45,6 +45,9 @@ class AntennaConfig(models.Model):
     port_n1 = models.PositiveIntegerField(default=0)         # TS 38.214 Type I
     port_n2 = models.PositiveIntegerField(default=0)
     ru_category = models.CharField(max_length=1, default='A')   # O-RAN WG4 CUS-plane
+    bf_method = models.CharField(max_length=16, blank=True, default='')   # predefined / attribute / weight / channel_info
+    gob_az_beams = models.PositiveIntegerField(default=0)   # GoB 方位波束數;0 = 取正交波束數(= N1)
+    gob_el_beams = models.PositiveIntegerField(default=0)   # GoB 仰角波束數;0 = N2
 
     # UE 端陣列(P5;None = 用 env UE_ARRAY_* / 1×1)
     ue_rows = models.PositiveIntegerField(null=True, blank=True)

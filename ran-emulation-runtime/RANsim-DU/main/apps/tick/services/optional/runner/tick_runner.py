@@ -316,7 +316,7 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
@@ -331,6 +331,8 @@ class TickRunner:
             # A2(2026-09-16):RU 代 UE 選的 PMI → 下一輪 DL TTI 照這個下,預編碼才真的會動
             if pmi is not None:
                 self._ue_registry[ue_id]["pmi"] = int(pmi)
+            # B1:GoB 波束 id(Cat B predefined-beam);None 表示這個 cell 沒有 GoB
+            self._ue_registry[ue_id]["beam_id"] = int(beam_id) if beam_id is not None else None
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -886,7 +888,7 @@ class TickRunner:
                 ul_bytes=_ul_drained,
                 qos_5qi=ue["qos_5qi"],
                 rank=ue.get("rank", 1),
-                ul_sinr_db=ue.get("ul_sinr_db"), sinr_layers=ue.get("sinr_layers"),
+                ul_sinr_db=ue.get("ul_sinr_db"), sinr_layers=ue.get("sinr_layers"), beam_id=ue.get("beam_id"),
             )
         # 4b) Accumulate RLC SDU delay (從 step 1 收的 samples)
         # slot 引擎接管時不用 calib /30,改在 4b-shadow 用 slot 引擎輸出餵 PM。
@@ -1074,6 +1076,7 @@ class TickRunner:
                     neighbor_cells=neighbor_meas_list,    # ★ A3 evaluator 終於有料
                     mcs_ul=int(w.get("avg_mcs_ul", 0) or 0), rb_width_ul=int(w.get("avg_prb_ul", 0) or 0),
                     ul_sinr_db=w.get("avg_ul_sinr_db"), sinr_layers_db=list(w.get("sinr_layers_db") or []),
+                    beam_id=w.get("beam_id"),
                 )
                 # 留存 1s 窗口吞吐給 dump_pm(Omniverse label 用,與此處送 CU 的值同源)
                 self._last_ue_window_kpm[uid] = {

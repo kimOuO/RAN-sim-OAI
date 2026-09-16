@@ -68,6 +68,11 @@ class CqiIndication:
     # 上行 SINR@gNB(dB;P6 2026-09-13):TDD 互易 pg(UE→gNB)=pg(gNB→UE),UE 開迴路功控,鄰 cell UE 依 UL 負載當干擾。
     # None = 舊 RU 沒帶 → DU 退回 DL SINR − 20 dB 的保守近似(以前是直接 = DL SINR)。
     ul_sinr_db: float | None = None
+    # B1(2026-09-16):O-RAN Cat B 的 GoB 波束。beam_id = O-RU 波束表的索引(predefined-beam 的 beamId);
+    # beam_rsrp_top = [(beam_id, 相對最佳波束的 dB 差), …],給 RIC 的每波束 RSRP 統計(O-RAN WG1 §4.6.4.1)。
+    # None / 空 list = 沒有 GoB(單埠或 Cat A 未設定)。
+    beam_id: int | None = None
+    beam_rsrp_top: list = field(default_factory=list)
     # RSRP from path_gain (RU 端 dl_tti_pipeline 算)；
     # 預設 -200 表示未填（保持 backward compat），DU 收到 -200 會用估算 fallback。
     rsrp_dbm: float = -200.0

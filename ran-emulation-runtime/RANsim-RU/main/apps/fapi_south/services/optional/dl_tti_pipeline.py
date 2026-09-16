@@ -13,7 +13,7 @@ from django.conf import settings
 from ran_sim_protocol.fapi import CqiIndication, DlTtiRequest
 from ran_sim_protocol.physics import PathSolverResponse
 
-from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, csi_selection, precoder, sinr_estimator
+from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, csi_selection, gob, precoder, sinr_estimator
 from main.apps.fapi_south.services.optional.channel_cache_loader import (
     get_channel_cache, is_cached_mode,
 )
@@ -329,6 +329,30 @@ _CSI_CACHE: dict[tuple, dict] = {}
 _CSI_CACHE_MAX = 512
 
 
+def _cat_b_select(H: np.ndarray, beam, gamma_ref_lin: float, layout) -> dict:
+    """O-RAN Cat B predefined-beam:波束由 O-RU 的 GoB 決定,只在該波束上挑層數。
+
+    rank 1 = 兩個極化同相送一道波束;rank 2 = 同一道波束用雙極化送兩層
+    (mMIMO 做 SU-MIMO 的標準作法)。`pmi` 回報 beam_id —— Cat B 不走 UE 的 PMI 回報。
+    """
+    n1, n2 = layout
+    o1, o2 = codebook_type1.oversampling(n1, n2)
+    Hn = csi_selection.normalize(H)
+    He1 = Hn @ beam.weights
+    g1 = csi_selection.layer_sinr(He1, gamma_ref_lin)
+    rank1_gain = float(np.sum(np.abs(He1) ** 2))
+    best = {"rank": 1, "pmi": int(beam.beam_id), "layer_sinr_lin": [float(g1[0])],
+            "rank1_gain": rank1_gain, "capacity": float(np.log2(1.0 + g1[0]))}
+    if H.shape[0] >= 2:
+        W2 = gob.rank2_weights(n1, n2, beam.l, beam.m, o1, o2)
+        g2 = csi_selection.layer_sinr(Hn @ W2, gamma_ref_lin)
+        c2 = float(np.sum(np.log2(1.0 + g2)))
+        if c2 > best["capacity"]:
+            best = {"rank": 2, "pmi": int(beam.beam_id), "layer_sinr_lin": [float(x) for x in g2],
+                    "rank1_gain": rank1_gain, "capacity": c2}
+    return best
+
+
 def _csi_for(ue_id: str, H: np.ndarray, gamma_ref_lin: float, layout) -> dict:
     """RI/PMI 選擇(有快取)。鍵含通道指紋 → UE 沒動就不重算(等效於 CSI 回報週期)。"""
     key = (ue_id, H.shape, round(float(np.sum(np.abs(H) ** 2)), 6),
@@ -606,6 +630,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         # 對候選 (rank, PMI) 算 MMSE 每層 SINR,挑容量最大的回報,DU 下一輪就照這個下 PDU。
         sinr_per_layer: list[float] = []
         rank_pmi = int(pdu.pmi)
+        beam_id: int | None = None
+        beam_top: list = []
         if H_raw is None:
             rank = 1
         else:
@@ -617,7 +643,17 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 _layout = _chain.get("layout")
                 if H.size and H.shape[1] > 1 and sinr_db != -float("inf"):
                     _g_ref = 10.0 ** (float(sinr_db) / 10.0)
-                    _sel = _csi_for(pdu.ue_id, H, _g_ref, _layout)
+                    # B1(2026-09-16):GoB。Cat A 也算,只是拿來當 KPI(O-RAN WG1 §4.6.4.1 要每波束 RSRP);
+                    # Cat B + predefined-beam 則直接用 beamId 對應的權重做預編碼(O-DU 只送 beamId)。
+                    _beams = gob.for_config(_antenna_cfg(), _chain)
+                    if _beams:
+                        _bsel = gob.select(H, _beams)
+                        beam_id = _bsel.get("beam_id")
+                        beam_top = _bsel.get("top") or []
+                    if _chain.get("ru_category") == "B" and _beams and beam_id is not None:
+                        _sel = _cat_b_select(H, _beams[beam_id], _g_ref, _layout)
+                    else:
+                        _sel = _csi_for(pdu.ue_id, H, _g_ref, _layout)
                     rank = int(_sel["rank"])
                     rank_pmi = int(_sel["pmi"])
                     # 寬頻 SINR 改由「最佳單層預編碼」的陣列增益推導 → 天線變大 SINR 才會變好
@@ -647,6 +683,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             rank=int(rank),
             sinr_per_layer_db=[round(v, 2) for v in sinr_per_layer],
             pmi=int(rank_pmi),   # A2:RU 代 UE 選的 PMI,DU 下一輪照這個下 PDU
+            beam_id=beam_id, beam_rsrp_top=beam_top,   # B1:GoB 波束(O-RAN WG1 每波束 KPI)
             rsrp_dbm=rsrp_dbm,
             serving_cell=serving_label,
             neighbors=neighbors_list,

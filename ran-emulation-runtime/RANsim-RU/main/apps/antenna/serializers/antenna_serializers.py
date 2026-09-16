@@ -32,6 +32,9 @@ class AntennaConfigWriteSerializer(serializers.Serializer):
     port_n1 = serializers.IntegerField(required=False, default=0, min_value=0, max_value=16)
     port_n2 = serializers.IntegerField(required=False, default=0, min_value=0, max_value=16)
     ru_category = serializers.ChoiceField(required=False, default='A', choices=['A', 'B'])
+    bf_method = serializers.CharField(required=False, allow_blank=True, default='', max_length=16)
+    gob_az_beams = serializers.IntegerField(required=False, default=0, min_value=0, max_value=256)
+    gob_el_beams = serializers.IntegerField(required=False, default=0, min_value=0, max_value=64)
 
     ue_rows = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=16)
     ue_cols = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=16)
@@ -59,5 +62,8 @@ class AntennaConfigReadSerializer(serializers.ModelSerializer):
             "port_n1",
             "port_n2",
             "ru_category",
+            "bf_method",
+            "gob_az_beams",
+            "gob_el_beams",
             "antenna_config_updated_at",
         ]

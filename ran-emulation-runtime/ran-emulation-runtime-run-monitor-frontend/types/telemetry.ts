@@ -12,6 +12,8 @@ export interface UeKpm {
   neighbor_cells_json: { cell_id: string; rsrp_dbm: number; rsrq_db: number }[] | null;
   /** P6 / P5-4 上行與每層(舊樣本可能缺) */
   mcs_ul?: number; rb_width_ul?: number; ul_sinr_db?: number | null; sinr_layers_json?: number[] | null;
+  /** B1:O-RAN Cat B 的 GoB 波束 id(predefined-beam);null = 這個 cell 沒有波束網格 */
+  beam_id?: number | null;
 }
 export interface CellKpm { prb_pct_dl: number; prb_pct_ul: number; window_seconds: number; }
 export interface KpmSample { run_kpm_sample_uuid: string; f_scene_run_uuid: string; window_index: number; sim_time_ms: number; wall_time_ms: number; per_cell: Record<string, CellKpm>; per_ue: Record<string, UeKpm>; warnings: string[]; run_kpm_sample_created_at: string; }

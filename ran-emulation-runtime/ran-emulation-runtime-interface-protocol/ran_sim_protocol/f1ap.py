@@ -84,6 +84,8 @@ class GnbDuMeasurementReport:
     rb_width_ul: int = 0
     ul_sinr_db: float | None = None
     sinr_layers_db: list[float] = field(default_factory=list)
+    # B1(2026-09-16):O-RAN Cat B 的 GoB 波束(predefined-beam 的 beamId);None = 沒有 GoB
+    beam_id: int | None = None
 
 
 @dataclass

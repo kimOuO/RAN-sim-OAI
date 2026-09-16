@@ -364,7 +364,8 @@ def _preset_to_array(p: dict) -> dict:
             "electrical_tilt_deg": float(p.get("electrical_tilt_deg") or 0.0),
             "csi_ports": int(p.get("csi_ports") or 0),
             "port_n1": int(p.get("port_n1") or 0), "port_n2": int(p.get("port_n2") or 0),
-            "ru_category": str(p.get("ru_category") or "A")}
+            "ru_category": str(p.get("ru_category") or "A"), "bf_method": str(p.get("bf_method") or ""),
+            "gob_az_beams": int(p.get("gob_az_beams") or 0), "gob_el_beams": int(p.get("gob_el_beams") or 0)}
 
 
 def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:

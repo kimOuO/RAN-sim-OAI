@@ -602,3 +602,25 @@ rank / PMI / 每層 SINR 從 P5-3(2026-09-13)起都是拿這個錯形狀算的,
 - 32T32R 選 rank 1(波束太集中,第二層不划算);4/8 埠選 rank 2 但第二層很弱 —— 符合單 UE LOS 的預期。
 - codebook 錯誤 0、RLF 0。
 - 教訓:比較不同設定時不要直接查歸檔(會混到前一輪的樣本),改打 RU 端點拿當下值。
+
+## P7-B1 GoB 與 O-RAN Cat B predefined-beam(2026-09-16)
+
+- 新 `gob.py`:O-RU 手上的波束表。波束本體就是 TS 38.214 的 DFT 波束 v_{l,m},
+  差別在 codebook 是 UE 回報 PMI 去選、GoB 是 O-RU 存一份固定子集由 `beamId` 指定(O-RAN WG4 predefined-beam)。
+  - 指向角:`sin(方位) = −l'/(O1·N1·d_h_eff)`、`sin(仰角) = −m'/(O2·N2·d_v_eff)`。
+    **負號來自匹配濾波**:通道 h_c = exp(+j2π·d·c·sin a) 的最佳權重是 conj(h_c),而 v_{l,m} 的相位是 +。
+    ★ 一開始漏了負號,實測把 UE 放 −60° 會選到標示 +61° 的波束,加負號後 7 個測試角全對上。
+  - `d_*_eff` 是**埠間**等效間距(= 元件間距 × trx_v_group × 埠合併數),不是元件間距。
+    32T32R 的 d_v_eff = 0.8 × 4 = 3.2λ → 可視區內有柵瓣,標 `grating=True`;
+    理想 steering vector 測試裡 −8° 會選到標示 +8.99° 的波束(柵瓣剛好落在 −8.99°),
+    實際通道有子陣列自己的元件方向圖壓著,這個歧義不會顯現。超出 ±90° 標 `steerable=False`。
+- **Cat B 路徑**:`ru_category == 'B'` 時預編碼直接用 beamId 對應的權重(O-DU 只送 beamId),
+  rank 1 = 兩極化同相送一道波束,rank 2 = 同一道波束用雙極化送兩層。Cat A 仍走 A2 的 Type I 搜尋,
+  但兩者都會算 GoB 當 KPI(O-RAN WG1 §4.6.4.1 要每波束 RSRP)。
+- **beam_id 進 KPM 全鏈**:CqiIndication → DU serializer / registry / PM 視窗 → GnbDuMeasurementReport →
+  CU MeasurementLog(migration 0019)→ telemetry export → orchestrator 歸檔 → 監控頁 UE 詳情。
+  另帶 `beam_rsrp_top`(前 K 道波束相對最佳的 dB 差)。
+- 實測(32T32R Cat B predefined,GoB 16 方位 × 4 仰角 = 64 道):
+  方位候選 −61.0° … +61.0°(16 個)、仰角 −4.5 / 0 / +4.5 / +9.0°;
+  選到 beamId 8,次佳低 1.65 dB、第三低 3.82 dB;歸檔與 CU 表都看得到 `beam=8 rank=2 sinr=32.6 每層=[29.55, 27.51]`。
+- 踩到:DU 的 `CqiIndicationSerializer` 是明確欄位白名單,新欄位沒加就會被吃掉 —— beam_id 一開始整條鏈都是 null。
