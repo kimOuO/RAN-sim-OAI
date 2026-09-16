@@ -7,7 +7,9 @@ export const E2ADAPTER_API = `${process.env.NEXT_PUBLIC_E2ADAPTER_BASE_URL ?? 'h
 export const RUNTIME_HOST = process.env.NEXT_PUBLIC_RUNTIME_HOST ?? 'localhost';
 export const POLL_MS = 3000;
 /** 時間範圍選項(視窗數;1 視窗 = 1 s sim-time)。0 = 全部 */
-export const RANGE_OPTIONS = [{ label: '1m', windows: 60 }, { label: '5m', windows: 300 }, { label: '15m', windows: 900 }, { label: '全部', windows: 0 }] as const;
+export const RANGE_OPTIONS = [{ label: '1m', windows: 60 }, { label: '5m', windows: 300 }, { label: '15m', windows: 900 }, { label: '1h', windows: 3600 }] as const;
+/** 向後端拿的 KPM 最大筆數(= 最長範圍)。後端預設也是 3600;長跑的 run 可累積數十萬筆,不能整包拉。 */
+export const KPM_FETCH_LIMIT = 3600;
 /** 類別色:固定順序、不循環(dataviz 規則);cell 依名稱排序後對應 slot */
 export const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'] as const;
 export const STATUS = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a', critical: '#d03b3b' } as const;

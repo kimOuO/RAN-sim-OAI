@@ -16,6 +16,15 @@ _threads: dict[str, "HealthMonitor"] = {}
 _lock = threading.Lock()
 
 
+# 外部依賴(RIC)的問題:照樣標 degraded 讓監控頁看得到,但**不觸發自動重啟** ——
+# 重啟整個 run 修不好 RIC 那邊,只會打斷模擬(2026-09-16:RIC SCTP 斷線時每 10 分鐘被重啟一次)。
+EXTERNAL_ISSUE_PREFIXES = ("SCTP 未連線",)
+
+
+def is_external(detail: str) -> bool:
+    return bool(detail) and detail.startswith(EXTERNAL_ISSUE_PREFIXES)
+
+
 def dependency_issue(role: str, data: dict) -> str:
     """看各角色 status 回應裡的依賴鏈欄位;回傳問題描述,正常回空字串。
     2026-09-15 事故:adapter HTTP 活著、SCTP CONNECTED,但打 sim CU 全失敗 → 之前只看「活著」完全看不出來。"""
@@ -103,7 +112,7 @@ class HealthMonitor(threading.Thread):
                         detail = f"container {st.get(role, 'absent')}"
                     status = ("degraded" if detail else "running") if alive else ("starting" if st.get(role) == "running" else st.get(role, "absent"))
                     platform_clients.update_run_instance(inst["run_instance_uuid"], status=status, health_detail=detail, **({"last_heartbeat": platform_clients.now_iso()} if alive else {}))
-                    if status != "running":
+                    if status != "running" and not (status == "degraded" and is_external(detail)):
                         unhealthy.append(f"{role}:{status}{(' ' + detail) if detail else ''}")
                 # 自動復原(2026-09-15 06:30 CU 卡死 55 分鐘無人處理):連續不健康超過 PER_RUN_AUTO_RESTART_SEC 就重啟整個 run;
                 # 剛 spawn 的 starting 期不算(啟動 60 s 內不判);兩次重啟間隔至少 PER_RUN_AUTO_RESTART_COOLDOWN_SEC。

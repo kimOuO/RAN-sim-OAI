@@ -82,6 +82,9 @@ class RunKpmSampleController:
         return success_response({"deleted": n}, "deleted", 200)
 
 
+_DEFAULT_LIMIT = 3600   # 1 視窗 = 1 s sim-time → 預設最多一小時
+
+
 class RunKpmSampleReader:
     @staticmethod
     @csrf_exempt
@@ -97,6 +100,13 @@ class RunKpmSampleReader:
             if entity is None:
                 return error_response("Not found", payload[UUID_FIELD], 404)
             return success_response(RunKpmSampleReadSerializer(entity).data, "ok", 200)
+        # 2026-09-16:以前一次回傳全部 —— 長跑的 run 累積到 30 萬筆,單次請求 > 30 s,
+        # 監控頁每 3 秒輪詢就讓 orchestrator 反覆組數百 MB 的回應。改成預設只回最近 limit 筆
+        # (依建立時間),limit=0 才明確要全部。回傳仍依時間由舊到新。
+        try:
+            limit = int(payload.pop("limit", _DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            return error_response("Validation failed", {"limit": "must be int"}, 400)
         filters = {}
         for k, v in payload.items():
             if k.startswith("f_") and k.endswith("_uuid"):
@@ -110,4 +120,8 @@ class RunKpmSampleReader:
             else:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(RunKpmSample, **filters)
-        return success_response(RunKpmSampleReadSerializer(qs, many=True).data, "ok", 200)
+        if limit > 0:
+            recent = list(qs.order_by("-id")[:limit])   # id 與寫入順序一致,走主鍵索引
+            recent.reverse()
+            return success_response(RunKpmSampleReadSerializer(recent, many=True).data, "ok", 200)
+        return success_response(RunKpmSampleReadSerializer(qs.order_by("id"), many=True).data, "ok", 200)
