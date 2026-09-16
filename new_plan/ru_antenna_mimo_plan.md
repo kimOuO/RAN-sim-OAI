@@ -96,6 +96,27 @@ docs/MIMO 的簡報 PDF 是這份規範的圖解,沒有陣列尺寸/埠數/波�
 
 UE 側維持簡化:元件 = 埠(1/2/4),pattern iso 或 dipole。
 
+### 3.1b 預計內建的天線 preset(seed)
+
+元件圖樣一律 TR 38.901 Table 7.3-1(65°/65° HPBW、SLA_V = A_max = 30 dB、G_E,max = 8 dBi),UE 側 iso/dipole。
+「TRX 群」= 每個 TXRU 垂直帶幾個同極化元件,權重用 TR 38.901 式 (7.3-1) 生成(即電子下傾)。
+
+| # | 名稱 | (Mg,Ng,M,N,P) | dV / dH | TRX | CSI 埠 (N1,N2) | Cat | 用途 / 來源 |
+|---|---|---|---|---|---|---|---|
+| 1 | OAI rfsim 1×1 iso | (1,1,1,1,1) | — | 1 | 1 | A | 現有預設,對齊 OAI rfsim |
+| 2 | 38.901 大尺度校準 | (1,1,10,1,1) | 0.5λ / — | 1 | 1 | A | **TR 38.901 §7.8.1 Table 7.8-1**(驗證用) |
+| 3 | 38.901 完整校準 Config 1 | (1,2,4,4,2) | 0.5λ / 0.5λ,面板間距 2.5λ | 2 | 2 | A | **TR 38.901 §7.8.2 Config 1**(雙面板、16 元件→1 埠) |
+| 4 | 2T2R 小站 | (1,1,1,1,2) | 0.5λ / 0.5λ | 2 | 2 (1,1) | A | TS 38.104 BS type 1-C;現有 2 埠 codebook |
+| 5 | 4T4R | (1,1,2,1,2) | 0.5λ / 0.5λ | 4 | 4 (2,1) | A | **TS 38.214 Table 5.2.2.2.1-2**;2026-09-15 已實測 |
+| 6 | 8T8R | (1,1,2,2,2) | 0.5λ / 0.5λ | 8 | 8 (2,2) 或 (4,1) | A | 同上;Cat A 埠數上限典型值 |
+| 7 | 16T16R | (1,1,4,2,2) | 0.8λ / 0.5λ | 16 | 16 (4,2) 或 (8,1) | B | 同上;進入 Cat B |
+| 8 | 32T32R mMIMO | (1,1,8,8,2),每 TRX 4 垂直元件 | 0.8λ / 0.5λ | 32 | 32 (8,2) | B | TS 38.214 32 埠組合;O-RAN Cat B |
+| 9 | 64T64R mMIMO | (1,1,12,8,2),每 TRX 3 垂直元件 | 0.8λ / 0.5λ | 64 | 32 (8,2);另可 (4,4) | B | 192 元件;O-RAN WG1 §4.21 節能例(64→32 通道);Avnet 面板例 |
+| 10 | FR2 面板(後期) | (1,1,4,8,2) | 0.5λ / 0.5λ | 2(類比合成) | 2 | B | TS 38.104 BS type 2-O;混合 beamforming,階段 D 之後 |
+| U1–U3 | UE 1 / 2 / 4 埠 | (1,1,1,1,1) / (1,1,1,1,2) / (1,1,1,2,2) | 0.5λ | = 埠 | 1 / 2 / 4 | — | TS 38.211 SRS 1/2/4 埠 |
+
+數字信心度:#2、#3 逐字取自 ETSI TR 138 901 V16.1.0 原文;#4–#9 的 (N1,N2) 取自 TS 38.214 Table 5.2.2.2.1-2;元件排列與 TRX 分群是業界典型值(非規格強制),64T64R 以 Avnet 公開面板為例。發射功率等級(TS 38.104 §6.2 Wide Area / Medium Range / Local Area)尚未逐條查證,實作前要補。
+
 ### 3.2 `cell` 增加 beam 執行期狀態
 - `mechanical_tilt_deg`(現 `tilt_deg`)、`electrical_tilt_deg`、`active_beam_set`(GoB 子集,RIC 可改)、`max_layers`、`mu_mimo_enabled`。
 
@@ -116,6 +137,7 @@ UE 側維持簡化:元件 = 埠(1/2/4),pattern iso 或 dipole。
 ### 4.2 RU(RANsim-RU)
 1. `AntennaConfig` 對齊 3.1(直接吃 preset);新增 `beam` 表(GoB)與 `ru_state.active_beams`。
 2. 新增 `beamforming/services/optional/virtualization.py`:由 preset 生成 W_virt(元件×TRX,含電子下傾相位)。
+   權重直接用 **TR 38.901 式 (7.3-1)**:w_m = (1/√M)·exp(−j·2π/λ·(m−1)·d_V·cos θ_etilt),m = 1…M,θ_etilt 為電子下傾(90° = 垂直陣列面法線)。這條式子是規格對「legacy 固定相位下傾陣列」的明文模型,可直接當實作依據。
 3. `codebook.py` 改成 **參數化 Type I 產生器**(N1,N2,O1,O2 → W1 DFT + W2 共相),涵蓋 4–32 埠、rank 1–4(先不做 Type II);保留 OAI 表當 2/4 埠回歸對照。
 4. 新增 `gob.py`:由 (N1,N2,O1,O2) 生成 DFT 波束集合、算每 beam 的 (az, zen, hpbw);`beam_select`:對 H_eff 逐 beam 算增益,回報最佳 beamId 與前 K 名(給 RIC 的 beam RSRP 統計)。
 5. `dl_tti_pipeline`:依 `ru_category`
@@ -164,7 +186,7 @@ UE 側維持簡化:元件 = 埠(1/2/4),pattern iso 或 dipole。
 
 ## 參考
 - 3GPP TS 38.104 §4.3 / §7–§10(BS type 1-C/1-H/1-O/2-O、TAB、RIB、OTA)— https://itecspec.com/3gpp/38.104/s/7.1 、 https://www.tech-invite.com/3m38/toc/tinv-3gpp-38-104_a.html
-- 3GPP TR 38.901 §7.3 Table 7.3-1(ETSI TR 138 901 V16.1.0)— https://www.etsi.org/deliver/etsi_tr/138900_138999/138901/16.01.00_60/tr_138901v160100p.pdf
+- 3GPP TR 38.901 §7.3 Table 7.3-1 / §7.3.1 式 (7.3-1) / §7.8 校準組態(ETSI TR 138 901 V16.1.0,本機已抽原文驗證)— https://www.etsi.org/deliver/etsi_tr/138900_138999/138901/16.01.00_60/tr_138901v160100p.pdf
 - 3GPP TS 38.214 §5.2.2.2(Type I/II codebook)— https://www.sharetechnote.com/html/5G/5G_CSI_RS_Codebook.html 、 https://www.mathworks.com/help/5g/ug/5g-nr-downlink-csi-reporting.html
 - O-RAN WG4 CUS-plane(O-RAN.WG4.CUS.0-R004-v16.01)— https://specifications.o-ran.org/download?id=738 ;Cat A/B 與四種 beamforming:Polese et al., "Understanding O-RAN", arXiv:2202.01032 §IV;Avnet, Open RAN & mMIMO — https://my.avnet.com/silica/resources/article/open-ran-system-architecture-and-mmimo/
 - O-RAN WG1 Use Cases Detailed Specification R005-v20.00(docs/MIMO)
