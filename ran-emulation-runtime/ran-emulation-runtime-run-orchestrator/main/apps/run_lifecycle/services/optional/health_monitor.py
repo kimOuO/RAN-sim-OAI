@@ -25,6 +25,35 @@ def is_external(detail: str) -> bool:
     return bool(detail) and detail.startswith(EXTERNAL_ISSUE_PREFIXES)
 
 
+# 記憶體(2026-09-16 事故後):容器用量逼近 mem_limit 就標 degraded,持續下去走既有的自動重啟,
+# 在 OOM killer 動手前正常收尾重來;主機可用記憶體太低只記 log(元兇可能是別的服務,重啟 run 沒用)。
+MEM_CHECK_SEC = 60.0
+MEM_WARN_RATIO = 0.85
+HOST_MEM_WARN_RATIO = 0.10
+
+
+def memory_issue(name: str) -> str:
+    try:
+        import docker
+        s = docker.from_env().containers.get(name).stats(stream=False).get("memory_stats") or {}
+        usage = float(s.get("usage") or 0) - float((s.get("stats") or {}).get("inactive_file") or 0)
+        limit = float(s.get("limit") or 0)
+    except Exception:  # noqa: BLE001
+        return ""
+    if limit <= 0 or limit >= 1 << 50 or usage / limit < MEM_WARN_RATIO:
+        return ""
+    return f"記憶體 {usage / 2**20:.0f}/{limit / 2**20:.0f} MiB({100 * usage / limit:.0f}%)逼近上限"
+
+
+def host_memory_low() -> str:
+    try:
+        info = {l.split(":")[0]: float(l.split()[1]) for l in open("/proc/meminfo")}
+        avail, total = info["MemAvailable"], info["MemTotal"]
+    except Exception:  # noqa: BLE001
+        return ""
+    return f"主機可用記憶體 {avail / 2**20:.1f}/{total / 2**20:.1f} GiB" if avail / total < HOST_MEM_WARN_RATIO else ""
+
+
 def dependency_issue(role: str, data: dict) -> str:
     """看各角色 status 回應裡的依賴鏈欄位;回傳問題描述,正常回空字串。
     2026-09-15 事故:adapter HTTP 活著、SCTP CONNECTED,但打 sim CU 全失敗 → 之前只看「活著」完全看不出來。"""
@@ -87,6 +116,8 @@ class HealthMonitor(threading.Thread):
         self.run_uuid = scene_run_uuid; self.instances = instances; self._stop_evt = threading.Event()
         self._unhealthy_since: float | None = None   # 任一角色非 running 的起點
         self._last_restart_at: float = 0.0
+        self._last_mem_check: float = 0.0
+        self._mem_detail: dict[str, str] = {}   # role → 最近一次記憶體檢查結果(兩次檢查之間沿用)
 
     def stop(self) -> None:
         self._stop_evt.set()
@@ -96,6 +127,12 @@ class HealthMonitor(threading.Thread):
         while not self._stop_evt.is_set():
             try:
                 st = container_spawner.container_status(self.run_uuid)
+                if time.time() - self._last_mem_check >= MEM_CHECK_SEC:
+                    self._last_mem_check = time.time()
+                    self._mem_detail = {r: memory_issue(names[r]) for r in self.instances if st.get(r) == "running"}
+                    low = host_memory_low()
+                    if low:
+                        logger.warning("run %s: %s(不重啟 run,請查主機上其他服務)", self.run_uuid, low)
                 unhealthy: list[str] = []
                 for role, inst in self.instances.items():
                     alive = False; detail = ""
@@ -105,7 +142,7 @@ class HealthMonitor(threading.Thread):
                             with urllib.request.urlopen(req, timeout=3) as resp:
                                 alive = resp.status < 500
                                 body = json.loads(resp.read().decode() or "{}") if alive else {}
-                            detail = dependency_issue(role, (body or {}).get("data") or {})
+                            detail = dependency_issue(role, (body or {}).get("data") or {}) or self._mem_detail.get(role, "")
                         except Exception:  # noqa: BLE001
                             alive = False
                     else:

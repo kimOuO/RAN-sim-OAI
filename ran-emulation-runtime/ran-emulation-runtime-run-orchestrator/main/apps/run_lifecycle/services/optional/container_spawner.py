@@ -26,6 +26,15 @@ logger = get_logger(__name__)
 ROLES = ("cu", "du", "ru", "ue", "e2adapter")   # e2adapter 走 host network(SCTP 綁 host IP),每 run 一條 association → RIC 看到一個 E2 node
 _TEMPLATE = Path(__file__).with_name("per_run_template.json")
 HEALTH_PATH = {"cu": "/api/v0.1/CU/E2/E2NodeId/read", "du": "/api/v0.1/DU/Tick/TickController/read", "ru": "/api/v0.1/RU/State/RuStateReader/read", "ue": "/api/v0.1/UE/Status/read", "e2adapter": "/api/v0.1/E2Adapter/Status/AdapterStatusReader/read"}
+# 2026-09-16 記憶體事故後:每個 per-run 容器都要有上限,洩漏時只 OOM 掉那一顆(restart policy 會拉回來),
+# 不會把整台 VM 拖進 swap 卡死。memswap 設同值 = 不准用 swap。可用 RUN_MEM_LIMIT_<ROLE> 覆寫(docker 格式,如 1g)。
+MEM_LIMIT_DEFAULT = {"cu": "1g", "du": "1g", "ru": "2g", "ue": "512m", "e2adapter": "512m"}
+
+
+def mem_limit_for(role: str) -> str:
+    return os.environ.get(f"RUN_MEM_LIMIT_{role.upper()}", MEM_LIMIT_DEFAULT.get(role, "1g"))
+
+
 E2ADAPTER_PORT_BASE = 8400   # per-run adapter HTTP port = 8400 + 槽位(host network,要唯一)
 
 
@@ -143,6 +152,8 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
         # host port 明確綁定(而非 None 隨機):docker restart 後 port 不變,adapter 的 SIM_CU_URL / registry host_port 才不會失效(2026-09-15 事故)
         net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": _free_host_port()}, "hostname": names[role]}
         c = client.containers.run(spec["image"], name=names[role], detach=True, environment=env, volumes=vols, **net_kw,
+                                  mem_limit=mem_limit_for(role), memswap_limit=mem_limit_for(role),
+                                  restart_policy={"Name": "unless-stopped"},   # OOM 被砍後自己回來
                                   cap_add=["SYS_PTRACE"],   # 2026-09-15 CU 卡死抓不到堆疊:給 py-spy dump 用
                                   extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
                                   command=spec.get("command"), labels={"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": role})

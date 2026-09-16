@@ -28,6 +28,9 @@ MODE_FILE = Path(os.environ.get("CHANNEL_MODE_FILE", "")) if os.environ.get("CHA
 # SINR 計算常數(對齊 RU dl_tti_pipeline:同 env)
 _TX_POWER_DBM = float(os.environ.get("RU_TX_POWER_DBM", "23.0"))
 _NOISE_FLOOR_DBM = float(os.environ.get("RU_NOISE_FLOOR_DBM", "-98.0"))
+# 收發機失真上限(對齊 RU dl_tti_pipeline._apply_evm_lin,同 env):TS 38.104 §6.5.2 256QAM EVM ≤ 3.5%
+# → SNR 上限 ≈ 29 dB。1/SINR_eff = 1/SINR + 1/SNR_evm。設 0 關掉。
+_EVM_SNR_DB = float(os.environ.get("RU_EVM_SNR_DB", "29.1"))
 # inter-frequency 模式:不同頻 cell 互不干擾。本模型用「所有 cell 不同頻」近似
 # (CCO 兩 cell 各一頻段成立)→ SINR = serving / noise(不計 cross-cell 干擾)。
 # off(預設)= 原 co-channel(把所有 cell 當同頻互擾)。CCO inter-freq 換手 demo 用。
@@ -192,6 +195,8 @@ def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None) ->
             interference_mw += tx_mw * pg
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     sinr_lin = serving_mw / (interference_mw + noise_mw)
+    if _EVM_SNR_DB > 0 and sinr_lin > 0:
+        sinr_lin = 1.0 / (1.0 / sinr_lin + 10.0 ** (-_EVM_SNR_DB / 10.0))
     return 10.0 * math.log10(sinr_lin) if sinr_lin > 0 else float("-inf")
 
 

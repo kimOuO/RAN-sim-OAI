@@ -777,3 +777,27 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - 注意:場景剛啟動時 UE driver 會短暫停在 `phase=preparing`,屬正常,暖機完就轉成 running。
 - 已知問題:重開機或 RIC 斷線後,閘道可能留著舊的 DISCONNECTED 註冊,目前要手動 stop/start 那個場景。
 - 還沒處理:omniver_kit 記憶體洩漏;第 3、6 項(容器記憶體上限、health monitor 記憶體檢查)。
+
+## 2026-09-16 SINR 失真上限 + 記憶體第 3 / 6 項 + orchestrator 洩漏
+
+**SINR 偏高(最高 79 dB)**
+- 原因:近距離直視路徑的物理 SNR 本來就很高(RSRP 約 −35 dBm、雜訊底 −98 dBm);場景額外損耗設 0;又加上陣列增益;而且模型裡沒有收發機失真。
+- 修法:加 EVM 失真上限 `1/SINR_eff = 1/SINR + 1/SNR_evm`,SNR_evm = 29.1 dB(TS 38.104 §6.5.2 / TS 38.101-1 §6.4.2.1:256QAM EVM ≤ 3.5%)。環境變數 `RU_EVM_SNR_DB`,設 0 可關閉。
+  - RU:下行寬頻 SINR、選 rank/PMI 用的參考 SINR、每層 SINR、上行 SINR。
+  - DU cached 路徑(`channel_cache_du.compute_sinr_db`):corridor 場景的 SINR 其實是 DU 自己算的,只改 RU 沒有效果。
+- 結果:四個場景的 SINR 最高 29.1 dB,超過 40 dB 的 0 筆,MCS 最高仍能到 25;本地檢查 4/4 都 14/14。
+- 另外看到:部分樣本 SINR 低到 −35 ~ −55 dB,這是改動前就有的,還沒查。
+
+**記憶體**
+- 第 3 項:
+  - 每個場景的容器都設 `mem_limit = memswap_limit`(cu/du 1g、ru 2g、ue/e2adapter 512m,可用 `RUN_MEM_LIMIT_<ROLE>` 覆寫),另外補上 `restart_policy unless-stopped`,之前這些容器沒有設。
+  - compose 的核心服務也加上限:postgres 4g、orchestrator 2g、ru 2g,其餘 256m–1g;physics 維持原本的 12g。
+  - 正在跑的容器已用 `docker update` 套上。
+- 第 6 項:health monitor 每 60 秒讀一次容器記憶體,超過上限 85% 就標 degraded,持續下去走既有的自動重啟;主機可用記憶體低於 10% 只記 warning,不重啟 run。
+- orchestrator 每小時 +100 MB 的原因:`local.py` 把 DEBUG 寫死成開啟,每條 DB 連線保留最近 9000 筆 SQL 原文,歸檔執行緒寫的是大 JSON。
+  - 修法:改成讀 `DJANGO_DEBUG`,compose 對 orchestrator 與 scene-management-backend 設 False。
+  - 效果:orchestrator 從 351 MB 降到約 123 MB,重啟四個 run 之後持平。
+- CU:重啟後前 10 分鐘從 82 MB 漲到約 135 MB 後持平,看起來是暖機,不是洩漏。
+- omniver_kit:12.1 → 12.7 GiB / 16 分鐘,仍在漲,沒有動它(不是我們的服務)。
+
+**RIC 觀察(之後驗證時處理)**:重啟四個 run 後,64efe95f 已連線,但約 20 分鐘訂閱數仍是 0,其他三個都是 5。

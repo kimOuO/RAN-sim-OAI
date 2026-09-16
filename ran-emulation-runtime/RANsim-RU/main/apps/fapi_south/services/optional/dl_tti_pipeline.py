@@ -51,6 +51,28 @@ _SCENE_CALIBRATION_LOSS_DB = get_float("RU_SCENE_CALIBRATION_LOSS_DB", default=0
 _SINR_INTERFERENCE_PENALTY_DB = get_float("RU_SINR_INTERFERENCE_PENALTY_DB", default=0.0)
 """額外 SINR fade margin。預設 0(真實 interference 已從多 cell path_gain 算)."""
 
+# 收發機失真上限(2026-09-16):純物理 SNR 在近距離 LOS 會到 60–79 dB,真實系統做不到。
+# TS 38.104 §6.5.2(BS)與 TS 38.101-1 §6.4.2.1(UE)規定 256QAM 的 EVM ≤ 3.5%,
+# 等於發射端自帶一個 SNR 上限 −20·log10(0.035) ≈ 29 dB。失真跟雜訊一樣當成獨立加性:
+#     1/SINR_eff = 1/SINR + 1/SNR_evm
+# 所以 SINR 高時被壓向 29 dB,低時幾乎不變。設 0 可關掉(回到舊行為)。
+_EVM_SNR_DB = get_float("RU_EVM_SNR_DB", default=29.1)
+
+
+def _apply_evm_lin(sinr_lin: float) -> float:
+    """線性 SINR → 含失真上限的線性 SINR(+inf 也會被壓到上限)。"""
+    if _EVM_SNR_DB <= 0 or not sinr_lin > 0:
+        return sinr_lin
+    return 1.0 / (1.0 / sinr_lin + 10.0 ** (-_EVM_SNR_DB / 10.0))
+
+
+def _apply_evm_db(sinr_db: float) -> float:
+    if _EVM_SNR_DB <= 0 or sinr_db == -float("inf"):
+        return sinr_db
+    lin = float("inf") if sinr_db == float("inf") else 10.0 ** (sinr_db / 10.0)
+    return 10.0 * math.log10(max(_apply_evm_lin(lin), 1e-30))
+
+
 # ── 上行(P6,計畫 §13)──────────────────────────────────────────────
 # UE 開迴路功控(TS 38.213 §7.1.1):P_perPRB = min(P_CMAX − 10log10 M_ref, P0 + α·PL)。
 _UL_P0_DBM = get_float("RU_UL_P0_DBM", default=-90.0)          # 每 PRB 目標接收功率(常見 −90…−100)
@@ -104,7 +126,7 @@ def _compute_ul_sinr_db(ul_ctx: dict, cell_to_freq: dict, inter_freq: bool, cell
             rho = (cell_ul_load or {}).get(cv["serving"])
             rho = float(rho) if rho is not None else _UL_NEIGHBOR_LOAD   # DU 有推負載就用真的,否則 env 常數
             interf_mw += 10.0 ** ((ptx[v] + 10.0 * math.log10(pg_v_to_me)) / 10.0) * rho
-        out[u] = 10.0 * math.log10(sig_mw / (noise_mw + interf_mw))
+        out[u] = _apply_evm_db(10.0 * math.log10(sig_mw / (noise_mw + interf_mw)))
     return out
 
 # inter-frequency:True = 各 cell 不同頻不互擾 → SINR 只算訊號/噪聲(不累加他 cell 干擾)。
@@ -667,7 +689,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 H, _chain = array_chain.to_ports(H_elem, _antenna_cfg(), etilt=_etilt)
                 _layout = _chain.get("layout")
                 if H.size and H.shape[1] > 1 and sinr_db != -float("inf"):
-                    _g_ref = 10.0 ** (float(sinr_db) / 10.0)
+                    _g_ref = _apply_evm_lin(10.0 ** (float(sinr_db) / 10.0))   # 選 rank 也要看失真上限,否則近場永遠選滿層
                     # B1(2026-09-16):GoB。Cat A 也算,只是拿來當 KPI(O-RAN WG1 §4.6.4.1 要每波束 RSRP);
                     # Cat B + predefined-beam 則直接用 beamId 對應的權重做預編碼(O-DU 只送 beamId)。
                     _beams = gob.active_subset(gob.for_config(_antenna_cfg(), _chain), _bc["beams"])
@@ -685,13 +707,15 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                     rank_pmi = int(_sel["pmi"])
                     # 寬頻 SINR 改由「最佳單層預編碼」的陣列增益推導 → 天線變大 SINR 才會變好
                     sinr_db = float(sinr_db) + 10.0 * math.log10(max(float(_sel["rank1_gain"]), 1e-12))
-                    sinr_per_layer = [10.0 * math.log10(max(g, 1e-12)) for g in _sel["layer_sinr_lin"]]
+                    sinr_per_layer = [10.0 * math.log10(max(_apply_evm_lin(g), 1e-12)) for g in _sel["layer_sinr_lin"]]
                 else:
                     rank = 1
             except (codebook.CodebookError, codebook_type1.CodebookError, ValueError) as exc:
                 logger.warning("codebook lookup failed for ue=%s: %s", pdu.ue_id, exc)
                 rank = 1
 
+        if sinr_db != -float("inf"):
+            sinr_db = _apply_evm_db(float(sinr_db))   # 陣列增益之後再壓一次(失真也在同一條路徑上)
         cqi = sinr_estimator.sinr_to_cqi(sinr_db) if sinr_db != -float("inf") else 0
 
         logger.debug(

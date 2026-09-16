@@ -17,6 +17,8 @@ services:
     image: postgres:16-alpine
     container_name: ransim-postgres
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 4g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 4g
     # 2026-09-16:預設 max_connections=100,開三個 run(4 個 cu_* DB 各一個 pgbouncer pool)就撞滿。
     command: ["postgres", "-c", "max_connections=300"]
     environment:
@@ -64,6 +66,8 @@ services:
     networks:
       - ransim-net
     restart: unless-stopped
+    mem_limit: 256m            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 256m
 
   cu:
     build:
@@ -72,6 +76,8 @@ services:
     image: ransim-cu:platform
     container_name: ransim-cu
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 1g
     environment:
       # 2026-08-25 第二十一輪切換令:ANR indication 走 v10 schema(回退=改 v8 重啟 cu)
       ANR_SCHEMA: "v10"
@@ -154,6 +160,8 @@ services:
     image: ransim-du:platform
     container_name: ransim-du
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 1g
     environment:
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
@@ -259,6 +267,8 @@ services:
     image: ransim-ru:platform
     container_name: ransim-ru
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 2g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 2g
     environment:
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
@@ -408,6 +418,8 @@ services:
     image: ransim-e2adapter:platform
     container_name: ransim-e2adapter
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 512m            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 512m
     network_mode: host        # SCTP outbound 跨主機必要
     environment:
       # 換模組窗口(2026-08-25 開窗令):RC 內層改用 RIC 預編譯模組
@@ -456,6 +468,8 @@ services:
     image: ransim-ue:platform
     container_name: ransim-ue
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 512m            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 512m
     environment:
       # IDLE 態選網門檻(TS 38.304)= 重建門檻 -120 + 3dB 遲滯,避免邊緣反覆 attach/drop。
       CAMP_MIN_RSRP_DBM: "-117"
@@ -504,6 +518,8 @@ services:
     image: kpm-calib:latest
     container_name: kpm-calib
     restart: unless-stopped
+    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 1g
     volumes:
       - /home/mitlab/KPM_fix/ML_model/poc:/app:ro   # 掛 models + code(重訓後 restart 即更新)
     ports:
@@ -520,9 +536,11 @@ services:
     image: ran-scene-management-backend:platform
     container_name: ran-scene-management-backend
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 1g
     environment:
       DJANGO_SETTINGS_MODULE: main.settings.local
-      DJANGO_DEBUG: "True"
+      DJANGO_DEBUG: "False"   # 2026-09-16:DEBUG 的 SQL 紀錄是記憶體洩漏來源
       DJANGO_ALLOWED_HOSTS: "*"
       SCANNED_ASSETS_DIR: /app/assets
       DB_HOST: postgres
@@ -552,9 +570,11 @@ services:
     image: ran-emulation-runtime-run-orchestrator:platform
     container_name: ran-run-orchestrator
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 2g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 2g
     environment:
       DJANGO_SETTINGS_MODULE: main.settings.local
-      DJANGO_DEBUG: "True"
+      DJANGO_DEBUG: "False"   # 2026-09-16:DEBUG 的 SQL 紀錄是記憶體洩漏來源
       DJANGO_ALLOWED_HOSTS: "*"
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -600,6 +620,8 @@ services:
     image: ran-scene-management-scene-editor-frontend:dev
     container_name: ran-scene-editor-frontend
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 1g
     environment:
       NEXT_PUBLIC_REGISTRY_BASE_URL: "http://${SERVER_IP:-localhost}:8301"
       NEXT_PUBLIC_INGEST_BASE_URL: \"http://${SERVER_IP:-localhost}:8301\"
@@ -624,6 +646,8 @@ services:
     image: ran-emulation-runtime-run-monitor-frontend:dev
     container_name: ran-run-monitor-frontend
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
+    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
+    memswap_limit: 1g
     environment:
       NEXT_PUBLIC_REGISTRY_BASE_URL: "http://${SERVER_IP:-localhost}:8301"
       NEXT_PUBLIC_ORCHESTRATOR_BASE_URL: "http://${SERVER_IP:-localhost}:8302"
