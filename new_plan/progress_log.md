@@ -801,3 +801,20 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - omniver_kit:12.1 → 12.7 GiB / 16 分鐘,仍在漲,沒有動它(不是我們的服務)。
 
 **RIC 觀察(之後驗證時處理)**:重啟四個 run 後,64efe95f 已連線,但約 20 分鐘訂閱數仍是 0,其他三個都是 5。
+
+## 2026-09-17 多場景 RIC 控制測試(第 1~5 步,走閘道)
+
+時間為 UTC 2026-09-16 16:07–16:08。四個場景的 NGAP ID 相同,正好用來驗證隔離。
+
+| 場景 | ReportCGI | 換手(p17 / cco_ue_01) | PRB 配額 | CCC cell 開關 |
+|---|---|---|---|---|
+| e01 | ACK ×2 | ACK 438 ms,src→nbr 成功 | ACK 192 ms,DU 兩 cell 都設 10/60/30 | 不送 |
+| e02 | ACK ×2 | ACK 117 ms,src→nbr 成功 | 不送,DU 配額為空 ✔ | 不送 |
+| e03 | ACK ×2 | ACK 289 ms,src→nbr 成功 | ACK 102 ms,DU 兩 cell 都設 10/60/30 | 不送 |
+| e04 | ACK ×2 | ACK 45 ms,gnbDT_c0→c1 成功 | 不送,DU 配額為空 ✔ | 鎖 `e04:gnbDT_c0` ACK,30 秒後解鎖 ACK,DU log 有 disable / enable |
+
+- 四個換手在 CU 的觸發來源都是 `E2_RIC_CONTROL`,時間間隔約 10 秒,與各自送出指令的時間一致,沒有串到別的場景。
+- 修正:CCC cell 開關以前一律回 ACK,現在找不到 cell 或 DU 拒絕時會回 ControlFailure。CU 回 409,避免 adapter 把這種情況記成「CU 不可達」(commit 95d3b9e)。
+- 另外:e02 的訂閱數是 0,原因在 RIC 閘道舊版的清理規則(0.8.3 已修);重啟 e02 的 adapter、重送 E2 Setup 後恢復成 5。
+- 監控腳本的兩個誤報已修正:ACK 還沒寫回就讀到的紀錄;CCC 分成「收到請求」和「送出 ACK」兩筆紀錄。
+- 尚未做:天線/波束控制(RC 2/8)的 E2 解碼;閘道的場景 `active` 狀態由 RIC 端處理。
