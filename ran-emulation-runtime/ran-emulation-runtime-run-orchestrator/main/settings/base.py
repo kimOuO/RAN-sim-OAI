@@ -51,5 +51,7 @@ PRECOMPUTE_LOG_DIR = get_str("PRECOMPUTE_LOG_DIR", "/data/channel_cache")   # pr
 # RIC 場景閘道(ric-scenario-gw,RIC 端 2026-09-14):場景註冊 / R-NIB 清理 / meid 反查。空 = 只記 log
 RIC_GATEWAY_URL = get_str("RIC_GATEWAY_URL", "")
 RIC_GATEWAY_PROFILE = get_str("RIC_GATEWAY_PROFILE", "anr")
+# 宣告場景時開放的控制類型(閘道 controlPolicy.allowedStyles);名稱由 RIC 閘道定義,逗號分隔
+RIC_GATEWAY_ALLOWED_STYLES = get_list("RIC_GATEWAY_ALLOWED_STYLES", default=["rc-reportcgi", "anr-add"])
 # 註冊後是否部署專屬 xApp pod(POST /v1/scenarios/{id}/xapp)。RIC 端 dt-anr 尚未參數化(XAPP_NAME 寫死),先關;他們好了改 on
 RIC_GATEWAY_DEPLOY_XAPP = get_bool("RIC_GATEWAY_DEPLOY_XAPP", False)

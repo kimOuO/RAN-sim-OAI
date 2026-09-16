@@ -89,6 +89,11 @@ def notify_ric_stopped(scene_run_uuid: str, e2_node_id: str, gnb_id_hex: str, pl
         return {"error": str(exc)}
 
 
+from main.utils.logger import get_logger as _get_logger  # noqa: E402
+
+logger = _get_logger(__name__)   # 2026-09-17:下面的 meid 佔用重試原本引用未定義的 logger(NameError)
+
+
 # ── RIC 場景閘道(ric-scenario-gw)──────────────────────────────────
 # 模型(RIC 端 2026-09-14):一 scene_run 一 pod,pod 訂閱該 run 的全部 meid;meid → scenario 必須 N:1。
 # 我方一個 run 只有一個 CU = 一個 meid,所以 nodes[] 永遠一筆(nodeId 固定 "cu")。
@@ -123,7 +128,8 @@ def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_f
     node = {"nodeId": "cu", "meid": meid, "plmnId": _plmn_tbcd(), "nbIdBits": (format(int(gnb_id_hex, 16), "022b") if gnb_id_hex else None)}
     body = {"scenarioId": scene_run_uuid, "labels": {"scene_name": scene_name}, "profile": profile or settings.RIC_GATEWAY_PROFILE,
             "nodes": [node], "ranFunctions": ran_functions or [2, 3, 4, 5, 6],
-            "controlPolicy": {"allowedStyles": ["rc-reportcgi", "anr-add"], "allowWrite": True},
+            "controlPolicy": {"allowedStyles": list(getattr(settings, "RIC_GATEWAY_ALLOWED_STYLES", None) or ["rc-reportcgi", "anr-add"]),
+                              "allowWrite": True},
             # 2026-09-16 RIC 端新增:開場時自動清掉同 meid 的殘留 E2 關聯(拆臨時節點後 m-release 無 Removal 留下的)。
             # 只清「沒有 xApp 在收」的節點;常駐 e00 會被閘道擋下(409 ran-live)。
             "cleanStale": True}
@@ -138,6 +144,37 @@ def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_f
         if stale:
             gw = _gw("/v1/scenarios", body)
     return gw
+
+
+def ric_activate_scenario(scene_run_uuid: str) -> dict | None:
+    """POST /v1/scenarios/{id}/activate(閘道 0.8.4):場景啟用後才能經閘道下控制。
+    閘道會現查每顆 gNB 是否 CONNECTED,沒連上回 409 並指出哪一顆;回應帶 nodes.<id>.gen 與 warnings(沒訂閱的 gNB)。"""
+    return _gw(f"/v1/scenarios/{scene_run_uuid}/activate", {}, timeout=30.0)
+
+
+def ric_deactivate_scenario(scene_run_uuid: str) -> dict | None:
+    """POST /v1/scenarios/{id}/deactivate —— 重佈場景 / 換劇本前呼叫(刪場景則不必)。"""
+    return _gw(f"/v1/scenarios/{scene_run_uuid}/deactivate", {}, timeout=30.0)
+
+
+def ric_activate_when_ready(scene_run_uuid: str, timeout_sec: float = 180.0, every_sec: float = 5.0) -> dict | None:
+    """等 CU 的 E2 Setup 完成再啟用:409(gNB 還沒 CONNECTED)就每 every_sec 秒重試,直到成功或逾時。"""
+    import time as _time
+    deadline = _time.time() + timeout_sec
+    res = None
+    while _time.time() < deadline:
+        res = ric_activate_scenario(scene_run_uuid)
+        if isinstance(res, dict) and not res.get("error"):
+            if res.get("warnings"):
+                logger.warning("RIC gateway activate %s warnings: %s", scene_run_uuid, res.get("warnings"))
+            logger.info("RIC gateway activate %s → gen %s", scene_run_uuid,
+                        {k: (v or {}).get("gen") for k, v in (res.get("nodes") or {}).items()})
+            return res
+        if not (isinstance(res, dict) and res.get("error") == 409):
+            break   # 409 以外(閘道沒這個端點、網路錯)不再等
+        _time.sleep(every_sec)
+    logger.warning("RIC gateway activate %s 未成功: %s", scene_run_uuid, res)
+    return res
 
 
 def ric_unregister_scenario(scene_run_uuid: str) -> dict | None:

@@ -224,6 +224,10 @@ class LaunchController:
                     if settings.RIC_GATEWAY_DEPLOY_XAPP and gw and not gw.get("error"):   # 專屬 xApp pod;RIC 端 dt-anr 參數化前先關(env)
                         xa = platform_clients.ric_deploy_xapp(run_uuid)
                         logger.info("RIC gateway xapp deploy %s → %s", run_uuid, str(xa)[:200])
+                    if gw and not gw.get("error"):   # 閘道 0.8.4:E2 Setup 完成後啟用,之後才能經閘道下控制
+                        import threading as _th
+                        _th.Thread(target=platform_clients.ric_activate_when_ready, args=(run_uuid,),
+                                   name=f"ric-activate-{run_uuid[-8:]}", daemon=True).start()
                 cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
