@@ -49,3 +49,36 @@ echo
 iptables -L OUTPUT -n --line-numbers 2>/dev/null | grep -i sctp || echo "  (no sctp rule visible — check iptables -S OUTPUT | grep sctp)"
 echo
 echo "✓ host setup done. 重啟 e2-adapter 套用 SCTP_BIND_IP env：docker compose up -d e2adapter"
+
+echo
+echo "=== 4. 開機自動套用(2026-09-16 VM 重開後 RIC 連不上的修正) ==="
+# 重開機會讓上面兩樣都失效:
+#   (a) iptables 規則本來就不會保存;
+#   (b) /etc/sysctl.d 在開機早期由 systemd-sysctl 套用,那時 sctp 模組還沒載入、
+#       net.sctp.* 參數不存在 → 被默默跳過,重傳次數退回預設 5 / 10。
+# 修法:開機就載入 sctp 模組,並用一個 oneshot 服務在網路與 docker 起來後重跑本腳本(本腳本可重複執行)。
+SELF="$(readlink -f "$0")"
+echo sctp > /etc/modules-load.d/ransim-sctp.conf
+echo "  wrote /etc/modules-load.d/ransim-sctp.conf"
+if [[ "${RANSIM_SCTP_FROM_BOOT:-0}" != "1" ]]; then
+  cat > /etc/systemd/system/ransim-sctp.service <<UNIT
+[Unit]
+Description=RANsim E2 adapter SCTP host setup (iptables + sysctl)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RANSIM_SCTP_FROM_BOOT=1
+ExecStartPre=/sbin/modprobe sctp
+ExecStart=/bin/bash ${SELF}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable ransim-sctp.service >/dev/null 2>&1
+  echo "  installed + enabled ransim-sctp.service(開機自動執行 ${SELF})"
+fi
+

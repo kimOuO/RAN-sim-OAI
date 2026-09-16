@@ -710,3 +710,18 @@ rank / PMI / 每層 SINR 從 P5-3(2026-09-13)起都是拿這個錯形狀算的,
    run-orchestrator / 兩個前端全部 `restart: unless-stopped`(physics 原為 on-failure)。
    per-run 容器不加:VM 重開後由 orchestrator 恢復的健康監控判定不健康 → 自動 stop/start 重建,
    若容器自己先起來,DU tick 不會恢復,反而會多一次重啟。
+5. **`ransim-ru` 的 `ru_db` 補 migration**:容器啟動時自動套上 antenna 0007 / 0008 / 0009,
+   `panels_mg` 等欄位已存在,`panels_mg does not exist` 錯誤歸零。
+
+### 重啟與 RIC 連線
+- `docker compose up -d` 核心服務全部起來、無錯誤。orchestrator 恢復 4 個 run;兩個測試 run(mimo_check 32T32R live、e2e_check)
+  經 API 停止並向 RIC 解除登記;兩個 corridor run 由健康監控自動復原重建(124 s 判定 → stop/start),
+  各拿到獨立 E2 身分(388e8e0a = e02、49117e33 = e01)——證實 VM 重開後的復原路徑可行。
+- **RIC 連不上**:三個 adapter 都是「SCTP connected → 送出 E2 Setup → 2 秒後關聯被關 → 20 秒重試」循環,主機 0 條 SCTP 關聯。
+  原因是 `host_setup_sctp.sh` 設的東西**重開機後失效**:
+  - `net.sctp.path_max_retrans` / `association_max_retrans` 退回預設 5 / 10(應為 99999)。
+    `/etc/sysctl.d/99-ransim-sctp.conf` 其實在,但開機時 systemd-sysctl 早於 sctp 模組載入,參數不存在被默默跳過。
+  - iptables 阻擋 SCTP 往 docker / k8s 內網的規則不會保存。主機有 7 個 docker 橋接網段,
+    SCTP 多重歸屬會宣告這些位址,RIC 連不到就斷。
+- 腳本加上第 4 段「開機自動套用」:寫 `/etc/modules-load.d/ransim-sctp.conf`(開機即載入 sctp),
+  並安裝 `ransim-sctp.service`(oneshot,網路與 docker 起來後重跑本腳本)。**需使用者以 sudo 執行一次**。
