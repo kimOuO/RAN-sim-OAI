@@ -2,7 +2,15 @@
 export interface Material { material_uuid: string; key: string; itu_id: string; freq_range_ghz: string; notes: string; }
 export interface AntennaPreset {
   antenna_preset_uuid: string; name: string; source: string; pattern: 'iso' | 'dipole' | 'hw_dipole' | 'tr38901';
+  /** 元件層:單面板元件排列 M(列)× N(行),TR 38.901 §7.3 */
   rows: number; cols: number; polarization: 'V' | 'H' | 'VH' | 'cross'; v_spacing: number; h_spacing: number;
+  panels_mg: number; panels_ng: number; panel_v_spacing: number; panel_h_spacing: number;
+  /** TRX 層:每個 TXRU 垂直帶幾片同極化元件、TXRU 總數、電子下傾(TR 38.901 式 7.3-1) */
+  trx_v_group: number; trx_count: number; electrical_tilt_deg: number;
+  /** 埠層:CSI-RS 埠數與 TS 38.214 Type I 的 (N1,N2) */
+  csi_ports: number; port_n1: number; port_n2: number;
+  /** O-RAN WG4 CUS-plane:A = precoding 在 O-DU,B = O-RU 自己做 beamforming */
+  ru_category: 'A' | 'B'; bf_method: string; gob_az_beams: number; gob_el_beams: number;
   polarization_model: string; max_gain_dbi: number; notes: string;
 }
 export interface DuConfigTemplate {

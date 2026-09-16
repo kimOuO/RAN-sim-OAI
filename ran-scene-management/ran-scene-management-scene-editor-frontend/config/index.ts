@@ -20,3 +20,7 @@ export const categoryOf = (legacyId: string) => SCENE_CATEGORIES.find((c) => c.t
 export const RUN_KNOB_KEYS = ['inter_freq', 'cell_quotas', 'tx_power_dbm', 'discard_timer_ms', 'rlc_delay_model', 'antenna_pattern', 'default_serving_cell', 'trigger_config', 'anr_fixture'] as const;
 export const ANTENNA_PATTERNS = ['iso', 'dipole', 'hw_dipole', 'tr38901'] as const;
 export const POLARIZATIONS = ['V', 'H', 'VH', 'cross'] as const;
+/** O-RAN WG4 CUS-plane O-RU 類別:A = O-DU 做 precoding;B = O-RU 自己做 beamforming(mMIMO 必須) */
+export const RU_CATEGORIES = ['A', 'B'] as const;
+/** Cat B 的 beamforming 方法(O-RAN WG4 CUS-plane) */
+export const BF_METHODS = ['', 'predefined', 'attribute', 'weight', 'channel_info'] as const;
