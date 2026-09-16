@@ -651,3 +651,48 @@ rank / PMI / 每層 SINR 從 P5-3(2026-09-13)起都是拿這個錯形狀算的,
 - 踩到:(1) 用 heredoc 把方法附加到檔案尾端會掉到 class 外面 → DU URL 反射不到、整個 DU 起不來,
   run start 因健康檢查失敗回滾;(2) CU 判成功時看 `success` 欄,但 DU 的 wrapper 用的是 `status: "success"`,
   控制其實生效卻回報失敗;(3) `active_subset` 篩過的清單不能再用 beam_id 當索引。
+
+## 事故:VM 記憶體耗盡整台卡死、需重開機(2026-09-16 18:19–18:48 本地)
+
+### 時間線
+- 17:25 最後一次提交(B2)。之後留著 4 個 run 在跑:corridor_16_24 @2×、corridor_00_08 @1×、e2e_check(皆 cached)、mimo_check 32T32R(live)。
+- 18:14 起 postgres checkpoint 從 < 1 s 變成 100–127 s(I/O 被記憶體壓力拖垮);18:17 出現 `canceling authentication due to timeout`。
+- 18:19 `snapd` 被 SIGKILL;之後 containerd 連續 31 次 `context deadline exceeded`,系統卡死,18:48 使用者重開機。
+- **這次沒有 OOM kill 記錄**:只有 2 GB swap,核心在換頁中卡住而不是乾淨地殺掉行程。
+
+### 上一次開機期間(09-12 ~ 09-16)的 OOM kill(核心有留行程表)
+| 時間 | 被殺 | RSS | 容器 |
+|---|---|---|---|
+| 09-14 22:18 | python | 30.1 GB | **omniver_kit**(Omniverse 平台,非模擬器) |
+| 09-15 14:31 | python | 17.5 GB | **omniver_kit** |
+| 09-15 20:51 | gunicorn | **19.9 GB** | **du-388e8e0a**(corridor_16_24 @2× 的 per-run DU) |
+09-15 20:51 當下其他大戶:python 13.1 GB(omniver_kit)、daphne 6.7 GB(physics 或 CU)。
+容器 ID 對應:a3c988f 於 09-14 14:40 UTC 啟動、14:56 UTC 被 `docker restart`(當時為套 CU migration 重啟 CU/DU),對到 du-388e8e0a。
+
+### 根因(已重現驗證)
+1. **DU slot 引擎佇列無上限**:`SlotParams.discard_timer_ms` 預設 0(關閉),而 `tick_runner` 建 `SlotParams` 時**從來沒傳**這個值。
+   UE 在沒有訊號的區域(corridor 的 src cell 有 20.8% 無路徑、大量 −160 dB)容量 ≈ 0,但流量持續進來,
+   `SlotEngineState.carry_queue` 就無限增長;每個 UE 有兩份 state(`_slot_states` / `_slot_states_op`)。
+   重現:無訊號、0.6 Mbps、2000 tick → carry_queue 28,134 筆;開 discard 300 ms → 穩定在 15 筆。
+   佇列越長 `queue.pop(0)` 越慢 —— 這也是之前量到 DU `p_pm`(SLOT_SHADOW 階段)高達 110 ms 的原因之一。
+2. **RU 通道快取不會清過期項**:`physics_client/.../channel_cache.py` 的 `ChannelCache` 只在「同一個 key 再被查」時刪過期項。
+   移動中的 UE 每個 tick 都是新 key,舊 key 永遠不會再被查。重現:寫 36,000 筆全部過期,仍留 36,000 筆。
+   實測每筆 744 bytes(cached)/ 42 KB(live 32T32R)。corridor 兩個 run 合計約 0.3 GB/小時。
+3. **omniver_kit(非模擬器)** 自己就吃到 17–30 GB,被殺兩次。
+4. **所有容器都沒有記憶體上限**,加上 swap 只有 2 GB → 單一失控行程拖垮整台 VM;今天直接卡死而非 OOM kill。
+
+兩個洩漏都是**既有 bug**(不是今天的天線改動引入),但今天留著 4 個 run 連跑數小時讓它們持續累積。
+今天的 32T32R live run 使用者為定點(快取 key 不變),不是洩漏來源;但 physics 在今天多次以 128 元件陣列重建 Sionna engine,
+其記憶體成長**未能驗證**(重開後已無該行程)。
+
+### postgres
+- **沒有壞**。它的 restart policy 是 `no`,硬重開後沒被拉起來,依賴它的 physics 因此不斷重啟,其他服務都停著。
+- 手動啟動後自動回復正常:`not properly shut down; automatic recovery in progress` → redo 0.02 s → ready。
+  `invalid record length ... got 0` 是 WAL 結尾的正常標記,不是損毀。資料完整:72 萬筆 KPM 歸檔、68 個場景。
+- 當機前的 100 秒 checkpoint 是記憶體壓力的**症狀**,不是原因。
+- 另外抓到**我今天造成的錯誤洪流**:`column ru_antenna_config.panels_mg does not exist` 每 2 秒一次。
+  共用 `ransim-ru` 的 `ru_db` 從沒套 migration;長時間運行的 per-run RU 在 gunicorn worker 回收後載入了新 model 卻沒有新欄位。
+  屬錯誤訊息洪流,不是記憶體來源。
+
+### 目前狀態
+只啟動了 postgres(診斷用),其餘模擬器容器都停著,沒有 run 在跑。修正待使用者同意。
