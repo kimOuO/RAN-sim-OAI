@@ -20,7 +20,8 @@ class RcRanFunctionDescriptionTests(TestCase):
         """Encode → decode 必須拿回 OID + Style 2/6 + Style 3/1。"""
         from main.apps.e2_adapter.services.optional.codec.e2ap_codec import _load_runtime
         rt = _load_runtime()
-        rfd_cls = rt.E2SM_RC_IEs.E2SM_RC_RANFunctionDefinition
+        # 用編碼器同一份 ASN.1 模組解(v10 開啟時 rt.E2SM_RC_IEs 是舊版,會解錯 → bitlen overflow)
+        rfd_cls = e2sm_rc_codec._rc_ies().E2SM_RC_RANFunctionDefinition
 
         encoded = e2sm_rc_codec.encode_rc_ran_function_description()
         rfd_cls.from_aper(encoded)

@@ -484,6 +484,37 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
         }
         return base
 
+    if style == 2 and action == 8:
+        # Antenna / Beam Control(2026-09-17,本平台擴充;RAN Function Description 有宣告)
+        #   ranP[1] = Target Cell(NR-CGI,格式同 3-1 Target Primary Cell ID)
+        #   ranP[2] = Electrical Tilt(valueInt,0.1° 單位;或 valueReal,度)
+        #   ranP[3] = Active Beam IDs(valuePrintableString "0,3,5";空字串 = 全部可用)
+        #   ranP[4] = Max Layers(valueInt,0 = 不限)
+        # 沒帶的參數不改。
+        def _scalar(pid):
+            pv = params.get(pid)
+            return (pv.get("_type"), pv.get("value")) if isinstance(pv, dict) else (None, None)
+
+        msg: dict[str, Any] = {}
+        if 1 in params:
+            msg["target_cgi"] = _extract_target_cgi({1: params[1]})
+        t, v = _scalar(2)
+        if t == "valueInt":
+            msg["electrical_tilt_deg"] = int(v) / 10.0
+        elif t == "valueReal":
+            msg["electrical_tilt_deg"] = float(v)
+        t, v = _scalar(3)
+        if t in ("valuePrintableString", "valueOctS"):
+            txt = bytes.fromhex(v).decode("utf-8", "replace") if t == "valueOctS" else str(v)
+            msg["active_beam_ids"] = [int(x) for x in txt.replace(" ", "").split(",") if x.strip().lstrip("-").isdigit()]
+        t, v = _scalar(4)
+        if t == "valueInt":
+            msg["max_layers"] = int(v)
+        logger.info("Beam control decode: ranP ids=%s -> %s", sorted(params.keys()), msg)
+        base["action"] = "control_beam"
+        base["control_message"] = msg
+        return base
+
     logger.warning("Unsupported (style=%d, action=%d) — no sim payload mapping", style, action)
     return None
 
@@ -618,6 +649,17 @@ def encode_rc_ran_function_description() -> bytes:
                 {"ranParameter-ID": 3, "ranParameter-name": "Dedicated PRB Ratio"},
             ],
             # v10 模組中此欄位為**必填**(每個 ControlAction 都要帶,不只 3/1)
+            **({"ueGroup-ControlAction-Supported": "false"} if _rc_v10_enabled() else {}),
+        }, {
+            # 2026-09-17:mMIMO 天線 / 波束控制(本平台擴充,參數見 to_sim_control_payload)
+            "ric-ControlAction-ID": 8,
+            "ric-ControlAction-Name": "Antenna Beam Control",
+            "ran-ControlActionParameters-List": [
+                {"ranParameter-ID": 1, "ranParameter-name": "Target Cell ID"},
+                {"ranParameter-ID": 2, "ranParameter-name": "Electrical Tilt (0.1 deg)"},
+                {"ranParameter-ID": 3, "ranParameter-name": "Active Beam IDs"},
+                {"ranParameter-ID": 4, "ranParameter-name": "Max Layers"},
+            ],
             **({"ueGroup-ControlAction-Supported": "false"} if _rc_v10_enabled() else {}),
         }],
         "ric-ControlHeaderFormat-Type": 1,

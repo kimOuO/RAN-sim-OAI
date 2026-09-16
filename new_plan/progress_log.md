@@ -818,3 +818,16 @@ RU channel cache、physics 失敗數、CU CONNECTED 與量測寫入、CU/DU 錯�
 - 另外:e02 的訂閱數是 0,原因在 RIC 閘道舊版的清理規則(0.8.3 已修);重啟 e02 的 adapter、重送 E2 Setup 後恢復成 5。
 - 監控腳本的兩個誤報已修正:ACK 還沒寫回就讀到的紀錄;CCC 分成「收到請求」和「送出 ACK」兩筆紀錄。
 - 尚未做:天線/波束控制(RC 2/8)的 E2 解碼;閘道的場景 `active` 狀態由 RIC 端處理。
+
+## 2026-09-17 天線收尾 1:RC 2/8 天線 / 波束控制可從 E2 下
+
+- adapter:
+  - `to_sim_control_payload` 支援 (2,8),ranP:1 = 目標 cell(NR-CGI,格式同 3-1)、2 = 電子下傾(valueInt,0.1°;也接受 valueReal 度)、3 = 可用波束 ID(valuePrintableString "0,3,5",空字串 = 全部)、4 = 最大層數(0 = 不限)。
+  - RAN Function Description 的 style 2 加上 action 8,並加進 `_SUPPORTED_RC_STYLES`;必要參數為 {1},另外允許 {2,3,4}。
+- adapter 行為修改:RC 控制在 sim CU 拒絕時改回 RICcontrolFailure(以前一律 ACK),與 CCC 一致。
+- CU (2,8):
+  - 沒有 cell_id 時改用 target_cgi 反查 cell;以前會把 header.node(gNB MEID)誤當成 cell。
+  - 錯誤改回 409,避免 adapter 把它記成「CU 不可達」,讓 health monitor 誤判。
+- 測試:
+  - 新增 `test_rc_beam_control.py`(7 項);`test_rfd_round_trip` 原本就壞(v10 模組編碼、舊模組解碼 → bitlen overflow),改用 `_rc_ies()` 解碼。adapter 全部 22 項通過。
+  - 端到端(e01,用 adapter 會送出的 payload 打 CU):`e01:nbr` 設成下傾 6.5° / 波束 [0,1] / 層數 1,RU 讀回一致,`e01:src` 沒變;不存在的 cell、沒帶參數都回 409;還原後回到預設。

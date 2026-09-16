@@ -1247,12 +1247,17 @@ def _send_e2_reset(sock, reason: str, cause_misc: str = "om-intervention") -> bo
 # ── RIC_CONTROL_REQ handler (P2.8.6) ──────────────────────────
 
 # Supported (style, action) combos that map to a sim CU action
-_SUPPORTED_RC_STYLES = {(2, 6), (3, 1), (9, 1)}
+_SUPPORTED_RC_STYLES = {(2, 6), (2, 8), (3, 1), (9, 1)}   # (2, 8):天線 / 波束控制(2026-09-17)
 # Required RANParameter IDs per (style, action). Missing → control-message-invalid.
 _REQUIRED_RAN_PARAMS: dict[tuple[int, int], set[int]] = {
     (2, 6): {1, 2, 3},   # min, max, dedicated PRB ratio
     (3, 1): {1},         # target primary cell ID
+    (2, 8): {1},         # 天線 / 波束控制:ranP[1]=target cell(其餘選配)
     (9, 1): {1},         # ReportCGI: ranP[1]=PCI（[2]=ARFCN,[3]=RAT 選配,故走 lenient）
+}
+# 必要以外還可帶的 ranP(沒列的 = 只能帶必要的)
+_OPTIONAL_RAN_PARAMS: dict[tuple[int, int], set[int]] = {
+    (2, 8): {2, 3, 4},   # tilt / active beams / max layers,至少一個由 CU 檢查
 }
 # Sim CU's hardcoded RC ran_function_id (must match rc-probe expectation)
 _RC_RAN_FUNCTION_ID = 3
@@ -1520,7 +1525,7 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
             return
     else:
         missing = required_ids - present_ids
-        extra = present_ids - required_ids
+        extra = present_ids - required_ids - _OPTIONAL_RAN_PARAMS.get((style, action), set())
         if missing or extra:
             _send_control_failure(
                 sock, ric_req_id, ran_func_id,
@@ -1564,13 +1569,22 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
         style, action, sim_action, ueid,
     )
 
-    # Step: forward to sim CU (sim dispatch error 不轉 FAILURE,只記 outcome)
+    # Step: forward to sim CU
+    # 2026-09-17:以前 sim 失敗也照回 ACK(RIC 會以為成功,例如換手目標找不到、波束控制被拒);
+    # 現在改回 RICcontrolFailure,與 CCC 路徑一致。
     sim_resp = sim_http_client.call_control_request(sim_payload)
     sim_ok = sim_resp is not None
     outcome = "ok" if sim_ok else "sim_error"
     if not sim_ok:
-        logger.warning("sim CU /Control/request returned None for style=%d action=%d",
+        logger.warning("sim CU /Control/request returned None for style=%d action=%d → ControlFailure",
                        style, action)
+        _send_control_failure(
+            sock, ric_req_id, ran_func_id,
+            cause=("ricRequest", "control-message-invalid"),
+            call_process_id=call_proc_bytes, style=style, action=action,
+            reason=f"sim CU rejected {sim_action}",
+        )
+        return
 
     # ReportCGI(Style 9/Action 1):把 sim 解出的 CGI 塞進 RIC Control Acknowledge 的 outcome。
     outcome_bytes = b""

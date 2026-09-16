@@ -205,23 +205,24 @@ class E2ControlActor:
         if style == 2 and action_id == 6:
             return _handle_slice_prb_quota(header, message, ric_req_id)
         if style == 2 and action_id == 8:
-            cid = header.get("cell_id") or header.get("node")
-            if not cid:
-                return error_response("cell_id required for style=2 action=8 (beam control)", status=400)
             msg = body.get("control_message") or {}
+            # E2 路徑:adapter 帶 target_cgi(NR-CGI);header.node 是 gNB MEID,不是 cell,不能拿來用
+            cid = header.get("cell_id") or (resolve_target_cell(msg)[0] if msg.get("target_cgi") else None)
+            if not cid:
+                return error_response("cell_id / target_cgi required for style=2 action=8 (beam control)", status=409)
             payload = {"cell_id": cid}
             for k in ("electrical_tilt_deg", "active_beam_ids", "max_layers"):
                 if msg.get(k) is not None:
                     payload[k] = msg[k]
             if len(payload) == 1:
                 return error_response("control_message must contain at least one of "
-                                      "electrical_tilt_deg / active_beam_ids / max_layers", status=400)
+                                      "electrical_tilt_deg / active_beam_ids / max_layers", status=409)
             res = DuClientBusinessService.post_beam_control(payload) or {}
             # DU 用 utils/response 的 wrapper:{status:"success"|..., message, data}
             ok = str(res.get("status", "")).lower() == "success" or bool(res.get("success"))
             logger.info("RC(2,8) beam control %s → %s", payload, str(res)[:200])
             return (success_response(res.get("data") or res, "beam control applied", 200) if ok
-                    else error_response("beam control failed", res, 502))
+                    else error_response("beam control failed", res, 409))   # 409:adapter 不當成 CU 不可達
         if style == 2 and action_id == 7:
             if not cell_id:
                 return error_response("cell_id required for style=2 action=7 (cell on/off)", status=400)
