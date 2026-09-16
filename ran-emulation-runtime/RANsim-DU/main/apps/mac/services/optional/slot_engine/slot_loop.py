@@ -20,6 +20,8 @@
 """
 from __future__ import annotations
 
+import os
+
 import random
 from dataclasses import dataclass, field
 
@@ -83,6 +85,8 @@ class SlotParams:
     re_per_prb_slot: int = 144 # 12 subcarrier × 12 symbol
     target_bler: float = 0.1   # link adaptation 目標首傳 BLER(對齊 OAI target_dl_bler)
     sched_period_slots: int = 1  # 改動二 cadence:此 UE 每幾 slot 才有一次排程機會(1=每 DL slot,>1=稀疏)
+    # 佇列位元組上限(對齊 RLC_TX_MAXSIZE_BYTES,am_entity 同值);0 = 不設限(舊行為,會無限長大)
+    max_buffer_bytes: int = field(default_factory=lambda: int(os.environ.get("RLC_TX_MAXSIZE_BYTES", "10000000") or 10000000))
     discard_timer_ms: float = 0.0  # #2 RLC discardTimer:SDU 等超過此 sim-ms 就丟棄(0=關=無窮,對齊 3GPP discardTimer)
     seed: int | None = None    # 重現用
     # oai_delay_scope:對齊 OAI 的 DRB.RlcSduDelayDl 量測範圍。
@@ -280,10 +284,35 @@ def simulate_sdu_delays(
     #   abs_slot = server-free cursor = 實際最後服務 slot+1(非盲目 +整個 tick)→ 修 carry artifact
     st.carry_queue = queue
     st.pending_future = pending[pi:]
+    # ★ 2026-09-16 VM 記憶體耗盡事故:discard timer 關閉時(影子模式、或 CCO 劇本刻意設 0),
+    #   沒訊號的 UE 容量 ≈ 0 但流量持續進來,carry_queue 會無限長大(實測 du 單一 worker 長到 20 GB)。
+    #   這裡用與真實 RLC 緩衝相同的位元組上限(RLC_TX_MAXSIZE_BYTES,am_entity 同一個值)封頂,
+    #   超過就從最舊的丟,計入 dropped —— 對齊真機「緩衝滿就丟」,且讓每個 UE 的狀態有界。
+    _trim_to_buffer_cap(st, res, p.max_buffer_bytes)
     st.abs_slot = (last_active + 1) if last_active is not None else start
     st.serving = serving and bool(queue)  # 仍有 backlog 才維持服務期到下 tick
     st.harq_busy = {k: v for k, v in harq_busy_until.items() if k >= st.abs_slot}
     return res
+
+
+def _trim_to_buffer_cap(st: SlotEngineState, res: SlotResult, cap_bytes: int) -> None:
+    """佇列總位元組超過 cap 時,從最舊的開始丟(先丟已上車的 carry_queue,再丟 pending_future)。"""
+    if cap_bytes <= 0:
+        return
+    total = sum(s.bytes_remaining for s in st.carry_queue) + sum(s.bytes_remaining for s in st.pending_future)
+    if total <= cap_bytes:
+        return
+    for q in (st.carry_queue, st.pending_future):
+        n_drop = 0
+        while n_drop < len(q) and total > cap_bytes:
+            total -= q[n_drop].bytes_remaining
+            res.dropped_sdus += 1
+            res.dropped_bytes += q[n_drop].bytes_remaining
+            n_drop += 1
+        if n_drop:
+            del q[:n_drop]
+        if total <= cap_bytes:
+            break
 
 
 def avg_delay_ms(res: SlotResult) -> float:

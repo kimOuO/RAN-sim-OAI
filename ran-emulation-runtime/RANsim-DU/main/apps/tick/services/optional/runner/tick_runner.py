@@ -943,7 +943,9 @@ class TickRunner:
                             sched_pipeline_slots=(_pipe_slots if _SLOT_ENGINE_TAKEOVER else 2),
                             n_layers=ue.get("rank", 1),
                             sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl"),
-                            discard_timer_ms=(_SLOT_DISCARD_TIMER_MS if _SLOT_ENGINE_TAKEOVER else 0),
+                            # 2026-09-16:以前只在 takeover 時套 discard,影子模式一律 0 → 佇列無限長大(VM 當機事故)。
+                            # 現在照設定值套用;CCO 劇本要讓延遲真實爬可 set_discard_timer_ms(0),記憶體仍有位元組上限保護。
+                            discard_timer_ms=_SLOT_DISCARD_TIMER_MS,
                             oai_delay_scope=_SLOT_OAI_DELAY_SCOPE,
                         ),
                     )
@@ -953,7 +955,8 @@ class TickRunner:
                         params=SlotParams(seed=self.status.tick_count,
                                           sched_period_slots=_SLOT_CADENCE_PERIOD,
                                           n_layers=ue.get("rank", 1),
-                                          sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl")),
+                                          sinr_layers=(tuple(ue["sinr_layers"]) if ue.get("sinr_layers") else None), mcs_hint=ue.get("mcs_dl"),
+                                          discard_timer_ms=_SLOT_DISCARD_TIMER_MS),   # 同上;以前完全沒傳
                     )
                 except Exception as e:  # shadow 絕不可擋 tick
                     logger.warning("[SLOT_SHADOW] sim failed ue=%s: %s", uid, e)

@@ -696,3 +696,17 @@ rank / PMI / 每層 SINR 從 P5-3(2026-09-13)起都是拿這個錯形狀算的,
 
 ### 目前狀態
 只啟動了 postgres(診斷用),其餘模擬器容器都停著,沒有 run 在跑。修正待使用者同意。
+
+### 修正(2026-09-16 19:xx,使用者同意 1 / 2 / 4 / 5)
+1. **DU slot 引擎佇列**:`tick_runner` 兩處 `SlotParams` 都改為照 `_SLOT_DISCARD_TIMER_MS`(預設 300 ms)套用。
+   以前第一處只在 takeover 時套、影子模式一律 0;第二處(`res_op` 反事實)完全沒傳。
+   另在 `simulate_sdu_delays` 結尾加 `_trim_to_buffer_cap`:佇列總位元組超過 `RLC_TX_MAXSIZE_BYTES`(與 am_entity 同值,10 MB)
+   就從最舊的丟、計入 dropped —— CCO 劇本刻意 `set_discard_timer_ms(0)` 時記憶體仍有界。
+   驗證:無訊號 + discard 關 10,000 tick → 佇列封頂 6,666 筆 / 10.00 MB、記憶體 1.16 MB(以前無限);
+   discard 300 ms → 15 筆;訊號好 → 丟 0 筆(無副作用)。
+2. **RU 通道快取**:每 256 次 set 掃一次過期項;總筆數超過 `RU_CHANNEL_CACHE_MAX`(預設 5000)從最早到期的淘汰到 90%。
+   驗證:移動 UE 寫 36,000 筆 → 留 1,638 筆(以前 36,000);長 TTL + 上限 5000 → 留 4,938;正常命中不受影響。
+4. **自動重啟**:compose 的 postgres / cu / du / ru / ue / e2adapter / physics / scene-management-backend /
+   run-orchestrator / 兩個前端全部 `restart: unless-stopped`(physics 原為 on-failure)。
+   per-run 容器不加:VM 重開後由 orchestrator 恢復的健康監控判定不健康 → 自動 stop/start 重建,
+   若容器自己先起來,DU tick 不會恢復,反而會多一次重啟。
