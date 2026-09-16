@@ -516,3 +516,4 @@
 - 資料:18 張表 db_table 明示,資料表不動;django_migrations / content_type 的 app 名以 SQL 改名;Material 從 preset 搬到 field_scene 與 FK 目標 app 變更用 SeparateDatabaseAndState(state-only)遷移。ingest 兩表原本 0 列,直接以新 app 建表。事前 pg_dump 備份在 scratchpad。
 - 驗證:後端 8 個 app 讀端點 + 舊劇本相容端點全通(68 場景 / 149 gNB / 282 UE 完整);兩個前端 tsc 通過、3011/3012 回應;e2e_check 經新後端 start/stop 全鏈通過(UE 由 read_full_tree 取場景、五容器健康、歸檔、收尾)。
 - 踩到:歷史遷移的小寫 lazy ref(`'preset_catalog.antennapreset'`)要另外改;容器內產生的 root 檔案用 docker chown 處理;orchestrator 在後端換名期間 DNS 失敗導致兩個舊 run 的 health thread 停擺,重啟 orchestrator 恢復。
+- RIC 端(2026-09-16 04:xx 本地)確認修好:submgr 與 rtmgr 互鎖 + xApp 重試無退避。我方 8401/8402 pdu_sent 11 萬 / 13 萬、gateway subscriptionCount 各 6。e03(e2e_check 測試 run)在我方已無 adapter、閘道未登記,RIC e2term 仍留其關聯 = m-release 無 E2 Removal、我方關機只送 Reset 的已知限制,請 RIC 端手動移除。主機上三條 SCTP 關聯 = e01、e02 + 共用 e00(依決策保留)。
