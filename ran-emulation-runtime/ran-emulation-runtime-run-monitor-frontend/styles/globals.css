@@ -97,3 +97,12 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .topnav .shell { padding-bottom: 0; } .topnav .brand { padding-bottom: 8px; }
 .ue-now { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 8px; color: var(--muted); } .ue-now b { color: var(--ink); margin-left: 2px; } .nbrs { display: flex; gap: 10px; flex-wrap: wrap; } .nbr { display: inline-flex; gap: 4px; align-items: center; } .nbr i { width: 8px; height: 8px; border-radius: 2px; }
 .inst-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; font-size: 12px; } .inst { display: inline-flex; gap: 6px; align-items: center; }
+/* 3D 即時(2026-09-17) */
+.live3d { position: relative; height: calc(100vh - 150px); min-height: 480px; border: 1px solid var(--line-2, #26313f); border-radius: 4px; overflow: hidden; margin-top: 10px; }
+.live3d canvas { display: block; }
+.live3d-legend { position: absolute; top: 10px; left: 10px; background: rgba(17, 23, 32, .88); border: 1px solid #34435a; border-radius: 4px; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; max-width: 280px; }
+.live3d-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.live3d-legend .warn { color: #fab219; }
+.ue3d-tag { font: 11px/1.2 ui-monospace, monospace; color: #e6edf3; background: rgba(11, 15, 20, .7); padding: 1px 4px; border-radius: 2px; white-space: nowrap; }
+.ue3d-tip { font-size: 11.5px; color: #e6edf3; background: rgba(11, 15, 20, .92); border: 1px solid #34435a; border-radius: 3px; padding: 4px 7px; white-space: nowrap; transform: translateY(-24px); }
+.check-inline { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; }

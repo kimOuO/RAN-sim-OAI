@@ -32,7 +32,7 @@ export default function RunDashboardPage() {
         <div><div className="crumbs"><Link href="/runs">Runs</Link> / <span className="mono">{p.run.scene_run_uuid.slice(-12)}</span></div><h1>{p.sceneName || p.run.f_scene_uuid}</h1></div>
         <span className={`pill ${p.run.status}`}>{p.run.status}</span>
         <span className="muted">{p.run.mode} · {p.run.speed_x}× · sim_dt {p.run.sim_dt_ms} ms{l ? ` · sim-time ${fmtSimTime(l.sim_time_ms / 1000)}` : ''}</span>
-        <span className="sp" /><nav className="sub"><Link href={`/runs/${id}/events`}>事件流</Link><Link href={`/runs/${id}/playback`}>回放</Link></nav>
+        <span className="sp" /><nav className="sub"><Link href={`/runs/${id}/live3d`}>3D 即時</Link><Link href={`/runs/${id}/events`}>事件流</Link><Link href={`/runs/${id}/playback`}>回放</Link></nav>
       </header>
       <RangeBar range={p.range} setRange={p.setRange} live={p.live} windows={p.view.length} />
       <div className="stats">

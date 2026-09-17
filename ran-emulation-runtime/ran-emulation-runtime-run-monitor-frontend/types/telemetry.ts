@@ -33,3 +33,9 @@ export interface RicObservedBy { name: string; phase: string; ready: boolean; po
 export interface RicNode { meid: string; e2ConnectionStatus?: string; subscriptionCount?: number | null; degraded?: string[]; view?: { xappName?: string; observedBy?: RicObservedBy[]; state?: string } | null; }
 export interface RicObservation { scene_run_uuid: string; gateway: boolean; scenario: { xappName?: string; profile?: string; isolation?: string; state?: string; ranFunctions?: number[]; connectedNodes?: number; controlPolicy?: { allowedStyles?: string[]; allowWrite?: boolean }; error?: string } | null; nodes: Record<string, RicNode>; }
 export interface RunInstance { run_instance_uuid: string; role: 'cu' | 'du' | 'ru' | 'ue' | 'e2adapter'; container_id: string; host_port: number | null; status: string; last_heartbeat: string | null; health_detail?: string; f_scene_run_uuid: string; }
+/** 3D 畫面用的完整場景樹(read_full_tree):位置 Y-up、公尺;UE 路徑點 [t, x, y, z] */
+export interface Cell3d { cell_uuid: string; name: string; pci: number; position: number[] | null; azimuth_deg: number; tilt_deg: number; is_active: boolean; }
+export interface Gnb3d { gnb_uuid: string; name: string; position: number[]; dus: { cells: Cell3d[] }[]; }
+export interface Ue3d { ue_uuid: string; name: string; waypoints: [number, number, number, number][]; active_windows: [number, number][]; }
+export interface Building3d { building_uuid: string; name: string; position: number[]; size: number[]; }
+export interface SceneTree3d { scene: Scene & { geometry_source: unknown }; gnbs: Gnb3d[]; ues: Ue3d[]; buildings: Building3d[]; }

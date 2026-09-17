@@ -56,4 +56,9 @@ export default [
     files: ['components/scene-canvas/**/*.tsx'],
     rules: { 'react/no-unknown-property': 'off' },
   },
+  {
+    // react-three-fiber 的 JSX 是 three.js 物件屬性(position/args/attach…),不是 DOM 屬性
+    files: ['components/scene3d/**/*.tsx'],
+    rules: { 'react/no-unknown-property': 'off' },
+  },
 ];

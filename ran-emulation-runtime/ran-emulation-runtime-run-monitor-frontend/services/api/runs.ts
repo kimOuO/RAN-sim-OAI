@@ -1,6 +1,6 @@
 import { DU_API, E2ADAPTER_API, ORCHESTRATOR_API, REGISTRY_API, RUNTIME_HOST, UE_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
-import type { DuCell, DuTick, E2AdapterStatus, RicObservation, RunInstance, Scene, SceneRun, SceneTreeLite, UeDriverStatus } from '@/types/telemetry';
+import type { DuCell, DuTick, E2AdapterStatus, RicObservation, RunInstance, Scene, SceneRun, SceneTree3d, SceneTreeLite, UeDriverStatus } from '@/types/telemetry';
 /** RIC 端觀測(閘道 GET 兩趟,慢;獨立慢輪詢) */
 export const getRicObservation = (scene_run_uuid: string) => post<RicObservation>(`${ORCHESTRATOR_API}/Run_lifecycle/RicObservationReader/read`, { scene_run_uuid }, { timeoutMs: 20000 });
 
@@ -15,3 +15,4 @@ export const listDuCells = (base: string = DU_API) => post<DuCell[]>(`${base}/MA
 export const getUeDriverStatus = (base: string = UE_API) => post<UeDriverStatus>(`${base}/Scenario/ScenarioController/status`, {}, { timeoutMs: 5000 });
 export const getE2AdapterStatus = (base: string = E2ADAPTER_API) => post<E2AdapterStatus>(`${base}/Status/AdapterStatusReader/read`, {}, { timeoutMs: 5000 });
 export const getSceneTree = (scene_uuid: string) => post<SceneTreeLite>(`${REGISTRY_API}/Field_scene/SceneReader/read_full_tree`, { scene_uuid });
+export const getSceneTree3d = (scene_uuid: string) => post<SceneTree3d>(`${REGISTRY_API}/Field_scene/SceneReader/read_full_tree`, { scene_uuid });
