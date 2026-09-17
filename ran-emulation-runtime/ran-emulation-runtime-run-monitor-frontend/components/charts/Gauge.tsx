@@ -1,5 +1,6 @@
 /** 圓環百分比(cell 當下負載);顏色跟 cell 走,超過門檻加狀態環 */
-export function Gauge({ value, label, sub, color, size = 84, warn = 85 }: { value: number | null; label: string; sub?: string; color: string; size?: number; warn?: number }) {
+export function Gauge({ value: raw, label, sub, color, size = 84, warn = 85 }: { value: number | null; label: string; sub?: string; color: string; size?: number; warn?: number }) {
+  const value = raw != null && Number.isFinite(raw) ? raw : null;   // NaN 當成沒有資料
   const r = size / 2 - 7, C = 2 * Math.PI * r; const v = value == null ? 0 : Math.max(0, Math.min(100, value));
   const tone = value == null ? '' : v >= warn ? 'serious' : v >= warn * 0.7 ? 'warning' : '';
   return (

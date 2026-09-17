@@ -179,6 +179,14 @@ def export_scenario(scene_uuid: str, scene_run_uuid: str | None = None) -> dict[
                            "duration_sec": float(run.duration_sec) if run else 0.0, "tick_ms": int(run.sim_dt_ms) if run else 500}
     if scene.geometry_source is not None:
         out["geometry_source"] = scene.geometry_source
+    # 2026-09-17:場景層天線 preset 一起匯出(precompute 用;以前沒帶 → 預算一律 tr38901/dipole,與 live 不一致)
+    def _arr(p):
+        return None if p is None else {"pattern": p.pattern, "polarization": p.polarization, "rows": p.rows, "cols": p.cols,
+                                       "vertical_spacing": p.v_spacing, "horizontal_spacing": p.h_spacing}
+    for key, attr in (("tx_antenna", "gnb_antenna_preset"), ("ue_antenna", "ue_antenna_preset")):
+        a = _arr(getattr(scene, attr, None))
+        if a:
+            out[key] = a
     for k in ("default_serving_cell", "antenna_pattern", "cell_quotas", "inter_freq", "discard_timer_ms", "tx_power_dbm", "rlc_delay_model", "anr_fixture"):
         if k in knobs:
             out[k] = knobs[k]

@@ -228,7 +228,8 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
     # buildings 是空的，舊行為會把整個幾何清成自由空間，算出來的 channel
     # 完全不是室內（2026-09-08 實際踩到：走廊掃描被換成 0 棟建築的空場景）。
     sc_geometry = raw.get("geometry_source")
-    if sc_gnbs or sc_antenna or sc_geometry:
+    sc_tx, sc_ue = raw.get("tx_antenna"), raw.get("ue_antenna")
+    if sc_gnbs or sc_antenna or sc_geometry or sc_tx:
         # geometry_source 用「劇本的 buildings」建 mesh(空 list = 只有地面 = 自由空間)。
         # 原本一律吃全域 umi_3sector.xml(6 棟樓)→ 劇本說無建築卻在都市場景裡算 channel,
         # 造成 cell 被樓遮蔽/翻轉/多徑 variance。改成劇本場景幾何才忠於劇本 + 對齊 OAI AWGN。
@@ -245,13 +246,21 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
             override["gnbs"] = sc_gnbs
         if sc_antenna:
             override["scene_antenna_config"] = {"gnb_antenna_pattern": sc_antenna}
+        if sc_tx:   # 與 live(RANsim-UE physics_client.push_scene)同一組欄位
+            override["scene_antenna_config"] = {
+                "gnb_antenna_pattern": sc_tx.get("pattern", "tr38901"), "gnb_polarization": sc_tx.get("polarization", "V"),
+                "gnb_array_rows": sc_tx.get("rows", 1), "gnb_array_cols": sc_tx.get("cols", 1),
+                "gnb_v_spacing": sc_tx.get("vertical_spacing", 0.5), "gnb_h_spacing": sc_tx.get("horizontal_spacing", 0.5),
+                **({"ue_antenna_pattern": sc_ue.get("pattern", "dipole"), "ue_polarization": sc_ue.get("polarization", "V"),
+                    "ue_array_rows": sc_ue.get("rows", 1), "ue_array_cols": sc_ue.get("cols", 1)} if sc_ue else {}),
+            }
         try:
             SionnaBusinessService.apply_override(override)
             print(
                 f"[precompute] scenario override applied: "
                 f"gnbs={len(sc_gnbs or [])} "
                 f"geometry={(sc_geometry or {}).get('type') or f'buildings_json({len(sc_buildings)})'} "
-                f"antenna_pattern={sc_antenna or '(scene default)'}"
+                f"antenna_pattern={sc_antenna or '(scene default)'} tx={sc_tx} ue={sc_ue}"
             )
         except Exception as e:
             print(

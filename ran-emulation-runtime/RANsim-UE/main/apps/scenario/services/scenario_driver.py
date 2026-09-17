@@ -357,6 +357,7 @@ class ScenarioDriver:
                 scene_id=self.scenario.scene_id, gnbs=gnb_dicts,
                 buildings=bld_dicts, antenna_pattern=self.scenario.antenna_pattern,
                 tx_antenna=self.scenario.tx_antenna, ue_antenna=self.scenario.ue_antenna,
+                geometry_source=getattr(self.scenario, "geometry_source", None),
             )
             logger.info("scenario %s push_scene to Physics(live): ok=%s",
                         self.scenario.scenario_id, ok)

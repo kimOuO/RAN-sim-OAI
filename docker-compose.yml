@@ -621,8 +621,8 @@ services:
     image: ran-scene-management-scene-editor-frontend:dev
     container_name: ran-scene-editor-frontend
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
-    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
-    memswap_limit: 1g
+    mem_limit: 3g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM(Next dev 編譯 3D 頁面 1g 不夠,2026-09-17)
+    memswap_limit: 3g
     environment:
       NEXT_PUBLIC_REGISTRY_BASE_URL: "http://${SERVER_IP:-localhost}:8301"
       NEXT_PUBLIC_INGEST_BASE_URL: \"http://${SERVER_IP:-localhost}:8301\"
@@ -647,8 +647,8 @@ services:
     image: ran-emulation-runtime-run-monitor-frontend:dev
     container_name: ran-run-monitor-frontend
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
-    mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
-    memswap_limit: 1g
+    mem_limit: 3g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM(Next dev 編譯 3D 頁面 1g 不夠,2026-09-17)
+    memswap_limit: 3g
     environment:
       NEXT_PUBLIC_REGISTRY_BASE_URL: "http://${SERVER_IP:-localhost}:8301"
       NEXT_PUBLIC_ORCHESTRATOR_BASE_URL: "http://${SERVER_IP:-localhost}:8302"

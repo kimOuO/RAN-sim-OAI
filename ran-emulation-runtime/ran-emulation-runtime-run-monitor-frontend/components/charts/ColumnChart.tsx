@@ -9,7 +9,8 @@ export function ColumnChart({ groups, height = 160, unit = '' }: { groups: { nam
   const [hover, setHover] = useState<number | null>(null);
   const n = groups[0]?.cols.length ?? 0; if (!n) return <div ref={ref} className="chart empty" style={{ height }}><span className="muted">尚無資料</span></div>;
   const PAD = { l: 30, r: 8, t: 8, b: 22 }; const iw = width - PAD.l - PAD.r, ih = height - PAD.t - PAD.b;
-  const hi = Math.max(1, ...groups.flatMap((g) => g.cols.map((c) => c.value)));
+  // 非有限值(NaN / Infinity)當 0,否則最大值變 NaN,刻度文字會渲染成 NaN
+  const hi = Math.max(1, ...groups.flatMap((g) => g.cols.map((c) => (Number.isFinite(c.value) ? c.value : 0))));
   const slot = iw / n, bw = Math.max(2, (slot - 4) / groups.length - 2);
   const tickEvery = Math.max(1, Math.ceil(n / 8));
   return (
@@ -19,7 +20,7 @@ export function ColumnChart({ groups, height = 160, unit = '' }: { groups: { nam
         {groups[0].cols.map((c, i) => (
           <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
             <rect x={PAD.l + i * slot} y={PAD.t} width={slot} height={ih} fill="transparent" />
-            {groups.map((g, gi) => { const v = g.cols[i]?.value ?? 0; const h = (v / hi) * ih; return <rect key={g.name} x={PAD.l + i * slot + 2 + gi * (bw + 2)} y={PAD.t + ih - h} width={bw} height={h} rx="3" fill={g.color} opacity={hover == null || hover === i ? 1 : 0.5} />; })}
+            {groups.map((g, gi) => { const v = Number.isFinite(g.cols[i]?.value) ? g.cols[i].value : 0; const h = (v / hi) * ih; return <rect key={g.name} x={PAD.l + i * slot + 2 + gi * (bw + 2)} y={PAD.t + ih - h} width={bw} height={h} rx="3" fill={g.color} opacity={hover == null || hover === i ? 1 : 0.5} />; })}
             {i % tickEvery === 0 && <text x={PAD.l + i * slot + slot / 2} y={height - 6} textAnchor="middle" className="tick">{c.label}</text>}
           </g>))}
       </svg>

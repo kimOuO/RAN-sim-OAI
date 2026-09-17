@@ -51,7 +51,8 @@ def _flatten_gnbs(scenario_gnbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def push_scene(*, scene_id: str, gnbs: list[dict[str, Any]],
                buildings: list[dict[str, Any]] | None = None,
                antenna_pattern: str | None = None,
-               tx_antenna: dict[str, Any] | None = None, ue_antenna: dict[str, Any] | None = None) -> bool:
+               tx_antenna: dict[str, Any] | None = None, ue_antenna: dict[str, Any] | None = None,
+               geometry_source: dict[str, Any] | None = None) -> bool:
     """把劇本場景推給 Physics live 引擎(apply_override full:換 geometry + gnbs + 天線)。
 
     buildings 空 = 平地(自由空間);antenna_pattern None = Physics 預設 tr38901。
@@ -63,9 +64,10 @@ def push_scene(*, scene_id: str, gnbs: list[dict[str, Any]],
     payload: dict[str, Any] = {
         "scene_id": scene_id,
         "override_mode": "full",
-        "geometry_source": {
+        # 場景有自己的幾何(掃描模型等)就用它;否則用 buildings 建方塊(空 = 自由空間)
+        "geometry_source": geometry_source or {
             "type": "buildings_json",
-            "buildings": buildings or [],   # 空 = 平地 = 自由空間
+            "buildings": buildings or [],
         },
         "gnbs": flat,
     }

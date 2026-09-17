@@ -110,6 +110,8 @@ class ScenarioSpec:
     # dict 欄位:rows, cols, polarization, pattern, vertical_spacing, horizontal_spacing
     tx_antenna: dict | None = None
     ue_antenna: dict | None = None
+    # 2026-09-17:場景幾何(mitsuba_xml_path 等);live push_scene 要帶,否則 live 在自由空間算
+    geometry_source: dict | None = None
     # 劇本是否帶 anr_fixture 區塊(driver 據此決定要不要跑起場前準備)
     has_anr_fixture: bool = False
     # Optional 劇本自帶 per-cell PRB quota,start() 時自動套用(= xApp E2 Control Style2/Action6)。
@@ -465,6 +467,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
         precompute_status="ready" if run.get("mode") == "cached" else "pending",
         antenna_pattern=(str(knobs["antenna_pattern"]) if knobs.get("antenna_pattern") else None),
         tx_antenna=tx_antenna, ue_antenna=ue_antenna,
+        geometry_source=(scene.get("geometry_source") or None),
         has_anr_fixture=bool(knobs.get("anr_fixture")),
         cell_quotas=[{"cell_id": _tag_cell(_run_tag, str(q["cell_id"])), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
                      for q in (knobs.get("cell_quotas") or []) if q.get("cell_id")],
