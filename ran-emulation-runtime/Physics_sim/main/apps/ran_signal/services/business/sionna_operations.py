@@ -425,6 +425,70 @@ class SionnaBusinessService:
             )
         return result
 
+    @classmethod
+    def coverage_for_scene(cls, payload: dict[str, Any], *, grid: dict[str, Any], **opts: Any) -> dict[str, Any]:
+        """2026-09-17:為指定場景另建一個暫時 engine 算覆蓋圖,不動共用(live)engine。
+
+        payload 形狀同 push_scene(geometry_source / gnbs / scene_antenna_config)。
+        另外回傳 summary:最佳 RSRP、serving SINR、最佳 cell(tx 名稱索引),列 = z 由小到大、欄 = x 由小到大。
+        """
+        import tempfile
+        geo = payload.get("geometry_source") or {"type": "buildings_json", "buildings": []}
+        if geo["type"] == "buildings_json":
+            tmp = tempfile.NamedTemporaryFile(prefix="coverage_", suffix=".xml", delete=False).name
+            mitsuba_builder.build_and_write(buildings=geo.get("buildings") or [], out_path=tmp, ground=geo.get("ground"))
+            path = tmp
+        else:
+            path = cls._materialize_geometry(geo)
+        gnbs = [dict(g) for g in payload.get("gnbs") or []]
+        for idx, g in enumerate(gnbs):
+            cells = g.get("cells") or []
+            g.setdefault("pci", int(cells[0]["pci"]) if cells else idx)
+            g.setdefault("cell_id", f"cell_{g['pci']}")
+        a = payload.get("scene_antenna_config") or {}
+        engine = sionna_engine.SionnaEngine(
+            mitsuba_scene_path=path, gnbs=gnbs,
+            gnb_antenna_pattern=a.get("gnb_antenna_pattern", "tr38901"), gnb_polarization=a.get("gnb_polarization", "V"),
+            ue_antenna_pattern=a.get("ue_antenna_pattern", "dipole"), ue_polarization=a.get("ue_polarization", "V"),
+            gnb_array_rows=a.get("gnb_array_rows", 1), gnb_array_cols=a.get("gnb_array_cols", 1),
+            ue_array_rows=a.get("ue_array_rows", 1), ue_array_cols=a.get("ue_array_cols", 1),
+            gnb_v_spacing=a.get("gnb_v_spacing", 0.5), gnb_h_spacing=a.get("gnb_h_spacing", 0.5),
+        )
+        try:
+          with cls._engine_lock:   # 與 live compute_paths 互斥,避免同時搶 GPU
+            # 每個 cell 當一個「gNB」送進 solver,才拿得到 per-cell 圖(solver 預設會把同 gNB 的 cell 取 max)
+            per_cell = [{"name": c["tx_name"], "pci": c["pci"], "cell_id": c["tx_name"],
+                         "frequency_ghz": next(g for g in gnbs if g["name"] == c["gnb_name"]).get("frequency_ghz", 3.5),
+                         "bandwidth_mhz": next(g for g in gnbs if g["name"] == c["gnb_name"]).get("bandwidth_mhz", 40.0),
+                         "power_dbm": next((cc.get("power_dbm") for g in gnbs if g["name"] == c["gnb_name"] for cc in (g.get("cells") or []) if int(cc["pci"]) == c["pci"]), None)
+                         or next(g for g in gnbs if g["name"] == c["gnb_name"]).get("power_dbm", 23.0)}
+                        for c in engine._cell_entries]
+            res = coverage_solver.compute_coverage_map(
+                scene=engine._scene, gnbs=per_cell, cell_entries=None,
+                x_range=tuple(grid["x_range"]), z_range=tuple(grid["z_range"]),
+                x_step=float(grid["x_step"]), z_step=float(grid["z_step"]),
+                sample_height_m=float(grid.get("sample_height_m", 1.5)), **opts)
+        finally:
+            _release_engine(engine)
+        import numpy as np
+        rs = np.array([[[np.nan if v is None else v for v in row] for row in c["rsrp_dbm"]] for c in res["gnbs"]], dtype=float)[:, ::-1, :]
+        best = np.nanargmax(np.where(np.isnan(rs), -1e9, rs), axis=0)
+        best_rsrp = np.nanmax(np.where(np.isnan(rs), -1e9, rs), axis=0)
+        sinr = np.full(best.shape, np.nan)
+        for i, c in enumerate(res["gnbs"]):
+            if "sinr_db" in c:
+                s_ = np.array([[np.nan if v is None else v for v in row] for row in c["sinr_db"]], dtype=float)[::-1, :]
+                sinr = np.where(np.isfinite(s_), s_, sinr)
+        clean = lambda a, d=1: [[None if (not np.isfinite(v) or v <= -1e8) else round(float(v), d) for v in row] for row in a]  # noqa: E731
+        res["summary"] = {
+            "cells": [c["gnb_name"] for c in res["gnbs"]],
+            "best_rsrp_dbm": clean(best_rsrp),
+            "sinr_db": clean(np.where(best_rsrp <= -1e8, np.nan, sinr)),
+            "best_cell": [[None if best_rsrp[r, k] <= -1e8 else int(best[r, k]) for k in range(best.shape[1])] for r in range(best.shape[0])],
+            "row_axis": "z ascending", "col_axis": "x ascending",
+        }
+        return res
+
     # ── compute (Physics-only) ───────────────────────────────────────
     # NOTE (restructure/4-system-split):
     #   原 compute_tick() 含 e2_formatter / pf_scheduler / mcs_controller /

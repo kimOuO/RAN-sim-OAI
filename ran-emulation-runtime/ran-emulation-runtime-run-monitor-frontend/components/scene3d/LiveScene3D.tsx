@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SceneMeshes, type MeshView } from '@/components/scene3d/SceneMeshes';
 import * as THREE from 'three';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Grid, Html, Line, OrbitControls } from '@react-three/drei';
@@ -20,8 +21,11 @@ const HO = new THREE.Color('#ffffff');
 export function LiveScene3D(p: Props) {
   const view = useMemo(() => sceneView(p.tree), [p.tree]);
   const { center, extent, scale } = view;
+  const hasGeo = !!(p.tree.scene.geometry_source as { type?: string } | null)?.type;
+  const [mesh, setMesh] = useState<MeshView>({ show: true, opacity: 0.3, clipY: 2.2 });
   return (
-    <Canvas camera={{ position: [center[0] + extent * 0.45, extent * 0.35, center[2] + extent * 0.45], fov: 45, near: 0.1, far: 5000 }}
+    <>
+    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [center[0] + extent * 0.45, extent * 0.35, center[2] + extent * 0.45], fov: 45, near: 0.1, far: 5000 }}
       style={{ background: '#0b0f14' }} onPointerMissed={() => p.onSelect(null)}>
       <ambientLight intensity={0.6} /><directionalLight position={[50, 80, 30]} intensity={0.8} />
       <Grid args={[400, 400]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#2f6f8a" sectionThickness={1} cellThickness={0.5} fadeDistance={600} infiniteGrid />
@@ -31,8 +35,16 @@ export function LiveScene3D(p: Props) {
         </mesh>))}
       <Gnbs tree={p.tree} color={p.color} scale={scale} />
       <Ues {...p} scale={scale} />
+      {hasGeo && <SceneMeshes sceneUuid={p.tree.scene.scene_uuid} view={mesh} />}
       <OrbitControls makeDefault enableDamping target={center} />
     </Canvas>
+    {hasGeo && <div className="meshctl">
+      <label><input type="checkbox" checked={mesh.show} onChange={(e) => setMesh({ ...mesh, show: e.target.checked })} /> 場景模型</label>
+      <label>透明度<input type="range" min={0.05} max={1} step={0.05} value={mesh.opacity} onChange={(e) => setMesh({ ...mesh, opacity: Number(e.target.value) })} /></label>
+      <label><input type="checkbox" checked={mesh.clipY != null} onChange={(e) => setMesh({ ...mesh, clipY: e.target.checked ? 2.2 : null })} /> 剖面 {mesh.clipY != null ? `${mesh.clipY.toFixed(1)} m` : ''}</label>
+      {mesh.clipY != null && <input type="range" min={0.2} max={20} step={0.1} value={mesh.clipY} onChange={(e) => setMesh({ ...mesh, clipY: Number(e.target.value) })} />}
+    </div>}
+    </>
   );
 }
 

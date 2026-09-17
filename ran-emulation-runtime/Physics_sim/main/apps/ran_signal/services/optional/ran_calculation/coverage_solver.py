@@ -101,11 +101,14 @@ def compute_coverage_map(
     logger.info("[Coverage] cells=%d samples_per_tx=%d", n_cells, samples_per_tx)
 
     # Sionna size 是 (x_size, z_size) 對應水平 orientation；cell_size 同序
+    # 2026-09-17:engine 在 P5-2 後是 z-up(frame.py),水平面法線 = +z,中心要轉座標
+    from .frame import from_sionna, is_zup, to_sionna
+    zup = is_zup()
     solver = rt.RadioMapSolver()
     rm = solver(
         scene=scene,
-        center=[x_center, sample_height_m, z_center],
-        orientation=_HORIZONTAL_PLANE_ORIENTATION,
+        center=(to_sionna([x_center, sample_height_m, z_center]) if zup else [x_center, sample_height_m, z_center]),
+        orientation=([0.0, 0.0, 0.0] if zup else _HORIZONTAL_PLANE_ORIENTATION),
         size=[x_size, z_size],
         cell_size=[x_step, z_step],
         samples_per_tx=samples_per_tx,
@@ -120,6 +123,20 @@ def compute_coverage_map(
     # path_gain shape = (num_tx, H, W)
     # 實測：cell_centers[0,0]=(x_min,z_min)，H = z 軸方向（h=0 是 z_min=南），W = x 軸方向
     path_gain = np.array(rm.path_gain)   # linear
+    # 依格點中心(轉回平台座標)確認軸向:要讓 H = z 遞增、W = x 遞增(與舊 y-up 實測一致)
+    try:
+        cc = np.array(rm.cell_centers)                                   # (H, W, 3)
+        cc = np.apply_along_axis(from_sionna, -1, cc) if zup else cc
+        xs, zs = cc[..., 0], cc[..., 2]
+        if abs(xs[1, 0] - xs[0, 0]) > abs(zs[1, 0] - zs[0, 0]) if cc.shape[0] > 1 else False:   # H 其實沿 x → 轉置
+            path_gain = path_gain.transpose(0, 2, 1); xs, zs = xs.T, zs.T
+        if zs.shape[0] > 1 and zs[-1, 0] < zs[0, 0]:
+            path_gain = path_gain[:, ::-1, :]
+        if xs.shape[1] > 1 and xs[0, -1] < xs[0, 0]:
+            path_gain = path_gain[:, :, ::-1]
+        path_gain = np.ascontiguousarray(path_gain)
+    except Exception as exc:  # noqa: BLE001 — 舊版 Sionna 沒有 cell_centers:維持原假設
+        logger.warning("[Coverage] cell_centers 無法判斷軸向:%s", exc)
     num_tx, H, W = path_gain.shape
 
     # 決定用哪種 TX→gNB 映射：若有 cell_entries 且與 num_tx 匹配，用多 cell 聚合；否則 1-to-1

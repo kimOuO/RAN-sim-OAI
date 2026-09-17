@@ -16,3 +16,12 @@ export const getUeDriverStatus = (base: string = UE_API) => post<UeDriverStatus>
 export const getE2AdapterStatus = (base: string = E2ADAPTER_API) => post<E2AdapterStatus>(`${base}/Status/AdapterStatusReader/read`, {}, { timeoutMs: 5000 });
 export const getSceneTree = (scene_uuid: string) => post<SceneTreeLite>(`${REGISTRY_API}/Field_scene/SceneReader/read_full_tree`, { scene_uuid });
 export const getSceneTree3d = (scene_uuid: string) => post<SceneTree3d>(`${REGISTRY_API}/Field_scene/SceneReader/read_full_tree`, { scene_uuid });
+/** 場景幾何網格(掃描 / OSM 的 Mitsuba 場景);3D 頁顯示用 */
+export interface SceneMeshOp { op: 'translate' | 'scale' | 'rotate' | 'matrix'; v?: number[]; axis?: number[]; deg?: number }
+export interface SceneMesh { shape_id: string; name: string; format: 'ply' | 'obj'; material: string; color: number[] | null; bytes: number; too_large: boolean; transform: SceneMeshOp[] }
+export const listSceneMeshes = (scene_uuid: string) => post<SceneMesh[]>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/meshes`, { scene_uuid });
+export async function fetchSceneMeshFile(scene_uuid: string, shape_id: string): Promise<ArrayBuffer> {
+  const res = await fetch(`${REGISTRY_API}/Field_scene/SceneGeometryReader/mesh_file`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scene_uuid, shape_id }) });
+  if (!res.ok) throw new Error(`mesh ${shape_id}: HTTP ${res.status}`);
+  return res.arrayBuffer();
+}

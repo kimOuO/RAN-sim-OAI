@@ -64,6 +64,11 @@ urlpatterns = [
         CoverageActor.compute,
         name="coverage_runner_compute",
     ),
+    path(
+        "Physics/RanSignal/CoverageRunner/compute_scene",
+        CoverageActor.compute_scene,
+        name="coverage_runner_compute_scene",
+    ),
 
     # /api/v0.1/Physics/RanSignal/HealthChecker/read
     path(

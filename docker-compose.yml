@@ -552,6 +552,8 @@ services:
       - ./ran-scene-management/ran-scene-management-backend:/app
       - ./scanned-building-assets:/app/assets   # 3D 幾何匯入產物(2026-09-16 自 ingest 併入)
       - ./docs/scenarios:/app/docs/scenarios:ro   # import_scenarios --dir 用
+      # 場景幾何(掃描 / OSM 產的 Mitsuba XML + PLY);用與 physics 相同的絕對路徑,scene.geometry_source 可直接讀(畫布顯示用)
+      - ./Omnivers_platform/assets/maps:/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

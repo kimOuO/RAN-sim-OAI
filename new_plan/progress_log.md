@@ -953,3 +953,18 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
   - 歸檔新增 `scene_t_sec`(劇本時間,migration 0002):sim_time_ms 會跨重啟累加,不能拿來對應劇本路徑。
 - 驗證(CDP 無頭截圖):四個步驟頁都沒有 console 錯誤;在測試場景 `ui_wizard_test` 產生通勤情境 8 個 UE,資料正確,播放時 UE 會移動;3D 即時頁上 corridor_08_16 的 UE 會隨時間移動並換到 nbr;回放 3D 顯示劇本時間與 UE 位置。
 - 尚未做:畫布顯示掃描模型(glb)、覆蓋熱圖預覽。
+
+## 2026-09-17 畫布顯示掃描模型 + 覆蓋熱圖預覽
+
+- registry `SceneGeometryReader`:
+  - `meshes`:解析場景的 Mitsuba XML(scene.geometry_source,以及建築的 .xml geometry_ref),列出 ply / obj 網格、材質、to_world 轉換。
+  - `mesh_file`:只能依 shape_id 取「該場景有引用」的檔案,不接受任意路徑;單檔上限 60 MB。
+  - compose 以相同絕對路徑唯讀掛載 `Omnivers_platform/assets/maps`。
+- 兩個前端的 3D 都會畫出場景模型:PLYLoader / OBJLoader 解析,依 ITU 材質上色、半透明,可調「剖面高度」(預設 2.2 m,切掉天花板才看得到室內)。場景檔與平台同為 Y-up,不用轉換;走廊模型與 UE 路徑 / gNB 位置吻合。
+- 覆蓋熱圖:
+  - physics `CoverageRunner/compute_scene` 另建暫時 engine 算,不動 live engine,但計算期間拿 engine 鎖;回傳每格最佳 RSRP、serving SINR、最佳 cell。
+  - coverage_solver 修正 z-up:P5-2 之後取樣平面仍用 y-up 參數;現在改依 cell_centers 反推軸向。
+  - registry `SceneGeometryReader/coverage` 由場景匯出設定(含天線 preset)並自動決定網格(外框外擴 5 m、≤ 40000 格)。
+  - 編輯器步驟 2 加上「覆蓋熱圖」面板:高度、格距、SINR / RSRP / 最佳 cell、不透明度、色階、統計。
+  - 驗證:ui_wizard_test 49×219 格(0.25 m)約 4 秒;最佳 cell 的三個扇區方向與方位角 0 / 120 / 240° 相符;扇區交界 SINR 低。
+- 事故:我用「等 log 出現 checkpoint @ tick 130000」來決定何時重啟 physics,但 precompute log 是累加的,9/14 那次完整重算就有這一行 → 條件立刻成立,physics 在 14:06 就被重啟,當時進度 127600 還沒存,從 120000 重跑,損失約 7600 tick(約 1 小時)。之後判斷條件要限定在本次執行之後的 log(或看 checkpoint 檔的 mtime)。

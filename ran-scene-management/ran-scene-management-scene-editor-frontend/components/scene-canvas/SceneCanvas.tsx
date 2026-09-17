@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Edges, Grid, Line, OrbitControls, Text } from '@react-three/drei';
 import { CANVAS } from '@/config';
@@ -8,6 +8,7 @@ import type { Building, Cell, Gnb, SceneTree } from '@/types/registry';
 import { CellMarker } from '@/components/scene-canvas/CellMarker';
 import { GnbGroupMarker } from '@/components/scene-canvas/GnbGroupMarker';
 import { ueActiveAt, uePositionAt } from '@/hooks/feature/sceneGeometry';
+import { SceneMeshes, type MeshView } from '@/components/scene-canvas/SceneMeshes';
 
 /** gNB 顏色:沿用 registry 的 color,沒有就依序給一個(呈現層決定,不寫回) */
 const PALETTE: [number, number, number][] = [[0.31, 0.82, 1.0], [1.0, 0.54, 0.24], [0.45, 0.9, 0.55], [0.8, 0.55, 1.0], [1.0, 0.45, 0.5]];
@@ -28,9 +29,14 @@ export interface SceneCanvasProps {
   onGnbMoved: (g: Gnb, pos: [number, number, number]) => void;
   /** 路徑預覽時間(秒);給值時 UE 畫在該時間的位置,不在場的 UE 隱藏 */
   previewT?: number | null;
+  /** 疊在場景上的額外 3D 物件(例如覆蓋熱圖) */
+  overlay?: ReactNode;
 }
 
-export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved, previewT = null }: SceneCanvasProps) {
+export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved, previewT = null, overlay }: SceneCanvasProps) {
+  const hasGeo = !!(tree.scene.geometry_source as { type?: string } | null)?.type || tree.buildings.some((b) => b.geometry_ref?.endsWith('.xml'));
+  const [meshView, setMeshView] = useState<MeshView>({ show: true, opacity: 0.35, clipY: 2.2 });
+  const [meshInfo, setMeshInfo] = useState('');
   // 場景範圍(gNB / cell / UE 路徑 / 建築)→ 標記比例與鏡頭。大型戶外場景 scale=1,走廊這種十幾公尺的場景自動縮小
   const view = useMemo(() => {
     const xs: number[] = [], zs: number[] = [];
@@ -45,7 +51,8 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
   }, [tree]);
   const uePaths = useMemo(() => tree.ues.map((u) => ({ ue: u, pts: u.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number]) })), [tree.ues]);
   return (
-    <Canvas camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: 0.1, far: 5000 }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
+    <>
+    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: 0.1, far: 5000 }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
       {/* 地面:放置模式時接點擊;平常點空白處取消選取 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} onClick={(e) => { e.stopPropagation(); if (placing) onGroundClick([e.point.x, 0, e.point.z]); else onSelect(null); }}><planeGeometry args={[CANVAS.gridSize * 4, CANVAS.gridSize * 4]} /><meshBasicMaterial visible={false} /></mesh>
       <ambientLight intensity={0.6} />
@@ -84,8 +91,18 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
             <Text position={[pts[0][0], pts[0][1] + 0.8 * Math.max(view.scale, 0.5), pts[0][2]]} fontSize={0.7 * Math.max(view.scale, 0.5)} color="#e6edf3" outlineWidth={0.04} outlineColor="#0b0f14" anchorX="center">{ue.name}</Text>
           </group>); })}
       </Suspense>
+      {hasGeo && <SceneMeshes sceneUuid={tree.scene.scene_uuid} view={meshView} onInfo={setMeshInfo} />}
+      {overlay}
       <OrbitControls makeDefault enableDamping target={view.center} />
     </Canvas>
+    {hasGeo && <div className="meshctl">
+      <label><input type="checkbox" checked={meshView.show} onChange={(e) => setMeshView({ ...meshView, show: e.target.checked })} /> 場景模型</label>
+      <label>透明度<input type="range" min={0.05} max={1} step={0.05} value={meshView.opacity} onChange={(e) => setMeshView({ ...meshView, opacity: Number(e.target.value) })} /></label>
+      <label><input type="checkbox" checked={meshView.clipY != null} onChange={(e) => setMeshView({ ...meshView, clipY: e.target.checked ? 2.2 : null })} /> 剖面</label>
+      {meshView.clipY != null && <label>高度 {meshView.clipY.toFixed(1)} m<input type="range" min={0.2} max={20} step={0.1} value={meshView.clipY} onChange={(e) => setMeshView({ ...meshView, clipY: Number(e.target.value) })} /></label>}
+      {meshInfo && <span className="muted small">{meshInfo}</span>}
+    </div>}
+    </>
   );
 }
 

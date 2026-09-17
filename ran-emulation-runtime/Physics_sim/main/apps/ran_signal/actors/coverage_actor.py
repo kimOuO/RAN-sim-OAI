@@ -123,3 +123,35 @@ class CoverageActor:
             payload["grid"]["n_rows"], payload["grid"]["n_cols"], elapsed_ms,
         )
         return success_response(resp_ser.data, message="OK", http_status=200)
+
+    @staticmethod
+    @api_view(["POST"])
+    def compute_scene(request):
+        """2026-09-17:body = {geometry_source, gnbs, scene_antenna_config?, grid, include_sinr?, max_depth?, diffraction?}
+        另建暫時 engine 算覆蓋圖(場景編輯器預覽用),不影響正在跑的 live run。"""
+        body = request.data or {}
+        grid = body.get("grid") or {}
+        try:
+            xr, zr = [float(v) for v in grid["x_range"]], [float(v) for v in grid["z_range"]]
+            xs, zs = float(grid["x_step"]), float(grid["z_step"])
+        except (KeyError, TypeError, ValueError):
+            return error_response("grid 需要 x_range / z_range / x_step / z_step", http_status=400)
+        n = int(round((xr[1] - xr[0]) / xs)) * int(round((zr[1] - zr[0]) / zs))
+        if xs <= 0 or zs <= 0 or n <= 0 or n > 250_000:
+            return error_response(f"網格格數 {n} 超出範圍(1–250000)", http_status=400)
+        if not body.get("gnbs"):
+            return error_response("gnbs required", http_status=400)
+        started_ms = TimestampService.now_ms()
+        try:
+            res = SionnaBusinessService.coverage_for_scene(
+                body, grid={**grid, "x_range": xr, "z_range": zr, "x_step": xs, "z_step": zs},
+                include_sinr=bool(body.get("include_sinr", True)), max_depth=int(body.get("max_depth", 3)),
+                null_threshold_dbm=float(body.get("null_threshold_dbm", -140.0)),
+                diffraction=bool(body.get("diffraction", True)), diffuse_reflection=False)
+        except MemoryError:
+            return error_response("GPU out of memory for coverage grid", http_status=503)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("compute_scene failed")
+            return error_response(str(exc), http_status=500)
+        return success_response({"compute_ms": TimestampService.now_ms() - started_ms, "grid": res["grid"], "summary": res["summary"]},
+                                message="OK", http_status=200)

@@ -3,12 +3,16 @@ from main.apps.field_scene.actors.scenario_importer_actor import ScenarioImporte
 from main.apps.field_scene.actors.scene_actor import SceneController, SceneReader
 from main.apps.field_scene.actors.building_actor import BuildingController, BuildingReader
 from main.apps.field_scene.actors.material_actor import MaterialController, MaterialReader
+from main.apps.field_scene.actors.scene_geometry_actor import SceneGeometryReader
 
 urlpatterns = [
     path("ScenarioImporter/import_v1", ScenarioImporter.import_v1, name="scenario_import_v1"),
     path("ScenarioImporter/export_v1", ScenarioImporter.export_v1, name="scenario_export_v1"),
     path("SceneController/create", SceneController.create, name="scene_create"),
     path("SceneController/update", SceneController.update, name="scene_update"),
+    path("SceneGeometryReader/meshes", SceneGeometryReader.meshes, name="scene_geometry_meshes"),
+    path("SceneGeometryReader/coverage", SceneGeometryReader.coverage, name="scene_geometry_coverage"),
+    path("SceneGeometryReader/mesh_file", SceneGeometryReader.mesh_file, name="scene_geometry_mesh_file"),
     path("SceneController/duplicate", SceneController.duplicate, name="scene_duplicate"),
     path("SceneController/delete", SceneController.delete, name="scene_delete"),
     path("SceneReader/read", SceneReader.read, name="scene_read"),
