@@ -109,3 +109,4 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .playback3d { height: 460px; margin-bottom: 12px; } .live3d .pad { padding: 20px; }
 .meshctl { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: rgba(17, 23, 32, .9); border: 1px solid #34435a; border-radius: 4px; font-size: 12px; min-width: 180px; }
 .meshctl label { display: flex; gap: 6px; align-items: center; } .meshctl input[type=range] { flex: 1; padding: 0; }
+.runhead .sub a.on { color: var(--accent, #ff8a3d); font-weight: 600; }

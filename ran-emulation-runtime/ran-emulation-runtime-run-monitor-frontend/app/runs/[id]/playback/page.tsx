@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { RunSubNav } from '@/components/dashboard/RunSubNav';
 import { useParams } from 'next/navigation';
 import { BarChart } from '@/components/charts/BarChart';
 import { Panel } from '@/components/dashboard/Panel';
@@ -19,7 +20,7 @@ export default function PlaybackPage() {
   const bars = p.cells.filter((c) => w.per_cell[c]).map((c) => ({ label: c, value: w.per_cell[c].prb_pct_dl, color: p.color[c], sub: `${Object.values(w.per_ue).filter((u) => u.serving_cell === c).length} UE` }));
   return (
     <>
-      <header className="runhead"><div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>回放</h1></div></header>
+      <header className="runhead"><div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>回放</h1></div><span className="sp" /><RunSubNav id={id} /></header>
       <div className="card"><label className="slider"><span><button className="mini" onClick={v.toggle}>{v.playing ? '❚❚' : '▶'}</button> <select value={v.rate} onChange={(e) => v.setRate(Number(e.target.value))}>{[1, 5, 10, 30].map((r) => <option key={r} value={r}>{r} 窗/秒</option>)}</select> 視窗 {w.window_index} · sim-time {fmtSimTime(w.sim_time_ms / 1000)}{w.scene_t_sec != null ? ` · 劇本 ${fmtSimTime(w.scene_t_sec)}` : ''} · {Object.keys(w.per_ue).length} UE</span>
         <input type="range" min={0} max={p.all.length - 1} value={idx} onChange={(e) => p.setSelectedWindow(Number(e.target.value))} /></label></div>
       {v.tree && <div className="live3d playback3d">

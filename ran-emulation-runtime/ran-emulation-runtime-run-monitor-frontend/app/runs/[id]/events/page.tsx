@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { RunSubNav } from '@/components/dashboard/RunSubNav';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { useRunDashboardPage } from '@/hooks/feature/useRunDashboardPage';
@@ -16,7 +17,7 @@ export default function EventsPage() {
   ].filter((r) => on[r.kind]).sort((a, b) => b.at.localeCompare(a.at));
   return (
     <>
-      <header className="runhead"><div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>事件流</h1></div><span className="muted">{rows.length} 筆</span></header>
+      <header className="runhead"><div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>事件流</h1></div><span className="muted">{rows.length} 筆</span><span className="sp" /><RunSubNav id={id} /></header>
       <div className="toolbar"><div className="chips">{KINDS.map((k) => <button key={k} className={`chip ${k} ${on[k] ? 'on' : ''}`} onClick={() => setOn({ ...on, [k]: !on[k] })}>{k}</button>)}</div></div>
       <div className="card"><ul className="events">{rows.map((r, i) => <li key={i} className={r.kind}><span className="mono">{r.at.slice(5, 19).replace('T', ' ')}</span><span className="pill">{r.kind}</span><span className="mono muted">{r.sim != null ? `${(r.sim / 1000).toFixed(0)}s` : ''}</span>{r.text}</li>)}</ul>
         {!rows.length && <p className="muted">無事件</p>}</div>
