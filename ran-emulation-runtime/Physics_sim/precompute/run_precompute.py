@@ -74,7 +74,14 @@ class PathSidecar:
         self.a = open_memmap(self.dir / "a.npy", mode=mode, dtype=np.complex64, shape=(T, U, C, k, 2, 2))
         self.kt = open_memmap(self.dir / "kt.npy", mode=mode, dtype=np.float16, shape=(T, U, C, k, 3))
         self.kr = open_memmap(self.dir / "kr.npy", mode=mode, dtype=np.float16, shape=(T, U, C, k, 3))
-        self.meta = {**meta, "top_k": k, "shape": [T, U, C], "complete": False}
+        prev = {}
+        if mode == "r+":   # 續跑:保留上一段寫到哪(否則下一次 checkpoint 前 filled_upto 會消失)
+            try:
+                prev = json.loads((self.dir / "meta.json").read_text())
+            except Exception:  # noqa: BLE001
+                prev = {}
+        self.meta = {**meta, "top_k": k, "shape": [T, U, C], "complete": False,
+                     **({"filled_upto": prev["filled_upto"]} if "filled_upto" in prev else {})}
         self._json = json
         self.write_meta()
         print(f"[precompute] path sidecar {self.dir} mode={mode} K={k}")
