@@ -56,6 +56,23 @@ def fill_path_gaps(g: np.ndarray, tick_ms: int) -> tuple[np.ndarray, int, int]:
     return g, n_interp, n_floor
 
 
+# 每個 tick 各自 ray tracing,相鄰 0.5 s 的 path gain 平均跳 ~14 dB(射線取樣雜訊),
+# 真實大尺度衰落不會變這麼快 → 以置中移動平均(dB)平滑;0 = 不平滑
+SMOOTH_SEC = float(os.environ.get("CHANNEL_CACHE_SMOOTH_SEC", "10"))
+
+
+def smooth_path_gain(g: np.ndarray, tick_ms: int) -> np.ndarray:
+    w = int(round(SMOOTH_SEC * 1000 / max(1, tick_ms)))
+    if w < 2 or g.shape[0] < w:
+        return g
+    c = np.cumsum(np.concatenate([np.zeros((1,) + g.shape[1:], np.float64), g.astype(np.float64)]), axis=0)
+    out = g.copy()
+    h = w // 2
+    avg = (c[w:] - c[:-w]) / w                     # avg[i] = mean(g[i:i+w])
+    out[h:h + avg.shape[0]] = avg.astype(np.float32)
+    return out
+
+
 
 CACHE_DIR = Path(os.environ.get("RU_CACHE_DIR", "/data/channel_cache"))
 # Phase B — Gunicorn 跑 multi-worker,os.environ mutation 只改單一 worker 不對其他 worker 生效。
@@ -90,6 +107,7 @@ class ChannelCache:
         logger.info("Loading channel cache: %s", path)
         d = np.load(str(path), allow_pickle=True)
         self.path_gain_db, n_i, n_f = fill_path_gaps(d["path_gain_db"], int(d["tick_ms"]))
+        self.path_gain_db = smooth_path_gain(self.path_gain_db, int(d["tick_ms"]))
         logger.info("channel cache gaps: interpolated=%d floored=%d", n_i, n_f)
         self.ue_names = [str(x) for x in d["ue_names"].tolist()]
         self.cell_names = [str(x) for x in d["cell_names"].tolist()]
