@@ -29,6 +29,8 @@ from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
 
+from django.db.utils import OperationalError
+
 logger = get_logger(__name__)
 
 
@@ -106,11 +108,16 @@ class FapiRouter:
         cqi_list = dl_tti_pipeline.run(req)
 
         # 推回 DU + 寫入 LastTti
+        # 先全部送回 DU,再寫 LastTti(觀測用):DU 非阻塞併發送 dl_tti 時 upsert 會互相死結,
+        # 以前寫表失敗會中斷迴圈 → 後面 UE 這輪的 CQI 回報全丟
         for cqi in cqi_list:
             du_callback.send_cqi_indication(cqi)
-            _record_dl(cqi.ue_id, req.sfn, req.slot, cqi.sinr_db, cqi.cqi, cqi.rank, cqi.pmi)
-
-        _bump_ru_state(req.sfn, req.slot)
+        try:
+            for cqi in cqi_list:
+                _record_dl(cqi.ue_id, req.sfn, req.slot, cqi.sinr_db, cqi.cqi, cqi.rank, cqi.pmi)
+            _bump_ru_state(req.sfn, req.slot)
+        except OperationalError as e:
+            logger.debug("LastTti upsert skipped (%s)", e)
         logger.debug("dl_tti sfn=%d slot=%d pdus=%d", req.sfn, req.slot, len(req.pdus))
 
         return success_response(
