@@ -907,3 +907,22 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - G2(e02 帶 e01 的 cell 名)、G3(e02 帶不存在的 ARFCN):都是 NO_MATCH,e02 沒有 RIC 觸發的換手。e02 分布的變動來自同時段 18 次 RLF 後重新接入,與控制無關。
 - E1 e04:UE 換到 c1,DU 在 01:18:59 disable c0(isEnergySaving);E2 在 01:19:29 enable c0(isNotEnergySaving),UE 留在 c1;E3(不存在的 cell)回 ControlFailure。
 - e03 閘道世代號 129 的原因:health monitor 的重啟冷卻時間存在監控實例上,每次重啟都建新實例 → 冷卻從未生效,形成重啟迴圈。已改為模組層紀錄,並限制 1 小時最多自動重啟 3 次,超過就停止並記錄 error。
+
+## 2026-09-17 前端流程端到端測試(走廊、1 gNB × 3 cell、8 UE,兩個相同場景同時跑)
+
+- 依 scene-editor 的 API 順序建 `ui_corridor_live`(live)與 `ui_corridor_cached`(cached),兩者內容雜湊相同。
+  - gNB 位於走廊中段,3 個 cell 方位 0/120/240°,cell 參數用 OAI 範本(n78、3.5 GHz、40 MHz、23 dBm,A3 關)。
+  - 天線:gNB 用 2T2R 小站(tr38901 雙極化);UE 用 1 埠 iso。
+  - UE:固定亂數種子產生隨機路徑(0.8–1.5 m/s)與隨機上下行流量(每 30 秒換一次),劇本長 10 分鐘。
+- 過程中發現並修正:
+  1. **live 模式其實在自由空間算**:UE 推給 physics 的場景只有 buildings,沒帶掃描模型 → 已改成推送 `geometry_source`。
+  2. **預算沒套用場景的天線 preset**(一律 tr38901/dipole):registry 匯出補上 tx/ue_antenna,預算時改用與 live 相同的欄位。
+  3. scene-editor 前端在 dev 編譯 3D 頁面時記憶體峰值約 906 MiB,撞到 1g 上限後被砍 → 兩個前端改為 3g。
+  4. 監控頁:UE 狀態缺 `attach_failed` 時整頁當掉;直條圖與圓環沒處理 NaN。
+  5. 最初用 OAI 的 1×1 iso 天線時,同站 3 cell 沒有方向性,SINR 固定 −3 dB → 改用 2T2R 定向天線。
+- 結果:兩個 run 本地檢查分別 13/13、14/14;RIC 閘道 e05 / e06 皆 active、CONNECTED、訂閱 5;前端 3D 畫面(CDP 截圖)與兩個監控頁都正常顯示。
+  - live 與 cached 數值接近:SINR 中位數 4.6 / 6.0 dB,下行平均 1.34 / 1.49 Mbps。
+  - RLF 頻繁(3 分鐘 70–80 次)、沒有換手:原因是同頻同站 3 cell 在窄走廊互相干擾,且 OAI 範本的 A3 關閉,UE 只能靠 RLF 後重新駐留換 cell。
+  - `omniver_backend` 的 ingest_signals 回 500(OperationalError)不在我方範圍,也不影響模擬。
+  - 監控頁載入初期會出現一次 NaN 的 React 警告,畫面上沒有 NaN。
+- corridor_24h 的路徑預算(K=8)目前到 65%,約還要 5.5 小時。
