@@ -66,8 +66,9 @@ export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: Sce
   errors.forEach((c) => out.push(c));
   const others = allRuns.filter((r) => r.scene_run_uuid !== run.scene_run_uuid && r.status === 'running');
   if (run.mode === 'live' && others.some((r) => r.mode === 'live')) out.push({ level: 'error', text: '已有另一個 live run 在跑(同時只允許 1 個;請改 cached 或先停掉)' });
-  if (run.mode === 'cached' && run.status !== 'ready' && run.status !== 'running' && run.status !== 'stopped') out.push({ level: 'error', text: 'cached 模式要先 Precompute 完成' });
-  if (run.mode === 'cached' && run.status === 'stopped' && !run.cache_path) out.push({ level: 'error', text: 'cached 模式沒有 cache,請先 Precompute' });
+  // 以 cache_path 判斷(匯入的劇本 run 可能是 draft 但已有 cache)
+  if (run.mode === 'cached' && run.status === 'precomputing') out.push({ level: 'error', text: 'Precompute 還在跑' });
+  else if (run.mode === 'cached' && !run.cache_path) out.push({ level: 'error', text: 'cached 模式沒有 cache,請先 Precompute' });
   if (others.length >= 4) out.push({ level: 'warn', text: `已有 ${others.length} 個 run 在跑,再加一個可能吃滿主機記憶體` });
   if (run.speed_x > 5 && tree.ues.length > 10) out.push({ level: 'warn', text: `倍速 ${run.speed_x}× 搭配 ${tree.ues.length} 個 UE,RU 可能跟不上而被健康檢查重啟` });
   if (!out.length) out.push({ level: 'ok', text: '可以啟動' });
