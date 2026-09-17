@@ -65,6 +65,7 @@ function Gnbs({ tree, color, scale }: { tree: SceneTree3d; color: Record<string,
 function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLabels, scale }: Props & { scale: number }) {
   const n = tree.ues.length;
   const mesh = useRef<THREE.InstancedMesh>(null);
+  const head = useRef<THREE.InstancedMesh>(null);
   const links = useRef<THREE.BufferGeometry>(null);
   const cellPos = useMemo(() => cellPositions(tree), [tree]);
   const [hover, setHover] = useState<number | null>(null);
@@ -77,15 +78,19 @@ function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLa
   useEffect(() => { links.current?.setDrawRange(0, 0); }, [n]);
 
   useFrame(() => {
-    const im = mesh.current; if (!im) return;
+    const im = mesh.current; const hm = head.current; if (!im || !hm) return;
     const t = simNow(); const now = performance.now(); let li = 0;
     tree.ues.forEach((u, i) => {
       const pos = uePositionAt(u, t); const st = ueState[u.name];
-      if (!pos) { tmp.m.makeScale(0, 0, 0); im.setMatrixAt(i, tmp.m); return; }
+      if (!pos) { tmp.m.makeScale(0, 0, 0); im.setMatrixAt(i, tmp.m); hm.setMatrixAt(i, tmp.m); return; }
       const lv = sinrLevel(st?.sinr_db);
       const f = flashes[u.name]; const blink = f && f.until > now && Math.floor(now / 200) % 2 === 0;
-      const r = baseR * (0.7 + 0.6 * lv) * (u.name === selected ? 1.5 : 1);
-      tmp.v.set(pos[0], pos[1], pos[2]); tmp.s.set(r, r, r); tmp.m.compose(tmp.v, tmp.q, tmp.s); im.setMatrixAt(i, tmp.m);
+      // 人形(沿用 Omniverse 舊版造型):圓柱身體 + 球頭,腳踩地面(UE 高度視為手持高度)
+      const k = baseR / 0.45 * (u.name === selected ? 1.4 : 1); const bodyH = 1.3 * k; const headR = 0.21 * k;
+      const ground = Math.max(0, pos[1] - 1.7);
+      tmp.v.set(pos[0], ground + bodyH / 2, pos[2]); tmp.s.set(0.23 * k, bodyH, 0.23 * k); tmp.m.compose(tmp.v, tmp.q, tmp.s); im.setMatrixAt(i, tmp.m);
+      tmp.v.set(pos[0], ground + bodyH + headR, pos[2]); tmp.s.set(headR, headR, headR); tmp.m.compose(tmp.v, tmp.q, tmp.s); hm.setMatrixAt(i, tmp.m);
+      const r = bodyH + 2 * headR - (pos[1] - ground);
       const base = st?.cell && cellColors[st.cell] ? cellColors[st.cell] : IDLE;
       tmp.c.copy(blink ? (f.kind === 'rlf' ? RLF : HO) : base).multiplyScalar(0.35 + 0.65 * lv); im.setColorAt(i, tmp.c);
       labelRefs.current[i]?.position.set(pos[0], pos[1] + r + 0.4 * scale, pos[2]);
@@ -95,7 +100,7 @@ function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLa
         linkCol.set([base.r, base.g, base.b, base.r * 0.4, base.g * 0.4, base.b * 0.4], li * 6); li++;
       }
     });
-    im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    im.instanceMatrix.needsUpdate = true; hm.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
     const g = links.current; if (g) { (g.attributes.position as THREE.BufferAttribute).needsUpdate = true; (g.attributes.color as THREE.BufferAttribute).needsUpdate = true; g.setDrawRange(0, li * 2); }
   });
 
@@ -107,7 +112,12 @@ function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLa
       <instancedMesh ref={mesh} args={[undefined, undefined, Math.max(1, n)]}
         onPointerMove={(e) => { e.stopPropagation(); setHover(e.instanceId ?? null); }} onPointerOut={() => setHover(null)}
         onClick={(e) => { e.stopPropagation(); onSelect(pick(e)); }}>
-        <sphereGeometry args={[1, 14, 14]} /><meshStandardMaterial toneMapped={false} />
+        <cylinderGeometry args={[1, 1, 1, 12]} /><meshStandardMaterial toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh ref={head} args={[undefined, undefined, Math.max(1, n)]}
+        onPointerMove={(e) => { e.stopPropagation(); setHover(e.instanceId ?? null); }} onPointerOut={() => setHover(null)}
+        onClick={(e) => { e.stopPropagation(); onSelect(pick(e)); }}>
+        <sphereGeometry args={[1, 12, 12]} /><meshStandardMaterial color="#ffe6b3" />
       </instancedMesh>
       <lineSegments frustumCulled={false}>
         <bufferGeometry ref={links}>

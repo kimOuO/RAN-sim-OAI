@@ -431,6 +431,9 @@ def _antenna_cfg():
     return _ANT_CACHE["cfg"]
 
 
+_PATH_LOOKBACK_TICKS = 60
+
+
 def _synth_cached_h(ccache, tick_idx: int, ue_id: str, gains: dict) -> dict:
     """cached 模式:由路徑參數重建每個 cell 的元件層 H(n_rx_elem, n_tx_elem)。沒有路徑檔回 {}。"""
     if getattr(ccache, "paths", None) is None or not gains:
@@ -449,6 +452,11 @@ def _synth_cached_h(ccache, tick_idx: int, ue_id: str, gains: dict) -> dict:
     out = {}
     for tx_name in gains:
         hit = ccache.lookup_paths(tick_idx, ue_id, tx_name)
+        # 該 tick 沒路徑(gain 已被內插補上)→ 往前找最近有路徑的 tick(最多 30 s)
+        back = 1
+        while hit is None and back <= _PATH_LOOKBACK_TICKS and tick_idx - back >= 0:
+            hit = ccache.lookup_paths(tick_idx - back, ue_id, tx_name)
+            back += 1
         if hit is None:
             continue
         A, kt, kr, orient = hit
