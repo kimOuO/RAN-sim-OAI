@@ -1,6 +1,6 @@
 import { REGISTRY_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
-import type { Building, Cell, Du, Gnb, Ru, Ue } from '@/types/registry';
+import type { Building, Cell, Du, Gnb, Ru, Ue, UeTraffic } from '@/types/registry';
 
 const R = `${REGISTRY_API}/Equipment_ran`; const L = `${REGISTRY_API}/Field_scene`; const U = `${REGISTRY_API}/Equipment_ue`;
 export const createGnb = (body: Partial<Gnb> & { f_scene_uuid: string }) => post<Gnb>(`${R}/GnbController/create`, body);
@@ -20,3 +20,10 @@ export const createUe = (body: Partial<Ue> & { f_scene_uuid: string }) => post<U
 export const updateUe = (ue_uuid: string, body: Partial<Ue>) => post<Ue>(`${U}/UeController/update`, { ue_uuid, ...body });
 export const deleteUe = (ue_uuid: string) => post<{ deleted: number }>(`${U}/UeController/delete`, { ue_uuid });
 export const createUeWaypoint = (body: { f_ue_uuid: string; ord: number; t_sec: number; x: number; y: number; z: number }) => post<unknown>(`${U}/UeWaypointController/create`, body);
+export const updateUeWaypoint = (ue_waypoint_uuid: string, body: { t_sec?: number; x?: number; y?: number; z?: number }) => post<unknown>(`${U}/UeWaypointController/update`, { ue_waypoint_uuid, ...body });
+export const createUeTraffic = (body: { f_ue_uuid: string; pattern: string; rate_mbps: number; schedule: number[][] | null; bearer_id: number }) => post<UeTraffic>(`${U}/UeTrafficController/create`, body);
+export const updateUeTraffic = (ue_traffic_uuid: string, body: Partial<UeTraffic>) => post<UeTraffic>(`${U}/UeTrafficController/update`, { ue_traffic_uuid, ...body });
+export interface UeActiveWindowRow { ue_active_window_uuid: string; t0_sec: number; t1_sec: number; f_ue_uuid: string; }
+export const listUeActiveWindows = (f_ue_uuid: string) => post<UeActiveWindowRow[]>(`${U}/UeActiveWindowReader/read`, { f_ue_uuid });
+export const createUeActiveWindow = (body: { f_ue_uuid: string; t0_sec: number; t1_sec: number }) => post<UeActiveWindowRow>(`${U}/UeActiveWindowController/create`, body);
+export const deleteUeActiveWindow = (ue_active_window_uuid: string) => post<{ deleted: number }>(`${U}/UeActiveWindowController/delete`, { ue_active_window_uuid });

@@ -68,3 +68,24 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .tpl-row { background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 3px; padding: 6px 10px 8px; margin-bottom: 8px; } .tpl-row .row.head { margin-top: 0; } .tpl-row select { width: 100%; } .tpl-row .actions { margin: 8px 0 0; }
 .prog-row { display: flex; gap: 8px; align-items: center; } .prog { flex: 1; height: 6px; background: var(--bg-3); border-radius: 3px; overflow: hidden; } .prog i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), #3987e5); }
 .pill.precomputing { background: var(--fair); color: var(--fair-fg); border-color: transparent; }
+/* ── 場景建置步驟(2026-09-17)── */
+.stepbar { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line-2); background: var(--bg-2); }
+.stepbar .step { display: flex; flex-direction: column; padding: 6px 16px; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; color: var(--muted); }
+.stepbar .step:hover { text-decoration: none; background: var(--bg-3); } .stepbar .step b { font-size: 13px; font-weight: 600; }
+.stepbar .step.done b { color: var(--good-fg); } .stepbar .step.on { border-bottom-color: var(--accent); background: var(--sel); } .stepbar .step.on b { color: var(--ink); }
+.editor { height: calc(100vh - 42px); } .editor-body { min-height: 0; }
+.nextbtn { padding: 3px 12px; border-radius: 3px; background: var(--accent); color: #111; font-weight: 600; } .nextbtn:hover { text-decoration: none; filter: brightness(1.1); }
+.nextbtn.blocked { background: var(--bg-3); color: var(--muted); border: 1px solid var(--line-2); }
+.checks .check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; padding: 3px 0; }
+.checks .check i { font-style: normal; width: 16px; height: 16px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; margin-top: 2px; }
+.checks .check.ok i { background: var(--good); color: var(--good-fg); } .checks .check.warn i { background: var(--fair); color: var(--fair-fg); } .checks .check.error i { background: var(--poor); color: var(--poor-fg); }
+.checks .check.error span { color: var(--poor-fg); }
+label.stack { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; } label.stack span { color: var(--muted); font-size: 11.5px; } label.stack input, label.stack select, label.stack textarea { width: 100%; min-width: 0; }
+.left .xyz { gap: 6px; } .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tplpick select, .sceneinfo select { width: 100%; }
+.previewbar { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: rgba(17, 23, 32, .92); border: 1px solid var(--line-2); border-radius: 4px; }
+.previewbar input[type=range] { flex: 1; padding: 0; } .previewbar button { width: 34px; }
+.btnlink { display: inline-block; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 3px; } .btnlink:hover { text-decoration: none; border-color: var(--cyan); }
+.uetraffic { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 4px; }
+.panel form.inline { display: flex; gap: 6px; } .panel form.inline select { width: 40%; } .panel form.inline input { flex: 1; width: auto; min-width: 0; }
+.panel label.stack { display: flex; grid-template-columns: none; }

@@ -1,12 +1,14 @@
 'use client';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { UeGenParams } from '@/config';
+import { planUes } from '@/hooks/feature/ueGenerator';
 import { useAsync } from '@/hooks/base/useAsync';
 import { attachOsmToScene, generateOsmMap, geocodeLandmark, listOsmMaps } from '@/services/api/geometry';
-import { createBuilding, createCell, createDu, createGnb, createRu, createUe, createUeWaypoint, deleteBuilding, deleteCell, deleteGnb, deleteUe, updateBuilding, updateCell, updateDu, updateGnb, updateRu, updateUe } from '@/services/api/networkElements';
+import { createBuilding, createCell, createDu, createGnb, createRu, createUe, createUeActiveWindow, createUeTraffic, createUeWaypoint, deleteBuilding, deleteCell, deleteGnb, deleteUe, deleteUeActiveWindow, listUeActiveWindows, updateBuilding, updateCell, updateDu, updateGnb, updateRu, updateUe, updateUeTraffic } from '@/services/api/networkElements';
 import { createAntennaPreset, createGnbConfigTemplate, listAntennaPresets, listDuConfigTemplates, listGnbConfigTemplates, listMaterials, updateAntennaPreset, updateGnbConfigTemplate } from '@/services/api/presets';
-import { createRunKnob, createSceneRun, deleteRunKnob, listRunKnobs, listSceneRuns, updateRunKnob, updateSceneRun } from '@/services/api/runs';
-import { getSceneTree, updateScene } from '@/services/api/scenes';
-import type { AntennaPreset, Building, Cell, Du, Gnb, GnbConfigTemplate, SceneRun, Ue } from '@/types/registry';
+import { createRunKnob, createSceneRun, deleteRunKnob, listRunKnobs, listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, updateRunKnob, updateSceneRun, type PrecomputeStatus } from '@/services/api/runs';
+import { duplicateScene, getSceneTree, listScenes, updateScene } from '@/services/api/scenes';
+import type { AntennaPreset, Building, Cell, Du, Gnb, GnbConfigTemplate, Scene, SceneRun, Ue, UeTraffic } from '@/types/registry';
 import type { GeocodeResult } from '@/types/geometry';
 
 export type Selection = { kind: 'gnb'; gnb: Gnb } | { kind: 'cell'; cell: Cell; gnb: Gnb } | { kind: 'ue'; ue: Ue } | { kind: 'building'; building: Building } | null;
@@ -19,6 +21,23 @@ export function useSceneEditorPage(sceneUuid: string) {
   const presets = useAsync(listAntennaPresets, []); const templates = useAsync(listDuConfigTemplates, []); const materials = useAsync(listMaterials, []); const gnbTemplates = useAsync(listGnbConfigTemplates, []);
   const runs = useAsync(() => listSceneRuns(sceneUuid), [sceneUuid]);
   const run: SceneRun | null = useMemo(() => (runs.data ?? [])[0] ?? null, [runs.data]);
+  const allRuns = useAsync(() => listSceneRuns(), []);
+  const scenes = useAsync(listScenes, []);
+  /** 其他場景用過的幾何來源(掃描模型等),去重後給步驟 1 選 */
+  const geometrySources = useMemo(() => { const m = new Map<string, { label: string; geometry_scene_id: string; geometry_source: unknown }>();
+    for (const sc of scenes.data ?? []) { const g = sc.geometry_source as { type?: string; path?: string } | null; if (!g?.type || g.type === 'buildings_json') continue;
+      const key = `${g.type}:${g.path ?? ''}`; if (!m.has(key)) m.set(key, { label: `${sc.geometry_scene_id || (g.path ?? '').split('/').pop()}(${sc.name} 使用中)`, geometry_scene_id: sc.geometry_scene_id, geometry_source: g }); }
+    return [...m.values()]; }, [scenes.data]);
+  /** 放 gNB 時要套的模板(步驟 2 選;空 = OAI 預設) */
+  const [placeTemplateUuid, setPlaceTemplateUuid] = useState<string>('');
+  const [progress, setProgress] = useState<string | null>(null);
+  const [precomp, setPrecomp] = useState<PrecomputeStatus | null>(null);
+  // precompute 進行中每 5 s 讀一次進度
+  useEffect(() => {
+    if (run?.status !== 'precomputing') return;
+    const tick = () => { readPrecompute(run.scene_run_uuid).then(setPrecomp).catch(() => undefined); runs.refetch(); };
+    tick(); const t = setInterval(tick, 5_000); return () => clearInterval(t);
+  }, [run?.status, run?.scene_run_uuid]);   // eslint-disable-line react-hooks/exhaustive-deps
   const knobs = useAsync(() => (run ? listRunKnobs(run.scene_run_uuid) : Promise.resolve([])), [run?.scene_run_uuid]);
   const [selection, setSelection] = useState<Selection>(null);
   const [placeKind, setPlaceKind] = useState<PlaceKind>(null);
@@ -47,7 +66,24 @@ export function useSceneEditorPage(sceneUuid: string) {
     plmn_mcc: g.plmn_mcc, plmn_mnc: g.plmn_mnc, a3_enabled: g.a3_enabled ?? false, a3_offset_db: g.a3_offset_db ?? 1, a3_hys_db: g.a3_hys_db ?? 0.5, a3_ttt_ms: g.a3_ttt_ms ?? 80,
     band: c?.band ?? 'n78', center_frequency_ghz: c?.center_frequency_ghz ?? 3.5, bandwidth_mhz: c?.bandwidth_mhz ?? 40, power_dbm: c?.power_dbm ?? 23, tilt_deg: c?.tilt_deg ?? 0,
     cells_per_gnb: du?.cells.length ?? 1, f_du_config_template_uuid: du?.f_du_config_template_uuid ?? null, f_antenna_preset_uuid: c?.ru?.f_antenna_preset_uuid ?? null, source: 'custom' }; };
-  const defaultGnbTemplate = () => (gnbTemplates.data ?? []).find((t) => t.source === 'oai') ?? (gnbTemplates.data ?? [])[0] ?? null;
+  const defaultGnbTemplate = () => (gnbTemplates.data ?? []).find((t) => t.gnb_config_template_uuid === placeTemplateUuid)
+    ?? (gnbTemplates.data ?? []).find((t) => t.source === 'oai') ?? (gnbTemplates.data ?? [])[0] ?? null;
+
+  /** 步驟 3:依參數產生 UE(可選先清掉同前綴的舊 UE);每個 UE 的路徑點並行寫入 */
+  const generateUes = (p: UeGenParams, replace: boolean) => withSave(`產生 ${p.count} 個 UE`, async () => {
+    const plan = planUes(p);
+    if (replace) { const old = (tree.data?.ues ?? []).filter((u) => u.name.startsWith(p.namePrefix)); for (const [i, u] of old.entries()) { setProgress(`清除舊 UE ${i + 1}/${old.length}`); await deleteUe(u.ue_uuid); } }
+    for (const [i, pu] of plan.entries()) {
+      setProgress(`寫入 UE ${i + 1}/${plan.length}`);
+      const ue = await createUe({ f_scene_uuid: sceneUuid, name: pu.name, antenna_height_m: p.height, qos_5qi: p.qos5qi, speed_mps: pu.speed, color: [0.8, 0.8, 0.8] });
+      for (let k = 0; k < pu.waypoints.length; k += 8) {
+        await Promise.all(pu.waypoints.slice(k, k + 8).map(([t, x, y, z], j) => createUeWaypoint({ f_ue_uuid: ue.ue_uuid, ord: k + j, t_sec: t, x, y, z })));
+      }
+      await createUeActiveWindow({ f_ue_uuid: ue.ue_uuid, t0_sec: 0, t1_sec: p.duration });
+      await createUeTraffic({ f_ue_uuid: ue.ue_uuid, pattern: 'piecewise', rate_mbps: 0, schedule: pu.schedule, bearer_id: 1 });
+    }
+    setProgress(null);
+  }).finally(() => setProgress(null));
 
   /** 點地面:依放置模式建立物件(gNB 自帶 DU/cell/RU;cell 要先選 gNB;UE 建一個 waypoint;建築是 10×6×10 盒) */
   const placeAt = (pos: [number, number, number]) => {
@@ -96,6 +132,22 @@ export function useSceneEditorPage(sceneUuid: string) {
     /** 天線:現場欄位寫進 RU 覆寫;或存成 / 更新 preset 並綁到 RU */
     applyAntennaFields: (c: Cell, fields: Partial<AntennaPreset>) => withSave(`cell ${c.name} 天線覆寫`, async () => c.ru ? updateRu(c.ru.ru_uuid, { antenna_override: fields }) : createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru`, antenna_override: fields })),
     saveAntennaAsPreset: (c: Cell, fields: Partial<AntennaPreset>, name: string, uuid: string | null) => withSave(uuid ? '更新天線 preset' : `新天線 preset ${name}`, async () => { const a = uuid ? await updateAntennaPreset(uuid, { ...fields, name }) : await createAntennaPreset({ ...fields, name, source: 'custom' }); if (c.ru) await updateRu(c.ru.ru_uuid, { f_antenna_preset_uuid: a.antenna_preset_uuid, antenna_override: null }); else await createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru`, f_antenna_preset_uuid: a.antenna_preset_uuid }); presets.refetch(); }),
+    allRuns: allRuns.data ?? [], geometrySources, progress, precomp, placeTemplateUuid, setPlaceTemplateUuid, generateUes,
+    clearUes: (prefix: string) => withSave(`清除 ${prefix}* UE`, async () => { for (const u of (tree.data?.ues ?? []).filter((x) => x.name.startsWith(prefix))) await deleteUe(u.ue_uuid); }),
+    /** UE 流量:沒有就新建;cbr 用 rate,piecewise 用 schedule */
+    setUeTraffic: (u: Ue, t: Partial<UeTraffic>) => withSave(`UE ${u.name} 流量`, async () => { const cur = u.traffic[0];
+      if (cur) await updateUeTraffic(cur.ue_traffic_uuid, t); else await createUeTraffic({ f_ue_uuid: u.ue_uuid, pattern: t.pattern ?? 'cbr', rate_mbps: t.rate_mbps ?? 1, schedule: t.schedule ?? null, bearer_id: 1 }); }),
+    /** UE 在場時段:整組替換;空陣列 = 全程在場 */
+    setUeWindows: (u: Ue, windows: [number, number][]) => withSave(`UE ${u.name} 在場時段`, async () => {
+      for (const w of await listUeActiveWindows(u.ue_uuid)) if (w.f_ue_uuid === u.ue_uuid) await deleteUeActiveWindow(w.ue_active_window_uuid);   // 只刪自己的(防 reader 沒過濾)
+      for (const [a, b] of windows) await createUeActiveWindow({ f_ue_uuid: u.ue_uuid, t0_sec: a, t1_sec: b }); }),
+    updateSceneInfo: (f: Partial<Scene>) => withSave('場景資訊', () => updateScene(sceneUuid, f)),
+    duplicate: async (name: string): Promise<string | null> => { let id: string | null = null; await withSave(`複製為 ${name}`, async () => { id = (await duplicateScene(sceneUuid, name)).scene_uuid; }); return id; },
+    precompute: () => withSave('Precompute 啟動', async () => { if (run) { await precomputeRun(run.scene_run_uuid); runs.refetch(); } }),
+    stopPrecompute: () => withSave('Precompute 停止', async () => { if (run) { await stopPrecompute(run.scene_run_uuid); runs.refetch(); } }),
+    start: () => withSave('啟動', async () => { if (run) { await startRun(run.scene_run_uuid, run.speed_x, run.sim_dt_ms); runs.refetch(); allRuns.refetch(); } }),
+    stop: () => withSave('停止', async () => { if (run) { await stopRun(run.scene_run_uuid); runs.refetch(); allRuns.refetch(); } }),
+    refreshRuns: () => { runs.refetch(); allRuns.refetch(); },
     setUeAntenna: (u: Ue, uuid: string | null) => withSave(`UE ${u.name} 天線`, () => updateUe(u.ue_uuid, { f_antenna_preset_uuid: uuid })),
     /** run 層:沒有 run 就先建 draft;knob 以 key 唯一 */
     /** 場景層級天線(run 只能一組;Sionna scene-global) */

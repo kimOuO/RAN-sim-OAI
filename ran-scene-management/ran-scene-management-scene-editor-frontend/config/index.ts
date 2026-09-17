@@ -24,3 +24,27 @@ export const POLARIZATIONS = ['V', 'H', 'VH', 'cross'] as const;
 export const RU_CATEGORIES = ['A', 'B'] as const;
 /** Cat B 的 beamforming 方法(O-RAN WG4 CUS-plane) */
 export const BF_METHODS = ['', 'predefined', 'attribute', 'weight', 'channel_info'] as const;
+/** 場景建置四步驟(路由段 / 標題 / 說明) */
+export const EDITOR_STEPS = [
+  { key: 'environment', label: '1 場景與環境', hint: '地圖 / 匯入 / 建築盒、材質' },
+  { key: 'network', label: '2 網路元件', hint: 'gNB / cell / 天線 / 模板' },
+  { key: 'ue', label: '3 UE', hint: '路徑 / 流量 / 隨機產生' },
+  { key: 'launch', label: '4 模擬與啟動', hint: '模式 / 倍速 / Precompute' },
+] as const;
+export type EditorStep = (typeof EDITOR_STEPS)[number]['key'];
+/** UE 隨機產生器的預設值與情境範本(數值單位:m/s、秒、kbps) */
+export interface UeGenParams {
+  seed: number; count: number; namePrefix: string; duration: number; speedMin: number; speedMax: number; dwellMax: number;
+  dlMin: number; dlMax: number; heavyRatio: number; heavyMin: number; heavyMax: number; ulMin: number; ulMax: number; trafficStep: number;
+  qos5qi: number; height: number; xMin: number; xMax: number; zMin: number; zMax: number;
+}
+export const UE_GEN_DEFAULT: Omit<UeGenParams, 'xMin' | 'xMax' | 'zMin' | 'zMax'> = {
+  seed: 1, count: 8, namePrefix: 'u', duration: 600, speedMin: 0.8, speedMax: 1.5, dwellMax: 20,
+  dlMin: 50, dlMax: 300, heavyRatio: 0.5, heavyMin: 500, heavyMax: 5000, ulMin: 20, ulMax: 500, trafficStep: 30, qos5qi: 9, height: 1.5,
+};
+export const UE_SCENARIOS: { key: string; label: string; hint: string; params: Partial<UeGenParams> }[] = [
+  { key: 'walk', label: '一般走動', hint: '步行、偶爾停留、中等流量', params: {} },
+  { key: 'commute', label: '通勤人流', hint: '連續快走、幾乎不停、瀏覽為主', params: { speedMin: 1.2, speedMax: 1.8, dwellMax: 3, heavyRatio: 0.2 } },
+  { key: 'meeting', label: '會議室', hint: '幾乎不動、長時間視訊', params: { speedMin: 0.05, speedMax: 0.3, dwellMax: 120, heavyRatio: 0.8, heavyMin: 1500, heavyMax: 4000 } },
+  { key: 'peak', label: '尖峰時段', hint: '人多、流量大', params: { count: 20, heavyRatio: 0.8, heavyMin: 2000, heavyMax: 8000, ulMax: 1500 } },
+];

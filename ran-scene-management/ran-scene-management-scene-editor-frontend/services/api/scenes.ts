@@ -8,3 +8,5 @@ export const getSceneTree = (scene_uuid: string) => post<SceneTree>(`${REGISTRY_
 export const createScene = (body: Partial<Scene>) => post<Scene>(`${REGISTRY_API}/Field_scene/SceneController/create`, body);
 export const updateScene = (scene_uuid: string, body: Partial<Scene>) => post<Scene>(`${REGISTRY_API}/Field_scene/SceneController/update`, { scene_uuid, ...body });
 export const deleteScene = (scene_uuid: string) => post<{ deleted: number }>(`${REGISTRY_API}/Field_scene/SceneController/delete`, { scene_uuid });
+/** 深複製整個場景(天線、RU 覆寫、UE 路徑與流量、run 設定都一起帶) */
+export const duplicateScene = (scene_uuid: string, name: string) => post<Scene>(`${REGISTRY_API}/Field_scene/SceneController/duplicate`, { scene_uuid, name }, { timeoutMs: 60_000 });

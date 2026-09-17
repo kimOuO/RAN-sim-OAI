@@ -7,6 +7,7 @@ import type { Selection } from '@/hooks/feature/useSceneEditorPage';
 import type { Building, Cell, Gnb, SceneTree } from '@/types/registry';
 import { CellMarker } from '@/components/scene-canvas/CellMarker';
 import { GnbGroupMarker } from '@/components/scene-canvas/GnbGroupMarker';
+import { ueActiveAt, uePositionAt } from '@/hooks/feature/sceneGeometry';
 
 /** gNB 顏色:沿用 registry 的 color,沒有就依序給一個(呈現層決定,不寫回) */
 const PALETTE: [number, number, number][] = [[0.31, 0.82, 1.0], [1.0, 0.54, 0.24], [0.45, 0.9, 0.55], [0.8, 0.55, 1.0], [1.0, 0.45, 0.5]];
@@ -25,9 +26,11 @@ export interface SceneCanvasProps {
   onGroundClick: (pos: [number, number, number]) => void;
   onCellMoved: (c: Cell, pos: [number, number, number]) => void;
   onGnbMoved: (g: Gnb, pos: [number, number, number]) => void;
+  /** 路徑預覽時間(秒);給值時 UE 畫在該時間的位置,不在場的 UE 隱藏 */
+  previewT?: number | null;
 }
 
-export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved }: SceneCanvasProps) {
+export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved, previewT = null }: SceneCanvasProps) {
   // 場景範圍(gNB / cell / UE 路徑 / 建築)→ 標記比例與鏡頭。大型戶外場景 scale=1,走廊這種十幾公尺的場景自動縮小
   const view = useMemo(() => {
     const xs: number[] = [], zs: number[] = [];
@@ -61,9 +64,13 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
             ))}
           </group>
         ))}
-        {uePaths.map(({ ue, pts }) => pts.length > 0 && (
+        {uePaths.map(({ ue, pts: path }) => { if (!path.length) return null;
+          const at = previewT == null ? path[0] : (ueActiveAt(ue, previewT) ? uePositionAt(ue, previewT) : null);
+          if (!at) return null;
+          const pts = [at, ...path.slice(1)];   // 標記畫在 at;路徑線仍畫完整軌跡
+          return (
           <group key={ue.ue_uuid} onClick={(e) => { e.stopPropagation(); onSelect({ kind: 'ue', ue }); }}>
-            {pts.length > 1 && <Line points={pts} color={selection?.kind === 'ue' && selection.ue.ue_uuid === ue.ue_uuid ? '#ff8a3d' : '#8b9bb0'} lineWidth={1} />}
+            {path.length > 1 && <Line points={path} transparent opacity={previewT == null ? 1 : 0.35} color={selection?.kind === 'ue' && selection.ue.ue_uuid === ue.ue_uuid ? '#ff8a3d' : '#8b9bb0'} lineWidth={1} />}
             {/* 落地線 + 地面圓:UE 在天線高度(約 1.5 m),不加會看起來浮空 */}
             <Line points={[pts[0], [pts[0][0], 0, pts[0][2]]]} color="#8b9bb0" lineWidth={1} transparent opacity={0.6} />
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pts[0][0], 0.02, pts[0][2]]}>
@@ -75,8 +82,7 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
               <meshStandardMaterial color={selection?.kind === 'ue' && selection.ue.ue_uuid === ue.ue_uuid ? '#ff8a3d' : '#c9d4e0'} />
             </mesh>
             <Text position={[pts[0][0], pts[0][1] + 0.8 * Math.max(view.scale, 0.5), pts[0][2]]} fontSize={0.7 * Math.max(view.scale, 0.5)} color="#e6edf3" outlineWidth={0.04} outlineColor="#0b0f14" anchorX="center">{ue.name}</Text>
-          </group>
-        ))}
+          </group>); })}
       </Suspense>
       <OrbitControls makeDefault enableDamping target={view.center} />
     </Canvas>
