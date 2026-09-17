@@ -926,3 +926,15 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
   - `omniver_backend` 的 ingest_signals 回 500(OperationalError)不在我方範圍,也不影響模擬。
   - 監控頁載入初期會出現一次 NaN 的 React 警告,畫面上沒有 NaN。
 - corridor_24h 的路徑預算(K=8)目前到 65%,約還要 5.5 小時。
+
+## 2026-09-17 第二次 VM 卡死(11:3x–11:56)
+
+- 截圖中的兩次 OOM(10:10、10:11)是 scene-editor 前端在自己的 1g 上限內被砍,只影響該容器,之後上限已調為 3g。
+- 真正的卡死:11:02 起系統服務陸續逾時,11:39 journald / snapd 看門狗逾時,11:46 出現 balloon workqueue 訊息,連 poweroff 都送不出去,11:56 重開機。核心沒有全域 OOM,屬於記憶體接近耗盡時不斷回收造成的停頓。沒有歷史記憶體紀錄,無法定案。
+  - 最大嫌疑是 omniver_kit:沒有上限,9/16 量到每小時 +2.4 GB。
+  - 其他同時在跑的:6 個 run、corridor 預算,以及各服務上限加總已超過 48 GB。
+- 處理:
+  1. omniver_kit 在 Omnivers_platform/docker-compose.yml 加上 `mem_limit: 8g`,已重建(原檔備份為 .bak-20260917);它使用 nvidia runtime,不能用 docker update,重建後 GPU 正常。
+  2. 使用者 crontab 每 5 分鐘執行 `/home/mitlab/memlog/memlog.sh`,記錄主機與各容器記憶體,一天一檔、保留 14 天,每天約 0.5 MB、每次約 2 秒。
+  3. 重開機後 run 容器無限重啟:約 20 個容器同時在共用的 protocol 掛載目錄 pip install,在 build/ 互相衝突。已改成先複製到私有目錄再安裝(517b575)。
+- 待處理:6 個 run 尚未重新 start;corridor_24h 預算的 checkpoint 在 120000 tick,尚未續跑。
