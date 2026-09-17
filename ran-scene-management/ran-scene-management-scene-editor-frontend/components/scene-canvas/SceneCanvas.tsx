@@ -28,9 +28,21 @@ export interface SceneCanvasProps {
 }
 
 export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved }: SceneCanvasProps) {
+  // 場景範圍(gNB / cell / UE 路徑 / 建築)→ 標記比例與鏡頭。大型戶外場景 scale=1,走廊這種十幾公尺的場景自動縮小
+  const view = useMemo(() => {
+    const xs: number[] = [], zs: number[] = [];
+    const add = (p?: number[] | null) => { if (p && p.length === 3) { xs.push(p[0]); zs.push(p[2]); } };
+    tree.gnbs.forEach((g) => { add(g.position); g.dus.forEach((d) => d.cells.forEach((c) => add(c.position))); });
+    tree.ues.forEach((u) => u.waypoints.forEach((w) => { xs.push(w[1]); zs.push(w[3]); }));
+    tree.buildings.forEach((b) => add(b.position));
+    if (!xs.length) return { center: [0, 0, 0] as [number, number, number], extent: 80, scale: 1 };
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
+    const extent = Math.max(10, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
+    return { center: [cx, 0, cz] as [number, number, number], extent, scale: Math.min(1, Math.max(0.4, extent / 120)) };
+  }, [tree]);
   const uePaths = useMemo(() => tree.ues.map((u) => ({ ue: u, pts: u.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number]) })), [tree.ues]);
   return (
-    <Canvas camera={{ position: [40, 40, 40], fov: 45, near: 0.1, far: 5000 }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
+    <Canvas camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: 0.1, far: 5000 }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
       {/* 地面:放置模式時接點擊;平常點空白處取消選取 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} onClick={(e) => { e.stopPropagation(); if (placing) onGroundClick([e.point.x, 0, e.point.z]); else onSelect(null); }}><planeGeometry args={[CANVAS.gridSize * 4, CANVAS.gridSize * 4]} /><meshBasicMaterial visible={false} /></mesh>
       <ambientLight intensity={0.6} />
@@ -41,26 +53,32 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
         {tree.gnbs.map((g, gi) => (
           <group key={g.gnb_uuid}>
             <GnbGroupMarker gnb={g} color={gnbColor(g, gi)} selected={selection?.kind === 'gnb' && selection.gnb.gnb_uuid === g.gnb_uuid}
-              onSelect={() => onSelect({ kind: 'gnb', gnb: g })} onMoved={(p) => onGnbMoved(g, p)} />
+              onSelect={() => onSelect({ kind: 'gnb', gnb: g })} onMoved={(p) => onGnbMoved(g, p)} scale={view.scale} />
             {g.dus.flatMap((d) => d.cells).map((c) => (
               <CellMarker key={c.cell_uuid} cell={c} gnb={g} color={gnbColor(g, gi)} position={cellWorldPos(c, g)}
                 selected={selection?.kind === 'cell' && selection.cell.cell_uuid === c.cell_uuid}
-                onSelect={() => onSelect({ kind: 'cell', cell: c, gnb: g })} onMoved={(p) => onCellMoved(c, p)} />
+                onSelect={() => onSelect({ kind: 'cell', cell: c, gnb: g })} onMoved={(p) => onCellMoved(c, p)} scale={view.scale} />
             ))}
           </group>
         ))}
         {uePaths.map(({ ue, pts }) => pts.length > 0 && (
           <group key={ue.ue_uuid} onClick={(e) => { e.stopPropagation(); onSelect({ kind: 'ue', ue }); }}>
             {pts.length > 1 && <Line points={pts} color={selection?.kind === 'ue' && selection.ue.ue_uuid === ue.ue_uuid ? '#ff8a3d' : '#8b9bb0'} lineWidth={1} />}
+            {/* 落地線 + 地面圓:UE 在天線高度(約 1.5 m),不加會看起來浮空 */}
+            <Line points={[pts[0], [pts[0][0], 0, pts[0][2]]]} color="#8b9bb0" lineWidth={1} transparent opacity={0.6} />
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pts[0][0], 0.02, pts[0][2]]}>
+              <ringGeometry args={[CANVAS.ueMarkerRadius * view.scale * 0.8, CANVAS.ueMarkerRadius * view.scale * 1.3, 20]} />
+              <meshBasicMaterial color="#c9d4e0" transparent opacity={0.7} />
+            </mesh>
             <mesh position={pts[0]}>
-              <sphereGeometry args={[CANVAS.ueMarkerRadius, 12, 12]} />
+              <sphereGeometry args={[CANVAS.ueMarkerRadius * Math.max(view.scale, 0.5), 12, 12]} />
               <meshStandardMaterial color={selection?.kind === 'ue' && selection.ue.ue_uuid === ue.ue_uuid ? '#ff8a3d' : '#c9d4e0'} />
             </mesh>
-            <Text position={[pts[0][0], pts[0][1] + 1, pts[0][2]]} fontSize={0.7} color="#e6edf3" outlineWidth={0.04} outlineColor="#0b0f14" anchorX="center">{ue.name}</Text>
+            <Text position={[pts[0][0], pts[0][1] + 0.8 * Math.max(view.scale, 0.5), pts[0][2]]} fontSize={0.7 * Math.max(view.scale, 0.5)} color="#e6edf3" outlineWidth={0.04} outlineColor="#0b0f14" anchorX="center">{ue.name}</Text>
           </group>
         ))}
       </Suspense>
-      <OrbitControls makeDefault enableDamping />
+      <OrbitControls makeDefault enableDamping target={view.center} />
     </Canvas>
   );
 }
