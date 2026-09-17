@@ -900,3 +900,10 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - 第 3 步比原本預估多掉約 0.5 dB:原本 −0.5 dB 的預估來自先前單次的量測。以 Taylor(8) 的加窗效率計算,單一方向損失 −0.69 dB,水平、垂直兩個方向合計 −1.38 dB,再經 29 dB 失真上限壓縮後約為 −1 dB,與實測相符。TXRU 確實已回到 100%:若仍是 50%,SINR 應約 20.8 dB,實測是 22.6 dB。
 - 監控(ric_ctrl_watch,1 小時)在 RIC 回報確認後提前結束。它標記的 FAIL 只有第 7 步,是預期的負面結果。
 - e04 的天線是在執行期改的,run 重啟後會回到 1×1。
+
+## 2026-09-17 RIC 群組換手 / 節能測試(UTC 01:17–01:20)— 全部符合預期
+
+- G1 e01:matched=15、executed=15,CU 紀錄 15 筆 E2_RIC_CONTROL e01:src→nbr。
+- G2(e02 帶 e01 的 cell 名)、G3(e02 帶不存在的 ARFCN):都是 NO_MATCH,e02 沒有 RIC 觸發的換手。e02 分布的變動來自同時段 18 次 RLF 後重新接入,與控制無關。
+- E1 e04:UE 換到 c1,DU 在 01:18:59 disable c0(isEnergySaving);E2 在 01:19:29 enable c0(isNotEnergySaving),UE 留在 c1;E3(不存在的 cell)回 ControlFailure。
+- e03 閘道世代號 129 的原因:health monitor 的重啟冷卻時間存在監控實例上,每次重啟都建新實例 → 冷卻從未生效,形成重啟迴圈。已改為模組層紀錄,並限制 1 小時最多自動重啟 3 次,超過就停止並記錄 error。

@@ -14,6 +14,10 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 _threads: dict[str, "HealthMonitor"] = {}
 _lock = threading.Lock()
+# 2026-09-17:自動重啟紀錄放在模組層。以前放在 HealthMonitor 實例上,但重啟流程會建新的監控執行緒,
+# 冷卻時間跟著歸零 → e03 陷入重啟迴圈(閘道世代號衝到 129)。
+_restart_history: dict[str, list[float]] = {}
+MAX_AUTO_RESTARTS_PER_HOUR = 3
 
 
 # 外部依賴(RIC)的問題:照樣標 degraded 讓監控頁看得到,但**不觸發自動重啟** ——
@@ -158,10 +162,19 @@ class HealthMonitor(threading.Thread):
                     self._unhealthy_since = self._unhealthy_since or now
                     limit = float(getattr(settings, "PER_RUN_AUTO_RESTART_SEC", 120) or 0)
                     cooldown = float(getattr(settings, "PER_RUN_AUTO_RESTART_COOLDOWN_SEC", 600) or 600)
-                    if limit > 0 and now - self._unhealthy_since >= limit and now - self._last_restart_at >= cooldown:
+                    hist = [t for t in _restart_history.get(self.run_uuid, []) if now - t < 3600]
+                    _restart_history[self.run_uuid] = hist
+                    last = hist[-1] if hist else 0.0
+                    if limit > 0 and now - self._unhealthy_since >= limit and len(hist) >= MAX_AUTO_RESTARTS_PER_HOUR:
+                        if not getattr(self, "_cap_logged", False):
+                            self._cap_logged = True
+                            logger.error("run %s 1 小時內已自動重啟 %d 次,停止自動重啟,請人工處理(%s)",
+                                         self.run_uuid, len(hist), "; ".join(unhealthy))
+                    elif limit > 0 and now - self._unhealthy_since >= limit and now - last >= cooldown:
                         reason = "; ".join(unhealthy)
                         logger.error("run %s unhealthy for %.0fs (%s) → auto-restart", self.run_uuid, now - self._unhealthy_since, reason)
                         self._last_restart_at = now; self._unhealthy_since = None
+                        _restart_history.setdefault(self.run_uuid, []).append(now)
                         for role in ("cu", "du"):
                             if any(u.startswith(f"{role}:") for u in unhealthy):
                                 _dump_stacks(names[role])
