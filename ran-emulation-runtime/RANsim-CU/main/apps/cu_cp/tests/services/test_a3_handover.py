@@ -3,12 +3,18 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
+from main.apps.cu_cp.services.optional.mobility import a3_handover_calculation as a3mod
 from main.apps.cu_cp.services.optional.mobility.a3_handover_calculation import (
     A3HandoverCalculation, A3UeState, reset_state,
 )
 
 
-def setup_function(_):
+@pytest.fixture(autouse=True)
+def _no_l3_filter(monkeypatch):
+    # 下面的觸發邏輯測試用瞬時值;L3 濾波另外測
+    monkeypatch.setattr(a3mod, "L3_FILTER_K", 0)
     reset_state()
 
 
@@ -39,3 +45,11 @@ def test_pending_resets_when_condition_breaks():
     assert "c2" in state.pending
     calc.evaluate(state, "c1", -75.0, [("c2", -80.0)])  # serving stronger now
     assert "c2" not in state.pending
+
+
+def test_l3_filter_smooths_single_spike(monkeypatch):
+    monkeypatch.setattr(a3mod, "L3_FILTER_K", 4)   # a = 0.5
+    state = A3UeState()
+    assert state.l3("c2", -90.0) == -90.0          # 第一筆直接採用
+    assert state.l3("c2", -50.0) == -70.0          # 單次 +40 dB 尖峰只反映一半
+    assert state.l3("c2", -90.0) == -80.0

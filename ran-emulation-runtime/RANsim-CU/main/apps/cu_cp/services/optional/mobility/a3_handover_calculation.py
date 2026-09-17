@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 A3_OFFSET_DEFAULT = 1.0     # 真實 spec 通常 0-3 dB；我們用 1 dB 讓 demo 容易觸發
 A3_HYS_DEFAULT = 0.5        # 真實 spec 0-15 dB；用 0.5 加快響應
 TTT_DEFAULT = 80            # 真實 spec 40-5120 ms；用 80 ms 快響應
+# L3 濾波(TS 38.331 §5.5.3.2):F_n = (1-a)·F_{n-1} + a·M_n,a = 1/2^(k/4);k=0 = 不濾
+# 沒有濾波時 A3 直接吃瞬時 RSRP(含 fading 與 ray tracing 跳動)→ 換手來回跳
+L3_FILTER_K = get_int("HO_L3_FILTER_K", default=4)
 
 
 @dataclass
@@ -37,6 +40,14 @@ class A3PendingState:
 class A3UeState:
     serving_cell: str = ""
     pending: dict[str, A3PendingState] = field(default_factory=dict)
+    filtered: dict[str, float] = field(default_factory=dict)   # cell → L3 濾波後 RSRP
+
+    def l3(self, cell: str, rsrp: float) -> float:
+        a = 1.0 / 2 ** (L3_FILTER_K / 4.0)
+        prev = self.filtered.get(cell)
+        f = rsrp if prev is None else (1 - a) * prev + a * rsrp
+        self.filtered[cell] = f
+        return f
 
 
 @dataclass
@@ -204,6 +215,8 @@ class A3HandoverCalculation:
             return A3Verdict(triggered=False)
         now_ms = TimestampService.now_ms()
         ue_state.serving_cell = serving_cell
+        serving_rsrp = ue_state.l3(serving_cell, serving_rsrp)
+        neighbors = [(c, ue_state.l3(c, r)) for c, r in neighbors if c != serving_cell]
         verdict = A3Verdict(triggered=False)
 
         # E2SM-ANR M4(A 級行為):xApp 用 SONTRIG_ANR_FLAG_REQUEST 封鎖的鄰區關係
