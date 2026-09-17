@@ -53,17 +53,17 @@ export default function NetworkElementsPage() {
     : <input type={c.t === 'number' ? 'number' : 'text'} step="any" value={form[c.k] ?? ''} onChange={(e) => setForm({ ...form, [c.k]: e.target.value })} />;
   const editRow = <tr className="edit"><td className="muted">{p.editing === 'new' ? '新增' : '編輯'}</td>{cols.map((c) => <td key={c.k}>{cellInput(c)}</td>)}<td className="acts"><button className="primary" disabled={p.busy} onClick={save}>儲存</button><button className="ghost" onClick={() => p.setEditing(null)}>取消</button></td></tr>;
   return (
-    <section className="shell page">
+    <section className="shell page wide">
       <header className="pagehead"><h1>網路元件</h1><span className="muted">可重用的設定資源;場景裡的 cell / DU / 建築引用這些</span></header>
       <div className="tabs big">{TABS.map((t) => <button key={t.k} className={p.tab === t.k ? 'on' : ''} onClick={() => { p.setTab(t.k); p.setEditing(null); }}>{t.l}</button>)}</div>
       <p className="muted">{TABS.find((t) => t.k === p.tab)?.d}</p>
       <div className="card">
-        <table><thead><tr><th></th>{cols.map((c) => <th key={c.k}>{c.l}</th>)}<th></th></tr></thead>
+        <div className="tablewrap"><table className="ne"><thead><tr><th></th>{cols.map((c) => <th key={c.k}>{c.l}</th>)}<th></th></tr></thead>
           <tbody>
             {p.editing === 'new' && editRow}
             {rows.map((r) => { const id = String(r[idKey]); return p.editing === id ? <tr key={id} className="edit"><td className="muted">編輯</td>{cols.map((c) => <td key={c.k}>{cellInput(c)}</td>)}<td className="acts"><button className="primary" disabled={p.busy} onClick={save}>儲存</button><button className="ghost" onClick={() => p.setEditing(null)}>取消</button></td></tr>
-              : <tr key={id}><td className="mono muted small">{id.slice(-6)}</td>{cols.map((c) => <td key={c.k}>{c.t === 'bool' ? (r[c.k] ? '是' : '否') : c.t === 'ref' ? (refName(c, r[c.k]) ?? <span className="muted">—</span>) : c.calc ? c.calc(r) : String(r[c.k] ?? '')}</td>)}<td className="acts"><button className="ghost" onClick={() => startEdit(r)}>編輯</button>{p.tab !== 'material' && <button className="ghost danger" onClick={() => { if (confirm('刪除?')) (p.tab === 'gnb' ? p.removeGnb : p.tab === 'antenna' ? p.removeAntenna : p.removeTemplate)(id); }}>刪除</button>}</td></tr>; })}
-          </tbody></table>
+              : <tr key={id}><td className="mono muted small" title={id}>{id.slice(-6)}</td>{cols.map((c) => <td key={c.k}>{c.t === 'bool' ? (r[c.k] ? '是' : '否') : c.t === 'ref' ? (refName(c, r[c.k]) ?? <span className="muted">—</span>) : c.calc ? c.calc(r) : String(r[c.k] ?? '')}</td>)}<td className="acts"><button className="ghost" onClick={() => startEdit(r)}>編輯</button>{p.tab !== 'material' && <button className="ghost danger" onClick={() => { if (confirm('刪除?')) (p.tab === 'gnb' ? p.removeGnb : p.tab === 'antenna' ? p.removeAntenna : p.removeTemplate)(id); }}>刪除</button>}</td></tr>; })}
+          </tbody></table></div>
         <div className="actions"><button className="primary" onClick={() => startEdit(null)} disabled={p.editing === 'new'}>+ 新增{TABS.find((t) => t.k === p.tab)?.l}</button>{p.msg && <span className="msg">{p.msg}</span>}</div>
       </div>
     </section>

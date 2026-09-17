@@ -95,3 +95,14 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; } 
 .coverage .ramp span:last-child { text-align: right; }
 .coverage .legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; } .coverage .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 .check-inline { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; }
+/* 網路元件表(欄位多):橫向捲動,第一欄 id 與最後一欄操作固定 */
+.shell.page.wide { max-width: none; }
+.tablewrap { overflow-x: auto; max-width: 100%; }
+table.ne { width: max-content; min-width: 100%; margin: 0; }
+table.ne td input, table.ne td select { width: 7.5em; min-width: 0; }
+table.ne th:first-child, table.ne td:first-child { position: sticky; left: 0; background: var(--bg-2); z-index: 1; }
+table.ne th:last-child, table.ne td:last-child { position: sticky; right: 0; background: var(--bg-2); z-index: 1; box-shadow: -6px 0 6px -6px rgba(0, 0, 0, .6); }
+table.ne tr.edit td:first-child, table.ne tr.edit td:last-child { background: var(--sel); }
+table.ne td { max-width: 22em; overflow: hidden; text-overflow: ellipsis; }
+.tablewrap::-webkit-scrollbar { height: 10px; } .tablewrap::-webkit-scrollbar-track { background: var(--bg-3); } .tablewrap::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; }
+.tablewrap { scrollbar-color: var(--line-2) var(--bg-3); }
