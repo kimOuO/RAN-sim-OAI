@@ -404,6 +404,7 @@ class TickRunner:
         # delay sample / counter / tick phase 影響這次 KPM。對齊 OAI 真機 — 每次
         # gNB cold restart 是真的所有 state wipe。
         self.status.tick_count = 0
+        self._scene_origin_tick = 0
         self.status.sfn = 0
         self.status.slot = 0
         self.status.last_tick_ms = 0
@@ -471,6 +472,20 @@ class TickRunner:
         self._thread = threading.Thread(target=self._loop, daemon=True, name="du-tick")
         self._thread.start()
         return True
+
+    def align_scene_clock(self) -> int:
+        """劇本從現在開始:之後 scene_tick 由 0 起算(cached 通道查表對齊 UE 軌跡時鐘)。
+
+        DU tick 常在 UE 劇本啟動前就先跑(sim_orchestrator 要求 tick 先起),
+        兩者差距會直接變成通道與位置的時間錯位。不動 tick_count,避免 RLC/RLF 的 sim 時間倒退。
+        """
+        self._scene_origin_tick = self.status.tick_count
+        logger.info("scene clock aligned at tick %d", self._scene_origin_tick)
+        return self._scene_origin_tick
+
+    @property
+    def scene_tick(self) -> int:
+        return max(0, self.status.tick_count - getattr(self, "_scene_origin_tick", 0))
 
     def stop(self) -> bool:
         if not self.status.is_running:
@@ -646,7 +661,7 @@ class TickRunner:
         # callback 的 1-tick lag)。已驗 == RU HTTP。live mode(get_du_cache()→None)維持原 HTTP 路徑。
         if _DU_RU_INPROCESS:
             from main.apps.fapi_north.services.optional.channel_cache_du import sinr_for_ue
-            _now_sim = self.status.tick_count * self._sim_dt_ms
+            _now_sim = self.scene_tick * self._sim_dt_ms
             for ue in ues_for_measurement:
                 _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"), extra_gain_db=ue.get("array_gain_db", 0.0))
                 if _ip is not None and _ip > -200:
@@ -848,6 +863,7 @@ class TickRunner:
             pmi_map={ue["id"]: int(ue.get("pmi", 0) or 0) for ue in ues_for_measurement},
             cell_ul_load=getattr(self, "_cell_ul_load_last", {}),   # P6:上一 tick 每 cell UL PRB 負載 → RU 算上行干擾
         )
+        dl_msg.scene_sim_ms = int(self.scene_tick * self._sim_dt_ms)   # RU cached 查表用劇本時鐘
         # in-process Step3:in-process mode 下 SINR 已自算,dl_tti 只供 RU 端 KPM/viz → 改非阻塞
         # (fire-and-forget thread),不再 gate tick loop → 解放 tick 粒度(可縮 sim_dt)。
         if _DU_RU_INPROCESS:

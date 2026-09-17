@@ -44,6 +44,9 @@ class DlTtiRequest:
     # 每 cell 上一 tick 的 UL PRB 負載 0–1(P6):RU 算鄰 cell UE 對我 gNB 的上行干擾時當「同 PRB 碰撞機率」。
     # 空 dict = 舊 DU,RU 退回 env RU_UL_NEIGHBOR_LOAD。
     cell_ul_load: dict[str, float] = field(default_factory=dict)
+    # 劇本時間軸上的模擬毫秒(cached 通道查表用)。sfn 在 1024 frame 就繞回,且 DU tick
+    # 可能早於劇本開始;None = 舊 DU,RU 退回 sfn×20+slot。
+    scene_sim_ms: int | None = None
 
 
 @dataclass

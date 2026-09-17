@@ -49,6 +49,14 @@ class TickController:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def align_scene_clock(request):
+        """UE 劇本開始時呼叫:劇本時鐘從此刻歸零(cached 通道查表與 UE 軌跡同步)。"""
+        origin = get_tick_runner().align_scene_clock()
+        return success_response({"origin_tick": origin}, "Aligned")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def stop(request):
         ok = get_tick_runner().stop()
         # AG12: idempotent — 已 stopped 再 call 不再回 409.

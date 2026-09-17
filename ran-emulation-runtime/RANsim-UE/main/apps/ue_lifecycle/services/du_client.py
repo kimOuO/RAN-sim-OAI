@@ -28,6 +28,17 @@ def tick_start() -> bool:
         return False
 
 
+def align_scene_clock() -> bool:
+    """POST DU /Tick/TickController/align_scene_clock — 劇本時鐘從此刻起算。"""
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/align_scene_clock"
+    try:
+        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
+        return r.ok
+    except requests.RequestException as exc:
+        logger.warning("DU align_scene_clock failed: %s", exc)
+        return False
+
+
 def tick_stop() -> bool:
     """POST DU /Tick/TickController/stop。"""
     url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/stop"

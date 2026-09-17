@@ -563,6 +563,10 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         if ccache is not None:
             # tick_idx = sfn × SLOTS_PER_FRAME + slot,跟 DU tick_count 對齊
             tick_idx = int(req.sfn) * 20 + int(req.slot)
+            # 新 DU 帶劇本時鐘(不受 sfn 繞回 / tick 早於劇本啟動影響)
+            _scene_ms = getattr(req, "scene_sim_ms", None)
+            if _scene_ms is not None:
+                tick_idx = int(_scene_ms / max(1, int(getattr(ccache, "tick_ms", 500) or 500)))
             for ue_id in miss_ids:
                 gains, serving_tx = ccache.lookup(tick_idx, ue_id)
                 value = {

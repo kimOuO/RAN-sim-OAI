@@ -303,6 +303,8 @@ class ScenarioDriver:
         if not du_client.tick_start():
             logger.warning("DU TickController.start returned non-ok (sim may run but DU tick idle)")
 
+        # DU tick 可能早就在跑 → 讓 DU 的劇本時鐘與本 driver 的 started_at 同一刻歸零
+        du_client.align_scene_clock()
         self.state["running"] = True
         self.state["started_at_ms"] = int(time.time() * 1000)
         logger.info(
