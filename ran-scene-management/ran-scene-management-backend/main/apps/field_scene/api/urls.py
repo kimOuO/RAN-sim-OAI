@@ -9,6 +9,7 @@ urlpatterns = [
     path("ScenarioImporter/export_v1", ScenarioImporter.export_v1, name="scenario_export_v1"),
     path("SceneController/create", SceneController.create, name="scene_create"),
     path("SceneController/update", SceneController.update, name="scene_update"),
+    path("SceneController/duplicate", SceneController.duplicate, name="scene_duplicate"),
     path("SceneController/delete", SceneController.delete, name="scene_delete"),
     path("SceneReader/read", SceneReader.read, name="scene_read"),
     path("SceneReader/read_full_tree", SceneReader.read_full_tree, name="scene_read_full_tree"),

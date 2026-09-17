@@ -30,6 +30,28 @@ class SceneController:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def duplicate(request):
+        """body = {scene_uuid, name, legacy_scenario_id?} → 深複製整個場景(含天線 preset / RU 覆寫 / UE 路徑流量 / run 設定)。"""
+        from main.apps.field_scene.services.optional.scene_copy.scene_copy import copy_scene
+        try:
+            payload = _body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        if not payload.get(UUID_FIELD) or not payload.get("name"):
+            return error_response("Validation failed", {"scene_uuid": "required", "name": "required"}, 400)
+        if Scene.objects.filter(name=payload["name"]).exists():
+            return error_response("Validation failed", {"name": "already exists"}, 409)
+        try:
+            entity = copy_scene(payload[UUID_FIELD], name=payload["name"], legacy_scenario_id=payload.get("legacy_scenario_id"))
+        except Scene.DoesNotExist:
+            return error_response("Not found", payload[UUID_FIELD], 404)
+        logger.info("scene %s duplicated → %s", payload[UUID_FIELD], entity.scene_uuid)
+        return success_response(SceneReadSerializer(entity).data, "duplicated", 201)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def create(request):
         try:
             payload = _body(request)
