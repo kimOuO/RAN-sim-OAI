@@ -595,7 +595,7 @@ services:
       PER_RUN_PG_ADMIN_DB: ransim_root
       RIC_GATEWAY_URL: "${RIC_GATEWAY_URL:-http://10.3.0.71:30990}"   # ric-scenario-gw(RIC 端 NodePort);空 = 只記 log
       RIC_GATEWAY_PROFILE: anr
-      RIC_GATEWAY_ALLOWED_STYLES: "rc-reportcgi,anr-add,anr-remove,anr-flag,3-1,2-6,2-8,ccc-lock,ccc-unlock"   # RIC 端提供的閘道控制名稱(2026-09-17 加 ANR 修復與 2-8)
+      RIC_GATEWAY_ALLOWED_STYLES: "rc-reportcgi,anr-add,anr-remove,anr-flag,3-1,3-1-group,2-6,2-8,ccc-lock,ccc-unlock,ccc-es-on,ccc-es-off"   # RIC 端提供的閘道控制名稱(2026-09-17 加 ANR 修復與 2-8)
       RIC_GATEWAY_DEPLOY_XAPP: "${RIC_GATEWAY_DEPLOY_XAPP:-on}"   # RIC 端 dt-anr 參數化後改 on
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -156,6 +156,9 @@ class E2ControlActor:
                     continue
                 if c.get("staged"):
                     # 節能兩階段:toBeEnergySaving→趕人→isEnergySaving(或開回)
+                    if not CellConfig.objects.filter(cell_id=cid).exists():   # 2026-09-17:不存在的 cell 以前照回 ACK
+                        failed.append({"cell": cid, "reason": "unknown cell"})
+                        continue
                     applied.append(_cell_energy_saving(cid, act, ric_req_id))
                 else:
                     # 硬開關(administrativeState LOCKED/UNLOCKED):即時
@@ -326,6 +329,12 @@ def _handle_qos_flow_mapping(
 # (Style 3, Action 1) Handover Control — 我們擴展
 # ────────────────────────────────────────────────────────────
 
+def _nr_arfcn(freq_ghz: float) -> int:
+    """TS 38.104 §5.4.2.1:3–24.25 GHz 的 NR-ARFCN = 600000 + (F − 3000 MHz)/15 kHz;3 GHz 以下 = F/5 kHz。"""
+    f_mhz = float(freq_ghz) * 1000.0
+    return int(round(600000 + (f_mhz - 3000.0) / 0.015)) if f_mhz >= 3000.0 else int(round(f_mhz / 0.005))
+
+
 def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) -> Any:
     """UE Group 換手(ControlHeader Format 3,v10 第 5 題)。
 
@@ -341,6 +350,7 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
     grp_id = int(message.get("ue_group_id") or 0)
     serving = message.get("serving_cell_ncgi") or ""
     tgt_pci = message.get("target_pci")
+    tgt_arfcn = message.get("target_arfcn")   # 可省略 = 不限頻率
     # 目標 CGI 走 ControlMessage Format 1(與逐 UE 換手同一半),resolve 共用
     target_cell, _src = resolve_target_cell({"target_cgi": message.get("target_cgi_msg") or {},
                                              **message})
@@ -368,7 +378,9 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
         for n in (getattr(m, "neighbor_cells_json", None) or []):
             from main.apps.cu_cp.models.cell_config import CellConfig as _C
             c = _C.objects.filter(cell_id=n.get("cell_id")).first()
-            if c is not None and int(c.pci) == int(tgt_pci):
+            if c is not None and int(c.pci) == int(tgt_pci) and (
+                    tgt_arfcn in (None, "") or _nr_arfcn(c.frequency_ghz) == int(tgt_arfcn)):
+                # 2026-09-17:以前 ARFCN 條件解出來卻沒用,帶了不存在的頻率照樣換手
                 matched.add(ue.ue_id)
                 break
 
