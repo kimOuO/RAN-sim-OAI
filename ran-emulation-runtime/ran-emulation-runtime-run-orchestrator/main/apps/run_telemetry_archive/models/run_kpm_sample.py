@@ -12,6 +12,9 @@ class RunKpmSample(models.Model):
     per_cell = models.JSONField(default=dict)
     per_ue = models.JSONField(default=dict)
     warnings = models.JSONField(default=list)
+    # 2026-09-17:這個視窗對應的劇本時間(秒,UE driver 的 elapsed_sim_sec)。3D 回放用它算 UE 位置;
+    # sim_time_ms 是跨重啟累加的,不能直接對劇本路徑。舊資料 = null。
+    scene_t_sec = models.FloatField(null=True, blank=True)
     run_kpm_sample_created_at = models.DateTimeField()
     run_kpm_sample_updated_at = models.DateTimeField()
 

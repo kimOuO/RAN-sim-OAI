@@ -106,3 +106,4 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .ue3d-tag { font: 11px/1.2 ui-monospace, monospace; color: #e6edf3; background: rgba(11, 15, 20, .7); padding: 1px 4px; border-radius: 2px; white-space: nowrap; }
 .ue3d-tip { font-size: 11.5px; color: #e6edf3; background: rgba(11, 15, 20, .92); border: 1px solid #34435a; border-radius: 3px; padding: 4px 7px; white-space: nowrap; transform: translateY(-24px); }
 .check-inline { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; }
+.playback3d { height: 460px; margin-bottom: 12px; } .live3d .pad { padding: 20px; }

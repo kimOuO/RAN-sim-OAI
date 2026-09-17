@@ -64,6 +64,9 @@ class RunArchiver(threading.Thread):
         self._last_beam: dict = {}   # ue → (cell, beam_id),算波束切換次數
         self.stats = {"samples": 0, "handover": 0, "rlf": 0, "control": 0, "polls": 0, "errors": 0}
         self._cu = f"http://{cu_host or settings.HTTP_CU_HOST}:{8000 if cu_host else settings.HTTP_CU_PORT}/api/v0.1/CU/Logs/TelemetryExportReader/read"   # per-run CU(P4-1)或共用 CU
+        # per-run UE driver(劇本時間);共用模式沒有
+        self._ue = (f"http://{cu_host.replace('cu-', 'ue-', 1)}:8000/api/v0.1/UE/Scenario/ScenarioController/status"
+                    if cu_host and cu_host.startswith("cu-") else None)
         self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{e2_port or settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"   # per-run adapter(P4-2)或共用
 
     # 啟動時先把游標推到「現在」,只封存本 run 開始後的資料(CU 表跨 run 累積)
@@ -97,7 +100,13 @@ class RunArchiver(threading.Thread):
             close_old_connections()
             d = _post(self._cu, {"since": self.cursor, "limit": 2000})["data"]
             self.cursor = d["cursor"]
-            self._archive_kpm(d["measurement"], d["cell"])
+            scene_t = None
+            if self._ue:
+                try:
+                    scene_t = float(_post(self._ue, {}, timeout=3.0)["data"].get("elapsed_sim_sec"))
+                except Exception:  # noqa: BLE001 — 拿不到就留 null,不影響封存
+                    scene_t = None
+            self._archive_kpm(d["measurement"], d["cell"], scene_t)
             for h in d["handover"]:
                 DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid,
                     "at_sim_ms": 0, "ue_id": h["ue_id"], "source_cell": h["source_cell"], "target_cell": h["target_cell"],
@@ -128,7 +137,7 @@ class RunArchiver(threading.Thread):
         except Exception:  # noqa: BLE001 — E2Adapter/RIC 不通是常態,不算錯
             pass
 
-    def _archive_kpm(self, meas: list[dict], cells: list[dict]) -> None:
+    def _archive_kpm(self, meas: list[dict], cells: list[dict], scene_t: float | None = None) -> None:
         """同一 PM 視窗(recorded_at 秒)→ 一列 run_kpm_sample:per_ue + per_cell。"""
         by_win: dict[str, dict] = defaultdict(lambda: {"per_ue": {}, "per_cell": {}, "tick": None})
         for m in meas:
@@ -142,7 +151,10 @@ class RunArchiver(threading.Thread):
             by_win[w]["per_cell"][c["cell_id"]] = {k: c.get(k) for k in ("prb_pct_dl", "prb_pct_ul", "window_seconds")}
             # CU 是全域表,舊劇本殘留的 cell 會以 tick_count=0 出現在同一視窗;取視窗內最大值才是真的走了幾個 tick
             by_win[w]["tick"] = max(int(c.get("tick_count") or 0), int(by_win[w]["tick"] or 0))
-        for w in sorted(by_win):
+        wins = sorted(by_win)
+        # 同一輪可能封存多個視窗:最後一個對到 scene_t,較早的依 sim-time 差往回推
+        tick_after = {w: sum(int(by_win[x]["tick"] or 0) for x in wins[i + 1:]) for i, w in enumerate(wins)}
+        for w in wins:
             b = by_win[w]
             _merge_beam_stats(b["per_cell"], b["per_ue"], self._last_beam)
             tick = b["tick"]
@@ -150,7 +162,8 @@ class RunArchiver(threading.Thread):
                 self.ticks_so_far += int(tick)
             DB.create_entity(RunKpmSample, {**_stamp("run_kpm_sample"), "f_scene_run_uuid": self.run_uuid,
                 "window_index": self.window_index, "sim_time_ms": self.ticks_so_far * self.sim_dt_ms,
-                "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"], "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
+                "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"],
+                "scene_t_sec": (None if scene_t is None else round(max(0.0, scene_t - tick_after[w] * self.sim_dt_ms / 1000.0), 2)), "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
             self.window_index += 1
             self.stats["samples"] += 1
 

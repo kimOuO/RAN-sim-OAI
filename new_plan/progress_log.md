@@ -938,3 +938,18 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
   2. 使用者 crontab 每 5 分鐘執行 `/home/mitlab/memlog/memlog.sh`,記錄主機與各容器記憶體,一天一檔、保留 14 天,每天約 0.5 MB、每次約 2 秒。
   3. 重開機後 run 容器無限重啟:約 20 個容器同時在共用的 protocol 掛載目錄 pip install,在 build/ 互相衝突。已改成先複製到私有目錄再安裝(517b575)。
 - 待處理:6 個 run 尚未重新 start;corridor_24h 預算的 checkpoint 在 120000 tick,尚未續跑。
+
+## 2026-09-17 前端:場景建置四步驟、3D 即時、3D 回放
+
+- 場景編輯器 `/scenes/[id]` 改成四個步驟頁(舊網址會轉到步驟 1),上方有步驟列,每一步都有檢查清單;有錯誤時要確認才能前往下一步。
+  1. environment:場景資料、幾何來源切換(可沿用其他場景的掃描模型)、複製場景、建築盒 / OSM、材質。
+  2. network:放置時要套用的 gNB 模板、gNB / cell / 天線 / A3 / DU 模板;檢查同站同頻、同頻 PCI 重複、沒開 A3、沒設天線。
+  3. ue:情境範本(一般 / 通勤 / 會議室 / 尖峰)+ 隨機種子產生 UE(路徑、分段流量、在場時段,同種子結果相同)、路徑播放預覽(1–60×)、單一 UE 的流量(cbr / piecewise)與在場時段編輯。
+  4. launch:啟動前檢查(live 限 1 個、cached 需 cache、同時 run 數、倍速 × UE 數)、Precompute 進度、啟動 / 停止、開監控、run 設定與 knobs。
+- registry 新增 `SceneController/duplicate`:深複製整個場景(以前用 export / import 會遺失天線 preset)。
+- 監控平台:
+  - 新增「3D 即時」分頁:UE 用 InstancedMesh 一次畫完,依 UE driver 的 elapsed_sim_sec 加倍速外插移動;顏色 = 服務 cell,亮度 / 大小 = SINR;換手閃白、RLF 閃紅;UE→cell 連線;標籤只在滑鼠指到或選取時顯示(可切換全部)。
+  - 回放頁加上 3D 與自動播放。
+  - 歸檔新增 `scene_t_sec`(劇本時間,migration 0002):sim_time_ms 會跨重啟累加,不能拿來對應劇本路徑。
+- 驗證(CDP 無頭截圖):四個步驟頁都沒有 console 錯誤;在測試場景 `ui_wizard_test` 產生通勤情境 8 個 UE,資料正確,播放時 UE 會移動;3D 即時頁上 corridor_08_16 的 UE 會隨時間移動並換到 nbr;回放 3D 顯示劇本時間與 UE 位置。
+- 尚未做:畫布顯示掃描模型(glb)、覆蓋熱圖預覽。

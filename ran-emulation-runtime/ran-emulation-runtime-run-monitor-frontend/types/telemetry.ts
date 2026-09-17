@@ -16,7 +16,7 @@ export interface UeKpm {
   beam_id?: number | null;
 }
 export interface CellKpm { prb_pct_dl: number; prb_pct_ul: number; window_seconds: number; }
-export interface KpmSample { run_kpm_sample_uuid: string; f_scene_run_uuid: string; window_index: number; sim_time_ms: number; wall_time_ms: number; per_cell: Record<string, CellKpm>; per_ue: Record<string, UeKpm>; warnings: string[]; run_kpm_sample_created_at: string; }
+export interface KpmSample { run_kpm_sample_uuid: string; f_scene_run_uuid: string; window_index: number; sim_time_ms: number; scene_t_sec?: number | null; wall_time_ms: number; per_cell: Record<string, CellKpm>; per_ue: Record<string, UeKpm>; warnings: string[]; run_kpm_sample_created_at: string; }
 export interface HandoverEvent { run_handover_event_uuid: string; at_sim_ms: number; ue_id: string; source_cell: string; target_cell: string; outcome: string; detail: Record<string, unknown> | null; run_handover_event_created_at: string; }
 export interface ControlEvent { run_control_event_uuid: string; at_sim_ms: number; source: string; action_type: string; target: string; outcome: string; landing_latency_ms: number | null; detail: Record<string, unknown> | null; run_control_event_created_at: string; }
 export interface LaunchRequest { launch_request_uuid: string; action: string; status: string; mode: string; speed_x: number; detail: unknown; launch_request_created_at: string; }
