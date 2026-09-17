@@ -1,8 +1,9 @@
 'use client';
 import { useCallback, useMemo, useState } from 'react';
-import { POLL_MS, RANGE_OPTIONS, UE_METRICS } from '@/config';
+import { KPM_FETCH_LIMIT, POLL_MS, RANGE_OPTIONS, UE_METRICS } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
 import { usePolling } from '@/hooks/base/usePolling';
+import { useIncremental } from '@/hooks/base/useIncremental';
 import { listControlEvents, listHandoverEvents, listKpmSamples, listLaunchRequests } from '@/services/api/archive';
 import { DU_API, E2ADAPTER_API, UE_API } from '@/config';
 import { getDuTick, getE2AdapterStatus, getRicObservation, getRun, getSceneTree, getUeDriverStatus, listDuCells, listRunInstances, listScenes, runtimeBase } from '@/services/api/runs';
@@ -15,8 +16,8 @@ export function useRunDashboardPage(runUuid: string) {
   const run = useAsync(() => getRun(runUuid), [runUuid]);
   const scenes = useAsync(listScenes, []);
   const tree = useAsync(() => (run.data ? getSceneTree(run.data.f_scene_uuid) : Promise.resolve(null)), [run.data?.f_scene_uuid]);
-  const samples = useAsync(() => listKpmSamples(runUuid), [runUuid]);
-  const hos = useAsync(() => listHandoverEvents(runUuid), [runUuid]);
+  const samples = useIncremental((after) => listKpmSamples(runUuid, after), runUuid, KPM_FETCH_LIMIT);
+  const hos = useIncremental((after) => listHandoverEvents(runUuid, after), runUuid, 5000);
   const ctrls = useAsync(() => listControlEvents(runUuid), [runUuid]);
   const launches = useAsync(() => listLaunchRequests(runUuid), [runUuid]);
   const instances = useAsync(() => listRunInstances(runUuid), [runUuid]);

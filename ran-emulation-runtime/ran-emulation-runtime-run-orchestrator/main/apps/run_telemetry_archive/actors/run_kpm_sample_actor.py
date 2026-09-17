@@ -105,8 +105,9 @@ class RunKpmSampleReader:
         # (依建立時間),limit=0 才明確要全部。回傳仍依時間由舊到新。
         try:
             limit = int(payload.pop("limit", _DEFAULT_LIMIT))
+            after_id = int(payload.pop("after_id", 0) or 0)   # 2026-09-17:增量輪詢,只回 id > after_id
         except (TypeError, ValueError):
-            return error_response("Validation failed", {"limit": "must be int"}, 400)
+            return error_response("Validation failed", {"limit": "must be int", "after_id": "must be int"}, 400)
         filters = {}
         for k, v in payload.items():
             if k.startswith("f_") and k.endswith("_uuid"):
@@ -120,6 +121,8 @@ class RunKpmSampleReader:
             else:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(RunKpmSample, **filters)
+        if after_id:
+            qs = qs.filter(id__gt=after_id)
         if limit > 0:
             recent = list(qs.order_by("-id")[:limit])   # id 與寫入順序一致,走主鍵索引
             recent.reverse()

@@ -97,6 +97,11 @@ class RunHandoverEventReader:
             if entity is None:
                 return error_response("Not found", payload[UUID_FIELD], 404)
             return success_response(RunHandoverEventReadSerializer(entity).data, "ok", 200)
+        try:
+            limit = int(payload.pop("limit", 5000))
+            after_id = int(payload.pop("after_id", 0) or 0)
+        except (TypeError, ValueError):
+            return error_response("Validation failed", {"limit": "must be int", "after_id": "must be int"}, 400)
         filters = {}
         for k, v in payload.items():
             if k.startswith("f_") and k.endswith("_uuid"):
@@ -110,4 +115,10 @@ class RunHandoverEventReader:
             else:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(RunHandoverEvent, **filters)
-        return success_response(RunHandoverEventReadSerializer(qs, many=True).data, "ok", 200)
+        # 2026-09-17:以前整張回(長跑 run 有數萬筆、2 MB+,監控頁每 3 秒拉一次)→ 預設最近 5000 筆 + 增量
+        if after_id:
+            qs = qs.filter(id__gt=after_id)
+        if limit > 0:
+            recent = list(qs.order_by("-id")[:limit]); recent.reverse()
+            return success_response(RunHandoverEventReadSerializer(recent, many=True).data, "ok", 200)
+        return success_response(RunHandoverEventReadSerializer(qs.order_by("id"), many=True).data, "ok", 200)

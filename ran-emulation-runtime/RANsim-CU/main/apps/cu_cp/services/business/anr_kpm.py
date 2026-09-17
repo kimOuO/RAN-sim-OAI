@@ -172,7 +172,22 @@ def _pctl(sorted_vals: list[float], p: float) -> float:
     return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (k - lo)
 
 
+_MEAS_AGG_CACHE: dict[float, tuple[float, dict[str, Any]]] = {}
+_MEAS_AGG_TTL_SEC = 5.0
+
+
 def meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
+    """5 秒快取:同一次 ANR indication 會呼叫兩次,而且 10 分鐘視窗的結果幾秒內幾乎不變。"""
+    import time as _time
+    hit = _MEAS_AGG_CACHE.get(window_min)
+    if hit and _time.monotonic() - hit[0] < _MEAS_AGG_TTL_SEC:
+        return hit[1]
+    res = _meas_aggregate(window_min)
+    _MEAS_AGG_CACHE[window_min] = (_time.monotonic(), res)
+    return res
+
+
+def _meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     """對齊卷面 e2MessageCopyAggregate.measurementReportAggregate。
 
     原料:MeasurementLog(每秒每 UE:serving rsrp + neighbor_cells_json)。
@@ -188,8 +203,9 @@ def meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
 
     # 樣本收集:pci → {"rsrp": [...], "serving_rsrp": [...]}(同報文 serving 量測)
     samples: dict[int, dict[str, list[float]]] = {}
-    rows = MeasurementLog.objects.filter(recorded_at__gte=win_start).only(
-        "ue_id", "rsrp_dbm", "neighbor_cells_json", "recorded_at", "serving_cell")
+    # 2026-09-17:values_list 取代 model instance(profiling:這個迴圈吃掉 CU 過半 CPU)
+    rows = MeasurementLog.objects.filter(recorded_at__gte=win_start).values_list(
+        "ue_id", "rsrp_dbm", "neighbor_cells_json", "serving_cell").iterator(chunk_size=2000)
     # serving cell 需查 UeContext?量測列本身沒 serving cell id — 從鄰區补:直接
     # 把 serving 量測掛在該 UE serving cell 的 PCI 上需要 join;為避免 N+1,
     # serving 樣本以「該列 rsrp_dbm + 該 UE 當下 serving_cell」計 — 一次撈 UeContext。
@@ -197,16 +213,16 @@ def meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
     serving_of = {u.ue_id: u.serving_cell for u in UeContext.objects.all()}
 
     n_rows = 0
-    for m in rows:
+    for m_ue, m_rsrp, m_nbrs, m_serving in rows:
         n_rows += 1
         # 量測當時的 serving(2026-08-26 修);舊列(欄位空)退回查詢當下
-        s_cell = m.serving_cell or serving_of.get(m.ue_id, "")
+        s_cell = m_serving or serving_of.get(m_ue, "")
         s_pci = pci_of.get(s_cell)
         if s_pci is not None:
             d = samples.setdefault(s_pci, {"rsrp": [], "serving_rsrp": []})
-            d["rsrp"].append(float(m.rsrp_dbm))
-            d["serving_rsrp"].append(float(m.rsrp_dbm))
-        for n in (m.neighbor_cells_json or []):
+            d["rsrp"].append(float(m_rsrp))
+            d["serving_rsrp"].append(float(m_rsrp))
+        for n in (m_nbrs or []):
             n_pci = pci_of.get(n.get("cell_id"))
             if n_pci is None:
                 continue
@@ -218,7 +234,7 @@ def meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
                 d["by_source"][s_cell] = d["by_source"].get(s_cell, 0) + 1
             d["rsrp"].append(float(n.get("rsrp_dbm", -120.0)))
             # 同報文 serving 量測(38.331 measResults 含 serving 結果)
-            d["serving_rsrp"].append(float(m.rsrp_dbm))
+            d["serving_rsrp"].append(float(m_rsrp))
 
     agg = []
     for pci, d in sorted(samples.items()):
