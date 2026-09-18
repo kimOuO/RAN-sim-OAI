@@ -47,6 +47,9 @@ class DlTtiRequest:
     # 劇本時間軸上的模擬毫秒(cached 通道查表用)。sfn 在 1024 frame 就繞回,且 DU tick
     # 可能早於劇本開始;None = 舊 DU,RU 退回 sfn×20+slot。
     scene_sim_ms: int | None = None
+    # 每 cell 下行 PRB 負載 0–1(約 1 s 平滑):RU 算下行干擾時乘上鄰 cell 負載(輕載 cell 干擾小)。
+    # 空 dict = 舊 DU,RU 退回滿載假設(RU_DL_NEIGHBOR_LOAD,預設 1.0)。
+    cell_dl_load: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

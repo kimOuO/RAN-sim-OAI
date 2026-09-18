@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import math
+
 import threading
 import time
 from dataclasses import dataclass
@@ -122,6 +124,9 @@ class TickStatus:
     started_at_ms: int | None = None
     last_tick_ms: int = 0
     is_running: bool = False
+
+
+_DL_LOAD_TAU_SEC = get_float("DU_DL_LOAD_TAU_SEC", 1.0)   # 下行 cell 負載平滑時間常數(模擬秒)
 
 
 class TickRunner:
@@ -405,6 +410,7 @@ class TickRunner:
         # gNB cold restart 是真的所有 state wipe。
         self.status.tick_count = 0
         self._scene_origin_tick = 0
+        self._cell_dl_load = {}
         self.status.sfn = 0
         self.status.slot = 0
         self.status.last_tick_ms = 0
@@ -472,6 +478,24 @@ class TickRunner:
         self._thread = threading.Thread(target=self._loop, daemon=True, name="du-tick")
         self._thread.start()
         return True
+
+    @property
+    def cell_dl_load(self) -> dict[str, float]:
+        return getattr(self, "_cell_dl_load", {})
+
+    def _update_cell_dl_load(self, cell_of: dict[str, str], rb_alloc: dict[str, int], prb_per_cell: int) -> None:
+        """每 cell 下行 PRB 佔用率,約 1 s(模擬時間)指數平滑 —— 干擾看的是平均負載,不是單一 slot 的有無。"""
+        now: dict[str, int] = {}
+        for uid, cell in cell_of.items():
+            if cell:
+                now[cell] = now.get(cell, 0) + int(rb_alloc.get(uid, 0) or 0)
+        prev = getattr(self, "_cell_dl_load", {})
+        a = 1.0 - math.exp(-self._sim_dt_ms / 1000.0 / _DL_LOAD_TAU_SEC)
+        out = {}
+        for cell in set(prev) | set(now):
+            x = min(1.0, now.get(cell, 0) / float(prb_per_cell or 106))
+            out[cell] = prev.get(cell, x) + a * (x - prev.get(cell, x))
+        self._cell_dl_load = out
 
     def align_scene_clock(self) -> int:
         """劇本從現在開始:之後 scene_tick 由 0 起算(cached 通道查表對齊 UE 軌跡時鐘)。
@@ -663,7 +687,7 @@ class TickRunner:
             from main.apps.fapi_north.services.optional.channel_cache_du import sinr_for_ue
             _now_sim = self.scene_tick * self._sim_dt_ms
             for ue in ues_for_measurement:
-                _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"), extra_gain_db=ue.get("array_gain_db", 0.0))
+                _ip = sinr_for_ue(_now_sim, ue["id"], ue.get("serving_cell"), extra_gain_db=ue.get("array_gain_db", 0.0), cell_load=self.cell_dl_load)
                 if _ip is not None and _ip > -200:
                     ue["sinr_db"] = _ip
         # P1-1(2026-08-12):RLF 偵測 — 每 CONNECTED UE 餵當前 SINR 進 T310 狀態機。
@@ -850,6 +874,7 @@ class TickRunner:
         # cell_id_map: per-UE 的 serving cell（CU-CP 透過 F1AP 同步進 _ue_registry）
         # → emit 進 PDU.cell_id → RU 用這個當 serving label，不再用 Sionna argmax 自己挑.
         cell_id_map = {ue["id"]: ue.get("serving_cell", "") for ue in ues_for_measurement}
+        self._update_cell_dl_load(cell_id_map, rb_alloc_global, prb_per_cell)
         dl_msg = build_dl_tti(
             sfn=self.status.sfn,
             slot=self.status.slot,
@@ -864,6 +889,7 @@ class TickRunner:
             cell_ul_load=getattr(self, "_cell_ul_load_last", {}),   # P6:上一 tick 每 cell UL PRB 負載 → RU 算上行干擾
         )
         dl_msg.scene_sim_ms = int(self.scene_tick * self._sim_dt_ms)   # RU cached 查表用劇本時鐘
+        dl_msg.cell_dl_load = dict(self.cell_dl_load)                  # RU 下行干擾依鄰 cell 負載加權
         # in-process Step3:in-process mode 下 SINR 已自算,dl_tti 只供 RU 端 KPM/viz → 改非阻塞
         # (fire-and-forget thread),不再 gate tick loop → 解放 tick 粒度(可縮 sim_dt)。
         if _DU_RU_INPROCESS:

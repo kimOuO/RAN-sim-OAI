@@ -167,6 +167,11 @@ def set_inter_freq(enabled: bool) -> None:
         logger.warning("set_inter_freq write file failed: %s", _e)
 
 
+# 下行干擾加權(2026-09-19):以前鄰 cell 一律當滿載發射,同頻密集場景(OSM 6 cell / 260 m)輕載也 SINR < −6 dB 一直 RLF。
+_DL_NEIGHBOR_LOAD_FALLBACK = float(_os.environ.get("RU_DL_NEIGHBOR_LOAD", "1.0"))   # DU 沒送負載時
+_DL_MIN_NEIGHBOR_LOAD = float(_os.environ.get("DL_MIN_NEIGHBOR_LOAD", "0.1"))        # SSB / CSI-RS / PDCCH 一直在發
+
+
 def _compute_sinr_db_with_real_interference(
     *,
     path_gain_dict: dict[str, float],
@@ -176,6 +181,7 @@ def _compute_sinr_db_with_real_interference(
     gnb_to_cell: dict[str, str],
     cell_to_power: dict[str, float],
     cell_to_freq: dict | None = None,
+    cell_dl_load: dict[str, float] | None = None,
 ) -> float:
     """從 path_gain_dict 算真實 SINR(含真正 inter-cell interference)。
 
@@ -228,6 +234,13 @@ def _compute_sinr_db_with_real_interference(
             return True
         return abs(_serv_freq[0] - fo[0]) * 1000.0 < (_serv_freq[1] + fo[1]) / 2.0
 
+    def _neighbor_load(tx_name: str) -> float:
+        """鄰 cell 下行負載(PRB 佔用率):舊 DU 沒送 → 滿載假設;有送但缺這個 cell → 只剩參考訊號的下限。"""
+        if not cell_dl_load:
+            return _DL_NEIGHBOR_LOAD_FALLBACK
+        cid = tx_to_cell.get(tx_name) or gnb_to_cell.get(tx_name)
+        return max(_DL_MIN_NEIGHBOR_LOAD, min(1.0, cell_dl_load.get(cid, 0.0)))
+
     interference_mw = 0.0
     if not _read_inter_freq():  # inter_freq=True(共享檔)→ 強制不互擾(舊劇本相容)
         for tx_name, pg in path_gain_dict.items():
@@ -237,7 +250,7 @@ def _compute_sinr_db_with_real_interference(
                 continue
             if not _overlaps(tx_name):   # co-channel 但頻段不重疊(異頻)→ 不互擾
                 continue
-            interference_mw += _rx_mw(pg, _power_for_tx(tx_name))
+            interference_mw += _rx_mw(pg, _power_for_tx(tx_name)) * _neighbor_load(tx_name)
 
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     denom = interference_mw + noise_mw
@@ -711,6 +724,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             gnb_to_cell=gnb_to_cell,
             cell_to_power=cell_to_power,
             cell_to_freq=cell_to_freq,
+            cell_dl_load=getattr(req, "cell_dl_load", None),
         )
         # 額外保留的 env penalty(0 default),想模擬 multipath fade margin 才動
         if sinr_db != -float("inf"):

@@ -978,3 +978,11 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - 材質表原本是空的:預載 13 種 ITU 材質(concrete / brick / plasterboard / wood / glass / ceiling_board / chipboard / floorboard / metal / marble / 三種地面);前端材質 API 路徑修正(`Equipment_preset` → `Field_scene`)。
 - 移除舊 MapFetchPanel 流程(只掛一筆 building,沒設場景幾何,模擬用不到)。
 - 未做:瀏覽器端互動實測;地圖產生的場景尚未跑過 precompute / live 驗證傳播。
+
+## 地圖場景端到端實測 + 下行干擾依負載加權(2026-09-19)
+- 台科大 0.07 km² OSM 場景:80 棟、2 gNB 於 51 / 42 m 屋頂(各 3 扇區 tr38901)、6 UE 街道移動。precompute 4 分鐘(確認用 OSM 幾何,缺值 1%);cached 2× 6 UE 全附著、HO 21 / RLF 7、零錯誤;RIC 有 indication。
+- live 1× 起初 3 分鐘 RLF 11、HO 2。兩個原因:(1) live 每 tick 重新光追,SINR 瞬間掉到 −20~−37 dB → RU `live_smoothing`(每 UE×tx dB 域 EMA,τ 5 s 模擬時間,漏追 10 s 內沿用);(2) 下行干擾把所有鄰 cell 當滿載 → 6 同頻 cell / 260 m 輕載也 SINR < −6 dB,且沒有單一鄰區強 4 dB,A3 不觸發只能 RLF。
+- 下行干擾加權:DU 每 tick 算每 cell DL PRB 佔用率(1 s EMA)→ `DlTtiRequest.cell_dl_load` → RU 干擾 × 鄰 cell 負載(下限 0.1:SSB / CSI-RS / PDCCH);DU in-process(cached)同式。舊 DU 沒送 → 滿載(`RU_DL_NEIGHBOR_LOAD`)。
+- 結果(live 1×,4 分鐘):RLF 14 → 5、HO 1 → 10,SINR 5.9–23.5 dB,cell PRB 0–20%,零錯誤。**所有場景的下行 SINR 都會變(輕載變好)**,走廊等既有劇本的 KPM 數值會不同。
+- registry gunicorn 改 gthread 4 threads + 600 s 逾時(Overpass 讀建築實測超過 30 s 被 WORKER TIMEOUT 砍掉)。
+- 匯入的劇本 JSON 沒寫 A3 → A3 關;這次手動開。編輯器放 gNB 會套模板(含 A3)。
