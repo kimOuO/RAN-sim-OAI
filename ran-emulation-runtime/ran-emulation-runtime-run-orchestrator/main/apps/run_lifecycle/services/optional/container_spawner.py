@@ -122,6 +122,14 @@ def _free_host_port() -> int:
         s.bind(("0.0.0.0", 0)); return int(s.getsockname()[1])
 
 
+PORT_RETRIES = 5
+
+
+def _port_conflict(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "address already in use" in msg or "port is already allocated" in msg
+
+
 def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: int = 1, roles: tuple[str, ...] = ROLES, cu_host_port: int | None = None) -> dict[str, dict]:
     """起四個容器;回傳 {role: {name, container_id, host_port}}。已存在同名容器先移除(上次沒清乾淨)。"""
     rid = rid_of(scene_run_uuid); names = names_for(scene_run_uuid); tpl = _load_template()
@@ -150,13 +158,23 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
             c.remove(force=True)
         host_net = spec.get("network_mode") == "host"
         # host port 明確綁定(而非 None 隨機):docker restart 後 port 不變,adapter 的 SIM_CU_URL / registry host_port 才不會失效(2026-09-15 事故)
-        net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": _free_host_port()}, "hostname": names[role]}
-        c = client.containers.run(spec["image"], name=names[role], detach=True, environment=env, volumes=vols, **net_kw,
-                                  mem_limit=mem_limit_for(role), memswap_limit=mem_limit_for(role),
-                                  restart_policy={"Name": "unless-stopped"},   # OOM 被砍後自己回來
-                                  cap_add=["SYS_PTRACE"],   # 2026-09-15 CU 卡死抓不到堆疊:給 py-spy dump 用
-                                  extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
-                                  command=spec.get("command"), labels={"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": role})
+        # _free_host_port 挑完到 docker 綁定之間,port 可能被別的程式搶走(2026-09-18 實遇 address already in use)→ 換 port 重試
+        for attempt in range(PORT_RETRIES):
+            net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": _free_host_port()}, "hostname": names[role]}
+            try:
+                c = client.containers.run(spec["image"], name=names[role], detach=True, environment=env, volumes=vols, **net_kw,
+                                          mem_limit=mem_limit_for(role), memswap_limit=mem_limit_for(role),
+                                          restart_policy={"Name": "unless-stopped"},   # OOM 被砍後自己回來
+                                          cap_add=["SYS_PTRACE"],   # 2026-09-15 CU 卡死抓不到堆疊:給 py-spy dump 用
+                                          extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
+                                          command=spec.get("command"), labels={"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": role})
+                break
+            except docker.errors.APIError as exc:
+                if host_net or attempt == PORT_RETRIES - 1 or not _port_conflict(exc):
+                    raise
+                logger.warning("spawn %s: host port 衝突,換 port 重試(%d/%d):%s", names[role], attempt + 1, PORT_RETRIES, exc)
+                for c in client.containers.list(all=True, filters={"name": f"^{names[role]}$"}):
+                    c.remove(force=True)
         c.reload()
         port = int(subst["e2_port"]) if host_net else int(c.attrs["NetworkSettings"]["Ports"]["8000/tcp"][0]["HostPort"])
         out[role] = {"name": names[role], "container_id": c.id[:12], "host_port": port}
