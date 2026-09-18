@@ -277,7 +277,15 @@ MATERIAL_MAP = {  # 對齊 Physics 的 mitsuba_builder.MATERIAL_MAP
 }
 
 
-def write_mitsuba(buildings: list[dict], out_xml: Path, ground) -> None:
+DISPLAY_RGB = {
+    "itu_concrete": "0.62 0.62 0.60", "itu_brick": "0.66 0.33 0.24", "itu_glass": "0.45 0.72 0.85",
+    "itu_metal": "0.55 0.58 0.66", "itu_wood": "0.62 0.45 0.28", "itu_marble": "0.85 0.84 0.80",
+    "itu_plasterboard": "0.86 0.86 0.82", "itu_ceiling_board": "0.80 0.80 0.76", "itu_chipboard": "0.72 0.58 0.40",
+    "itu_floorboard": "0.58 0.42 0.26",
+}
+
+
+def write_mitsuba(buildings: list[dict], out_xml: Path, ground, material_map: dict[str, str] | None = None) -> None:
     """真實 mesh 的 Mitsuba 場景(非方塊)。Sionna 依 BSDF id(itu_*)判 radio material。"""
     from xml.etree.ElementTree import Element, SubElement, ElementTree, indent
 
@@ -293,7 +301,7 @@ def write_mitsuba(buildings: list[dict], out_xml: Path, ground) -> None:
         pts, tris = extrude(b["poly"], b["base"], b["top"])
         if len(tris) == 0:
             continue
-        mat = MATERIAL_MAP.get(b["material"], "itu_concrete")
+        mat = (material_map or MATERIAL_MAP).get(b["material"], "itu_concrete")
         P, T = by_mat.setdefault(mat, ([], []))
         off = sum(len(x) for x in P)
         P.append(pts)
@@ -301,7 +309,8 @@ def write_mitsuba(buildings: list[dict], out_xml: Path, ground) -> None:
 
     for m in sorted(set(by_mat) | {"itu_concrete"}):
         bsdf = SubElement(scene, "bsdf", {"type": "diffuse", "id": m})
-        SubElement(bsdf, "rgb", {"name": "reflectance", "value": "0.5 0.5 0.5"})
+        # 顏色只給畫布顯示(Sionna 依 BSDF id 判 radio material)
+        SubElement(bsdf, "rgb", {"name": "reflectance", "value": DISPLAY_RGB.get(m, "0.5 0.5 0.5")})
 
     for mat, (P, T) in by_mat.items():
         ply = mesh_dir / f"{mat}.ply"
@@ -358,3 +367,74 @@ def convert_osm_to_mitsuba(osm_xml: bytes | str, bbox: tuple[float, float, float
             "height_max_m": round(max(hs), 1), "height_mean_m": round(sum(hs) / len(hs), 1),
             "extent_ew_m": round(abs(sx) * 2, 1), "extent_ns_m": round(abs(sz) * 2, 1),
             "origin_lat": lat0, "origin_lon": lon0}
+
+
+# ── 地圖編輯流程(2026-09-18):多邊形範圍 → 建築清單(可逐棟改材質/高度)→ Mitsuba ──
+OSM_MATERIAL_KEYS = {  # OSM building:material → 平台材質 key
+    "concrete": "concrete", "reinforced_concrete": "concrete", "cement_block": "concrete",
+    "brick": "brick", "glass": "glass", "metal": "metal", "steel": "metal",
+    "wood": "wood", "timber_framing": "wood", "plaster": "plasterboard", "stone": "marble",
+}
+
+
+def _polygon_projector(polygon_latlon: list[list[float]]) -> tuple[Projector, Polygon]:
+    lats = [p[0] for p in polygon_latlon]
+    lons = [p[1] for p in polygon_latlon]
+    proj = Projector((min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2)
+    area = Polygon([proj(lat, lon) for lat, lon in polygon_latlon])
+    if not area.is_valid:
+        area = area.buffer(0)
+    return proj, area
+
+
+def _unproject(proj: Projector, x: float, z: float) -> list[float]:
+    return [round(proj.lat0 - z / proj.m_lat, 7), round(proj.lon0 + x / proj.m_lon, 7)]
+
+
+def preview_buildings(osm_xml: bytes | str, polygon_latlon: list[list[float]]) -> dict[str, Any]:
+    """OSM XML + 範圍多邊形 [[lat,lon],...] → 範圍內建築(重心落在多邊形內),座標回 lat/lon 給地圖畫。"""
+    proj, area = _polygon_projector(polygon_latlon)
+    out = []
+    for i, b in enumerate(extract_buildings(parse_osm(osm_xml), proj)):
+        if not area.contains(b["poly"].centroid):
+            continue
+        p = b["poly"].simplify(0.3, preserve_topology=True)
+        out.append({
+            "id": f"b{i}", "name": b["name"],
+            "outer": [_unproject(proj, x, z) for x, z in list(p.exterior.coords)[:-1]],
+            "inner": [[_unproject(proj, x, z) for x, z in list(r.coords)[:-1]] for r in p.interiors],
+            "base_m": round(b["base"], 1), "height_m": round(b["top"], 1),
+            "height_known": b["height"] is not None,
+            "material": OSM_MATERIAL_KEYS.get(str(b["material"]).lower(), "concrete"),
+        })
+    return {"buildings": out, "area_m2": round(area.area, 1)}
+
+
+def build_mitsuba_from_edit(polygon_latlon: list[list[float]], buildings: list[dict], itu_of: dict[str, str],
+                            out_xml: str | Path) -> dict[str, Any]:
+    """使用者在地圖上編輯過的建築 → Mitsuba(每棟用自己的材質)。
+
+    buildings: [{outer:[[lat,lon]..], inner?:[[[lat,lon]..]..], base_m, height_m, material}]
+    itu_of: 材質 key → ITU BSDF id(registry material 表)。原點 = 範圍多邊形外框中心。
+    """
+    proj, area = _polygon_projector(polygon_latlon)
+    blds = []
+    for b in buildings:
+        shell = [proj(lat, lon) for lat, lon in b["outer"]]
+        holes = [[proj(lat, lon) for lat, lon in r] for r in (b.get("inner") or [])]
+        poly = _make_polygon(shell + shell[:1], [h + h[:1] for h in holes])
+        top, base = float(b.get("height_m") or DEFAULT_HEIGHT_M), float(b.get("base_m") or 0.0)
+        if poly is None or top <= base:
+            continue
+        blds.append({"poly": poly, "base": base, "top": top, "material": b.get("material") or "concrete"})
+    if not blds:
+        raise ValueError("沒有可用的建築")
+    x0, z0, x1, z1 = area.bounds
+    ground = (x0 - GROUND_MARGIN_M, z0 - GROUND_MARGIN_M, x1 + GROUND_MARGIN_M, z1 + GROUND_MARGIN_M)
+    write_mitsuba(blds, Path(out_xml), ground, material_map={**MATERIAL_MAP, **itu_of})
+    by_mat: dict[str, int] = {}
+    for b in blds:
+        by_mat[b["material"]] = by_mat.get(b["material"], 0) + 1
+    return {"mitsuba_path": str(out_xml), "building_count": len(blds), "by_material": by_mat,
+            "height_max_m": round(max(b["top"] for b in blds), 1), "area_m2": round(area.area, 1),
+            "origin_lat": proj.lat0, "origin_lon": proj.lon0}

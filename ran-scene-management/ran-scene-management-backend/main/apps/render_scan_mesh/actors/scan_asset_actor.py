@@ -137,3 +137,25 @@ class ScanAssetController:
         except Exception as exc:  # noqa: BLE001
             return error_response("Registry call failed", str(exc), 502)
         return success_response(r.get("data"), "attached", 201)
+
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def use_for_scene(request):
+        """body {scan_asset_uuid, scene_uuid} → 場景幾何改用這個掃描模型(geometry_source = 它的 Mitsuba)。"""
+        try:
+            payload = _body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        a = SqlDbBusinessService.get_or_none(ScanAsset, UUID_FIELD, payload.get(UUID_FIELD, ""))
+        if a is None or a.status != "ready":
+            return error_response("Not found or not ready", payload.get(UUID_FIELD), 404)
+        if not payload.get("scene_uuid"):
+            return error_response("Validation failed", {"scene_uuid": "required"}, 400)
+        try:
+            r = registry_client.update_scene(payload["scene_uuid"], geometry_source={"type": "mitsuba_xml_path", "path": a.mitsuba_xml, "origin": "scan"},
+                                             geometry_scene_id=a.name)
+        except Exception as exc:  # noqa: BLE001
+            return error_response("Registry call failed", str(exc), 502)
+        return success_response(r.get("data"), "scene geometry set", 200)

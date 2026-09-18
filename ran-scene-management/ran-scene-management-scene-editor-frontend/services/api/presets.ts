@@ -3,13 +3,14 @@ import { post } from '@/services/clients/apiClient';
 import type { AntennaPreset, DuConfigTemplate, GnbConfigTemplate, Material } from '@/types/registry';
 
 const P = `${REGISTRY_API}/Equipment_preset`;
+const F = `${REGISTRY_API}/Field_scene`;   // 材質表在 field_scene
 export const listAntennaPresets = () => post<AntennaPreset[]>(`${P}/AntennaPresetReader/read`, {});
 export const createAntennaPreset = (body: Partial<AntennaPreset>) => post<AntennaPreset>(`${P}/AntennaPresetController/create`, body);
 export const updateAntennaPreset = (antenna_preset_uuid: string, body: Partial<AntennaPreset>) => post<AntennaPreset>(`${P}/AntennaPresetController/update`, { antenna_preset_uuid, ...body });
 export const deleteAntennaPreset = (antenna_preset_uuid: string) => post<{ deleted: number }>(`${P}/AntennaPresetController/delete`, { antenna_preset_uuid });
-export const listMaterials = () => post<Material[]>(`${P}/MaterialReader/read`, {});
-export const createMaterial = (body: Partial<Material>) => post<Material>(`${P}/MaterialController/create`, body);
-export const updateMaterial = (material_uuid: string, body: Partial<Material>) => post<Material>(`${P}/MaterialController/update`, { material_uuid, ...body });
+export const listMaterials = () => post<Material[]>(`${F}/MaterialReader/read`, {});
+export const createMaterial = (body: Partial<Material>) => post<Material>(`${F}/MaterialController/create`, body);
+export const updateMaterial = (material_uuid: string, body: Partial<Material>) => post<Material>(`${F}/MaterialController/update`, { material_uuid, ...body });
 export const listDuConfigTemplates = () => post<DuConfigTemplate[]>(`${P}/DuConfigTemplateReader/read`, {});
 export const createDuConfigTemplate = (body: Partial<DuConfigTemplate>) => post<DuConfigTemplate>(`${P}/DuConfigTemplateController/create`, body);
 export const updateDuConfigTemplate = (du_config_template_uuid: string, body: Partial<DuConfigTemplate>) => post<DuConfigTemplate>(`${P}/DuConfigTemplateController/update`, { du_config_template_uuid, ...body });

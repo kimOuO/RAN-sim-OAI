@@ -106,3 +106,22 @@ table.ne tr.edit td:first-child, table.ne tr.edit td:last-child { background: va
 table.ne td { max-width: 22em; overflow: hidden; text-overflow: ellipsis; }
 .tablewrap::-webkit-scrollbar { height: 10px; } .tablewrap::-webkit-scrollbar-track { background: var(--bg-3); } .tablewrap::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; }
 .tablewrap { scrollbar-color: var(--line-2) var(--bg-3); }
+
+/* 步驟 1 第一層:場景來源 / 地圖框選 / 掃描上傳(2026-09-18) */
+.sourcepick { max-width: 760px; margin: 40px auto; padding: 0 16px; }
+.sourcepick h2 { font-size: 18px; margin: 8px 0 14px; }
+.sourcecards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.sourcecard { display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 18px; background: var(--bg-2); border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 4px; }
+.sourcecard b { font-size: 15px; } .sourcecard span { color: var(--muted); font-size: 13px; }
+.sourcecard:hover { border-color: var(--cyan); background: var(--bg-3); }
+.scanform { display: flex; flex-direction: column; gap: 10px; max-width: 480px; }
+.scanform label.stack { display: flex; flex-direction: column; gap: 4px; } .scanform label span { color: var(--muted); font-size: 12px; }
+.mapcanvas { position: absolute; inset: 0; }
+.mapcanvas .leaflet-container { background: #0b0f14; font: inherit; }
+.map-basemap { position: absolute; top: 10px; right: 10px; z-index: 500; display: flex; } .map-basemap button { padding: 3px 10px; font-size: 12px; border-radius: 0; } .map-basemap button.on { background: var(--accent); color: #111; border-color: var(--accent); }
+.map-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 500; background: var(--bg-2); border: 1px solid var(--line-2); padding: 4px 12px; font-size: 12.5px; }
+.map-vertex { background: var(--accent); border: 2px solid #111; border-radius: 2px; } .map-vertex.mid { background: rgba(255, 138, 61, .45); border-width: 1px; border-radius: 50%; }
+.georesults { list-style: none; padding: 0; margin: 6px 0 0; max-height: 140px; overflow: auto; } .georesults li button { text-align: left; font-size: 12px; padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.matlegend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; } .matlegend button { color: var(--ink); font-size: 12.5px; padding: 2px 0; } .matlegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1px solid #111; }
+.panel h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.center-hint { padding: 20px; }

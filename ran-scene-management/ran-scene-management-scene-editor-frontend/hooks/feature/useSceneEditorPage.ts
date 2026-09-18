@@ -3,13 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { UeGenParams } from '@/config';
 import { planUes } from '@/hooks/feature/ueGenerator';
 import { useAsync } from '@/hooks/base/useAsync';
-import { attachOsmToScene, generateOsmMap, geocodeLandmark, listOsmMaps } from '@/services/api/geometry';
 import { createBuilding, createCell, createDu, createGnb, createRu, createUe, createUeActiveWindow, createUeTraffic, createUeWaypoint, deleteBuilding, deleteCell, deleteGnb, deleteUe, deleteUeActiveWindow, listUeActiveWindows, updateBuilding, updateCell, updateDu, updateGnb, updateRu, updateUe, updateUeTraffic } from '@/services/api/networkElements';
 import { createAntennaPreset, createGnbConfigTemplate, listAntennaPresets, listDuConfigTemplates, listGnbConfigTemplates, listMaterials, updateAntennaPreset, updateGnbConfigTemplate } from '@/services/api/presets';
 import { createRunKnob, createSceneRun, deleteRunKnob, listRunKnobs, listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, updateRunKnob, updateSceneRun, type PrecomputeStatus } from '@/services/api/runs';
 import { duplicateScene, getSceneTree, listScenes, updateScene } from '@/services/api/scenes';
 import type { AntennaPreset, Building, Cell, Du, Gnb, GnbConfigTemplate, Scene, SceneRun, Ue, UeTraffic } from '@/types/registry';
-import type { GeocodeResult } from '@/types/geometry';
 
 export type Selection = { kind: 'gnb'; gnb: Gnb } | { kind: 'cell'; cell: Cell; gnb: Gnb } | { kind: 'ue'; ue: Ue } | { kind: 'building'; building: Building } | null;
 /** 元件庫的「放置模式」:選了元件後,下一次點地面就建立 */
@@ -43,7 +41,6 @@ export function useSceneEditorPage(sceneUuid: string) {
   const [placeKind, setPlaceKind] = useState<PlaceKind>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [osm, setOsm] = useState<{ query: string; results: GeocodeResult[]; picked: GeocodeResult | null; busy: string | null }>({ query: '', results: [], picked: null, busy: null });
 
   const withSave = useCallback(async (label: string, fn: () => Promise<unknown>) => {
     setSaving(true); setMessage(null);
@@ -98,23 +95,10 @@ export function useSceneEditorPage(sceneUuid: string) {
     setPlaceKind(null);
   };
 
-  /** OSM:地標 → 候選 → 抓地圖 → 掛到場景成 building(source=osm) */
-  const osmSearch = async () => { setOsm((o) => ({ ...o, busy: 'geocode' })); try { const r = await geocodeLandmark(osm.query); setOsm((o) => ({ ...o, results: r, picked: r[0] ?? null, busy: null })); } catch (e) { setMessage(`地標搜尋失敗:${e instanceof Error ? e.message : e}`); setOsm((o) => ({ ...o, busy: null })); } };
-  const osmFetch = async () => {
-    const g = osm.picked; if (!g) return; setOsm((o) => ({ ...o, busy: 'generate' }));
-    const name = `${(tree.data?.scene.name ?? 'scene').replace(/[^A-Za-z0-9_]/g, '_')}_${g.name.replace(/[^A-Za-z0-9_]/g, '_').slice(0, 24)}`;
-    await withSave(`地圖 ${g.name}`, async () => {
-      const existing = (await listOsmMaps()).find((a) => a.name === name && a.status === 'ready');
-      const asset = existing ?? await generateOsmMap({ name, label: g.display_name, ...g.bbox });
-      await attachOsmToScene(asset.osm_map_asset_uuid, sceneUuid);
-    });
-    setOsm((o) => ({ ...o, busy: null }));
-  };
 
   return {
     tree: tree.data, status: tree.status, error: tree.error, presets: presets.data ?? [], templates: templates.data ?? [], materials: materials.data ?? [], gnbTemplates: gnbTemplates.data ?? [],
     run, knobs: knobs.data ?? [], selection, select: (s: Selection) => { setSelection(s); }, saving, message, placeKind, setPlaceKind, placeAt,
-    osm, setOsmQuery: (q: string) => setOsm((o) => ({ ...o, query: q })), setOsmPicked: (g: GeocodeResult) => setOsm((o) => ({ ...o, picked: g })), osmSearch, osmFetch,
     moveCell: (c: Cell, pos: [number, number, number]) => withSave(`cell ${c.name} 位置`, () => updateCell(c.cell_uuid, { position: pos })),
     moveGnb: (g: Gnb, pos: [number, number, number]) => withSave(`gNB ${g.name} 位置`, () => updateGnb(g.gnb_uuid, { position: pos })),
     updateCellFields: (c: Cell, f: Partial<Cell>) => withSave(`cell ${c.name}`, () => updateCell(c.cell_uuid, f)),
@@ -132,7 +116,7 @@ export function useSceneEditorPage(sceneUuid: string) {
     /** 天線:現場欄位寫進 RU 覆寫;或存成 / 更新 preset 並綁到 RU */
     applyAntennaFields: (c: Cell, fields: Partial<AntennaPreset>) => withSave(`cell ${c.name} 天線覆寫`, async () => c.ru ? updateRu(c.ru.ru_uuid, { antenna_override: fields }) : createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru`, antenna_override: fields })),
     saveAntennaAsPreset: (c: Cell, fields: Partial<AntennaPreset>, name: string, uuid: string | null) => withSave(uuid ? '更新天線 preset' : `新天線 preset ${name}`, async () => { const a = uuid ? await updateAntennaPreset(uuid, { ...fields, name }) : await createAntennaPreset({ ...fields, name, source: 'custom' }); if (c.ru) await updateRu(c.ru.ru_uuid, { f_antenna_preset_uuid: a.antenna_preset_uuid, antenna_override: null }); else await createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru`, f_antenna_preset_uuid: a.antenna_preset_uuid }); presets.refetch(); }),
-    allRuns: allRuns.data ?? [], geometrySources, progress, precomp, placeTemplateUuid, setPlaceTemplateUuid, generateUes,
+    reloadTree: tree.refetch, allRuns: allRuns.data ?? [], geometrySources, progress, precomp, placeTemplateUuid, setPlaceTemplateUuid, generateUes,
     clearUes: (prefix: string) => withSave(`清除 ${prefix}* UE`, async () => { for (const u of (tree.data?.ues ?? []).filter((x) => x.name.startsWith(prefix))) await deleteUe(u.ue_uuid); }),
     /** UE 流量:沒有就新建;cbr 用 rate,piecewise 用 schedule */
     setUeTraffic: (u: Ue, t: Partial<UeTraffic>) => withSave(`UE ${u.name} 流量`, async () => { const cur = u.traffic[0];

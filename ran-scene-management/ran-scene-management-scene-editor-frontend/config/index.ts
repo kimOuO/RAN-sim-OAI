@@ -48,3 +48,23 @@ export const UE_SCENARIOS: { key: string; label: string; hint: string; params: P
   { key: 'meeting', label: '會議室', hint: '幾乎不動、長時間視訊', params: { speedMin: 0.05, speedMax: 0.3, dwellMax: 120, heavyRatio: 0.8, heavyMin: 1500, heavyMax: 4000 } },
   { key: 'peak', label: '尖峰時段', hint: '人多、流量大', params: { count: 20, heavyRatio: 0.8, heavyMin: 2000, heavyMax: 8000, ulMax: 1500 } },
 ];
+
+/** 從地圖建立場景 */
+export const MAP_TAIWAN = { lat: 23.7, lon: 120.95, zoom: 7 } as const;
+/** 範圍上限(與後端 OsmMapEditor.MAX_AREA_M2 相同):超過 Overpass 與光追都太重 */
+export const MAX_MAP_AREA_M2 = 1_000_000;
+/** 底圖:深色(預設,配合編輯器)/ OSM 標準(地標文字較清楚) */
+export const MAP_BASEMAPS = {
+  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; OpenStreetMap contributors &copy; CARTO', label: '深色' },
+  osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; OpenStreetMap contributors', label: 'OSM' },
+} as const;
+/** 材質顯示色(與後端 osm_to_mitsuba.DISPLAY_RGB 一致;只影響畫面,傳播用 ITU 參數) */
+export const MATERIAL_COLORS: Record<string, string> = {
+  concrete: '#9e9e99', brick: '#a8543d', glass: '#73b8d9', metal: '#8c94a8', wood: '#9e7347', marble: '#d9d6cc',
+  plasterboard: '#dbdbd1', ceiling_board: '#ccccc2', chipboard: '#b89466', floorboard: '#946b42',
+  very_dry_ground: '#8a7a5c', medium_dry_ground: '#6e6048', wet_ground: '#4f4636',
+};
+export const MATERIAL_LABELS: Record<string, string> = {
+  concrete: '混凝土', brick: '磚', glass: '玻璃', metal: '金屬', wood: '木材', marble: '大理石', plasterboard: '石膏板',
+  ceiling_board: '天花板', chipboard: '塑合板', floorboard: '地板', very_dry_ground: '極乾地面', medium_dry_ground: '中乾地面', wet_ground: '濕地面',
+};

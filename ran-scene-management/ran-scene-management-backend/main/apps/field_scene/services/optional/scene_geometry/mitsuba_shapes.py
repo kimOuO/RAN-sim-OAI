@@ -9,9 +9,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-# physics 容器看到的路徑 → registry 容器看到的路徑
-PATH_ALIASES = {"/app/scenes/": "/app/assets/"}
-ALLOWED_ROOTS = (Path("/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps"), Path("/app/assets"))
+# registry 與 physics 都把 scanned-building-assets 掛在 /app/scenes(2026-09-18),路徑兩邊通用
+PATH_ALIASES: dict[str, str] = {}
+ALLOWED_ROOTS = (Path("/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps"), Path("/app/scenes"))
 MAX_MESH_BYTES = 60 * 1024 * 1024
 
 

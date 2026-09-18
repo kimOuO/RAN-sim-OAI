@@ -542,7 +542,7 @@ services:
       DJANGO_SETTINGS_MODULE: main.settings.local
       DJANGO_DEBUG: "False"   # 2026-09-16:DEBUG 的 SQL 紀錄是記憶體洩漏來源
       DJANGO_ALLOWED_HOSTS: "*"
-      SCANNED_ASSETS_DIR: /app/assets
+      SCANNED_ASSETS_DIR: /app/scenes   # 2026-09-18:與 physics 同一路徑,geometry_source.path 兩邊通用
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: scene_registry_db
@@ -550,7 +550,7 @@ services:
       DB_PASSWORD: "ransim"
     volumes:
       - ./ran-scene-management/ran-scene-management-backend:/app
-      - ./scanned-building-assets:/app/assets   # 3D 幾何匯入產物(2026-09-16 自 ingest 併入)
+      - ./scanned-building-assets:/app/scenes   # 3D 幾何匯入產物;與 physics 同掛 /app/scenes(2026-09-18)
       - ./docs/scenarios:/app/docs/scenarios:ro   # import_scenarios --dir 用
       # 場景幾何(掃描 / OSM 產的 Mitsuba XML + PLY);用與 physics 相同的絕對路徑,scene.geometry_source 可直接讀(畫布顯示用)
       - ./Omnivers_platform/assets/maps:/home/mitlab/XAPP_DT/Omnivers_platform/assets/maps:ro

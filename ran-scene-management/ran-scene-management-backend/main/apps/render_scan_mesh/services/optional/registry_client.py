@@ -22,3 +22,13 @@ def create_building(*, scene_uuid: str, name: str, source: str, geometry_ref: st
     if default_material_uuid:
         body["f_material_uuid"] = default_material_uuid
     return _post("Field_scene/BuildingController/create", body)
+
+
+def update_scene(scene_uuid: str, **fields) -> dict:
+    return _post("Field_scene/SceneController/update", {"scene_uuid": scene_uuid, **fields})
+
+
+def material_itu_map() -> dict[str, str]:
+    """材質 key → ITU BSDF id(registry material 表)。"""
+    d = _post("Field_scene/MaterialReader/read", {})
+    return {m["key"]: m["itu_id"] for m in (d.get("data") or [])}

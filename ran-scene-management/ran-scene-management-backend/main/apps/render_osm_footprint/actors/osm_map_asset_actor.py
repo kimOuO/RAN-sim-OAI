@@ -15,7 +15,7 @@ from main.apps.render_osm_footprint.services.business.sqldb_operations import Sq
 from main.apps.render_osm_footprint.services.common.timestamp_service import TimestampService
 from main.apps.render_osm_footprint.services.common.uuid_service import UUIDService
 from main.apps.render_osm_footprint.services.optional.nominatim_client import geocode as nominatim_geocode
-from main.apps.render_osm_footprint.services.optional.osm_to_mitsuba import convert_osm_to_mitsuba
+from main.apps.render_osm_footprint.services.optional.osm_to_mitsuba import build_mitsuba_from_edit, convert_osm_to_mitsuba, preview_buildings
 from main.apps.render_osm_footprint.services.optional.overpass_client import fetch_osm
 from main.apps.render_scan_mesh.services.optional import registry_client
 from main.apps.render_scan_mesh.services.optional.asset_paths import asset_base
@@ -95,6 +95,75 @@ class OsmFootprintImporter:
             asset.error = str(exc)
             asset.save(update_fields=["status", "error"])
             return error_response("地圖產生失敗", str(exc), 500)
+
+
+MAX_AREA_M2 = 1_000_000   # 1 km²:Overpass 與光追成本的上限
+
+
+def _polygon(payload: dict) -> list[list[float]]:
+    poly = payload.get("polygon") or []
+    if len(poly) < 3 or not all(isinstance(p, (list, tuple)) and len(p) == 2 for p in poly):
+        raise ValueError("polygon 需要至少 3 個 [lat, lon]")
+    return [[float(p[0]), float(p[1])] for p in poly]
+
+
+class OsmMapEditor:
+    """地圖編輯流程:多邊形 → preview(逐棟建築,可改材質/高度)→ build_scene(產生 Mitsuba 並設為場景幾何)。"""
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def preview(request):
+        """body {polygon:[[lat,lon],...]} → {buildings:[{id,name,outer,inner,base_m,height_m,height_known,material}], area_m2}"""
+        try:
+            payload = _body(request)
+            poly = _polygon(payload)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            return error_response("Validation failed", str(exc), 400)
+        lats, lons = [p[0] for p in poly], [p[1] for p in poly]
+        try:
+            osm_xml = fetch_osm(min(lats), min(lons), max(lats), max(lons))
+            res = preview_buildings(osm_xml, poly)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("OSM preview failed")
+            return error_response("抓取 OSM 失敗", str(exc), 502)
+        if res["area_m2"] > MAX_AREA_M2:
+            return error_response(f"範圍 {res['area_m2'] / 1e6:.2f} km² 超過上限 1 km²", {}, 400)
+        return success_response(res, f"{len(res['buildings'])} 棟", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def build_scene(request):
+        """body {scene_uuid, name, polygon, buildings:[{outer,inner?,base_m,height_m,material}]}
+        → 產生 Mitsuba,並把場景的 geometry_source 設成它(physics 與畫布同一路徑)。"""
+        try:
+            payload = _body(request)
+            poly = _polygon(payload)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            return error_response("Validation failed", str(exc), 400)
+        scene_uuid, name = payload.get("scene_uuid"), (payload.get("name") or "").strip()
+        buildings = payload.get("buildings") or []
+        if not scene_uuid or not name or not buildings:
+            return error_response("需要 scene_uuid、name、buildings", {}, 400)
+        try:
+            itu_of = registry_client.material_itu_map()
+            stats = build_mitsuba_from_edit(poly, buildings, itu_of, asset_base("osm", name) + ".mitsuba.xml")
+        except ValueError as exc:
+            return error_response("產生失敗", str(exc), 400)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("OSM build_scene failed")
+            return error_response("產生失敗", str(exc), 500)
+        lats, lons = [p[0] for p in poly], [p[1] for p in poly]
+        try:
+            registry_client.update_scene(
+                scene_uuid,
+                geometry_source={"type": "mitsuba_xml_path", "path": stats["mitsuba_path"], "origin": "osm", "polygon": poly},
+                geometry_scene_id=name, origin_lat=stats["origin_lat"], origin_lon=stats["origin_lon"],
+                bounds={"min_lat": min(lats), "min_lon": min(lons), "max_lat": max(lats), "max_lon": max(lons)})
+        except Exception as exc:  # noqa: BLE001
+            return error_response("場景更新失敗", str(exc), 502)
+        return success_response(stats, f"場景幾何已產生({stats['building_count']} 棟)", 201)
 
 
 class OsmMapAssetReader:
