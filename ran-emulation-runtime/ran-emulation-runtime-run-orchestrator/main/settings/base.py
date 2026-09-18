@@ -44,6 +44,7 @@ PER_RUN_PG_ADMIN_DB = get_str("PER_RUN_PG_ADMIN_DB", "ransim_root")
 PER_RUN_HEALTH_SEC = get_int("PER_RUN_HEALTH_SEC", 5)
 # 自動復原(2026-09-15):任一角色連續不健康超過 AUTO_RESTART_SEC 秒 → 先 dump CU/DU 堆疊再 stop/start 整個 run;0 = 關閉。兩次重啟至少隔 COOLDOWN 秒。
 PER_RUN_AUTO_RESTART_SEC = get_int("PER_RUN_AUTO_RESTART_SEC", 120)
+PER_RUN_AUTO_STOP_ON_FINISH = get_bool("PER_RUN_AUTO_STOP_ON_FINISH", True)   # UE 劇本跑完(模擬時間 ≥ duration_sec)自動停 run
 PER_RUN_AUTO_RESTART_COOLDOWN_SEC = get_int("PER_RUN_AUTO_RESTART_COOLDOWN_SEC", 600)
 # 場景停止後通知 RIC 端清 R-NIB 殘留(m-release 不支援 E2 Removal;收尾第 4 步)。空 = 只記 log
 RIC_STOP_WEBHOOK_URL = get_str("RIC_STOP_WEBHOOK_URL", "")

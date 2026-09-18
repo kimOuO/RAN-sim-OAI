@@ -114,6 +114,32 @@ def _auto_restart(run_uuid: str, reason: str) -> None:
         pass
 
 
+SCENARIO_STATUS_PATH = "/api/v0.1/UE/Scenario/ScenarioController/status"
+
+
+def scenario_finished(ue_name: str) -> dict | None:
+    """UE 劇本跑完(模擬時間 ≥ 劇本長度)→ 回狀態;沒跑完、沒定長度或讀不到 → None。"""
+    try:
+        req = urllib.request.Request(f"http://{ue_name}:8000{SCENARIO_STATUS_PATH}", data=b"{}", headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            d = (json.loads(resp.read().decode() or "{}") or {}).get("data") or {}
+    except Exception:  # noqa: BLE001
+        return None
+    return d if d.get("running") and d.get("finished") else None
+
+
+def _auto_stop(run_uuid: str, reason: str) -> None:
+    """劇本跑完 → 經自家 API stop(完整收尾:RIC 解除登記、容器移除、registry 標 stopped)。"""
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8000/api/v0.1/Run_orchestrator/Run_lifecycle/LaunchController/stop",
+                                     data=json.dumps({"scene_run_uuid": run_uuid}).encode(), headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=540) as resp:
+            logger.warning("auto-stop %s → HTTP %s(%s)", run_uuid, resp.status, reason)
+        platform_clients.update_scene_run(run_uuid, notes=f"auto-stop {platform_clients.now_iso()}: {reason[:200]}")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("auto-stop %s failed: %s", run_uuid, exc)
+
+
 class HealthMonitor(threading.Thread):
     def __init__(self, scene_run_uuid: str, instances: dict[str, dict]) -> None:
         super().__init__(name=f"health-{scene_run_uuid[-8:]}", daemon=True)
@@ -131,6 +157,14 @@ class HealthMonitor(threading.Thread):
         while not self._stop_evt.is_set():
             try:
                 st = container_spawner.container_status(self.run_uuid)
+                # 劇本跑完就自動停 run(以前 UE 走完後容器一直開著佔資源,要人工停)
+                if getattr(settings, "PER_RUN_AUTO_STOP_ON_FINISH", True) and st.get("ue") == "running":
+                    fin = scenario_finished(names["ue"])
+                    if fin:
+                        reason = f"劇本跑完 {fin.get('elapsed_sim_sec')} / {fin.get('duration_sec')} s"
+                        logger.warning("run %s: %s → auto-stop", self.run_uuid, reason)
+                        threading.Thread(target=_auto_stop, args=(self.run_uuid, reason), name=f"auto-stop-{self.run_uuid[-8:]}", daemon=True).start()
+                        return
                 if time.time() - self._last_mem_check >= MEM_CHECK_SEC:
                     self._last_mem_check = time.time()
                     self._mem_detail = {r: memory_issue(names[r]) for r in self.instances if st.get(r) == "running"}

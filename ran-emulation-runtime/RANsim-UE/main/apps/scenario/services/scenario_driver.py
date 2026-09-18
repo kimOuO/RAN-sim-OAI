@@ -83,6 +83,9 @@ class ScenarioDriver:
             "sim_tick_idx": sim_tick_idx,
             "elapsed_wall_sec": round(elapsed_wall_sec, 2),
             "elapsed_sim_sec": round(elapsed_sim_sec, 2),
+            # 劇本長度與是否已跑完(orchestrator 據此自動停 run;0 = 沒定長度,不會自動停)
+            "duration_sec": float(self.scenario.duration_sec or 0.0),
+            "finished": bool(self.scenario.duration_sec) and elapsed_sim_sec >= float(self.scenario.duration_sec),
             # driver 不再跑 tick loop；push/inject 計數已移至 UeLifecycleManager，暫以 0 佔位
             "position_push_count": 0,
             "inject_call_count": 0,
