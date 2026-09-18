@@ -9,7 +9,7 @@ export function Palette({ placeKind, onPick, kinds }: { placeKind: PlaceKind; on
   const items = kinds ? ITEMS.filter((it) => kinds.includes(it.kind)) : ITEMS;
   return (
     <div className="palette">
-      <div className="row head">元件庫 <span className="muted">點選後點畫布放置</span></div>
+      <div className="row head">元件庫 <span className="muted">點選後點畫布放置(貼齊地面 / 屋頂 / 模型表面);放好可直接拖曳換位置</span></div>
       <div className="palette-grid">{items.map((it) => <button key={it.kind} className={`pal ${placeKind === it.kind ? 'on' : ''}`} onClick={() => onPick(placeKind === it.kind ? null : it.kind)} title={it.hint}><span className="ico">{it.icon}</span><span>{it.label}</span></button>)}</div>
       {placeKind && <p className="msg small">放置模式:點畫布地面放下 {ITEMS.find((i) => i.kind === placeKind)?.label}(Esc 取消)</p>}
     </div>

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { UeGenParams } from '@/config';
 import { planUes } from '@/hooks/feature/ueGenerator';
 import { useAsync } from '@/hooks/base/useAsync';
+import { GNB_ABOVE_SURFACE_M, UE_ABOVE_SURFACE_M } from '@/components/scene-canvas/surface';
+import { listUeWaypoints, updateUeWaypoint } from '@/services/api/networkElements';
 import { createBuilding, createCell, createDu, createGnb, createRu, createUe, createUeActiveWindow, createUeTraffic, createUeWaypoint, deleteBuilding, deleteCell, deleteGnb, deleteUe, deleteUeActiveWindow, listUeActiveWindows, updateBuilding, updateCell, updateDu, updateGnb, updateRu, updateUe, updateUeTraffic } from '@/services/api/networkElements';
 import { createAntennaPreset, createGnbConfigTemplate, listAntennaPresets, listDuConfigTemplates, listGnbConfigTemplates, listMaterials, updateAntennaPreset, updateGnbConfigTemplate } from '@/services/api/presets';
 import { createRunKnob, createSceneRun, deleteRunKnob, listRunKnobs, listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, updateRunKnob, updateSceneRun, type PrecomputeStatus } from '@/services/api/runs';
@@ -84,14 +86,14 @@ export function useSceneEditorPage(sceneUuid: string) {
 
   /** 點地面:依放置模式建立物件(gNB 自帶 DU/cell/RU;cell 要先選 gNB;UE 建一個 waypoint;建築是 10×6×10 盒) */
   const placeAt = (pos: [number, number, number]) => {
-    const [x, , z] = pos; const n = (k: string) => `${k}${(k === 'gnb' ? gnbs.length : k === 'ue' ? (tree.data?.ues.length ?? 0) : (tree.data?.buildings.length ?? 0)) + 1}`;
-    if (placeKind === 'gnb') void withSave(`gNB ${n('gnb')}`, async () => { const t = defaultGnbTemplate(); const g = await createGnb({ f_scene_uuid: sceneUuid, name: n('gnb'), position: [x, 0, z] }); const d = await createDu({ f_gnb_uuid: g.gnb_uuid, name: `${g.name}_du0`, f_du_config_template_uuid: t?.f_du_config_template_uuid ?? null });
+    const [x, sy, z] = pos; /* sy = 點到的表面高度(地面 0 / 屋頂 / 掃描模型地板) */ const n = (k: string) => `${k}${(k === 'gnb' ? gnbs.length : k === 'ue' ? (tree.data?.ues.length ?? 0) : (tree.data?.buildings.length ?? 0)) + 1}`;
+    if (placeKind === 'gnb') void withSave(`gNB ${n('gnb')}`, async () => { const t = defaultGnbTemplate(); const g = await createGnb({ f_scene_uuid: sceneUuid, name: n('gnb'), position: [x, sy + GNB_ABOVE_SURFACE_M, z] }); const d = await createDu({ f_gnb_uuid: g.gnb_uuid, name: `${g.name}_du0`, f_du_config_template_uuid: t?.f_du_config_template_uuid ?? null });
       const nCell = Math.max(1, t?.cells_per_gnb ?? 1); const cells: Cell[] = [];
       for (let k = 0; k < nCell; k++) { const c = await createCell({ f_du_uuid: d.du_uuid, name: `${g.name}_c${k}`, pci: gnbs.length * 3 + k, azimuth_deg: (k * (t?.azimuth_step_deg ?? 120)) % 360, band: t?.band, center_frequency_ghz: t?.center_frequency_ghz, bandwidth_mhz: t?.bandwidth_mhz, power_dbm: t?.power_dbm, tilt_deg: t?.tilt_deg }); await createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru`, f_antenna_preset_uuid: t?.f_antenna_preset_uuid ?? null }); cells.push(c); }
       if (t) await updateGnb(g.gnb_uuid, { plmn_mcc: t.plmn_mcc, plmn_mnc: t.plmn_mnc, a3_enabled: t.a3_enabled, a3_offset_db: t.a3_offset_db, a3_hys_db: t.a3_hys_db, a3_ttt_ms: t.a3_ttt_ms, f_gnb_config_template_uuid: t.gnb_config_template_uuid }); });
-    else if (placeKind === 'cell') { if (!selGnb) { setMessage('先選一個 gNB,再放 cell(DAS 拉遠)'); return; } const du = selGnb.dus[0]; const k = du.cells.length; void withSave(`cell ${selGnb.name}_c${k}`, async () => { const c = await createCell({ f_du_uuid: du.du_uuid, name: `${selGnb.name}_c${k}`, pci: k, position: [x, 0, z], azimuth_deg: (k * 120) % 360 }); await createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru` }); }); }
-    else if (placeKind === 'ue') void withSave(`UE ${n('ue')}`, async () => { const u = await createUe({ f_scene_uuid: sceneUuid, name: n('ue'), antenna_height_m: 1.5, qos_5qi: 9, color: [0.8, 0.8, 0.8] }); await createUeWaypoint({ f_ue_uuid: u.ue_uuid, ord: 0, t_sec: 0, x, y: 1.5, z }); });
-    else if (placeKind === 'building') void withSave(`建築 ${n('b')}`, () => createBuilding({ f_scene_uuid: sceneUuid, name: n('b'), source: 'manual_box', geometry_ref: '', position: [x, 0, z], size: [10, 6, 10], rotation: [0, 0, 0], scale: [1, 1, 1] }));
+    else if (placeKind === 'cell') { if (!selGnb) { setMessage('先選一個 gNB,再放 cell(DAS 拉遠)'); return; } const du = selGnb.dus[0]; const k = du.cells.length; void withSave(`cell ${selGnb.name}_c${k}`, async () => { const c = await createCell({ f_du_uuid: du.du_uuid, name: `${selGnb.name}_c${k}`, pci: k, position: [x, sy + GNB_ABOVE_SURFACE_M, z], azimuth_deg: (k * 120) % 360 }); await createRu({ f_cell_uuid: c.cell_uuid, name: `${c.name}_ru` }); }); }
+    else if (placeKind === 'ue') void withSave(`UE ${n('ue')}`, async () => { const u = await createUe({ f_scene_uuid: sceneUuid, name: n('ue'), antenna_height_m: 1.5, qos_5qi: 9, color: [0.8, 0.8, 0.8] }); await createUeWaypoint({ f_ue_uuid: u.ue_uuid, ord: 0, t_sec: 0, x, y: sy + UE_ABOVE_SURFACE_M, z }); });
+    else if (placeKind === 'building') void withSave(`建築 ${n('b')}`, () => createBuilding({ f_scene_uuid: sceneUuid, name: n('b'), source: 'manual_box', geometry_ref: '', position: [x, sy, z], size: [10, 6, 10], rotation: [0, 0, 0], scale: [1, 1, 1] }));
     setPlaceKind(null);
   };
 
@@ -100,6 +102,11 @@ export function useSceneEditorPage(sceneUuid: string) {
     tree: tree.data, status: tree.status, error: tree.error, presets: presets.data ?? [], templates: templates.data ?? [], materials: materials.data ?? [], gnbTemplates: gnbTemplates.data ?? [],
     run, knobs: knobs.data ?? [], selection, select: (s: Selection) => { setSelection(s); }, saving, message, placeKind, setPlaceKind, placeAt,
     moveCell: (c: Cell, pos: [number, number, number]) => withSave(`cell ${c.name} 位置`, () => updateCell(c.cell_uuid, { position: pos })),
+    /** UE 拖到新位置:整條路徑平移(每個 waypoint 加同一個位移) */
+    moveUe: (u: Ue, d: [number, number, number]) => withSave(`UE ${u.name} 位置`, async () => {
+      const rows = await listUeWaypoints(u.ue_uuid);
+      for (let k = 0; k < rows.length; k += 8) await Promise.all(rows.slice(k, k + 8).map((w) => updateUeWaypoint(w.ue_waypoint_uuid, { x: w.x + d[0], y: w.y + d[1], z: w.z + d[2] })));
+    }),
     moveGnb: (g: Gnb, pos: [number, number, number]) => withSave(`gNB ${g.name} 位置`, () => updateGnb(g.gnb_uuid, { position: pos })),
     updateCellFields: (c: Cell, f: Partial<Cell>) => withSave(`cell ${c.name}`, () => updateCell(c.cell_uuid, f)),
     updateGnbFields: (g: Gnb, f: Partial<Gnb>) => withSave(`gNB ${g.name}`, () => updateGnb(g.gnb_uuid, f)),

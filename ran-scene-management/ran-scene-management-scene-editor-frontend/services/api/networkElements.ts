@@ -20,6 +20,8 @@ export const createUe = (body: Partial<Ue> & { f_scene_uuid: string }) => post<U
 export const updateUe = (ue_uuid: string, body: Partial<Ue>) => post<Ue>(`${U}/UeController/update`, { ue_uuid, ...body });
 export const deleteUe = (ue_uuid: string) => post<{ deleted: number }>(`${U}/UeController/delete`, { ue_uuid });
 export const createUeWaypoint = (body: { f_ue_uuid: string; ord: number; t_sec: number; x: number; y: number; z: number }) => post<unknown>(`${U}/UeWaypointController/create`, body);
+export interface UeWaypointRow { ue_waypoint_uuid: string; ord: number; t_sec: number; x: number; y: number; z: number; }
+export const listUeWaypoints = (f_ue_uuid: string) => post<UeWaypointRow[]>(`${U}/UeWaypointReader/read`, { f_ue_uuid });
 export const updateUeWaypoint = (ue_waypoint_uuid: string, body: { t_sec?: number; x?: number; y?: number; z?: number }) => post<unknown>(`${U}/UeWaypointController/update`, { ue_waypoint_uuid, ...body });
 export const createUeTraffic = (body: { f_ue_uuid: string; pattern: string; rate_mbps: number; schedule: number[][] | null; bearer_id: number }) => post<UeTraffic>(`${U}/UeTrafficController/create`, body);
 export const updateUeTraffic = (ue_traffic_uuid: string, body: Partial<UeTraffic>) => post<UeTraffic>(`${U}/UeTrafficController/update`, { ue_traffic_uuid, ...body });

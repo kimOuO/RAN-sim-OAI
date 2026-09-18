@@ -27,7 +27,7 @@ export default function NetworkStep() {
         <CheckList title="檢查" checks={checks} />
         <CoveragePanel c={cov} />
       </>}
-      center={<SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb}
+      center={<SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} onUeMoved={p.moveUe}
         overlay={cov.result && cov.show ? <CoverageLayer result={cov.result} mode={cov.mode} opacity={cov.opacity} /> : null} />}
       right={<PropertyPanel {...panelProps(p, tree)} showRun={false} emptyHint="點 gNB 或 cell 設定參數;沒選物件時「天線」分頁可設整個場景的 gNB / UE 陣列。" />}
     />); }}</StepGate>;

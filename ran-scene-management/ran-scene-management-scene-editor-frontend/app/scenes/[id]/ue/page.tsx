@@ -36,7 +36,7 @@ export default function UeStep() {
         <CheckList title="檢查" checks={checks} />
       </>}
       center={<>
-        <SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb}
+        <SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} onUeMoved={p.moveUe}
           previewT={preview.playing || preview.t > 0 ? preview.t : null} />
         <PreviewBar p={preview} />
       </>}

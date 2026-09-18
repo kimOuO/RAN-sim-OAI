@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { SURFACE_FLAG } from '@/components/scene-canvas/surface';
 import { fetchSceneMeshFile, listSceneMeshes, type SceneMesh, type SceneMeshOp } from '@/services/api/scenes';
 
 /** ITU 材質 → 顯示色(Mitsuba 場景的 reflectance 多半是預設灰,不能拿來分辨) */
@@ -54,7 +55,7 @@ export function SceneMeshes({ sceneUuid, view, onInfo }: { sceneUuid: string; vi
   if (!view.show) return null;
   return <>{meshes.map(({ s, g }) => (
     <group key={s.shape_id}>
-      <mesh geometry={g}>
+      <mesh geometry={g} userData={{ [SURFACE_FLAG]: true }}>
         <meshStandardMaterial color={matColor(s.material)} transparent opacity={view.opacity} side={THREE.DoubleSide} depthWrite={view.opacity > 0.9} clippingPlanes={clip} />
       </mesh>
       <lineSegments>

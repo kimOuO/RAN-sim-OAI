@@ -62,7 +62,7 @@ function Environment({ id, p, tree }: { id: string; p: ReturnType<typeof useEdit
       <ObjectTree tree={tree} selection={p.selection} onSelect={p.select} sections={['building']} />
       <CheckList title="檢查" checks={environmentChecks(tree)} />
     </>}
-    center={<SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} />}
+    center={<SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} onUeMoved={p.moveUe} />}
     right={<PropertyPanel {...panelProps(p, tree)} tabs={['props']} emptyHint="點建築(畫布或左側清單)調整位置、尺寸與材質;gNB / UE 在後面的步驟設定。" />}
   />;
 }

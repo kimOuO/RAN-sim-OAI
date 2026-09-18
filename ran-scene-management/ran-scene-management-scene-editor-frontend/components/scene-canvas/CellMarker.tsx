@@ -1,37 +1,21 @@
 'use client';
-import { useRef, useState } from 'react';
-import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { CANVAS } from '@/config';
+import { useSurfaceDrag } from '@/components/scene-canvas/surface';
 import type { Cell, Gnb } from '@/types/registry';
 
 interface Props { cell: Cell; gnb: Gnb; color: [number, number, number]; position: [number, number, number]; selected: boolean; onSelect: () => void; onMoved: (p: [number, number, number]) => void; scale?: number; }
 
-/** Cell = 畫布上真正可拖的節點(§3):拖動只改 x/z,y 沿用;放開才寫回。方位角用一根短棒示意。 */
+/** Cell = 畫布上可拖的節點:拖動貼齊滑鼠下的表面(地面 / 屋頂 / 掃描模型),離表面的高度不變;放開才寫回。方位角用一根短棒示意。 */
 export function CellMarker({ cell, gnb, color, position, selected, onSelect, onMoved, scale = 1 }: Props) {
-  const [drag, setDrag] = useState<[number, number, number] | null>(null);
-  const { camera, gl } = useThree();
-  const plane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -position[1]));
-  const ray = useRef(new THREE.Raycaster());
-  const hit = useRef(new THREE.Vector3());
-  function toGround(e: ThreeEvent<PointerEvent>): [number, number, number] | null {
-    const rect = gl.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-    ray.current.setFromCamera(ndc, camera);
-    return ray.current.ray.intersectPlane(plane.current, hit.current) ? [hit.current.x, position[1], hit.current.z] : null;
-  }
-  const pos = drag ?? position;
+  const { pos, handlers } = useSurfaceDrag(position, onMoved);
   const az = (cell.azimuth_deg * Math.PI) / 180;
   const c = new THREE.Color(...color);
   return (
     <group position={pos}>
       <mesh
-        onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        onPointerDown={(e) => { e.stopPropagation(); (e.target as Element).setPointerCapture?.(e.pointerId); setDrag(position); }}
-        onPointerMove={(e) => { if (drag) { const p = toGround(e); if (p) setDrag(p); } }}
-        onPointerUp={(e) => { e.stopPropagation(); if (drag) { onMoved(drag); setDrag(null); } }}
-      >
+        onClick={(e) => { e.stopPropagation(); onSelect(); }} {...handlers}>
         <cylinderGeometry args={[CANVAS.cellMarkerRadius * scale, CANVAS.cellMarkerRadius * scale, 0.5 * scale, 24]} />
         <meshStandardMaterial color={c} emissive={c} emissiveIntensity={selected ? 0.9 : 0.35} />
       </mesh>
