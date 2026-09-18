@@ -538,6 +538,9 @@ services:
     restart: unless-stopped   # 2026-09-16:VM 記憶體耗盡重開後,核心服務要能自己回來
     mem_limit: 1g            # 2026-09-16:洩漏時只砍這一顆,不拖垮整台 VM
     memswap_limit: 1g
+    # 2026-09-18:地圖讀建築(Overpass)可達數十秒、掃描 GLB 轉換數分鐘;預設 30 s 逾時會被 gunicorn 砍掉。
+    # gthread 讓慢請求不佔滿全部 worker。
+    command: ["gunicorn", "main.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "gthread", "--threads", "4", "--timeout", "600"]
     environment:
       DJANGO_SETTINGS_MODULE: main.settings.local
       DJANGO_DEBUG: "False"   # 2026-09-16:DEBUG 的 SQL 紀錄是記憶體洩漏來源

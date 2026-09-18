@@ -14,6 +14,7 @@ from ran_sim_protocol.fapi import CqiIndication, DlTtiRequest
 from ran_sim_protocol.physics import PathSolverResponse
 
 from main.apps.beamforming.services.optional import array_chain, codebook, codebook_type1, csi_selection, gob, precoder, sinr_estimator, virtualization
+from main.apps.fapi_south.services.optional import live_smoothing
 from main.apps.fapi_south.services.optional.channel_cache_loader import (
     get_channel_cache, is_cached_mode,
 )
@@ -598,10 +599,13 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
                 logger.warning("physics call failed: %s — %d UE 本 tick 無觀測(不回報、不觸發 RLF)", exc, len(miss_ids))
                 unobserved.update(miss_ids)
                 resp = None
+            _scene_ms = getattr(req, "scene_sim_ms", None)
             for ue_id in (miss_ids if resp is not None else []):
                 value = {
                     "channel_matrix": (resp.channel_matrix or {}).get(ue_id, {}),
-                    "path_gain": (resp.path_gain or {}).get(ue_id, {}),
+                    # 光追雜訊平滑(cached 在載入 cache 時做,live 在這裡做)
+                    "path_gain": live_smoothing.smooth(ue_id, (resp.path_gain or {}).get(ue_id, {}),
+                                                       None if _scene_ms is None else _scene_ms / 1000.0),
                     "serving_cell": _resolve_serving(resp, ue_id),
                 }
                 cached[ue_id] = value
