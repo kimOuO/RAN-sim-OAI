@@ -968,3 +968,13 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
   - 編輯器步驟 2 加上「覆蓋熱圖」面板:高度、格距、SINR / RSRP / 最佳 cell、不透明度、色階、統計。
   - 驗證:ui_wizard_test 49×219 格(0.25 m)約 4 秒;最佳 cell 的三個扇區方向與方位角 0 / 120 / 240° 相符;扇區交界 SINR 低。
 - 事故:我用「等 log 出現 checkpoint @ tick 130000」來決定何時重啟 physics,但 precompute log 是累加的,9/14 那次完整重算就有這一行 → 條件立刻成立,physics 在 14:06 就被重啟,當時進度 127600 還沒存,從 120000 重跑,損失約 7600 tick(約 1 小時)。之後判斷條件要限定在本次執行之後的 log(或看 checkpoint 檔的 mtime)。
+
+## 場景建置第一層:地圖多邊形 / 上傳掃描檔(2026-09-18)
+- 步驟 1 分兩層:第一層選來源(從地圖建立 / 上傳掃描檔 / 匯入劇本連結),第二層才是 3D(元件庫拖 gNB、UE)。已有幾何的場景直接進 3D,可按「更換場景來源」。
+- 地圖:Leaflet(深色 CARTO / OSM 底圖切換),台灣起始;搜尋地標 → 飛過去並自動框正方形(半邊 100–300 m,依地標外框夾值);多邊形拖頂點、拖邊中點插入、雙擊刪除、逐點重畫;面積上限 1 km²(前後端一致)。
+- registry `OsmMapEditor/preview`(多邊形 → 範圍內建築,重心在多邊形內才算)與 `build_scene`(逐棟材質 / 高度 / 排除 → Mitsuba,設 `geometry_source`、`origin_lat/lon`、`bounds`)。台科大 0.1 km² 實測 115 棟、3 s;產生的 Mitsuba physics 可載入、畫布網格 4 組(依材質分組、顯示色依材質)。
+- 上傳掃描檔:沿用 `ScanMeshImporter/import_glb`,新增 `ScanAssetController/use_for_scene` 設成場景幾何;不經地圖。
+- registry 的 scanned-building-assets 掛載改到 `/app/scenes`(與 physics / precompute 相同),`geometry_source.path` 兩邊通用;畫布網格讀取的允許根目錄同步改。
+- 材質表原本是空的:預載 13 種 ITU 材質(concrete / brick / plasterboard / wood / glass / ceiling_board / chipboard / floorboard / metal / marble / 三種地面);前端材質 API 路徑修正(`Equipment_preset` → `Field_scene`)。
+- 移除舊 MapFetchPanel 流程(只掛一筆 building,沒設場景幾何,模擬用不到)。
+- 未做:瀏覽器端互動實測;地圖產生的場景尚未跑過 precompute / live 驗證傳播。
