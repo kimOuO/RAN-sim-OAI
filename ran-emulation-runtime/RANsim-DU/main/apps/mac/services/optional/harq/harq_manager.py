@@ -9,6 +9,8 @@ OAI 對應:
 """
 from __future__ import annotations
 
+from main.utils.env_loader import get_int
+
 from dataclasses import dataclass, field
 
 from main.utils.logger import get_logger
@@ -16,7 +18,7 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 
 NUM_HARQ_PROCESSES = 16
-MAX_RETX = 4
+MAX_RETX = get_int("HARQ_MAX_RETX", 4)   # DU 模板 harq_max_retx(經編排器注入 env)
 
 
 @dataclass

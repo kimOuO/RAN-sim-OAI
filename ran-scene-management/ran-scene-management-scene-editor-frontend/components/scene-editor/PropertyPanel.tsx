@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
+import { DuFields } from '@/components/scene-editor/DuFields';
 import type { Selection } from '@/hooks/feature/useSceneEditorPage';
 import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS } from '@/config';
 import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, GnbConfigTemplate, Material, RunKnob, SceneRun, SceneTree, Ue } from '@/types/registry';
@@ -86,10 +87,16 @@ export function PropertyPanel(p: Props) {
         {(sel?.kind === 'gnb' || sel?.kind === 'cell') && (() => { const g = sel.kind === 'gnb' ? sel.gnb : sel.gnb; const du = g.dus[0]; return <>
           <div className="row head">DU 設定模板 <span className="muted">{du?.name}</span></div>
           <label><span>模板</span><select value={du?.f_du_config_template_uuid ?? ''} onChange={(e) => du && p.onDu(du, { f_du_config_template_uuid: e.target.value || null })}><option value="">(服務預設)</option>{p.templates.map((t) => <option key={t.du_config_template_uuid} value={t.du_config_template_uuid}>{t.name} — {t.tdd_pattern} μ{t.numerology} {t.n_prb} PRB</option>)}</select></label>
-          {du?.config_template && <dl className="kv"><dt>PF α</dt><dd>{du.config_template.pf_alpha}</dd><dt>BLER 目標</dt><dd>{du.config_template.target_bler}</dd><dt>discard</dt><dd>{du.config_template.rlc_discard_timer_ms} ms</dd><dt>HARQ</dt><dd>{du.config_template.harq_max_retx} retx</dd></dl>}
-          <label><span>DU 覆寫 JSON</span><textarea rows={4} value={f('du_override')} onChange={(e) => set('du_override', e.target.value)} /></label>
-          <div className="actions"><button className="primary" disabled={p.saving || parse(f('du_override')) === undefined} onClick={() => du && p.onDu(du, { config_override: parse(f('du_override')) })}>套用覆寫</button></div>
-          <div className="row head">A3 換手(gNB)</div>
+          {du && <DuFields du={du} saving={p.saving} onDu={p.onDu} />}
+          <label><span>進階:覆寫 JSON</span><textarea rows={4} value={f('du_override')} onChange={(e) => set('du_override', e.target.value)} /></label>
+          <div className="actions"><button className="primary" disabled={p.saving || parse(f('du_override')) === undefined} onClick={() => du && p.onDu(du, { config_override: parse(f('du_override')) })}>套用 JSON</button></div>
+          <div className="row head">A3 換手(gNB)<span className={`pill ${g.a3_enabled ? 'good' : 'fair'}`}>{g.a3_enabled ? '已開啟' : '關閉'}</span></div>
+          <label className="stack"><span>啟用 A3 自動換手</span>
+            <input type="checkbox" checked={!!g.a3_enabled} disabled={p.saving}
+              onChange={(e) => p.onGnb(g, e.target.checked
+                ? { a3_enabled: true, a3_offset_db: num('a3_offset_db') ?? 3, a3_hys_db: num('a3_hys_db') ?? 1, a3_ttt_ms: num('a3_ttt_ms') ?? 320 }
+                : { a3_enabled: false })} /></label>
+          {!g.a3_enabled && <p className="muted small">關閉時 UE 不會主動換手,只能在斷線後重新駐留。</p>}
           <div className="xyz"><Field k="a3_offset_db" label="offset dB" v={f('a3_offset_db')} set={set} type="number" /><Field k="a3_hys_db" label="hys dB" v={f('a3_hys_db')} set={set} type="number" /><Field k="a3_ttt_ms" label="TTT ms" v={f('a3_ttt_ms')} set={set} type="number" /></div>
           <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onGnb(g, { a3_enabled: true, a3_offset_db: num('a3_offset_db'), a3_hys_db: num('a3_hys_db'), a3_ttt_ms: num('a3_ttt_ms') })}>儲存 A3</button><button disabled={p.saving} onClick={() => p.onGnb(g, { a3_enabled: false })}>停用 A3</button></div></>; })()}
         {p.showRun !== false && <>

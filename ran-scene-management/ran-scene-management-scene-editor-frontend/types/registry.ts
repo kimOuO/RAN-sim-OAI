@@ -16,7 +16,7 @@ export interface AntennaPreset {
 export interface DuConfigTemplate {
   du_config_template_uuid: string; name: string; tdd_pattern: string; numerology: number; n_prb: number; min_prb: number;
   pf_alpha: number; target_bler: number; rlc_discard_timer_ms: number; rlc_tx_maxsize_bytes: number; harq_max_retx: number;
-  qos_gbr_first: boolean; gbr_max_share: number;
+  qos_gbr_first: boolean; gbr_max_share: number; scheduler: 'pf' | 'rr' | 'max_thp';
 }
 export interface Scene {
   scene_uuid: string; name: string; description: string; origin_lat: number | null; origin_lon: number | null; bounds: unknown;

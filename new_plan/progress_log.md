@@ -1037,3 +1037,20 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - 保守判定:health 打不到、或回應形狀不對 → **不判定**(當作正常),避免 physics 重啟期間被誤殺。
 - 實測四條分支:GPU 正常 → (True,'NVIDIA A40');GPU 失效(用當天真實錯誤訊息)→ (False, 訊息);回應是陣列 / 服務打不到 → 不判定。orchestrator 內確認可操作 physics 容器。
 - 開發中抓到一個 bug:health 的 `data` 若是陣列,原本的 `data.get` 會拋例外讓看門狗執行緒直接死掉 → 已加型別檢查。
+
+## DU 設定真的生效了 + 編輯器三個入口(2026-09-19,待辦完成)
+**做的時候發現更嚴重的問題:DU 從來沒讀過 registry 的 DU 模板** —— 所有參數都吃自己的 env 預設,
+`du_config_template` 與 `du.config_override` 在編輯器上改了完全沒有效果(裝飾品)。所以這次一併修掉。
+
+- **DU 端補 env 掛鉤**(原本是寫死常數):`PF_ALPHA`、`SCHED_MIN_PRB`、`TARGET_BLER`(下限自動取 1/3)、
+  `HARQ_MAX_RETX` / `RLC_MAX_RETX`、`TDD_UL_SLOT_RATIO`、`SIM_SLOTS_PER_FRAME`。
+- **編排器注入**:`container_spawner.du_env_from_template()` 把模板 +(每 DU)覆寫映射成 env,
+  start 時注進 du 容器。`numerology` → 10×2^μ 個 slot;`tdd_pattern`(如 DDDSU)→ UL 佔比(S 算半個)。
+- **registry**:`du_config_template` 新增 `scheduler` 欄位(pf / rr / max_thp,migration 0005)。
+- **編輯器**:
+  1. A3 改成 checkbox + 狀態徽章(原本只有「停用」按鈕,開啟其實藏在「儲存 A3」裡,看不出目前狀態)
+  2. 新元件 `DuFields`:排程器下拉、TDD pattern、PRB 數、每 UE 最少 PRB、numerology、PF α、目標 BLER、
+     discard、HARQ 上限、GBR 優先 —— 留空 = 沿用模板;原本的 JSON 覆寫保留成「進階」
+- **端到端實測**:DU 覆寫 `{scheduler: rr, min_prb: 20, target_bler: 0.08, tdd_pattern: DDDSU}` → 重啟 run →
+  容器 env 正確 → DU 內部 `RoundRobinScheduler` / MIN_PRB 20 / BLER 0.08(下限 0.0267)/ UL 比例 0.3。
+- 注意:設定在 run 啟動時凍結,改完要重啟 run。多 DU 場景目前取第一個 DU 的設定。

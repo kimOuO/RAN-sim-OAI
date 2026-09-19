@@ -21,7 +21,7 @@ from main.apps.mac.services.optional.link_adaptation.mcs_table import (
     mcs_to_throughput_mbps,
     sinr_to_mcs,
 )
-from main.utils.env_loader import get_bool, get_int
+from main.utils.env_loader import get_bool, get_float, get_int
 from main.utils.logger import get_logger
 
 # slot 引擎接管:scheduler 改用「操作點 MCS」算 PRB 需求(取代樂觀 sinr_to_mcs)+ 低載地板,
@@ -42,7 +42,7 @@ logger = get_logger(__name__)
 # DT 加這個下限後 prb_pct 從 ~0.6% 拉到 ~4.7%,接近 OAI 10.67%(剩 ~6% 為 OAI
 # 的 retx + SDU 多 PDU 切分,DT 沒模擬)。
 # 詳見 docs/test_records/oai_prb_calc_evidence_2026-05-23.md
-MIN_PRB = 5
+MIN_PRB = get_int("SCHED_MIN_PRB", 5)   # 每個 UE 至少配到的 PRB(DU 模板 min_prb)
 
 # ── P0-6(2026-08-11):5QI GBR 優先權 ──────────────────────────────
 # 3GPP TS 23.501 表 5.7.4-1:5QI 1~4 為 GBR(語音/影音),須保證頻寬。
@@ -62,8 +62,9 @@ class _UeSchedState:
 class PfScheduler:
     """Proportional Fair scheduler — per-gNB per-tick PRB 分配。"""
 
-    def __init__(self, alpha: float = 0.05):
-        self.alpha = alpha
+    def __init__(self, alpha: float | None = None):
+        # 2026-09-19:改吃 registry DU 模板(經編排器注入 env),沒給才用 OAI 預設 0.05
+        self.alpha = get_float("PF_ALPHA", 0.05) if alpha is None else float(alpha)
         self.ue_state: dict[str, _UeSchedState] = {}
 
     def reset(self) -> None:

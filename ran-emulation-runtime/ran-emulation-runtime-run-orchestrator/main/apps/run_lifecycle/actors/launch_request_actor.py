@@ -201,7 +201,12 @@ class LaunchController:
                     for role, info in spawned.items():
                         r = platform_clients.create_run_instance(run_uuid, role, info["container_id"], info["host_port"])
                         instances[role] = {**info, "run_instance_uuid": (r.get("data") or {}).get("run_instance_uuid")}
-                _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue")))
+                # DU 設定從 registry 的模板 + 每 DU 覆寫來(第一個 gNB 的第一個 DU;多 DU 場景先取第一個)
+                _du = next((d for g in (t.get("gnbs") or []) for d in (g.get("dus") or [])), {})
+                du_env = container_spawner.du_env_from_template(_du.get("config_template"), _du.get("config_override"))
+                if du_env:
+                    logger.info("run %s DU 設定注入: %s", run_uuid, du_env)
+                _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue"), du_env=du_env))
                 health = container_spawner.wait_healthy(instances)
                 if not all(health.values()):
                     raise RuntimeError(f"per-run 容器未就緒: {health}")

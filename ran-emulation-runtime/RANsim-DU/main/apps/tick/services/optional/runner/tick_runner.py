@@ -139,7 +139,7 @@ class TickRunner:
     # 結果:KPM report 每 PM_WINDOW_SEC sim-second 一份(= 每 N_ticks=
     # PM_WINDOW_SEC*1000/_sim_dt_ms tick),於 wall 上隨 speed 自動加快;
     # 每份 window 內樣本數固定不變(fidelity 不隨 speed 退化)。
-    SLOTS_PER_FRAME = 20  # numerology=1 (30 kHz SCS)
+    SLOTS_PER_FRAME = get_int("SIM_SLOTS_PER_FRAME", 20)   # 10×2^numerology;numerology=1(30 kHz)→ 20
     SFN_MAX = 1024
     # 固定 sim-time per tick。500ms 對應 3GPP 一個 measurement reporting period 的一半。
     # 改這個 = 整體 RAN 時間刻度改變;一般情況下不應動。set_speed 不會碰這個。

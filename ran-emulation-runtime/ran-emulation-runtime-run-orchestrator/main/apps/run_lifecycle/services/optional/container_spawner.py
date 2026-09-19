@@ -130,7 +130,39 @@ def _port_conflict(exc: Exception) -> bool:
     return "address already in use" in msg or "port is already allocated" in msg
 
 
-def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: int = 1, roles: tuple[str, ...] = ROLES, cu_host_port: int | None = None) -> dict[str, dict]:
+# ── DU 設定:registry 的 du_config_template(+ du.config_override)→ DU 容器 env(2026-09-19)──
+# 以前 DU 全吃自己的 env 預設,registry 上的 DU 模板等於裝飾品(改了不生效)。
+_SCHEDULER_ENV = {"pf": "PF", "rr": "RR", "max_thp": "MAXTHROUGHPUT"}
+
+
+def du_env_from_template(tpl_cfg: dict | None, override: dict | None = None) -> dict[str, str]:
+    """DU 模板欄位 → DU 認得的 env。沒給的欄位不注入(DU 用自己的預設)。"""
+    cfg = {**(tpl_cfg or {}), **(override or {})}
+    env: dict[str, str] = {}
+    m = {"n_prb": "SIM_DEFAULT_PRB_PER_CELL", "min_prb": "SCHED_MIN_PRB", "pf_alpha": "PF_ALPHA",
+         "target_bler": "TARGET_BLER", "rlc_discard_timer_ms": "SLOT_DISCARD_TIMER_MS",
+         "rlc_tx_maxsize_bytes": "RLC_TX_MAXSIZE_BYTES", "harq_max_retx": "HARQ_MAX_RETX"}
+    for k, e in m.items():
+        if cfg.get(k) is not None:
+            env[e] = str(cfg[k])
+    if cfg.get("harq_max_retx") is not None:
+        env["RLC_MAX_RETX"] = str(cfg["harq_max_retx"])
+    if cfg.get("qos_gbr_first") is not None:
+        env["QOS_GBR_FIRST"] = "on" if cfg["qos_gbr_first"] else "off"
+    if cfg.get("scheduler"):
+        env["SIM_SCHEDULER"] = _SCHEDULER_ENV.get(str(cfg["scheduler"]).lower(), "PF")
+    if cfg.get("numerology") is not None:   # 每個 frame 的 slot 數 = 10×2^μ
+        env["SIM_SLOTS_PER_FRAME"] = str(10 * 2 ** int(cfg["numerology"]))
+    if cfg.get("tdd_pattern"):              # 例 "DDDDDDDSUU" → UL 佔比(S 算半個)
+        pat = str(cfg["tdd_pattern"]).upper()
+        n = len(pat) or 1
+        ul = (pat.count("U") + 0.5 * pat.count("S")) / n
+        env["TDD_UL_SLOT_RATIO"] = f"{ul:.3f}"
+    return env
+
+
+def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: int = 1, roles: tuple[str, ...] = ROLES, cu_host_port: int | None = None,
+          du_env: dict[str, str] | None = None) -> dict[str, dict]:
     """起四個容器;回傳 {role: {name, container_id, host_port}}。已存在同名容器先移除(上次沒清乾淨)。"""
     rid = rid_of(scene_run_uuid); names = names_for(scene_run_uuid); tpl = _load_template()
     client = docker.from_env()
@@ -150,6 +182,8 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
         env["CELL_ID_TAG"] = f"{(GNB_ID_BASE | slot) & 0xfff:03x}"
         if role == "ru":
             env["RU_CHANNEL_MODE"] = mode
+        if role == "du" and du_env:
+            env.update(du_env)   # registry DU 模板 → DU 行為(排程器、PRB、BLER 目標…)
         if role in ("du", "ru"):
             env["CHANNEL_MODE_FILE"] = f"/data/channel_cache/.mode.{rid}"   # per-run 交接檔,不共用 .mode
         vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in spec["volumes"]}

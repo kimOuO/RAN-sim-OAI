@@ -20,7 +20,7 @@ def _now_ms() -> int:
 
 AM_HEADER_BYTES = 3  # 簡化:固定 3-byte (D/C + P + SI + SN12)
 STATUS_PDU_BASE_BYTES = 4
-MAX_RETX = 4
+MAX_RETX = get_int("RLC_MAX_RETX", 4)   # DU 模板 harq_max_retx(經編排器注入 env)
 
 # AK10 — RLC AM tx buffer 上限（bytes），對齊 OAI nr_rlc_entity_am.c:1842-1847 的
 # tx_maxsize check at recv_sdu。OAI 預設 50 MB（RLC_TX_MAXSIZE × 5），對 macro

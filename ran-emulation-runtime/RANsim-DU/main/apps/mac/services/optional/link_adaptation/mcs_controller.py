@@ -10,6 +10,8 @@ OAI 邏輯 (gNB_scheduler_primitives.c):
 """
 from __future__ import annotations
 
+from main.utils.env_loader import get_float
+
 import math
 from dataclasses import dataclass, field
 
@@ -27,8 +29,9 @@ _MCS_SINR_REQUIRED_DB = [
 ]
 
 SIGMA_DB = 1.5
-BLER_UPPER = 0.15
-BLER_LOWER = 0.05
+# 2026-09-19:目標 BLER 可由 registry DU 模板設(經編排器注入);下限取目標的 1/3(OAI 0.15/0.05 之比)
+BLER_UPPER = get_float("TARGET_BLER", 0.15)
+BLER_LOWER = BLER_UPPER / 3.0
 WINDOW_MS = 50
 INITIAL_MCS = 9
 MAX_MCS = 27

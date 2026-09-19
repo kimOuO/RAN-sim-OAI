@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from main.utils.env_loader import get_float
+
 
 # OAI band78 DDDDDDDSUU pattern (nrofDownlinkSlots=7, special slot DL 6/14 symbols,
 # UL=2, period=5ms = 10 slots @ 30kHz SCS) → 有效 DL slot 比例 ≈ 7.43/10 = 0.743。
@@ -12,7 +14,7 @@ TDD_DL_SLOT_RATIO: float = 0.72
 
 # UL 時隙比:nrofUplinkSlots=2 + special slot 4/14 UL 符號 → 2.29/10 = 0.229。
 # 取 0.22(含 PUCCH/PRACH 額外占用)。OAI band78 DDDDDDDSUU。UL 用獨立時隙,跟 DL 不搶。
-TDD_UL_SLOT_RATIO: float = 0.22
+TDD_UL_SLOT_RATIO: float = get_float("TDD_UL_SLOT_RATIO", 0.22)   # DU 模板 tdd_pattern 換算而來
 
 
 _SINR_TO_MCS = [

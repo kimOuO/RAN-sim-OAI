@@ -68,3 +68,10 @@ export const MATERIAL_LABELS: Record<string, string> = {
   concrete: '混凝土', brick: '磚', glass: '玻璃', metal: '金屬', wood: '木材', marble: '大理石', plasterboard: '石膏板',
   ceiling_board: '天花板', chipboard: '塑合板', floorboard: '地板', very_dry_ground: '極乾地面', medium_dry_ground: '中乾地面', wet_ground: '濕地面',
 };
+
+/** DU 排程器(對應 DU 的 SIM_SCHEDULER) */
+export const SCHEDULERS = [
+  { key: 'pf', label: 'PF 比例公平(預設)' },
+  { key: 'rr', label: 'Round Robin 輪流' },
+  { key: 'max_thp', label: 'Max Throughput 最大吞吐' },
+] as const;
