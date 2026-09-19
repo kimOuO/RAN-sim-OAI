@@ -1156,6 +1156,7 @@ class TickRunner:
                     mcs_ul=int(w.get("avg_mcs_ul", 0) or 0), rb_width_ul=int(w.get("avg_prb_ul", 0) or 0),
                     ul_sinr_db=w.get("avg_ul_sinr_db"), sinr_layers_db=list(w.get("sinr_layers_db") or []),
                     beam_id=w.get("beam_id"),
+                    beam_rsrp_top=[[int(b), round(float(d), 1)] for b, d in (ue_state.get("beam_top") or [])],
                 )
                 # 留存 1s 窗口吞吐給 dump_pm(Omniverse label 用,與此處送 CU 的值同源)
                 self._last_ue_window_kpm[uid] = {

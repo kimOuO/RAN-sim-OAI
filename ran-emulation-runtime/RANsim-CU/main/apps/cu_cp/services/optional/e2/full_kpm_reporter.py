@@ -112,6 +112,47 @@ def _fetch_du_dump_pm() -> dict[str, Any]:
 
 # ── pm 區:190 欄模板 ───────────────────────────────────────────────
 
+
+def _beam_stats(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """每波束量測(O-RAN WG1 §4.6.4.1)。
+
+    rows = 這個 cell 目前 CONNECTED 的 UE 快照。對每個 GoB 波束回:
+      served_ues    以它為服務波束的 UE 數
+      rsrp_dbm_avg  這些 UE 的平均 RSRP(服務波束才有意義)
+      sinr_db_avg   平均 SINR
+      dl_mbps       下行吞吐合計
+      prb_dl        下行 PRB 合計
+      measured_ues  有量到這道波束的 UE 數(含非服務波束;來自 RU 的 beam_rsrp_top)
+      rel_dbm_avg   這些 UE 量到的「相對各自最佳波束」平均 dB(≤ 0;越接近 0 表示這道波束對他們越好)
+    沒有 GoB(beam_id 都是 None)→ 回空 list。
+    """
+    serving: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    measured: dict[int, list[float]] = defaultdict(list)
+    for r in rows:
+        m = r["meas"]
+        if getattr(m, "beam_id", None) is not None:
+            serving[int(m.beam_id)].append(r)
+        for item in (getattr(m, "beam_rsrp_top_json", None) or []):
+            try:
+                b, rel = int(item[0]), float(item[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            measured[b].append(rel)
+    out = []
+    for b in sorted(set(serving) | set(measured)):
+        srv = serving.get(b, [])
+        rel = measured.get(b, [])
+        rec: dict[str, Any] = {"beam_id": b, "served_ues": len(srv), "measured_ues": len(rel)}
+        if srv:
+            rec["rsrp_dbm_avg"] = round(sum(float(r["meas"].rsrp_dbm) for r in srv) / len(srv), 1)
+            rec["sinr_db_avg"] = round(sum(float(r["meas"].sinr_db) for r in srv) / len(srv), 1)
+            rec["dl_mbps"] = round(sum(float(r["meas"].throughput_dl_mbps) for r in srv), 2)
+            rec["prb_dl"] = int(sum(int(r["meas"].rb_width_dl or 0) for r in srv))
+        if rel:
+            rec["rel_dbm_avg"] = round(sum(rel) / len(rel), 1)
+        out.append(rec)
+    return out
+
 def _pm_record(
     cfg: CellConfig,
     *,
@@ -443,11 +484,14 @@ class FullKpmReporter:
                         "rb_width": int(m.rb_width_dl),
                     })
                     rb_cursor += int(m.rb_width_dl)
+                _beams = _beam_stats(conn_per_cell.get(cfg.cell_id, []))
                 g_cells.append({
                     "cell_id": _cell_hex_id(cfg),
                     "ran_name": gid,
                     "pci": int(cfg.pci),
                     "ues": ues_out,
+                    # 每波束量測(O-RAN WG1 §4.6.4.1);沒有 GoB 的 cell 是空 list
+                    "beams": _beams,
                 })
             e2_out.append({
                 "gnb_id": gid,

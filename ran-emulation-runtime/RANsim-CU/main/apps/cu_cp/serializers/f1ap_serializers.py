@@ -61,6 +61,7 @@ class MeasurementReportWriteSerializer(serializers.Serializer):
     ul_sinr_db = serializers.FloatField(required=False, allow_null=True, default=None)
     sinr_layers_db = serializers.ListField(child=serializers.FloatField(), default=list)
     beam_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    beam_rsrp_top = serializers.ListField(required=False, default=list)
 
 
 class DuRegistryReadSerializer(serializers.Serializer):

@@ -86,6 +86,9 @@ class GnbDuMeasurementReport:
     sinr_layers_db: list[float] = field(default_factory=list)
     # B1(2026-09-16):O-RAN Cat B 的 GoB 波束(predefined-beam 的 beamId);None = 沒有 GoB
     beam_id: int | None = None
+    # 2026-09-19:每波束 RSRP(O-RAN WG1 §4.6.4.1)。[[beam_id, 相對最佳波束的 dB], …],
+    # 空 list = 沒有 GoB 或舊 DU。CU 用它做 per-beam 統計送 RIC。
+    beam_rsrp_top: list = field(default_factory=list)
 
 
 @dataclass

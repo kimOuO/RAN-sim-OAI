@@ -1054,3 +1054,17 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - **端到端實測**:DU 覆寫 `{scheduler: rr, min_prb: 20, target_bler: 0.08, tdd_pattern: DDDSU}` → 重啟 run →
   容器 env 正確 → DU 內部 `RoundRobinScheduler` / MIN_PRB 20 / BLER 0.08(下限 0.0267)/ UL 比例 0.3。
 - 注意:設定在 run 啟動時凍結,改完要重啟 run。多 DU 場景目前取第一個 DU 的設定。
+
+## 每波束 KPM 送 RIC(2026-09-19,待辦完成)
+以前只有 per-UE 的 `beam_id`,RIC 要自己統計。現在 Full KPM(RAN function 5)每個 cell 多一段 `beams[]`。
+
+- **資料鏈補完**:RU 早就回報 `beam_rsrp_top`(GoB 前 K 名波束與相對最佳波束的 dB),DU 存在 registry 給 MU-MIMO 用,
+  但沒上報。這次 `GnbDuMeasurementReport` 新增 `beam_rsrp_top`(舊 DU 不帶 → 空 list),DU 填、CU 存進
+  `measurement_log.beam_rsrp_top_json`(migration cu_cp 0020)。
+- **CU 聚合** `full_kpm_reporter._beam_stats()`,每個 cell 每道波束:
+  `served_ues`(以它為服務波束的 UE 數)、`rsrp_dbm_avg`、`sinr_db_avg`、`dl_mbps`、`prb_dl`、
+  `measured_ues`(有量到這道波束的 UE 數,含非服務波束)、`rel_dbm_avg`(相對各自最佳波束的平均 dB)。
+  沒有 GoB 的 cell 回空 list。對齊 O-RAN WG1 §4.6.4.1 每波束 RSRP 統計。
+- **實測**(osm_ntust_test,32T32R,GoB 16×4):`e01:g1_c0` 5 個 UE → 28 道波束有量測、其中 5 道有服務 UE,
+  例 `{beam_id 54, served_ues 1, measured_ues 3, rsrp −65.9, sinr 28.1, dl 3.07 Mbps, prb 5, rel −2.6}`。
+- RIC 端用途:波束負載不均、波束間干擾、GoB 子集最佳化(可配合 RC 2-8 的 `active_beam_ids` 收斂)。
