@@ -986,3 +986,10 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - 結果(live 1×,4 分鐘):RLF 14 → 5、HO 1 → 10,SINR 5.9–23.5 dB,cell PRB 0–20%,零錯誤。**所有場景的下行 SINR 都會變(輕載變好)**,走廊等既有劇本的 KPM 數值會不同。
 - registry gunicorn 改 gthread 4 threads + 600 s 逾時(Overpass 讀建築實測超過 30 s 被 WORKER TIMEOUT 砍掉)。
 - 匯入的劇本 JSON 沒寫 A3 → A3 關;這次手動開。編輯器放 gNB 會套模板(含 A3)。
+
+## 待辦:下行雜訊底沒有依據(2026-09-19 記錄,與提高射線取樣數一起處理)
+- `RU_NOISE_FLOOR_DBM` 預設 −98 dBm,查不到出處:RU README 寫 −95(與程式不一致),架構文件只把 −98 當既定值抄下來,progress_log 只在討論「近距離 SINR 過高」時提到。
+- 依公式反推:40 MHz + UE NF 7 dB → −174 + 76 + 7 ≈ −91 dBm,現值樂觀約 7 dB。對照上行 `RU_UL_NOISE_PER_PRB_DBM` = −113.4 是嚴格推導的(−174 + 10log10(360 kHz) + NF 5)。
+- 建議改法:依 cell 頻寬動態算 `−174 + 10log10(BW) + NF`,NF 用 RU 表已有但未使用的 `noise_figure_db`;下行也改成 per-PRB 與上行一致。
+- 影響:所有場景下行 SINR 降約 7 dB(高 SINR 區受 EVM 上限壓著影響小,cell 邊緣會明顯變差、RLF 變多)→ 改完要重跑 OAI 校準對照。
+- 一起處理的還有:precompute 提高射線取樣數(現在相鄰 tick path gain 跳 ~14 dB,靠載入平滑壓住)。
