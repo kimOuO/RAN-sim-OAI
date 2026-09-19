@@ -1030,3 +1030,10 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
   解除限制(空清單 + tilt 0)後全部恢復:6 UE 附著、SINR 17.6–28.0、rank 2、beam 3–58。
 - 這個場景的天線設定保留,當作日後多埠 / 波束的回歸基準。
 - 仍存在:CU 開場 `dl_rrc_message` 404(斷線 UE 的 SRB1 已清,競態),與天線無關。
+
+## Physics GPU 看門狗(2026-09-19,待辦完成)
+- 背景:2026-09-18 physics 容器失去 GPU 存取權(容器內 `nvidia-smi` → `Failed to initialize NVML: Unknown Error`,主機正常),無任何告警;precompute / live / 覆蓋熱圖會失效或悄悄退 CPU。
+- orchestrator 新增 `physics_watchdog`:每 60 s 打 physics `HealthChecker/read`(本來就回 `gpu.available`),連續 3 次不可用 → docker restart `ransim-physics`;每小時最多 3 次,超過只告警要人工看主機 GPU。env:`PHYSICS_WATCHDOG_ENABLED / _SEC / _FAILS / _MAX_RESTARTS`、`PHYSICS_CONTAINER_NAME`。
+- 保守判定:health 打不到、或回應形狀不對 → **不判定**(當作正常),避免 physics 重啟期間被誤殺。
+- 實測四條分支:GPU 正常 → (True,'NVIDIA A40');GPU 失效(用當天真實錯誤訊息)→ (False, 訊息);回應是陣列 / 服務打不到 → 不判定。orchestrator 內確認可操作 physics 容器。
+- 開發中抓到一個 bug:health 的 `data` 若是陣列,原本的 `data.get` 會拋例外讓看門狗執行緒直接死掉 → 已加型別檢查。

@@ -41,3 +41,11 @@ class RunLifecycleConfig(AppConfig):
                 import logging
                 logging.getLogger(__name__).exception("resume running runs failed")
         threading.Thread(target=_resume, name="resume-runs", daemon=True).start()
+
+        # physics 的 GPU 掉了不會有人通知(2026-09-18 實遇),看門狗定期驗、連續失敗就重啟
+        try:
+            from main.apps.run_lifecycle.services.optional import physics_watchdog
+            physics_watchdog.start()
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("physics watchdog start failed")
