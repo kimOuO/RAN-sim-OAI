@@ -1008,3 +1008,25 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 1. **A3 只能停用、不能開啟**:屬性面板只有「停用 A3」按鈕,要開只能套含 A3 的 gNB 模板或直接打 API(2026-09-17/18 幫 corridor 與 osm_ntust_test 開 A3 都是走 API)。應補成 checkbox。
 2. **DU 重要欄位藏在 JSON 覆寫裡**:`tdd_pattern` / `numerology` / `n_prb` / `min_prb` / `qos_gbr_first` / `gbr_max_share` 只能從「DU 覆寫 JSON」填,面板只開了 PF α / BLER 目標 / discard / HARQ。前四個常調,值得開成正式欄位。
 3. **排程器不能從介面選**:PF / max_throughput / round_robin 目前只能改環境變數,而且是全域、非 per-run。應放進 du_config_template 並在面板開下拉。
+
+## 多埠天線 / 波束成形實際驗證通過(2026-09-19)
+場景 `osm_ntust_test`(台科大 OSM,2 gNB × 3 cell,6 UE 街道移動),6 個 RU 全改 `32T32R mMIMO`
+(8×8 cross 128 元件、trx_v_group 4 → 32 TXRU、32 CSI 埠、GoB 16×4、Cat B),UE 改 `UE 2 埠 cross iso`。
+
+- **要重算快取的原因是 UE 元件場型改變**(dipole → iso),不是從 1 埠變 32 埠 —— 印證「陣列大小改變不用重算」。precompute 3.5 分鐘。
+- 結果(cached 2×,scene_t 150):
+
+  | | 1 埠(先前) | 32T32R + 2 埠 UE |
+  |---|---|---|
+  | SINR | 5.9–23.5 dB | 17.6–28.5 dB |
+  | rank | 恆 1 | 全數 2 |
+  | 每層 SINR | 空 | 有值,兩層差 0.1–2 dB |
+  | beam_id | None | 20/37/42/54/55/62 |
+  | MCS | 1–10 | 11–24 |
+
+  SINR 只提升 ~10 dB(理論 15 dB):EVM 上限 29 dB 壓著 + 部分 UE 本來就高。DU/RU 零錯誤。
+- **RIC 波束控制(RC 2-8)實測有效**:對 `e01:g1_c0` 下 `active_beam_ids=[20,21,22]` + `electrical_tilt_deg=10`
+  → RU log `set_beam_control` → m02 SINR 17.6 → −5.7 dB 並起 T310、m00 24.5 → 18.8、m01 被 A3 換到隔壁 cell。
+  解除限制(空清單 + tilt 0)後全部恢復:6 UE 附著、SINR 17.6–28.0、rank 2、beam 3–58。
+- 這個場景的天線設定保留,當作日後多埠 / 波束的回歸基準。
+- 仍存在:CU 開場 `dl_rrc_message` 404(斷線 UE 的 SRB1 已清,競態),與天線無關。
