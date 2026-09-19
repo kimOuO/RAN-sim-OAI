@@ -1003,3 +1003,8 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
   1. SINR 出現陣列增益(預期 +15 dB 量級)  2. rank 2 真的被選到且 sinr_per_layer_db 有值
   3. beam_id 有值、beam_rsrp_top 合理      4. RIC RC 2-8 改電子下傾 / 限制波束子集後訊號確實改變
 - 附帶確認:cached 場景改陣列大小照理不用重算快取(路徑參數是 1×1 VH 存的),要實測驗證。
+
+## 待辦:編輯器缺三個常用設定入口(2026-09-19 記錄)
+1. **A3 只能停用、不能開啟**:屬性面板只有「停用 A3」按鈕,要開只能套含 A3 的 gNB 模板或直接打 API(2026-09-17/18 幫 corridor 與 osm_ntust_test 開 A3 都是走 API)。應補成 checkbox。
+2. **DU 重要欄位藏在 JSON 覆寫裡**:`tdd_pattern` / `numerology` / `n_prb` / `min_prb` / `qos_gbr_first` / `gbr_max_share` 只能從「DU 覆寫 JSON」填,面板只開了 PF α / BLER 目標 / discard / HARQ。前四個常調,值得開成正式欄位。
+3. **排程器不能從介面選**:PF / max_throughput / round_robin 目前只能改環境變數,而且是全域、非 per-run。應放進 du_config_template 並在面板開下拉。
