@@ -5,6 +5,9 @@ from django.db import models
 class RunHandoverEvent(models.Model):
     id = models.AutoField(primary_key=True)
     run_handover_event_uuid = models.CharField(max_length=255, unique=True, db_index=True)
+    # 第幾次執行(同一個 scene_run 每次 start +1,對齊 RIC 閘道的 `run` 場次號)。
+    # 2026-09-19:沒有這個欄位時,同一 run uuid 多次執行的資料混在一起,查詢極易誤判。
+    run_seq = models.IntegerField(default=0, db_index=True)
     f_scene_run_uuid = models.CharField(max_length=255, db_index=True, help_text='Reference to registry scene_run.scene_run_uuid')
     at_sim_ms = models.BigIntegerField(default=0)
     ue_id = models.CharField(max_length=128)

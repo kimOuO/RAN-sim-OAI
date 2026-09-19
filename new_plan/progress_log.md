@@ -1105,3 +1105,14 @@ UE driver 走 0.5×、DU 被夾回 1.0×,兩邊時鐘以兩倍速率分離 → �
 9/13–9/17 的舊執行(當時 TX power / EVM 設定不同);只看本次(有 `scene_t_sec` 的 174,194 筆)
 範圍是 −133.0 ~ 29.1、超過失真上限 0 筆,失真上限運作正常。
 建議:歸檔表加 `run_seq`(每次 start +1,與 RIC 閘道的 `run` 對齊),查詢預設只看最近一次。
+
+## 歸檔加「第幾次執行」run_seq(2026-09-19,待辦完成)
+- 三張歸檔表(`run_kpm_sample` / `run_handover_event` / `run_control_event`)新增 `run_seq`(migration 0003)。
+  每次 start +1(歸檔器啟動時取目前最大值 +1);orchestrator 重啟後接回既有 run 用 `new_run=False`,不加號,
+  避免同一次執行被切成兩段。語意與 RIC 閘道的 `run` 場次號對齊。
+- 讀取端 `RunKpmSampleReader/read`:**預設只回最近一次執行**;`run_seq=<n>` 指定某次;`run_seq=0` 不過濾。
+  只有舊資料(全 0)的 run 預設仍照常回傳,不會變成查不到。
+- 舊資料 120 萬筆維持 `run_seq=0` = 「未分次的歷史資料」。
+- 驗證:新 run 寫入 run_seq=1(舊 400,238 筆仍為 0);預設查詢只回 1;只有舊資料的 run 預設回 0。
+- 過程中修掉自己的 bug:前一次加 `labels.purpose` 時假設 `run.knobs` 是 list,實際是 dict,導致 start 直接 500。
+  那段當時沒有實際跑過就 commit,是疏失。

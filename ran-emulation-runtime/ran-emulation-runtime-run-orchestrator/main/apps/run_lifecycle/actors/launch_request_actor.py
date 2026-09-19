@@ -224,7 +224,9 @@ class LaunchController:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat(),
                                                   **({"e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex} if settings.PER_RUN_ENABLED else {}))
                 # run knob `ric_purpose`(例:validation)→ 閘道 labels.purpose,決定 RIC 要不要主動探測
-                _ric_purpose = str(next((k.get("value") for k in (run.get("knobs") or []) if k.get("key") == "ric_purpose"), "") or "")
+                _knobs = run.get("knobs") or {}
+                _ric_purpose = str((_knobs.get("ric_purpose") if isinstance(_knobs, dict)
+                                    else next((k.get("value") for k in _knobs if isinstance(k, dict) and k.get("key") == "ric_purpose"), "")) or "")
                 if settings.PER_RUN_ENABLED and e2_node:   # RIC 場景閘道:宣告場景 + 它唯一的 meid(best effort)
                     gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node, gnb_id_hex=gnb_id_hex, purpose=_ric_purpose)
                     logger.info("RIC gateway register %s → %s", e2_node, gw)

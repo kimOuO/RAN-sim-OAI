@@ -106,6 +106,10 @@ class RunKpmSampleReader:
         try:
             limit = int(payload.pop("limit", _DEFAULT_LIMIT))
             after_id = int(payload.pop("after_id", 0) or 0)   # 2026-09-17:增量輪詢,只回 id > after_id
+            # 2026-09-19:同一 run uuid 多次執行的資料混在同一張表,查詢極易誤判(實際踩過)。
+            # 預設只回**最近一次執行**;run_seq=<n> 指定某一次,run_seq=0 才是全部。
+            run_seq = payload.pop("run_seq", None)
+            run_seq = None if run_seq is None else int(run_seq)
         except (TypeError, ValueError):
             return error_response("Validation failed", {"limit": "must be int", "after_id": "must be int"}, 400)
         filters = {}
@@ -121,6 +125,14 @@ class RunKpmSampleReader:
             else:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(RunKpmSample, **filters)
+        run_uuid = filters.get("f_scene_run_uuid")
+        if run_seq is None and run_uuid:          # 預設:最近一次執行
+            from django.db.models import Max
+            latest = RunKpmSample.objects.filter(f_scene_run_uuid=run_uuid).aggregate(m=Max("run_seq")).get("m")
+            if latest:
+                qs = qs.filter(run_seq=latest)
+        elif run_seq:                              # 指定某一次(0 = 不過濾,全部)
+            qs = qs.filter(run_seq=run_seq)
         if after_id:
             qs = qs.filter(id__gt=after_id)
         if limit > 0:

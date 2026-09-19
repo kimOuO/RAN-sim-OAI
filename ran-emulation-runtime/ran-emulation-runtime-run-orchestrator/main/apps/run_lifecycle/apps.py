@@ -33,7 +33,7 @@ class RunLifecycleConfig(AppConfig):
                     insts = {i["role"]: {"name": container_spawner.names_for(run)[i["role"]], "host_port": i.get("host_port"), "run_instance_uuid": i["run_instance_uuid"], "container_id": i.get("container_id")} for i in platform_clients.list_run_instances(run) if i["role"] in container_spawner.ROLES}
                     cu_host = insts["cu"]["name"] if settings.PER_RUN_ENABLED and "cu" in insts else None
                     e2_port = insts["e2adapter"]["host_port"] if settings.PER_RUN_ENABLED and "e2adapter" in insts else None
-                    cu_archiver.start_archiver(run, int(r.get("sim_dt_ms") or 500), cu_host=cu_host, e2_port=e2_port)
+                    cu_archiver.start_archiver(run, int(r.get("sim_dt_ms") or 500), cu_host=cu_host, e2_port=e2_port, new_run=False)
                     if settings.PER_RUN_ENABLED and insts:
                         health_monitor.start_monitor(run, insts)
                     log.info("resumed archiver/health for running run %s (cu=%s e2_port=%s)", run, cu_host, e2_port)
