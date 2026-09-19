@@ -79,3 +79,45 @@ RIC 端在 07:56 復原時看到閘道上沒有場景,推測是當機期間被�
 
 結論:**RIC 當機時本來就沒有場景在跑**,先前的場景都是各自 run 結束時正常刪除的。
 教訓是「當下沒有場景」不等於「場景被刪除」;判斷前先對照本文件第 4 節的三個來源。
+
+---
+
+## 唯讀狀態端點(2026-09-19 新增,應 RIC 端維運需求)
+
+更新 RIC 元件前查這支,`running` 非空就代表我們有 run 在跑。
+
+```
+GET http://<orchestrator-host>:8302/status
+```
+
+回應:
+
+```json
+{"running": [
+  {"scene_run_uuid": "scene_run-cc99abe8a4ca48bbb672338649117e33",
+   "scene_name": "corridor_00_08",
+   "started_at": "2026-09-19T18:09:18.189099Z",
+   "purpose": ""}
+]}
+```
+
+- 沒有 run 時 `{"running": []}`。
+- `purpose` 就是宣告時帶的 `labels.purpose`(run knob `ric_purpose`),空字串代表常規觀測。
+- 無需認證、無參數、不改任何狀態。
+- registry 不通時回 **503**,不會回空陣列 —— 查不到狀態時**不要**當成「沒有 run」。
+
+## 場次編號對照
+
+兩套計數,不要互相換算:
+
+| | 誰在數 | 什麼時候 +1 |
+|---|---|---|
+| `run_seq` | DT 歸檔(orchestrator DB) | 每次真的 **start**(起容器) |
+| `ric_run` | RIC 閘道 | 每次 **宣告** `POST /v1/scenarios`(含白跑的) |
+
+2026-09-19 起,DT 歸檔的三張表(`run_kpm_sample` / `run_handover_event` / `run_control_event`)
+都多一欄 `ric_run`,值取自宣告回應的 `run` 欄位,對應 RIC InfluxDB 的 `run` 標籤。
+`ric_run=0` 表示未知(宣告失敗,或該筆是這個欄位上線前的舊資料)。
+
+已知對照:corridor_00_08 `…8649117e33` 的 `run_seq=2` ↔ RIC `run=6`
+(這一場在欄位上線前啟動,資料庫裡記的是 0)。

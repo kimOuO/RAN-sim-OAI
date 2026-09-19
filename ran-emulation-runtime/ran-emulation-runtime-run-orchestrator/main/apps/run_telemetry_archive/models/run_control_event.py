@@ -8,6 +8,9 @@ class RunControlEvent(models.Model):
     # 第幾次執行(同一個 scene_run 每次 start +1,對齊 RIC 閘道的 `run` 場次號)。
     # 2026-09-19:沒有這個欄位時,同一 run uuid 多次執行的資料混在一起,查詢極易誤判。
     run_seq = models.IntegerField(default=0, db_index=True)
+    # RIC 閘道宣告回應裡的 `run` 場次號(他們每次宣告 +1,含白跑的)。與我們的 run_seq 是兩套計數,
+    # 記下來兩邊對資料才不用換算;RIC InfluxDB 的 `run` 標籤就是這個值。0 = 未知/未宣告。
+    ric_run = models.IntegerField(default=0, db_index=True)
     f_scene_run_uuid = models.CharField(max_length=255, db_index=True, help_text='Reference to registry scene_run.scene_run_uuid')
     at_sim_ms = models.BigIntegerField(default=0)
     source = models.CharField(max_length=64, blank=True, default='')

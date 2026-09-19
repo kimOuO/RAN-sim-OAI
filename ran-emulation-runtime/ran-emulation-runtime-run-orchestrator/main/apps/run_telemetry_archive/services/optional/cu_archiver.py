@@ -49,10 +49,12 @@ def _stamp(prefix: str) -> dict[str, Any]:
 
 
 class RunArchiver(threading.Thread):
-    def __init__(self, scene_run_uuid: str, sim_dt_ms: int, poll_sec: float = 2.0, cu_host: str | None = None, e2_port: int | None = None, run_seq: int = 0) -> None:
+    def __init__(self, scene_run_uuid: str, sim_dt_ms: int, poll_sec: float = 2.0, cu_host: str | None = None, e2_port: int | None = None, run_seq: int = 0, ric_run: int = 0) -> None:
         super().__init__(name=f"archiver-{scene_run_uuid[-8:]}", daemon=True)
         self.run_uuid = scene_run_uuid
         self.run_seq = int(run_seq)
+        # RIC 閘道的場次號(宣告回應的 `run`);宣告失敗或還沒回來時是 0
+        self.ric_run = int(ric_run)
         self.sim_dt_ms = max(1, int(sim_dt_ms))
         self.poll_sec = poll_sec
         self._stop_evt = threading.Event()   # 不可叫 _stop:會蓋掉 Thread._stop() 讓 join() 炸
@@ -109,12 +111,12 @@ class RunArchiver(threading.Thread):
                     scene_t = None
             self._archive_kpm(d["measurement"], d["cell"], scene_t)
             for h in d["handover"]:
-                DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq,
+                DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                     "at_sim_ms": 0, "ue_id": h["ue_id"], "source_cell": h["source_cell"], "target_cell": h["target_cell"],
                     "outcome": str(h.get("status") or ""), "detail": {k: h.get(k) for k in ("trigger", "failure_cause", "mro_class", "started_at", "completed_at", "id")}})
                 self.stats["handover"] += 1
             for r in d["rlf"]:
-                DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq,
+                DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                     "at_sim_ms": 0, "ue_id": r["ue_id"], "source_cell": r["source_cell"], "target_cell": r.get("reestab_cell") or "",
                     "outcome": "RLF", "detail": {k: r.get(k) for k in ("source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_pci", "id")}})
                 self.stats["rlf"] += 1
@@ -129,7 +131,7 @@ class RunArchiver(threading.Thread):
                 self.control_seq = int(x.get("seq", 0))
                 # adapter 的稽核列:command(sim action)/ result(落地目標,例 cell id)/ acked / rttMs / failure
                 outcome = "ACK" if x.get("acked") else ("FAIL" if x.get("failure") else "pending")
-                DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq,
+                DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                     "at_sim_ms": self.ticks_so_far * self.sim_dt_ms, "source": f"ric/{x.get('ranFuncName') or 'RC'}",
                     "action_type": str(x.get("command") or x.get("kind") or "control")[:32],
                     "target": str(x.get("result") or x.get("target") or "")[:128], "outcome": outcome,
@@ -161,7 +163,7 @@ class RunArchiver(threading.Thread):
             tick = b["tick"]
             if tick is not None:
                 self.ticks_so_far += int(tick)
-            DB.create_entity(RunKpmSample, {**_stamp("run_kpm_sample"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq,
+            DB.create_entity(RunKpmSample, {**_stamp("run_kpm_sample"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                 "window_index": self.window_index, "sim_time_ms": self.ticks_so_far * self.sim_dt_ms,
                 "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"],
                 "scene_t_sec": (None if scene_t is None else round(max(0.0, scene_t - tick_after[w] * self.sim_dt_ms / 1000.0), 2)), "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
@@ -216,17 +218,26 @@ def current_run_seq(scene_run_uuid: str) -> int:
                 .aggregate(m=Max("run_seq")).get("m")) or 0)
 
 
+def current_ric_run(scene_run_uuid: str) -> int:
+    """這個 run 最近一次記到的 RIC 場次號(沒有回 0)。orchestrator 重啟接回時用。"""
+    from django.db.models import Max
+    return int((RunKpmSample.objects.filter(f_scene_run_uuid=scene_run_uuid)
+                .aggregate(m=Max("ric_run")).get("m")) or 0)
+
+
 def start_archiver(scene_run_uuid: str, sim_dt_ms: int, cu_host: str | None = None, e2_port: int | None = None,
-                   new_run: bool = True) -> RunArchiver:
-    """new_run=True(一次 start)→ run_seq +1;False(orchestrator 重啟後接回)→ 沿用目前這次。"""
+                   new_run: bool = True, ric_run: int = 0) -> RunArchiver:
+    """new_run=True(一次 start)→ run_seq +1;False(orchestrator 重啟後接回)→ 沿用目前這次。
+    ric_run:RIC 閘道宣告回應的 `run`;接回時沒有來源,沿用資料庫裡最近一次的值。"""
     with _lock:
         old = _threads.get(scene_run_uuid)
         if old and old.is_alive():
             return old
         seq = current_run_seq(scene_run_uuid)
         seq = seq + 1 if new_run else max(seq, 1)
-        t = RunArchiver(scene_run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port, run_seq=seq)
-        logger.info("archiver run=%s run_seq=%d(%s)", scene_run_uuid, seq, "新一次執行" if new_run else "接回")
+        rr = int(ric_run) or (current_ric_run(scene_run_uuid) if not new_run else 0)
+        t = RunArchiver(scene_run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port, run_seq=seq, ric_run=rr)
+        logger.info("archiver run=%s run_seq=%d ric_run=%d(%s)", scene_run_uuid, seq, rr, "新一次執行" if new_run else "接回")
         _threads[scene_run_uuid] = t
         t.start()
         return t

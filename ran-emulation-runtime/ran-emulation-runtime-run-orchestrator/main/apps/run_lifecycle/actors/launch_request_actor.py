@@ -224,12 +224,19 @@ class LaunchController:
                 platform_clients.update_scene_run(run_uuid, status="running", speed_x=speed_x, sim_dt_ms=sim_dt_ms, started_at=now.isoformat(),
                                                   **({"e2_node_id": e2_node, "gnb_id_hex": gnb_id_hex} if settings.PER_RUN_ENABLED else {}))
                 # run knob `ric_purpose`(例:validation)→ 閘道 labels.purpose,決定 RIC 要不要主動探測
+                _ric_run = 0          # RIC 閘道宣告回應的 `run` 場次號(見下方)
                 _knobs = run.get("knobs") or {}
                 _ric_purpose = str((_knobs.get("ric_purpose") if isinstance(_knobs, dict)
                                     else next((k.get("value") for k in _knobs if isinstance(k, dict) and k.get("key") == "ric_purpose"), "")) or "")
                 if settings.PER_RUN_ENABLED and e2_node:   # RIC 場景閘道:宣告場景 + 它唯一的 meid(best effort)
                     gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node, gnb_id_hex=gnb_id_hex, purpose=_ric_purpose)
                     logger.info("RIC gateway register %s → %s", e2_node, gw)
+                    # 2026-09-19 RIC 端請求:記下他們的場次號,兩邊對資料不用換算(InfluxDB `run` 標籤就是這個)
+                    if isinstance(gw, dict):
+                        try:
+                            _ric_run = int(gw.get("run") or (gw.get("data") or {}).get("run") or 0)
+                        except (TypeError, ValueError):
+                            _ric_run = 0
                     if settings.RIC_GATEWAY_DEPLOY_XAPP and gw and not gw.get("error"):   # 專屬 xApp pod;RIC 端 dt-anr 參數化前先關(env)
                         xa = platform_clients.ric_deploy_xapp(run_uuid)
                         logger.info("RIC gateway xapp deploy %s → %s", run_uuid, str(xa)[:200])
@@ -237,7 +244,7 @@ class LaunchController:
                         import threading as _th
                         _th.Thread(target=platform_clients.ric_activate_when_ready, args=(run_uuid,),
                                    name=f"ric-activate-{run_uuid[-8:]}", daemon=True).start()
-                cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
+                cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port, ric_run=_ric_run)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])
                 return error_response("UE driver refused start", ue, 502)
