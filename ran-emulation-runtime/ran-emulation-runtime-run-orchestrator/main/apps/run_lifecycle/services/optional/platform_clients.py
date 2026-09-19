@@ -122,11 +122,16 @@ def _plmn_tbcd(mcc: str = "208", mnc: str = "95") -> str:
     return f"{mcc[1]}{mcc[0]}{'F' if len(mnc) == 2 else mnc[2]}{mcc[2]}{mnc[1]}{mnc[0]}".upper()
 
 
-def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_functions: list[int] | None = None, profile: str | None = None, gnb_id_hex: str = "") -> dict | None:
+def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_functions: list[int] | None = None, profile: str | None = None, gnb_id_hex: str = "", purpose: str = "") -> dict | None:
     """POST /v1/scenarios —— 場景 start 時宣告(E2 Setup 完成前先宣告也可,閘道現查連線狀態)。409 meid-already-bound 表示上次沒清乾淨。
     node 帶 plmnId / nbIdBits:DELETE 時清 R-NIB 第二把 key(GNB:<plmn>:<bits>)要用,key 裡沒有 ranName 字串。"""
     node = {"nodeId": "cu", "meid": meid, "plmnId": _plmn_tbcd(), "nbIdBits": (format(int(gnb_id_hex, 16), "022b") if gnb_id_hex else None)}
-    body = {"scenarioId": scene_run_uuid, "labels": {"scene_name": scene_name}, "profile": profile or settings.RIC_GATEWAY_PROFILE,
+    # labels.purpose="validation" → RIC 端才會在 T0+10 分鐘送主動探測(唯讀 ReportCGI);
+    # 沒帶就只做唯讀觀測,不會有任何東西送到我們的 gNB(RIC 端 2026-09-19 17:19 起生效)
+    labels = {"scene_name": scene_name}
+    if purpose:
+        labels["purpose"] = purpose
+    body = {"scenarioId": scene_run_uuid, "labels": labels, "profile": profile or settings.RIC_GATEWAY_PROFILE,
             "nodes": [node], "ranFunctions": ran_functions or [2, 3, 4, 5, 6],
             "controlPolicy": {"allowedStyles": list(getattr(settings, "RIC_GATEWAY_ALLOWED_STYLES", None) or ["rc-reportcgi", "anr-add"]),
                               "allowWrite": True},
