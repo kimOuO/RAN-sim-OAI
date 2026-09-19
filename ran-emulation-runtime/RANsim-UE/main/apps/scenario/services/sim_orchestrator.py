@@ -174,7 +174,9 @@ def _broadcast_speed(speed_x: float, sim_dt_ms: int = 500) -> dict[str, Any]:
     e2adapter 會 background pull DU sim_speed_x 自動跟上 (~4s wall 收斂)。
     """
     # wall_tick = sim_dt_ms / speed_x — 例: sim_dt=100ms, 5x → wall=20ms
-    target_tick_ms = max(10, min(500, int(round(sim_dt_ms / max(speed_x, 0.01)))))
+    # 上限 2026-09-19 從 500 放寬到 5000(與 DU set_tick_ms 一致):夾在 500 等於「倍速不得低於 1×」,
+    # 要 0.5× 時 UE driver 走 0.5×、DU 被夾回 1×,兩邊時鐘差兩倍 → 通道與 UE 位置錯開。
+    target_tick_ms = max(10, min(5000, int(round(sim_dt_ms / max(speed_x, 0.01)))))
     out: dict[str, Any] = {"target_tick_ms": target_tick_ms, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms}
     try:
         _post(f"{DU_URL}/api/v0.1/DU/Tick/TickController/set_speed",

@@ -1068,3 +1068,22 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - **實測**(osm_ntust_test,32T32R,GoB 16×4):`e01:g1_c0` 5 個 UE → 28 道波束有量測、其中 5 道有服務 UE,
   例 `{beam_id 54, served_ues 1, measured_ues 3, rsrp −65.9, sinr 28.1, dl 3.07 Mbps, prb 5, rel −2.6}`。
 - RIC 端用途:波束負載不均、波束間干擾、GoB 子集最佳化(可配合 RC 2-8 的 `active_beam_ids` 收斂)。
+
+## 兩個隱藏 bug:倍速夾限、cached SINR 取錯 cell(2026-09-19,RIC 聯合驗證期間發現)
+
+**1. 倍速不能低於 1×(而且不報錯)**
+`DU set_tick_ms` 與 UE driver `_broadcast_speed` 各有一份「牆鐘 tick 上限 500 ms」。要 0.5× 時
+UE driver 走 0.5×、DU 被夾回 1.0×,兩邊時鐘以兩倍速率分離 → 通道查表與 UE 位置錯開(同 9/18 那類錯位)。
+兩處上限放寬到 5000 ms(`DU_WALL_TICK_MAX_MS`),最低 0.1×。實測 0.5× 時 DU 達成 0.496–0.511、UE driver 0.5×。
+
+**2. cached 模式 DU 自算 SINR 會取「最強 cell」而非服務 cell(嚴重)**
+`cell_id_to_tx()` 只處理 `xxx_c<N>` 命名 → 走廊的 `src` / `nbr` 轉出來是 `src`,但 cache 鍵是 `src#0`,
+永遠對不上 → `sinr_for_ue` 一路退回 argmax。後果:UE 掛在沒訊號的 cell 上仍回報最強 cell 的 SINR,
+**RLF 永遠不觸發、UE 卡死且 KPM 看起來完全正常**。實測 RSRP −140 / SINR 29.1 dB 並存,10 個 UE 同時中招。
+- 修法:cell→tx 以**載入 cache 實際的 tx 名**為準(`src` → `src#0`),再退回舊命名規則;
+  服務 cell 真的不在 gains 時回 `DU_NO_SERVING_SINR_DB`(−30),不再偷換 cell。
+- 離線驗證:同一 UE 同一 tick,錯誤值 29.1 dB → 正確值 −78.4 dB(差 107 dB)。
+- 線上驗證(corridor_00_08,tick 3367):17 個 UE 每一個回報的 SINR 都對應**自己服務 cell** 的計算值
+  (掛 src 的回 29.1、掛 nbr 的回 29.0;兩邊都收得到的 p01/p13 回 18.5,反映真實干擾)。
+- 影響範圍:所有 cell 名稱不含 `_c` 的 cached 場景(= 全部走廊場景)。`osm_ntust_test`(g0_c0 命名)不受影響。
+  先前走廊場景的 SINR / KPM 數值都偏樂觀,結論需重新審視;9/18 的時鐘錯位診斷不受影響(那是直接比對快取原始值)。

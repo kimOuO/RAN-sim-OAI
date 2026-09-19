@@ -185,9 +185,22 @@ def read_mode() -> tuple[str, str]:
 
 
 def cell_id_to_tx(cell_id: str) -> str:
-    """DU cell_id → physics tx_name:'gnbDT_c0' → 'gnbDT#0'。run 標籤('e01:gnbDT_c0')先剝掉,npz 的 tx 名沒有它。"""
+    """DU cell_id → physics tx_name。run 標籤('e01:gnbDT_c0')先剝掉,npz 的 tx 名沒有它。
+
+    對應規則(2026-09-19 修):以**載入的 cache 實際有的 tx 名**為準,再退回命名規則。
+    以前只處理 'gnbDT_c0' → 'gnbDT#0';走廊那種 cell 名是 'src' / 'nbr'(沒有 _c)時
+    會回 'src',但 cache 的鍵是 'src#0' → 永遠對不上 → sinr_for_ue 一路退回 argmax,
+    UE 掛在沒訊號的 cell 上卻回報最強 cell 的 SINR(實測 RSRP −140 / SINR 29 dB)。
+    """
     from ran_sim_protocol.cell_tag import strip_tag
     cell_id = strip_tag(cell_id)
+    c = get_du_cache()
+    names = list(getattr(c, "cell_names", []) or []) if c is not None else []
+    if cell_id in names:
+        return cell_id
+    for n in names:                      # 'src' → 'src#0'(tx 名是 <cell>#<pci>)
+        if n.split("#", 1)[0] == cell_id:
+            return n
     if "_c" in cell_id:
         base, n = cell_id.rsplit("_c", 1)
         return f"{base}#{n}"
@@ -222,6 +235,8 @@ def _freq_overlaps(a: tuple[float, float], b: tuple[float, float]) -> bool:
 
 # 下行干擾的鄰 cell 負載:沒給(舊呼叫端)= 滿載;有給但缺某 cell = 只剩參考訊號 / 控制通道的下限
 DL_MIN_LOAD = float(os.environ.get("DL_MIN_NEIGHBOR_LOAD", "0.1"))
+# 服務 cell 在這個 tick 完全沒有路徑時回報的 SINR(低於 RLF 門檻 → 正常觸發斷線流程)
+_NO_SERVING_SINR_DB = float(os.environ.get("DU_NO_SERVING_SINR_DB", "-30"))
 
 
 def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None, extra_gain_db: float = 0.0,
@@ -271,9 +286,14 @@ def sinr_for_ue(sim_time_ms: float, ue_id: str, serving_cell_id: str | None, ext
     gains, best = c.lookup(cache_idx, ue_id)
     if not gains:
         return None
-    serving_tx = cell_id_to_tx(serving_cell_id) if serving_cell_id else best
-    if serving_tx not in gains:
-        serving_tx = best   # serving cell 不在 cache → 退 argmax
+    if not serving_cell_id:
+        serving_tx = best            # 還沒附著:用最強的當觀測值
+    else:
+        serving_tx = cell_id_to_tx(serving_cell_id)
+        if serving_tx not in gains:
+            # 服務 cell 這個 tick 沒有路徑 = 真的收不到。以前偷換成最強 cell,
+            # 結果 UE 掛在死掉的 cell 上卻回報別人的 SINR,RLF 永遠不觸發(2026-09-19)。
+            return float(_NO_SERVING_SINR_DB)
     load_by_tx = None if cell_load is None else {cell_id_to_tx(c): v for c, v in cell_load.items()}
     return compute_sinr_db(gains, serving_tx, extra_gain_db, load_by_tx)
 

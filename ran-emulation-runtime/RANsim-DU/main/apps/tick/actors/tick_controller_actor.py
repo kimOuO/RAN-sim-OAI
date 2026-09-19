@@ -145,7 +145,7 @@ class TickController:
     @csrf_exempt
     @require_http_methods(["POST"])
     def set_speed(request):
-        """Phase A — runtime 調整 sim_tick_ms (default 500). Clamp 10~500ms.
+        """Phase A — runtime 調整 sim_tick_ms (default 500). Clamp 10~5000ms(上限見 set_tick_ms)。
 
         Body: {"tick_ms": int}      # 例: 125 → 4x 壓縮
         Returns: 含 sim_tick_ms 的 status dict + 訊息。

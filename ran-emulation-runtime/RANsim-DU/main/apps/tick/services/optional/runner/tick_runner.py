@@ -126,6 +126,7 @@ class TickStatus:
     is_running: bool = False
 
 
+_WALL_TICK_MAX_MS = get_int("DU_WALL_TICK_MAX_MS", 5000)   # 牆鐘 tick 上限 → 最低倍速 = sim_dt / 上限
 _DL_LOAD_TAU_SEC = get_float("DU_DL_LOAD_TAU_SEC", 1.0)   # 下行 cell 負載平滑時間常數(模擬秒)
 
 
@@ -255,8 +256,11 @@ class TickRunner:
 
         改變後 sim_speed_x = sim_dt_ms / tick_ms 立即更新(e.g. tick_ms=50 → 10x)。
         sim_dt_ms 不會被這個 method 改動。
+
+        上限 2026-09-19 從 500 放寬到 5000 ms:上限 500 等於「倍速不得低於 1×」,
+        要求 0.5× 時 DU 被夾回 1×、UE driver 仍走 0.5×,兩邊時鐘差兩倍(通道與位置錯開)。
         """
-        clamped = max(10, min(500, int(tick_ms)))
+        clamped = max(10, min(_WALL_TICK_MAX_MS, int(tick_ms)))
         with self._tick_ms_lock:
             old = self._wall_tick_ms
             self._wall_tick_ms = clamped
