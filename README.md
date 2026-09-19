@@ -175,8 +175,10 @@ curl -XPOST localhost:8302/api/v0.1/Run_orchestrator/Run_lifecycle/LaunchControl
 ## 10. 目前的限制與待辦
 
 **尚未啟用 / 驗證**
-- **多埠天線與波束成形從未在任何場景實際跑過** —— codebook、GoB、RIC 波束控制都實作完成,但跑過的場景全是 1 埠,陣列增益恆 0 dB、rank 恆 1、MU-MIMO 從未觸發
-- 地圖建立的場景已通過 precompute / cached / live 驗證,但前端互動(地圖框選、3D 拖曳)尚未在瀏覽器實測
+- 前端互動(地圖框選、3D 拖曳、A3 開關、DU 欄位、排程器下拉)尚未在瀏覽器實測 —— 只確認過編譯與 API
+- 多埠天線 / 波束成形已在 `osm_ntust_test`(32T32R + GoB 16×4)驗證通過(陣列增益、rank 2、beam_id、
+  RIC RC 2-8 控制),但走廊場景仍是單埠;MU-MIMO 尚未在完整場景觸發過
+- corridor_16_24 從未跑過
 
 **資料品質**
 - 走廊場景 2026-09-19 17:00 UTC 前的 SINR / MCS / 吞吐不可用於品質評估(DU cached SINR 取到最強 cell,
@@ -185,9 +187,10 @@ curl -XPOST localhost:8302/api/v0.1/Run_orchestrator/Run_lifecycle/LaunchControl
 **已知不足**
 - 下行雜訊底 −98 dBm 查不到依據(上行 −113.4 dBm/PRB 是嚴格推導);應改成依頻寬動態計算
 - 光追取樣雜訊靠平滑壓住,根治要提高射線數重算
-- 編輯器缺三個入口:A3 開啟、DU 的 `tdd_pattern` / `numerology` / `n_prb`、排程器選擇
 - `max_gain_dbi`、`polarization_model`、`bf_method`、`noise_figure_db` 有欄位但程式未使用
 - `neighbor_seed` 表有 API 但執行期無人使用
+- CU 開場偶發 `dl_rrc_message` 404(斷線 UE 的 SRB1 已清,競態)
+- 走廊資料集位置每 30 s 一點且大幅來回,換手偏多
 
 **規劃中不做**
 UE 對 UE 直接干擾、上行 MIMO(rank > 1)、Type II codebook、FR2 類比波束、跨 cell 精確排程對齊、多發射點協同傳輸
