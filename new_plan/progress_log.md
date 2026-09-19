@@ -993,3 +993,13 @@ e04 在執行期改成 32T32R Cat B(GoB 16×4)、UE 2 埠;UE 1056001738 在 e04:
 - 建議改法:依 cell 頻寬動態算 `−174 + 10log10(BW) + NF`,NF 用 RU 表已有但未使用的 `noise_figure_db`;下行也改成 per-PRB 與上行一致。
 - 影響:所有場景下行 SINR 降約 7 dB(高 SINR 區受 EVM 上限壓著影響小,cell 邊緣會明顯變差、RLF 變多)→ 改完要重跑 OAI 校準對照。
 - 一起處理的還有:precompute 提高射線取樣數(現在相鄰 tick path gain 跳 ~14 dB,靠載入平滑壓住)。
+
+## 待辦:多埠天線 / 波束成形實際上從未在場景跑過(2026-09-19 發現)
+- 現況:codebook(TS 38.214 Type I,4–32 埠)、GoB(含柵瓣標記、可用子集)、RIC 波束控制(RC 2-8 七個參數)都實作完成,但**跑過的場景全是 1 埠天線**:
+  - corridor_08_16:cell 的 RU 沒有 antenna_preset(退回 1×1)
+  - osm_ntust_test:`legacy-tr38901-1x1-V`,csi_ports=0、gob 0×0
+- 後果:陣列增益恆為 0 dB、rank 恆為 1、beam_id 恆為 None;RIC 下 RC 2-8 會回 ACK 但不改變任何訊號(1 埠沒有波束可切,電子下傾在單片元件上無意義)。
+- 待做:把測試場景的 RU 指到 `32T32R mMIMO`(8×8 cross、32 埠、GoB 16×4)、UE 改 2 埠,驗證四件事:
+  1. SINR 出現陣列增益(預期 +15 dB 量級)  2. rank 2 真的被選到且 sinr_per_layer_db 有值
+  3. beam_id 有值、beam_rsrp_top 合理      4. RIC RC 2-8 改電子下傾 / 限制波束子集後訊號確實改變
+- 附帶確認:cached 場景改陣列大小照理不用重算快取(路徑參數是 1×1 VH 存的),要實測驗證。
