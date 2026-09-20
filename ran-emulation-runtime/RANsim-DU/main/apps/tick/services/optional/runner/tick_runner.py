@@ -201,6 +201,12 @@ class TickRunner:
     # --- public API ----------------------------------------------------------
 
     @property
+    def report_dropped(self) -> int:
+        """量測報告因佇列滿而被丟掉的累計筆數。0 以外都代表 CU 消化不及,
+        該期間的 KPM 只含有回報到的 UE —— 不接出來的話,資料變稀疏卻看起來正常。"""
+        return self._report_dropped
+
+    @property
     def achieved_speed_x(self) -> float:
         """實際達成倍速 = 近 ~1s 內 tick_count 增長率換算的 sim-time/wall-time 比。
 

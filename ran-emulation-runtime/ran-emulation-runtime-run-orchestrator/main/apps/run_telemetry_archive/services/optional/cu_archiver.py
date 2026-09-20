@@ -70,6 +70,12 @@ class RunArchiver(threading.Thread):
         # per-run UE driver(劇本時間);共用模式沒有
         self._ue = (f"http://{cu_host.replace('cu-', 'ue-', 1)}:8000/api/v0.1/UE/Scenario/ScenarioController/status"
                     if cu_host and cu_host.startswith("cu-") else None)
+        # 2026-09-20:DU 的量測報告佇列滿了會丟最舊的,只寫在 DU log。資料悄悄變稀疏而
+        # KPM 看起來完全正常(corridor_00_08 run 6:5× 下 3.5 分鐘丟 8,701 筆,每視窗
+        # 只剩 4–12 個 UE 進統計)。接出來寫進 warnings,讓稀疏可見。
+        self._du = (f"http://{cu_host.replace('cu-', 'du-', 1)}:8000/api/v0.1/DU/Tick/TickController/read"
+                    if cu_host and cu_host.startswith("cu-") else None)
+        self._report_dropped = 0
         self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{e2_port or settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"   # per-run adapter(P4-2)或共用
 
     # 啟動時先把游標推到「現在」,只封存本 run 開始後的資料(CU 表跨 run 累積)
@@ -109,7 +115,7 @@ class RunArchiver(threading.Thread):
                     scene_t = float(_post(self._ue, {}, timeout=3.0)["data"].get("elapsed_sim_sec"))
                 except Exception:  # noqa: BLE001 — 拿不到就留 null,不影響封存
                     scene_t = None
-            self._archive_kpm(d["measurement"], d["cell"], scene_t)
+            self._archive_kpm(d["measurement"], d["cell"], scene_t, self._poll_report_dropped())
             for h in d["handover"]:
                 DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                     "at_sim_ms": 0, "ue_id": h["ue_id"], "source_cell": h["source_cell"], "target_cell": h["target_cell"],
@@ -140,7 +146,19 @@ class RunArchiver(threading.Thread):
         except Exception:  # noqa: BLE001 — E2Adapter/RIC 不通是常態,不算錯
             pass
 
-    def _archive_kpm(self, meas: list[dict], cells: list[dict], scene_t: float | None = None) -> None:
+    def _poll_report_dropped(self) -> int:
+        """這一輪 DU 又丟了幾筆量測報告(累計值相減)。拿不到就回 0,不影響封存。"""
+        if not self._du:
+            return 0
+        try:
+            total = int((_post(self._du, {}, timeout=3.0)["data"] or {}).get("report_dropped") or 0)
+        except Exception:  # noqa: BLE001
+            return 0
+        delta = max(0, total - self._report_dropped)
+        self._report_dropped = total
+        return delta
+
+    def _archive_kpm(self, meas: list[dict], cells: list[dict], scene_t: float | None = None, dropped: int = 0) -> None:
         """同一 PM 視窗(recorded_at 秒)→ 一列 run_kpm_sample:per_ue + per_cell。"""
         by_win: dict[str, dict] = defaultdict(lambda: {"per_ue": {}, "per_cell": {}, "tick": None})
         for m in meas:
@@ -166,7 +184,9 @@ class RunArchiver(threading.Thread):
             DB.create_entity(RunKpmSample, {**_stamp("run_kpm_sample"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                 "window_index": self.window_index, "sim_time_ms": self.ticks_so_far * self.sim_dt_ms,
                 "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"],
-                "scene_t_sec": (None if scene_t is None else round(max(0.0, scene_t - tick_after[w] * self.sim_dt_ms / 1000.0), 2)), "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])})
+                "scene_t_sec": (None if scene_t is None else round(max(0.0, scene_t - tick_after[w] * self.sim_dt_ms / 1000.0), 2)), "per_ue": b["per_ue"], "warnings": ([] if b["per_ue"] else ["no ue rows"]) + ([] if tick is not None else ["no cell row → sim_time unknown"])
+                             + ([] if not (dropped and w == wins[-1]) else
+                                [f"自上次封存以來 DU 丟棄量測報告 {dropped} 筆(CU 消化不及)→ 這段期間各視窗的 UE 可能不完整"])})
             self.window_index += 1
             self.stats["samples"] += 1
 

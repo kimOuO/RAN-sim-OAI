@@ -13,4 +13,5 @@ class TickStateReadSerializer(serializers.Serializer):
     sim_dt_ms = serializers.IntegerField(required=False)
     sim_speed_x = serializers.FloatField(required=False)        # 設定值
     achieved_speed_x = serializers.FloatField(required=False)   # P0a — 實際達成(0=尚未量到)
+    report_dropped = serializers.IntegerField(required=False)   # 量測報告佇列丟包累計
     body_ms = serializers.DictField(required=False)   # tick body 耗時 avg/max(ms)

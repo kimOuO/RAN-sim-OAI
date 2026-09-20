@@ -279,5 +279,6 @@ def _status_dict() -> dict:
         "sim_dt_ms": runner.sim_dt_ms,
         "sim_speed_x": runner.sim_speed_x,
         "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
+        "report_dropped": runner.report_dropped,   # 量測報告佇列丟包累計(0 以外代表 KPM 會變稀疏)
         "body_ms": runner.body_ms,
     }).data
