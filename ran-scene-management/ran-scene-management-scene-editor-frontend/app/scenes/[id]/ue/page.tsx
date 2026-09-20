@@ -38,7 +38,7 @@ export default function UeStep() {
     if (small(e) && p.tree.ues.length) e = sceneExtent(p.tree);
     if (small(e)) { const cx = (e.xMin + e.xMax) / 2, cz = (e.zMin + e.zMax) / 2; e = { xMin: cx - 20, xMax: cx + 20, zMin: cz - 20, zMax: cz + 20 }; }
     const r = (v: number) => Math.round(v * 10) / 10;
-    return { xMin: r(e.xMin), xMax: r(e.xMax), zMin: r(e.zMin), zMax: r(e.zMax) }; }, [p.tree]);
+    return { xMin: r(e.xMin), xMax: r(e.xMax), zMin: r(e.zMin), zMax: r(e.zMax) }; }, [p.tree, geoExtent]);
   const preview = useScenePreview(p.tree ? pathDuration(p.tree) : 0);
   return <StepGate p={p}>{(tree) => { const checks = ueChecks(tree); const sel = p.selection?.kind === 'ue' ? tree.ues.find((u) => u.ue_uuid === (p.selection as { ue: { ue_uuid: string } }).ue.ue_uuid) : undefined; return (
     <EditorLayout tree={tree} step="ue" saving={p.saving} message={p.message} progress={p.progress}
