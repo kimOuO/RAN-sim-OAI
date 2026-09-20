@@ -26,5 +26,5 @@ export interface CoverageResult {
   grid: { x_range: number[]; z_range: number[]; x_step: number; z_step: number; sample_height_m: number; n_rows: number; n_cols: number };
   summary: { cells: string[]; cell_names: string[]; best_rsrp_dbm: (number | null)[][]; sinr_db: (number | null)[][]; best_cell: (number | null)[][] };
 }
-export const computeCoverage = (scene_uuid: string, opts: { sample_height_m: number; step_m?: number | null; max_depth?: number }) =>
+export const computeCoverage = (scene_uuid: string, opts: { sample_height_m: number; step_m?: number | null; max_depth?: number; margin_m?: number }) =>
   post<CoverageResult>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/coverage`, { scene_uuid, ...opts }, { timeoutMs: 600_000 });

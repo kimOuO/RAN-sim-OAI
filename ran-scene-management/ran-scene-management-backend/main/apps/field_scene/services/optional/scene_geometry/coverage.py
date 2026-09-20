@@ -32,7 +32,13 @@ def _payload(raw: dict[str, Any]) -> dict[str, Any]:
             "gnbs": raw.get("gnbs") or [], "scene_antenna_config": ant}
 
 
-def auto_grid(raw: dict[str, Any], height: float, step: float | None) -> dict[str, Any]:
+def auto_grid(raw: dict[str, Any], height: float, step: float | None, margin: float = 5.0) -> dict[str, Any]:
+    """範圍取 gNB/cell 位置、UE 軌跡、建築盒的外接矩形,再外擴 margin 公尺。
+
+    2026-09-20:掃描模型(mitsuba_xml_path)的實際尺寸**沒有**納入 —— 那要解析網格檔
+    才知道。只用掃描模型、沒有建築盒的場景,熱圖會只蓋住 gNB 與 UE 走過的一小塊。
+    在那之前,用 margin 把範圍撐開(前端「外擴 m」)。
+    """
     xs, zs = [], []
     for g in raw.get("gnbs") or []:
         for p in [g.get("position")] + [c.get("position") for c in g.get("cells") or []]:
@@ -46,16 +52,17 @@ def auto_grid(raw: dict[str, Any], height: float, step: float | None) -> dict[st
         xs += [p[0] - s[0] / 2, p[0] + s[0] / 2]; zs += [p[2] - s[2] / 2, p[2] + s[2] / 2]
     if not xs:
         xs, zs = [-50, 50], [-50, 50]
-    x0, x1, z0, z1 = min(xs) - 5, max(xs) + 5, min(zs) - 5, max(zs) + 5
+    m = max(0.0, float(margin))
+    x0, x1, z0, z1 = min(xs) - m, max(xs) + m, min(zs) - m, max(zs) + m
     area = (x1 - x0) * (z1 - z0)
     st = step or max(0.25, round(math.sqrt(area / MAX_CELLS) * 4) / 4)
     x1 = x0 + math.ceil((x1 - x0) / st) * st; z1 = z0 + math.ceil((z1 - z0) / st) * st
     return {"x_range": [round(x0, 3), round(x1, 3)], "z_range": [round(z0, 3), round(z1, 3)], "x_step": st, "z_step": st, "sample_height_m": height}
 
 
-def compute(scene_uuid: str, *, grid: dict[str, Any] | None, height: float, step: float | None, max_depth: int) -> dict[str, Any]:
+def compute(scene_uuid: str, *, grid: dict[str, Any] | None, height: float, step: float | None, max_depth: int, margin: float = 5.0) -> dict[str, Any]:
     raw = export_scenario(scene_uuid)
-    body = {**_payload(raw), "grid": grid or auto_grid(raw, height, step), "include_sinr": True, "max_depth": max_depth, "diffraction": True}
+    body = {**_payload(raw), "grid": grid or auto_grid(raw, height, step, margin), "include_sinr": True, "max_depth": max_depth, "diffraction": True}
     if not body["gnbs"]:
         raise ValueError("場景沒有 gNB")
     req = urllib.request.Request(f"{PHYSICS_URL}/api/v0.1/Physics/RanSignal/CoverageRunner/compute_scene",

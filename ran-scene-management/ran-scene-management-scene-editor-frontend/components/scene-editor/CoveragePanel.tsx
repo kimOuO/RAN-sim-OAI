@@ -14,6 +14,7 @@ export function CoveragePanel({ c }: { c: CoverageState }) {
       <div className="two">
         <label className="stack"><span>取樣高度 m</span><input type="number" step={0.1} value={c.height} onChange={(e) => c.setHeight(Number(e.target.value))} /></label>
         <label className="stack"><span>格距 m(空 = 自動)</span><input type="number" step={0.25} value={c.step ?? ''} onChange={(e) => c.setStep(e.target.value === '' ? null : Number(e.target.value))} /></label>
+        <label className="stack" title="auto 範圍只涵蓋 gNB 與 UE 軌跡;掃描模型的尺寸不在內,要靠外擴才蓋得到"><span>範圍外擴 m</span><input type="number" step={5} min={0} value={c.margin} onChange={(e) => c.setMargin(Number(e.target.value))} /></label>
       </div>
       <div className="actions"><button className="primary" disabled={c.busy} onClick={c.run}>{c.busy ? '計算中…' : r ? '重新計算' : '計算覆蓋'}</button>
         {r && <label className="check-inline"><input type="checkbox" checked={c.show} onChange={(e) => c.setShow(e.target.checked)} /> 顯示</label>}</div>

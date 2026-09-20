@@ -52,6 +52,8 @@ class UeLifecycleManager:
         # 劇本在場時段 {ue: [[t0, t1], ...]}(秒)。空 = 沒有劇本(live 模式),
         # 完全不動可見性。
         self._active_windows: dict[str, list[list[float]]] = {}
+        self._serving_hint: dict[str, str] = {}      # 回場時要 attach 回哪個 cell
+        self._traffic_hint: dict[str, dict] = {}     # 回場時要還原的流量 profile
         self._last_visible: dict[str, bool] = {}
         # 天線高度 {ue: 公尺}。waypoints 的 y 是腳底高度(視覺層要的),
         # 推給 RU/Sionna 時要加上這個值 —— 少了它等於把人埋在地板裡算通道。
@@ -65,6 +67,41 @@ class UeLifecycleManager:
         """設定每個 UE 的天線高度(相對腳底)。換 session 要重設。"""
         self._antenna_h = heights or {}
         logger.info("UeLifecycleManager antenna_heights=%d ues", len(self._antenna_h))
+
+    def set_presence_hints(self, serving: dict[str, str] | None, traffic: dict[str, dict] | None) -> None:
+        """UE 回場重新 attach 時要還原的 serving cell 與流量 profile。
+        由 sim_orchestrator 在 start 時從劇本填入。"""
+        self._serving_hint = dict(serving or {})
+        self._traffic_hint = dict(traffic or {})
+
+    def _apply_presence(self, ue_id: str, present: bool) -> None:
+        """UE 進場 / 離場時同步 RAN 側狀態(env UE_ACTIVE_WINDOW_ENFORCE,預設開)。
+
+        離場:CU 釋放 RRC + F1AP UE Context Release(DU 一併清排程與 RLC)。
+        回場:重跑一次 attach(RRC → DU register → serving cell → 流量),
+        與開場的 ue_attach 同一組步驟。
+        失敗只記 log:在場狀態是模擬情境的一部分,不該讓它中斷整個 driver。
+        """
+        from main.utils.env_loader import get_bool
+        if not get_bool("UE_ACTIVE_WINDOW_ENFORCE", default=True):
+            return
+        from main.apps.ue_lifecycle.services import cu_client
+        try:
+            if not present:
+                cu_client.release_ue(ue_id)
+                return
+            serving = self._serving_hint.get(ue_id) or ""
+            if not cu_client.rrc_attach(ue_id):
+                logger.warning("UE %s 回場:RRC attach 失敗", ue_id)
+                return
+            from main.apps.ue_lifecycle.services import du_client
+            if serving:
+                du_client.register_ue_at(ue_id, serving_cell=serving)
+                cu_client.force_serving_cell(ue_id, serving)
+            # 流量 profile 不用還原:release_ue 沒有清掉它
+            logger.info("UE %s 回場:已重新 attach(serving=%s)", ue_id, serving or "(由 CU 決定)")
+        except Exception:  # noqa: BLE001
+            logger.exception("UE %s 進出場同步失敗(present=%s)", ue_id, present)
 
     def set_active_windows(self, windows: dict[str, list[list[float]]] | None) -> None:
         """設定劇本在場時段。換 session 要重設,否則沿用上一齣戲的時間軸。"""
@@ -229,6 +266,11 @@ class UeLifecycleManager:
             if self._last_visible.get(ue_id) == visible:
                 continue
             self._last_visible[ue_id] = visible
+            # 2026-09-20:active_windows 以前只管「看不看得到」—— 3D 不畫、Kit 藏起來,
+            # 但 RRC 連線、DU 排程、流量注入全照舊,於是「人不見了卻還掛在 gNB 上傳資料」。
+            # 這裡讓它真的離場 / 回場。env UE_ACTIVE_WINDOW_ENFORCE=0 可退回舊行為。
+            # 注意:Kit 不是我們的元件、也可能沒在跑,所以 RAN 側動作不能綁在它的成敗上。
+            self._apply_presence(ue_id, visible)
             if not kit_client.set_ue_visible(ue_id, visible):
                 # 推失敗就把快取清掉,下一個 tick 會重試(不要記成已同步)
                 self._last_visible.pop(ue_id, None)

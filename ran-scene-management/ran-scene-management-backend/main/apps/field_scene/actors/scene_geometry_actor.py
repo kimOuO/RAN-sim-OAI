@@ -60,7 +60,7 @@ class SceneGeometryReader:
     @csrf_exempt
     @require_http_methods(["POST"])
     def coverage(request):
-        """body = {scene_uuid, sample_height_m?=1.5, step_m?, grid?, max_depth?=3} → {grid, summary{best_rsrp_dbm, sinr_db, best_cell, cell_names}}
+        """body = {scene_uuid, sample_height_m?=1.5, step_m?, margin_m?=5, grid?, max_depth?=3} → {grid, summary{best_rsrp_dbm, sinr_db, best_cell, cell_names}}
         (physics 另建暫時 engine 算,不影響 live run;格數上限 40000)"""
         from main.apps.field_scene.services.optional.scene_geometry.coverage import compute
         try:
@@ -71,7 +71,8 @@ class SceneGeometryReader:
             return error_response("Not found", payload.get("scene_uuid"), 404)
         try:
             data = compute(payload["scene_uuid"], grid=payload.get("grid"), height=float(payload.get("sample_height_m", 1.5)),
-                           step=(float(payload["step_m"]) if payload.get("step_m") else None), max_depth=int(payload.get("max_depth", 3)))
+                           step=(float(payload["step_m"]) if payload.get("step_m") else None), max_depth=int(payload.get("max_depth", 3)),
+                           margin=float(payload.get("margin_m", 5.0)))
         except ValueError as exc:
             return error_response(str(exc), None, 400)
         except Exception as exc:  # noqa: BLE001

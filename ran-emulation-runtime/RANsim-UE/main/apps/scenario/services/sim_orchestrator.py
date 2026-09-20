@@ -277,6 +277,11 @@ def start_sim(
         ue_manager.get_manager().set_active_windows(
             _run_spec.active_windows if _run_spec is not None
             else omniverse_client.get_scenario_active_windows(scenario_id))
+        # UE 回場重新 attach 時要掛回哪個 cell。流量 profile 不必還原 ——
+        # release_ue 只標 IDLE 與清 serving_cell,CU 端的 traffic_profile 仍在。
+        _default_cell = getattr(_run_spec, "default_serving_cell", "") if _run_spec is not None else ""
+        _names = [u.name for u in (getattr(_run_spec, "ues", None) or [])] if _run_spec is not None else []
+        ue_manager.get_manager().set_presence_hints({n: _default_cell for n in _names}, None)
     except Exception as e:  # noqa: BLE001
         logger.warning("set_active_windows failed: %s", e)
     # 天線高度每次 start 都先清掉,live 模式不會沿用上一齣戲的值

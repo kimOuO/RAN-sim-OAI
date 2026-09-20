@@ -8,5 +8,5 @@ export interface CoverageResult {
   summary: { cells: string[]; cell_names: string[]; best_rsrp_dbm: (number | null)[][]; sinr_db: (number | null)[][]; best_cell: (number | null)[][] };
 }
 
-export const computeCoverage = (scene_uuid: string, opts: { sample_height_m: number; step_m?: number | null }) =>
+export const computeCoverage = (scene_uuid: string, opts: { sample_height_m: number; step_m?: number | null; margin_m?: number }) =>
   post<CoverageResult>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/coverage`, { scene_uuid, ...opts }, { timeoutMs: 600_000 });

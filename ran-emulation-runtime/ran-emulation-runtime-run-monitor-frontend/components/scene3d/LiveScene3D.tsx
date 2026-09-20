@@ -33,9 +33,11 @@ export function LiveScene3D(p: Props) {
   const [covMode, setCovMode] = useState<CoverageMode>('sinr');
   const [covOpacity, setCovOpacity] = useState(0.6);
   const [covHeight, setCovHeight] = useState(1.5);
+  // 外擴:auto grid 只涵蓋 gNB 與 UE 軌跡,掃描模型的尺寸不在內(見後端 auto_grid 說明)
+  const [covMargin, setCovMargin] = useState(5);
   const runCoverage = async () => {
     setCovBusy(true); setCovErr(null);
-    try { setCov(await computeCoverage(p.tree.scene.scene_uuid, { sample_height_m: covHeight })); setCovShow(true); }
+    try { setCov(await computeCoverage(p.tree.scene.scene_uuid, { sample_height_m: covHeight, margin_m: covMargin })); setCovShow(true); }
     catch (e) { setCovErr(e instanceof Error ? e.message : String(e)); }
     finally { setCovBusy(false); }
   };
@@ -67,6 +69,7 @@ export function LiveScene3D(p: Props) {
       <div className="row">
         <button className="primary" disabled={covBusy} onClick={runCoverage}>{covBusy ? '計算中…' : cov ? '重新計算覆蓋' : '計算覆蓋熱圖'}</button>
         <label>高度<input type="number" step={0.1} value={covHeight} onChange={(e) => setCovHeight(Number(e.target.value))} /> m</label>
+        <label title="auto 範圍只涵蓋 gNB 與 UE 軌跡;掃描模型要靠外擴才蓋得到">外擴<input type="number" step={5} min={0} value={covMargin} onChange={(e) => setCovMargin(Number(e.target.value))} /> m</label>
         {cov && <label><input type="checkbox" checked={covShow} onChange={(e) => setCovShow(e.target.checked)} /> 顯示</label>}
       </div>
       {covErr && <p className="err small">{covErr}</p>}

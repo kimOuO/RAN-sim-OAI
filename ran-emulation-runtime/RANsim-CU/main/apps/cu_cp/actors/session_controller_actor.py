@@ -197,6 +197,46 @@ class SessionControllerActor:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def release_ue(request: HttpRequest):
+        """單一 UE 離場:F1AP UE Context Release + 標 IDLE + 清 DRB 計數。
+
+        2026-09-20:`active_windows`(UE 的在場時段)原本只影響畫面 —— 3D 不畫、
+        Omniverse 藏起來 —— 但 RRC 連線、DU 排程、流量注入全都照舊,於是「人不見了
+        卻還掛在 gNB 上傳資料」。這支給 UE driver 在離場時呼叫,讓語意一致。
+        body {ue_id}
+        """
+        try:
+            body = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("invalid JSON", str(exc), status=400)
+        ue_id = str(body.get("ue_id") or "")
+        if not ue_id:
+            return error_response("ue_id required", status=400)
+        ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
+        if ue is None:
+            return success_response({"ue_id": ue_id, "released": False}, "unknown UE(視為已離場)")
+        from main.apps.cu_cp.services.business.du_client_operations import (
+            DuClientBusinessService,
+        )
+        try:
+            DuClientBusinessService.post_ue_context_release({"ue_id": ue_id})
+        except Exception as exc:  # noqa: BLE001 — DU 清不掉不該擋 CU 側標 IDLE
+            logger.warning("release_ue DU fan-out failed ue=%s: %r(繼續)", ue_id, exc)
+        try:
+            from main.apps.cu_up.models.drb import Drb
+            Drb.objects.filter(ue_id=ue_id).update(dl_packets=0, ul_packets=0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("release_ue Drb 計數清除失敗 ue=%s: %r(繼續)", ue_id, exc)
+        SqlDbBusinessService.update_entity(
+            UeContext, "ue_id", ue_id,
+            {"rrc_state": "IDLE", "serving_cell": "", "updated_at": TimestampService.now()})
+        logger.info("UE %s 離場(active_window 外):RRC 釋放、DU 已清", ue_id)
+        return success_response({"ue_id": ue_id, "released": True}, "released")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def release_all(request: HttpRequest):
         """Mark every CONNECTED UE as IDLE — Stop Sim 用,讓 CU indication_producer
         看到沒 active UE 就停 emit,避免 Influx 在 sim 停止後還持續收到 stale KPM.

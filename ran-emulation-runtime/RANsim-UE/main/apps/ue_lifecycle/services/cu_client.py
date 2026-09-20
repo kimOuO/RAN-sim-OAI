@@ -62,6 +62,21 @@ def release_stale(keep_ue_ids: list[str], force: bool = False) -> bool:
         return False
 
 
+def release_ue(ue_id: str) -> bool:
+    """POST CU /Session/SessionController/release_ue —— UE 離場(active_window 外)。
+    CU 會發 F1AP UE Context Release 給 DU、標 IDLE、清 DRB 計數。"""
+    url = f"{settings.SIM_CU_URL.rstrip('/')}/api/v0.1/CU/Session/SessionController/release_ue"
+    try:
+        r = requests.post(url, json={"ue_id": ue_id}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            logger.warning("release_ue %s non-OK %s: %s", ue_id, r.status_code, r.text[:200])
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("release_ue %s HTTP failed: %s", ue_id, exc)
+        return False
+
+
 def update_traffic_profile(ue_id: str, profile: dict[str, Any]) -> bool:
     """POST CU /Session/SessionController/update_traffic_profile to re-establish
     F1AP UE Context Setup (which auto-creates RLC entity on DU).
