@@ -25,6 +25,7 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 ROLES = ("cu", "du", "ru", "ue", "e2adapter")   # e2adapter 走 host network(SCTP 綁 host IP),每 run 一條 association → RIC 看到一個 E2 node
 _TEMPLATE = Path(__file__).with_name("per_run_template.json")
+PER_RUN_LOG_TAIL = int(getattr(settings, "PER_RUN_LOG_TAIL", 200000))   # 每個容器留最後這麼多行
 HEALTH_PATH = {"cu": "/api/v0.1/CU/E2/E2NodeId/read", "du": "/api/v0.1/DU/Tick/TickController/read", "ru": "/api/v0.1/RU/State/RuStateReader/read", "ue": "/api/v0.1/UE/Status/read", "e2adapter": "/api/v0.1/E2Adapter/Status/AdapterStatusReader/read"}
 # 2026-09-16 記憶體事故後:每個 per-run 容器都要有上限,洩漏時只 OOM 掉那一顆(restart policy 會拉回來),
 # 不會把整台 VM 拖進 swap 卡死。memswap 設同值 = 不准用 swap。可用 RUN_MEM_LIMIT_<ROLE> 覆寫(docker 格式,如 1g)。
@@ -242,10 +243,23 @@ def container_status(scene_run_uuid: str) -> dict[str, str]:
     return st
 
 
+def _dump_logs(c, role: str, scene_run_uuid: str) -> None:
+    """移除容器前把 log 落地。2026-09-20:RIC 回報一場排查期間 e01 斷線重連 24 次,
+    我們收工時容器已被移除、log 一併消失,完全無法事後追。每個 run 留一份。"""
+    d = Path(settings.PER_RUN_LOG_DIR) / rid_of(scene_run_uuid)
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        data = c.logs(tail=PER_RUN_LOG_TAIL)
+        (d / f"{role}.log").write_bytes(data)
+    except Exception as exc:  # noqa: BLE001 — 留不下 log 不該擋收工
+        logger.warning("dump logs failed %s/%s: %s", scene_run_uuid, role, exc)
+
+
 def teardown(scene_run_uuid: str, drop_db: bool = True) -> dict[str, str]:
     client = docker.from_env(); names = names_for(scene_run_uuid); res = {}
     for r, n in names.items():
         for c in client.containers.list(all=True, filters={"name": f"^{n}$"}):
+            _dump_logs(c, r, scene_run_uuid)
             try:
                 c.stop(timeout=10)
             except Exception:  # noqa: BLE001

@@ -608,6 +608,7 @@ services:
       - ./ran-emulation-runtime/ran-emulation-runtime-run-orchestrator:/app
       - /var/run/docker.sock:/var/run/docker.sock
       - ./ran-emulation-runtime/Physics_sim/data/channel_cache:/data/channel_cache:ro   # 讀 precompute 進度 log
+      - ./ran-emulation-runtime/run_logs:/data/run_logs   # per-run 容器收工前的 log 落地(2026-09-20)
     ports:
       - "8302:8000"
     depends_on:
