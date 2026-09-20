@@ -305,8 +305,20 @@ class TickRunner:
         det = get_rlf_detector()
         now_sim = self.status.tick_count * self._sim_dt_ms
         declared: list[dict[str, Any]] = []
+        # 2026-09-20:RLF 判定吃的是每 tick 的瞬時 SINR,KPM 記的是 1 秒視窗平均,
+        # 兩者在歸檔裡對不起來(RLF 當下 KPM SINR 中位 +10.5 dB,卻宣告了 RLF)。
+        # RLF_TRACE=1 時把餵進去的原始值連同當下負載印出來,才能證實差異來源。
+        # 每 UE 每 tick 一行,只在排查時開。
+        _trace = get_int("RLF_TRACE", 0)
         for ue in ues:
-            rlf = det.observe(ue["id"], float(ue.get("sinr_db", 0.0)), now_sim)
+            _sinr = float(ue.get("sinr_db", 0.0))
+            if _trace:
+                _cell = ue.get("serving_cell", "")
+                logger.info("RLFTRACE tick=%d ue=%s cell=%s sinr=%.2f rsrp=%.1f load=%.3f",
+                            self.status.tick_count, ue["id"], _cell, _sinr,
+                            float(ue.get("rsrp_dbm") or -999.0),
+                            float(self.cell_dl_load.get(_cell, 0.0)))
+            rlf = det.observe(ue["id"], _sinr, now_sim)
             if rlf:
                 # 從 registry 緩存的鄰區量測挑最強 cell(供 CU 決定重建落點)
                 state = self._ue_registry.get(ue["id"], {})
