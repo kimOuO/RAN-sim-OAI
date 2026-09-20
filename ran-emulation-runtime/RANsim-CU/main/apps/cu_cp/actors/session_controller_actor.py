@@ -165,16 +165,25 @@ class SessionControllerActor:
             return error_response(f"cell {target_cell} is barred (TS 38.304)", status=409)
 
         now = TimestampService.now()
-        ho_uuid = UUIDService.random_uuid()
-        SqlDbBusinessService.create_entity(HandoverEvent, {
-            "ho_uuid": ho_uuid,
-            "ue_id": ue_id,
-            "source_cell": ue.serving_cell or "",
-            "target_cell": target_cell,
-            "trigger": "MANUAL",
-            "status": "PREP",
-            "started_at": now,
-        })
+        # 2026-09-20:這條 API 有兩種用途 —— 真的強制換手,以及 UE driver 初始接入時
+        # 「一刀切把 serving_cell 設好」(ue_attach 第三步)。後者不是換手:沒有來源 cell,
+        # 或來源等於目標。以前無條件寫 HandoverEvent,害換手統計灌水(corridor_00_08 run 7:
+        # 357 筆裡有 35 筆是這樣來的,RIC 端獨立估算 314 才對)。換手表只放真的換手。
+        src = ue.serving_cell or ""
+        is_handover = bool(src) and src != target_cell
+        ho_uuid = UUIDService.random_uuid() if is_handover else ""
+        if is_handover:
+            SqlDbBusinessService.create_entity(HandoverEvent, {
+                "ho_uuid": ho_uuid,
+                "ue_id": ue_id,
+                "source_cell": src,
+                "target_cell": target_cell,
+                "trigger": "MANUAL",
+                "status": "PREP",
+                "started_at": now,
+            })
+        else:
+            logger.info("serving_cell 直接設定(非換手):UE %s %s → %s", ue_id, src or "(無)", target_cell)
         DuClientBusinessService.post_ue_context_modification(
             F1apHandler.build_ue_context_modification(ue_id, target_cell),
         )
@@ -182,7 +191,6 @@ class SessionControllerActor:
             UeContext, "ue_id", ue_id,
             {"serving_cell": target_cell, "updated_at": now},
         )
-        logger.info("Manual HO requested: UE %s → %s", ue_id, target_cell)
         return success_response({"ho_uuid": ho_uuid, "ue_id": ue_id, "target_cell": target_cell})
 
     @staticmethod

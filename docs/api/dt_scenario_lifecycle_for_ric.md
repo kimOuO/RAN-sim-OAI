@@ -121,3 +121,33 @@ GET http://<orchestrator-host>:8302/status
 
 已知對照:corridor_00_08 `…8649117e33` 的 `run_seq=2` ↔ RIC `run=6`
 (這一場在欄位上線前啟動,資料庫裡記的是 0)。
+
+---
+
+## 換手 / RLF 歸檔欄位的語意(2026-09-20 澄清)
+
+`run_handover_event` 一張表同時存換手與 RLF,靠 `outcome` 區分,**兩者的 `target_cell` 意思不同**:
+
+| outcome | source_cell | target_cell | 說明 |
+|---|---|---|---|
+| `SUCC` / `FAIL` | 來源 cell | 目標 cell | 真的換手(`detail.trigger` = `A3_TTT` 或 `MANUAL`) |
+| `PREP` | 來源 cell | 目標 cell | 換手已發起、尚未回報結果 |
+| `RLF` | 失聯前的服務 cell | **重建 cell** | 空字串 = 重建失敗;與 source 相同 = 在原 cell 重建成功 |
+
+所以 `RLF` 列出現 `src → src` 或 `src → (空)` 是正常結果,不是資料錯誤。
+
+**計數建議**:換手次數請只算 `outcome in (SUCC, FAIL)`。`PREP` 是未完成態,加進去會重複計算。
+
+### 已修正:初始接入被記成換手(2026-09-20)
+
+UE driver 初始接入的第三步會呼叫 CU 的 `SessionController/handover` 把 `serving_cell` 一次設好。
+這條路徑以前**無條件**寫一筆 `HandoverEvent`,於是每個 UE 接入都留下一筆
+`(空) → <cell>` 的 `MANUAL` / `PREP` 假換手。
+
+corridor_00_08 run 7(`run_seq=3` / RIC `run=7`)受影響:全場 357 筆裡有 **35 筆是這樣來的**
+(33 筆初次接入 + 1 筆來源等於目標 + 1 筆真的手動換手)。**真實換手數是 322**,
+這也是為什麼 RIC 端積分估算的 314 才是對的。
+
+修正後(commit 見下)`SessionController/handover` 只在「有來源 cell 且來源≠目標」時才寫換手紀錄。
+run 7 之前的歷史資料不會回溯修改,請以 `detail.trigger != "MANUAL"` 或
+`source_cell != ""` 過濾。
