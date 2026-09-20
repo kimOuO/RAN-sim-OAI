@@ -279,11 +279,16 @@ def precompute_name(scene_run_uuid: str) -> str:
     return f"precompute-{rid_of(scene_run_uuid)}"
 
 
-def spawn_precompute(scene_run_uuid: str, scenario_id: str, segment_ticks: int = 10000) -> dict:
+def spawn_precompute(scene_run_uuid: str, scenario_id: str, segment_ticks: int = 10000,
+                     solver_env: dict | None = None) -> dict:
+    """solver_env:射線追蹤旋鈕覆寫(SIM_DIFFUSE_REFLECTION / SIM_SAMPLES_PER_SRC /
+    SIM_MAX_DEPTH)。給設定實驗用;不帶就是 physics 模板的既有值。"""
     tpl = _load_template()["physics"]; client = docker.from_env(); name = precompute_name(scene_run_uuid)
     for c in client.containers.list(all=True, filters={"name": f"^{name}$"}):
         c.remove(force=True)
     env = dict(tpl["env"]); env["SCENARIO_STORE_URL"] = f"http://{settings.HTTP_REGISTRY_HOST}:{settings.HTTP_REGISTRY_PORT}"; env["SCENE_RUN_UUID"] = scene_run_uuid
+    for k, v in (solver_env or {}).items():
+        env[str(k)] = str(v)
     vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in tpl["volumes"]}
     c = client.containers.run(tpl["image"], name=name, detach=True, environment=env, volumes=vols, network=settings.PER_RUN_NETWORK,
                               command=["sh", "/app/precompute/run_precompute_segmented.sh", scenario_id, str(int(segment_ticks))],

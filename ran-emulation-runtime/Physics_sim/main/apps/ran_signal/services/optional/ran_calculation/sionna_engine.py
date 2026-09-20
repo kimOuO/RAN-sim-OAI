@@ -98,6 +98,21 @@ class SionnaEngine:
 
         self._rt = rt
         self._solver = rt.PathSolver()
+        # 2026-09-20:這三個旋鈕原本硬寫在三處呼叫,無法調。走廊快取查出深陰影區的漫射
+        # 取樣雜訊會讓同一 UE-cell 的路徑增益在相鄰 0.5 s 格擺盪逾 100 dB(p99.9 108 dB),
+        # 並產生 13–29% 的「零路徑」NaN。要分辨那是漫射的隨機性還是取樣數不足,得能分開調。
+        # 預設值 = 改動前的行為,不動到既有場景。
+        self._solver_kw = {
+            "los": True,
+            "specular_reflection": True,
+            "diffuse_reflection": get_bool("SIM_DIFFUSE_REFLECTION", default=True),
+            "refraction": True,
+            "diffraction": True,
+        }
+        _spp = get_int("SIM_SAMPLES_PER_SRC", default=0)   # 0 = 用 sionna 預設(1e6)
+        if _spp > 0:
+            self._solver_kw["samples_per_src"] = _spp
+        logger.info("PathSolver kwargs: max_depth=%d %s", self.max_depth, self._solver_kw)
 
         # 載場景
         # P5-2:z-up 框架 —— 幾何補 Rx(+90°)、位置進 Sionna 前轉(見 frame.py)
@@ -254,15 +269,7 @@ class SionnaEngine:
 
         t0 = time.time()
         try:
-            _ = self._solver(
-                scene=self._scene,
-                max_depth=self.max_depth,
-                los=True,
-                specular_reflection=True,
-                diffuse_reflection=True,
-                refraction=True,
-                diffraction=True,
-            )
+            _ = self._solver(scene=self._scene, max_depth=self.max_depth, **self._solver_kw)
             logger.info("warmup done in %.0f ms", (time.time() - t0) * 1000)
         finally:
             self._scene.remove("__warmup__")
@@ -308,9 +315,7 @@ class SionnaEngine:
         for u in ue_positions:
             rx = rt.Receiver(name=u["id"], position=self._to_sionna(u["position"]))
             scene.add(rx)
-        paths = self._solver(scene=scene, max_depth=self.max_depth, los=True,
-                             specular_reflection=True, diffuse_reflection=True,
-                             refraction=True, diffraction=True)
+        paths = self._solver(scene=scene, max_depth=self.max_depth, **self._solver_kw)
         ar, ai = paths.a
         a = np.array(ar) + 1j * np.array(ai)          # [rx, 2, tx, 2, P]
         th_t, ph_t = np.array(paths.theta_t), np.array(paths.phi_t)   # [rx, tx, P]
@@ -371,15 +376,7 @@ class SionnaEngine:
             scene.add(rx)
 
         # 跑光追
-        paths = self._solver(
-            scene=scene,
-            max_depth=self.max_depth,
-            los=True,
-            specular_reflection=True,
-            diffuse_reflection=True,
-            refraction=True,
-            diffraction=True,
-        )
+        paths = self._solver(scene=scene, max_depth=self.max_depth, **self._solver_kw)
 
         # 取 CIR 做 path gain
         a, _tau = paths.cir(normalize_delays=True, out_type="numpy")

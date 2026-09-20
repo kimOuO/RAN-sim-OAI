@@ -45,7 +45,7 @@ class PrecomputeController:
     @csrf_exempt
     @require_http_methods(["POST"])
     def start(request):
-        """body {scene_run_uuid, segment_ticks?}"""
+        """body {scene_run_uuid, segment_ticks?, solver_env?}"""
         try:
             payload = _body(request)
         except json.JSONDecodeError as exc:
@@ -69,7 +69,16 @@ class PrecomputeController:
         if run.get("mode") != "cached":
             return error_response("只有 cached 模式需要預算", run.get("mode"), 400)
         try:
-            info = container_spawner.spawn_precompute(run_uuid, scenario_id, int(payload.get("segment_ticks") or 10000))
+            _solver = payload.get("solver_env") or {}
+            if not isinstance(_solver, dict):
+                return error_response("Validation failed", {"solver_env": "must be object"}, 400)
+            # 只放行射線追蹤這三個鍵,避免這條路徑變成任意 env 注入
+            _bad = set(_solver) - {"SIM_DIFFUSE_REFLECTION", "SIM_SAMPLES_PER_SRC", "SIM_MAX_DEPTH"}
+            if _bad:
+                return error_response("Validation failed", {"solver_env": f"不允許的鍵 {sorted(_bad)}"}, 400)
+            info = container_spawner.spawn_precompute(run_uuid, scenario_id,
+                                                      int(payload.get("segment_ticks") or 10000),
+                                                      solver_env=_solver)
             platform_clients.update_scene_run(run_uuid, status="precomputing", notes=f"precompute started {scenario_id}")
             threading.Thread(target=_watch, args=(run_uuid, scenario_id), name=f"precompute-watch-{run_uuid[-8:]}", daemon=True).start()
         except Exception as exc:  # noqa: BLE001

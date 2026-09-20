@@ -94,6 +94,12 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .gnb-board { display: grid; gap: 10px; } .gnb-row { display: flex; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; background: var(--bg-3); }
 .gnb-head { padding-right: 12px; border-right: 1px dashed var(--line-2); } .gnb-cells { display: flex; flex-wrap: wrap; gap: 12px; }
 .runtabs { display: flex; gap: 2px; align-items: stretch; } .runtabs a { padding: 6px 12px; color: var(--muted); border-bottom: 2px solid transparent; text-transform: none; letter-spacing: 0; display: flex; gap: 6px; align-items: center; } .runtabs a.on { color: var(--ink); border-bottom-color: var(--cyan); } .runtabs .dot { margin: 0; }
+.runtabs .runtab { display: flex; align-items: center; border-bottom: 2px solid transparent; }
+.runtabs .runtab.on { border-bottom-color: var(--cyan); }
+.runtabs .runtab a, .runtabs .runtab a.on { border-bottom: none; }
+.runtabs .tabx { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 8px 0 0; font-size: 14px; line-height: 1; opacity: 0; transition: opacity .12s; }
+.runtabs .runtab:hover .tabx, .runtabs .runtab.on .tabx { opacity: 1; }
+.runtabs .tabx:hover { color: var(--ink); }
 .topnav .shell { padding-bottom: 0; } .topnav .brand { padding-bottom: 8px; }
 .ue-now { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 8px; color: var(--muted); } .ue-now b { color: var(--ink); margin-left: 2px; } .nbrs { display: flex; gap: 10px; flex-wrap: wrap; } .nbr { display: inline-flex; gap: 4px; align-items: center; } .nbr i { width: 8px; height: 8px; border-radius: 2px; }
 .inst-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; font-size: 12px; } .inst { display: inline-flex; gap: 6px; align-items: center; }
