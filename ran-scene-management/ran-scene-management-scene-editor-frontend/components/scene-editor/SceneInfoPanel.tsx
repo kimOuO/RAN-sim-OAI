@@ -11,8 +11,8 @@ interface Props {
 /** 步驟 1:場景基本資料 + 幾何來源(掃描模型 / 建築盒 / OSM)+ 複製場景 */
 export function SceneInfoPanel({ tree, saving, sources, onSave, onDuplicate, onOpen }: Props) {
   const sc = tree.scene;
-  const [f, setF] = useState({ name: sc.name, description: sc.description ?? '', lat: String(sc.origin_lat ?? ''), lon: String(sc.origin_lon ?? '') });
-  useEffect(() => setF({ name: sc.name, description: sc.description ?? '', lat: String(sc.origin_lat ?? ''), lon: String(sc.origin_lon ?? '') }), [sc]);
+  const [f, setF] = useState({ name: sc.name, description: sc.description ?? '', lat: String(sc.origin_lat ?? ''), lon: String(sc.origin_lon ?? ''), legacy: sc.legacy_scenario_id ?? '' });
+  useEffect(() => setF({ name: sc.name, description: sc.description ?? '', lat: String(sc.origin_lat ?? ''), lon: String(sc.origin_lon ?? ''), legacy: sc.legacy_scenario_id ?? '' }), [sc]);
   const geo = sc.geometry_source as { type?: string; path?: string } | null;
   const cur = geo?.type ? `${geo.type}${geo.path ? ` · ${geo.path.split('/').pop()}` : ''}` : '建築盒 / OSM(buildings_json)';
   const pick = (i: string) => { if (i === '') { if (confirm('改回用建築盒 / OSM 建模?掃描模型會被移除。')) onSave({ geometry_source: null, geometry_scene_id: '' }); return; }
@@ -22,9 +22,19 @@ export function SceneInfoPanel({ tree, saving, sources, onSave, onDuplicate, onO
       <div className="row head">場景資料</div>
       <label className="stack"><span>名稱</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
       <label className="stack"><span>說明</span><textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+      <label className="stack"><span>劇本 id <span className="muted">歸到「劇本」類別;留空 = 手動建立</span></span>
+        <input value={f.legacy} placeholder="例:corridor_peak_2h" onChange={(e) => setF({ ...f, legacy: e.target.value })} /></label>
+      <p className="muted small">這個值就是通道快取的檔名(<span className="mono">&lt;id&gt;.npz</span>)。只能用英數字、底線、連字號,且不能與其他場景重複。<b>已經預算過的場景改了 id,等於換一份快取,要重新預算。</b></p>
       <div className="two"><label className="stack"><span>原點緯度</span><input type="number" value={f.lat} onChange={(e) => setF({ ...f, lat: e.target.value })} /></label>
         <label className="stack"><span>原點經度</span><input type="number" value={f.lon} onChange={(e) => setF({ ...f, lon: e.target.value })} /></label></div>
-      <div className="actions"><button className="primary" disabled={saving} onClick={() => onSave({ name: f.name, description: f.description, origin_lat: f.lat === '' ? null : Number(f.lat), origin_lon: f.lon === '' ? null : Number(f.lon) })}>儲存</button>
+      <div className="actions"><button className="primary" disabled={saving} onClick={() => {
+        const legacy = f.legacy.trim();
+        if (legacy && !/^[A-Za-z0-9_-]{1,128}$/.test(legacy)) { alert('劇本 id 只能用英數字、底線與連字號'); return; }
+        if (legacy !== (sc.legacy_scenario_id ?? '') && (sc.legacy_scenario_id ?? '') !== ''
+            && !confirm('改掉劇本 id 等於指向另一份通道快取,原本預算好的會對不到。確定?')) return;
+        onSave({ name: f.name, description: f.description, legacy_scenario_id: legacy,
+                 origin_lat: f.lat === '' ? null : Number(f.lat), origin_lon: f.lon === '' ? null : Number(f.lon) });
+      }}>儲存</button>
         <button disabled={saving} onClick={async () => { const n = prompt('複製成新場景,名稱:', `${sc.name}_copy`); if (!n) return; const id = await onDuplicate(n); if (id && confirm('已複製,要打開新場景嗎?')) onOpen(id); }}>複製場景</button></div>
       <div className="row head">幾何來源 <span className="muted">傳播計算用</span></div>
       <p className="small">目前:<span className="mono">{cur}</span></p>
