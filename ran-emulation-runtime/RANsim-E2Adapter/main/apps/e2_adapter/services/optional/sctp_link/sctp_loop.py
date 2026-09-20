@@ -34,6 +34,9 @@ _CONNECT_TIMEOUT_SEC = 8.0
 # 30 s 就關 association 會讓 Response 回到已不存在的收件人(RIC 看到 CONNECTED→DISCONNECTED)。env 可調。
 _RECV_TIMEOUT_SEC = float(get_int("E2_SETUP_RESPONSE_TIMEOUT_SEC", default=30))
 _CURRENT_SOCK = None   # 目前活著的 association(給 graceful shutdown 送 E2 Reset 用)
+_PROC_E2_SETUP = 1          # E2AP procedureCode:E2 setup
+_SETUP_WAIT_SEC = 30.0      # 等 setup 結果的總期限(中途的其他 PDU 不算)
+_PENDING_PDUS: list[bytes] = []   # setup 等待期間先到的 PDU,setup 成功後補送給 dispatcher
 
 
 _started_flag = threading.Event()
@@ -199,24 +202,41 @@ def _do_e2_setup(sock) -> bool:
     )
 
     # Step 4: wait response
-    response_bytes = _recv_sctp(sock)
-    if response_bytes is None:
+    # 2026-09-20:以前只讀一個 PDU 就當成 setup 的結果。RIC 端的場景 xApp 在我們宣告
+    # 場景時就已部署,節點一連上就立刻送 RICsubscriptionRequest(procedureCode 8);
+    # 它若比 E2setupResponse 先到,我們就誤判 setup 失敗 → 拆連線 → 20 s 後重連 →
+    # 永遠建立不起來(RIC 實測 12 分鐘 24 次 E2 Setup)。
+    # 改成等到 procedureCode 1 的結果為止;中途收到的 PDU 先收著,setup 成功後再處理
+    # (不能丟:丟了 xApp 就永遠收不到 indication)。
+    deadline = time.time() + _SETUP_WAIT_SEC
+    decoded = None
+    while time.time() < deadline:
+        response_bytes = _recv_sctp(sock)
+        if response_bytes is None:
+            continue   # recv 逾時,還在期限內就繼續等
         MemoryStateBusinessService.update_state(
-            registry, last_error="no E2 Setup Response (timeout)"
+            registry, pdu_recv_count=registry.get_connection().pdu_recv_count + 1,
         )
-        return False
-
-    MemoryStateBusinessService.update_state(
-        registry, pdu_recv_count=registry.get_connection().pdu_recv_count + 1,
-    )
-
-    # Step 5: decode + extract acceptedRANfunctions
-    try:
-        decoded = e2ap_codec.decode_e2ap_pdu(response_bytes)
-    except Exception as exc:
-        logger.exception("decode E2 Setup Response failed")
+        try:
+            cand = e2ap_codec.decode_e2ap_pdu(response_bytes)
+        except Exception as exc:  # noqa: BLE001 — 解不開的 PDU 不該拆連線
+            logger.warning("E2 Setup 等待期間收到無法解碼的 PDU(%d bytes):%r", len(response_bytes), exc)
+            continue
+        choice, msg = cand
+        try:
+            proc = msg.get("procedureCode")
+        except Exception:  # noqa: BLE001
+            proc = None
+        if proc == _PROC_E2_SETUP:
+            decoded = cand
+            break
+        # 不是 setup 的結果 → 收著,setup 成功後再交給 dispatcher
+        _PENDING_PDUS.append(response_bytes)
+        logger.info("E2 Setup 等待期間先收到 procedureCode=%s(%s),暫存待 setup 完成後處理",
+                    proc, (msg.get("value") or [None])[0] if isinstance(msg, dict) else "?")
+    if decoded is None:
         MemoryStateBusinessService.update_state(
-            registry, last_error=f"decode failed: {exc!r}"
+            registry, last_error=f"no E2 Setup outcome within {_SETUP_WAIT_SEC}s"
         )
         return False
 
@@ -225,6 +245,17 @@ def _do_e2_setup(sock) -> bool:
     fail_reason = ""
     try:
         outcome_choice, outcome_msg = decoded
+        # 2026-09-20:送出 Setup Request 後只讀一個 PDU 就當結果,若 RIC 先送別的
+        # initiatingMessage 就會誤判失敗並拆連線(RIC 端看到的反覆斷線重連)。
+        # 先把收到的到底是什麼印出來,才能決定要不要跳過它繼續等。
+        if outcome_choice != "successfulOutcome":
+            try:
+                _pc = outcome_msg.get("procedureCode")
+                _vt = outcome_msg.get("value", [None])[0]
+            except Exception:  # noqa: BLE001
+                _pc, _vt = "?", "?"
+            logger.warning("E2 Setup 等待期間收到非預期 PDU:choice=%s procedureCode=%s type=%s",
+                           outcome_choice, _pc, _vt)
         if outcome_choice == "successfulOutcome":
             inner = outcome_msg["value"]
             if inner[0] == "E2setupResponse":
@@ -318,6 +349,7 @@ def _link_loop(host: str, port: int) -> None:
                 rejected_ran_function_ids=[],
             )
             logger.info("SCTP connected")
+            _PENDING_PDUS.clear()   # 上一輪的殘留不能帶進新 association
             event_ring.record_sctp_connect(host, port)
             global _CURRENT_SOCK
             _CURRENT_SOCK = sock
@@ -325,6 +357,14 @@ def _link_loop(host: str, port: int) -> None:
             # Step: send E2 Setup Request, wait response
             if _do_e2_setup(sock):
                 had_success = True
+                # setup 等待期間先到的 PDU(例如 RIC 已備妥的訂閱請求)現在才能處理:
+                # 那時 e2_setup_completed 還是 False,dispatcher 會拒收。
+                while _PENDING_PDUS:
+                    _early = _PENDING_PDUS.pop(0)
+                    try:
+                        _dispatch_pdu(sock, _early)
+                    except Exception:  # noqa: BLE001 — 補送失敗不該拆連線
+                        logger.exception("補送 setup 期間暫存的 PDU 失敗(%d bytes)", len(_early))
                 # NOTE (2026-05-08 fix): 不再從 sim CU 重建 indication producer.
                 # 之前的 _restore_producers_from_sim() 用 sim CU 自己的 subscription
                 # list 重啟 producer thread, 但那個 sub_id 只有 sim CU 跟 adapter 認得
