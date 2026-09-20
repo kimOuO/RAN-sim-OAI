@@ -92,7 +92,12 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .gauge { display: grid; justify-items: center; gap: 1px; } .g-track { stroke: var(--line-2); } .g-val { font-size: 15px; font-weight: 600; fill: var(--ink); font-variant-numeric: tabular-nums; } .g-l { font-size: 12px; } .g-s { font-size: 10.5px; }
 .gauge.warning .g-val { fill: var(--fair-fg); } .gauge.serious .g-val { fill: var(--poor-fg); }
 .gnb-board { display: grid; gap: 10px; } .gnb-row { display: flex; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; background: var(--bg-3); }
-.gnb-head { padding-right: 12px; border-right: 1px dashed var(--line-2); } .gnb-cells { display: flex; flex-wrap: wrap; gap: 12px; }
+.gnb-head { padding-right: 12px; border-right: 1px dashed var(--line-2); }
+/* 2026-09-20:原本 flex-wrap,圖塊寬度隨標籤長短變動、gNB 平均又是 96px,
+   看起來每個 cell 佔的版面不一樣。改成等寬網格 + 標籤省略,所有圓環同尺寸。 */
+.gnb-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; flex: 1; }
+.gnb-cells .gauge, .gnb-head .gauge { width: 112px; }
+.gauge .g-l, .gauge .g-s { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .runtabs { display: flex; gap: 2px; align-items: stretch; } .runtabs a { padding: 6px 12px; color: var(--muted); border-bottom: 2px solid transparent; text-transform: none; letter-spacing: 0; display: flex; gap: 6px; align-items: center; } .runtabs a.on { color: var(--ink); border-bottom-color: var(--cyan); } .runtabs .dot { margin: 0; }
 .runtabs .runtab { display: flex; align-items: center; border-bottom: 2px solid transparent; }
 .runtabs .runtab.on { border-bottom-color: var(--cyan); }
