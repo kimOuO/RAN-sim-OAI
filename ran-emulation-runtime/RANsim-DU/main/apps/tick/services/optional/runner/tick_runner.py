@@ -189,9 +189,17 @@ class TickRunner:
         # 2026-09-15 倍速診斷:step 5 的 CU POST(18 UE + 2 cell,每 2 tick)佔 tick 約 200 ms(body 預算 250)。
         # 回應不被使用 → 改丟給背景執行緒依序送(保序);佇列滿代表 CU 跟不上,丟最舊並記 log。
         import queue as _queue
-        self._report_q: "_queue.Queue[tuple]" = _queue.Queue(maxsize=4000)
+        # 2026-09-21:原本單一佇列 + 單一送出執行緒。CU 端實測每則 15.3 ms(p95 34),
+        # 序列送出的上限只有約 66 則/秒;18 UE 在 2× 需要 36 則/秒,負載一上來(CU 還要
+        # 做 A3 評估與換手)就溢出 —— corridor_peak_2h 一小時丟 4,925 筆。
+        # CU 跑 daphne,同步 view 走執行緒池,本來就能並行,瓶頸在 DU 這一側。
+        # 改成多條送出執行緒,但**同一個 UE 固定走同一條**:A3 的 L3 濾波與 TTT 狀態機
+        # 依賴報告先後,跨執行緒會亂序。
+        self._report_senders = max(1, get_int("DU_REPORT_SENDERS", 4))
+        self._report_qs: list["_queue.Queue[tuple]"] = [
+            _queue.Queue(maxsize=4000) for _ in range(self._report_senders)]
+        self._report_threads: list[threading.Thread | None] = [None] * self._report_senders
         self._report_dropped = 0
-        self._report_thread: threading.Thread | None = None
         self._achv_window_start_tick: int = 0
         # 改動一 shadow — per-UE 跨 tick 持有的 slot 引擎狀態(backlog/HARQ/slot 時鐘累積用)
         self._slot_states: dict[str, Any] = {}
@@ -598,23 +606,30 @@ class TickRunner:
             self._achv_window_start_tick = self.status.tick_count
 
     def _enqueue_report(self, fn, payload: dict) -> None:
-        if self._report_thread is None or not self._report_thread.is_alive():
-            self._report_thread = threading.Thread(target=self._report_worker, name="du-report-sender", daemon=True)
-            self._report_thread.start()
+        # 分流鍵:per-UE 報告用 ue_id,cell 報告用 cell_id —— 同一個來源永遠同一條執行緒
+        key = str(payload.get("ue_id") or payload.get("cell_id") or "")
+        idx = (hash(key) % self._report_senders) if key else 0
+        if self._report_threads[idx] is None or not self._report_threads[idx].is_alive():
+            th = threading.Thread(target=self._report_worker, args=(idx,),
+                                  name=f"du-report-sender-{idx}", daemon=True)
+            self._report_threads[idx] = th
+            th.start()
+        q = self._report_qs[idx]
         try:
-            self._report_q.put_nowait((fn, payload))
+            q.put_nowait((fn, payload))
         except Exception:  # noqa: BLE001 — 佇列滿
             try:
-                self._report_q.get_nowait(); self._report_q.put_nowait((fn, payload))
+                q.get_nowait(); q.put_nowait((fn, payload))
             except Exception:  # noqa: BLE001
                 pass
             self._report_dropped += 1
             if self._report_dropped % 100 == 1:
                 logger.warning("report queue full: CU 跟不上,已丟 %d 筆(最舊)", self._report_dropped)
 
-    def _report_worker(self) -> None:
+    def _report_worker(self, idx: int = 0) -> None:
+        q = self._report_qs[idx]
         while True:
-            fn, payload = self._report_q.get()
+            fn, payload = q.get()
             try:
                 fn(payload)
             except Exception as exc:  # noqa: BLE001
