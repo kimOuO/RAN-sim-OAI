@@ -124,7 +124,18 @@ class CoverageActor:
         )
         return success_response(resp_ser.data, message="OK", http_status=200)
 
-    @staticmethod
+    @api_view(["POST"])
+    def scene_bounds(request):
+        """body = {geometry_source} → {x_range, y_range, z_range}(我們的座標系)。
+        給 registry 的 auto_grid 用:掃描模型的實際尺寸只有載入 Mitsuba 才知道。"""
+        body = request.data or {}
+        try:
+            data = SionnaBusinessService.scene_bounds(body)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("scene_bounds failed")
+            return error_response(str(exc), http_status=500)
+        return success_response(data, message="OK", http_status=200)
+
     @api_view(["POST"])
     def compute_scene(request):
         """2026-09-17:body = {geometry_source, gnbs, scene_antenna_config?, grid, include_sinr?, max_depth?, diffraction?}

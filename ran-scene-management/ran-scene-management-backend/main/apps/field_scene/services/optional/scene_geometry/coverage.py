@@ -16,6 +16,10 @@ from main.apps.field_scene.services.optional.scenario_import.scenario_v1 import 
 PHYSICS_URL = os.environ.get("PHYSICS_URL", "http://ransim-physics:8000")
 MAX_CELLS = 40_000
 
+from main.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def _payload(raw: dict[str, Any]) -> dict[str, Any]:
     tx, ue = raw.get("tx_antenna"), raw.get("ue_antenna")
@@ -32,7 +36,31 @@ def _payload(raw: dict[str, Any]) -> dict[str, Any]:
             "gnbs": raw.get("gnbs") or [], "scene_antenna_config": ant}
 
 
-def auto_grid(raw: dict[str, Any], height: float, step: float | None, margin: float = 5.0) -> dict[str, Any]:
+def geometry_bounds(raw: dict[str, Any]) -> tuple[list[float], list[float]] | None:
+    """問 physics 這個場景幾何的實際邊界(x_range, z_range)。取不到回 None。
+
+    2026-09-20:掃描模型的尺寸只有載入 Mitsuba 才知道。實測 555 場景的模型是
+    640 × 465 m,而只看 gNB / UE 軌跡算出來的範圍是 47 × 80 m —— 熱圖幾乎沒蓋到東西。
+    physics 那支只做 load_scene + bbox,不碰 GPU 光追。
+    """
+    geo = raw.get("geometry_source")
+    if not geo:
+        return None
+    try:
+        req = urllib.request.Request(
+            f"{PHYSICS_URL}/api/v0.1/Physics/RanSignal/CoverageRunner/scene_bounds",
+            data=json.dumps({"geometry_source": geo}).encode(),
+            headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            d = json.load(r)["data"]
+        return [float(v) for v in d["x_range"]], [float(v) for v in d["z_range"]]
+    except Exception as exc:  # noqa: BLE001 — 取不到就退回只用 gNB / UE / 建築盒
+        logger.warning("scene_bounds 取得失敗,範圍退回只用 gNB/UE/建築盒:%r", exc)
+        return None
+
+
+def auto_grid(raw: dict[str, Any], height: float, step: float | None, margin: float = 5.0,
+              include_geometry: bool = True) -> dict[str, Any]:
     """範圍取 gNB/cell 位置、UE 軌跡、建築盒的外接矩形,再外擴 margin 公尺。
 
     2026-09-20:掃描模型(mitsuba_xml_path)的實際尺寸**沒有**納入 —— 那要解析網格檔
@@ -50,6 +78,9 @@ def auto_grid(raw: dict[str, Any], height: float, step: float | None, margin: fl
     for b in raw.get("buildings") or []:
         p, s = b.get("position") or [0, 0, 0], b.get("size") or [0, 0, 0]
         xs += [p[0] - s[0] / 2, p[0] + s[0] / 2]; zs += [p[2] - s[2] / 2, p[2] + s[2] / 2]
+    gb = geometry_bounds(raw) if include_geometry else None
+    if gb is not None:
+        xs += list(gb[0]); zs += list(gb[1])
     if not xs:
         xs, zs = [-50, 50], [-50, 50]
     m = max(0.0, float(margin))
@@ -60,9 +91,10 @@ def auto_grid(raw: dict[str, Any], height: float, step: float | None, margin: fl
     return {"x_range": [round(x0, 3), round(x1, 3)], "z_range": [round(z0, 3), round(z1, 3)], "x_step": st, "z_step": st, "sample_height_m": height}
 
 
-def compute(scene_uuid: str, *, grid: dict[str, Any] | None, height: float, step: float | None, max_depth: int, margin: float = 5.0) -> dict[str, Any]:
+def compute(scene_uuid: str, *, grid: dict[str, Any] | None, height: float, step: float | None, max_depth: int,
+            margin: float = 5.0, include_geometry: bool = True) -> dict[str, Any]:
     raw = export_scenario(scene_uuid)
-    body = {**_payload(raw), "grid": grid or auto_grid(raw, height, step, margin), "include_sinr": True, "max_depth": max_depth, "diffraction": True}
+    body = {**_payload(raw), "grid": grid or auto_grid(raw, height, step, margin, include_geometry), "include_sinr": True, "max_depth": max_depth, "diffraction": True}
     if not body["gnbs"]:
         raise ValueError("場景沒有 gNB")
     req = urllib.request.Request(f"{PHYSICS_URL}/api/v0.1/Physics/RanSignal/CoverageRunner/compute_scene",

@@ -426,6 +426,38 @@ class SionnaBusinessService:
         return result
 
     @classmethod
+    def scene_bounds(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        """回傳這個場景幾何的實際邊界(我們的座標系 Y-up)。
+
+        2026-09-20:覆蓋熱圖的 auto 範圍原本只取 gNB 位置、UE 軌跡與建築盒,
+        掃描模型(mitsuba_xml_path)的尺寸完全沒納入 —— 只用掃描模型的場景,
+        熱圖只蓋住一小塊。這裡載入 Mitsuba 場景取 bbox 給 registry 用。
+        只做 load_scene + bbox,不建 engine、不碰 GPU 光追,成本很低。
+        """
+        import tempfile
+
+        import sionna.rt as rt
+
+        from main.apps.ran_signal.services.optional.ran_calculation.frame import (
+            adapt_scene_xml, from_sionna,
+        )
+        geo = payload.get("geometry_source") or {"type": "buildings_json", "buildings": []}
+        if geo["type"] == "buildings_json":
+            tmp = tempfile.NamedTemporaryFile(prefix="bounds_", suffix=".xml", delete=False).name
+            mitsuba_builder.build_and_write(buildings=geo.get("buildings") or [], out_path=tmp, ground=geo.get("ground"))
+            path = tmp
+        else:
+            path = cls._materialize_geometry(geo)
+        sc = rt.load_scene(adapt_scene_xml(path))
+        b = sc.mi_scene.bbox()
+        lo, hi = [float(b.min.x), float(b.min.y), float(b.min.z)], [float(b.max.x), float(b.max.y), float(b.max.z)]
+        # 轉回我們的座標系後,兩個角的哪一端是最小值可能對調,逐軸取 min/max
+        a, c = from_sionna(lo), from_sionna(hi)
+        return {"x_range": [min(a[0], c[0]), max(a[0], c[0])],
+                "y_range": [min(a[1], c[1]), max(a[1], c[1])],
+                "z_range": [min(a[2], c[2]), max(a[2], c[2])]}
+
+    @classmethod
     def coverage_for_scene(cls, payload: dict[str, Any], *, grid: dict[str, Any], **opts: Any) -> dict[str, Any]:
         """2026-09-17:為指定場景另建一個暫時 engine 算覆蓋圖,不動共用(live)engine。
 
