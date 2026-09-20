@@ -1,0 +1,1112 @@
+       ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+
+TECHNICAL SPECIFICATION
+
+
+
+    Universal Mobile Telecommunications System (UMTS);
+                              LTE;
+                              5G;
+             Iuant interface: Signalling transport
+         (3GPP TS 37.462 version 19.0.0 Release 19)
+3GPP TS 37.462 version 19.0.0 Release 19                        1                             ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+
+                                                            Reference
+                                                    RTS/TSGR-0337462vj00
+
+                                                            Keywords
+                                                          5G,LTE,UMTS
+
+
+
+
+                                                               ETSI
+                                                  650 Route des Lucioles
+                                         F-06921 Sophia Antipolis Cedex - FRANCE
+
+                                       Tel.: +33 4 92 94 42 00 Fax: +33 4 93 65 47 16
+
+                                              Siret N° 348 623 562 00017 - APE 7112B
+                                            Association à but non lucratif enregistrée à la
+                                           Sous-Préfecture de Grasse (06) N° w061004871
+
+
+
+                                                       Important notice
+                                     The present document can be downloaded from the
+                                       ETSI Search & Browse Standards application.
+ The present document may be made available in electronic versions and/or in print. The content of any electronic and/or
+ print versions of the present document shall not be modified without the prior written authorization of ETSI. In case of any
+    existing or perceived difference in contents between such versions and/or in print, the prevailing version of an ETSI
+                   deliverable is the one made publicly available in PDF format on ETSI deliver repository.
+               Users should be aware that the present document may be revised or have its status changed,
+                                  this information is available in the Milestones listing.
+                         If you find errors in the present document, please send your comments to
+                                  the relevant service listed under Committee Support Staff.
+                   If you find a security vulnerability in the present document, please report it through our
+                                     Coordinated Vulnerability Disclosure (CVD) program.
+
+                                       Notice of disclaimer & limitation of liability
+The information provided in the present deliverable is directed solely to professionals who have the appropriate degree of
+         experience to understand and interpret its content in accordance with generally accepted engineering or
+                                  other professional standard and applicable regulations.
+                No recommendation as to products and services or vendors is made or should be implied.
+  No representation or warranty is made that this deliverable is technically accurate or sufficient or conforms to any law
+and/or governmental rule and/or regulation and further, no representation or warranty is made of merchantability or fitness
+                     for any particular purpose or against infringement of intellectual property rights.
+        In no event shall ETSI be held liable for loss of profits or any other incidental or consequential damages.
+
+   Any software contained in this deliverable is provided "AS IS" with no warranties, express or implied, including but not
+ limited to, the warranties of merchantability, fitness for a particular purpose and non-infringement of intellectual property
+ rights and ETSI shall not be held liable in any event for any damages whatsoever (including, without limitation, damages
+for loss of profits, business interruption, loss of information, or any other pecuniary loss) arising out of or related to the use
+                                                 of or inability to use the software.
+
+                                                   Copyright Notification
+No part may be reproduced or utilized in any form or by any means, electronic or mechanical, including photocopying and
+                             microfilm except as authorized by written permission of ETSI.
+             The content of the PDF version shall not be modified without the written authorization of ETSI.
+                    The copyright and the foregoing restriction extend to reproduction in all media.
+
+                                                          © ETSI 2025.
+                                                       All rights reserved.
+
+
+
+
+                                                              ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                   2                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Intellectual Property Rights
+Essential patents
+
+IPRs essential or potentially essential to normative deliverables may have been declared to ETSI. The declarations
+pertaining to these essential IPRs, if any, are publicly available for ETSI members and non-members, and can be
+found in ETSI SR 000 314: "Intellectual Property Rights (IPRs); Essential, or potentially Essential, IPRs notified to
+ETSI in respect of ETSI standards", which is available from the ETSI Secretariat. Latest updates are available on the
+ETSI IPR online database.
+
+Pursuant to the ETSI Directives including the ETSI IPR Policy, no investigation regarding the essentiality of IPRs,
+including IPR searches, has been carried out by ETSI. No guarantee can be given as to the existence of other IPRs not
+referenced in ETSI SR 000 314 (or the updates on the ETSI Web server) which are, or may be, or may become,
+essential to the present document.
+
+Trademarks
+
+The present document may include trademarks and/or tradenames which are asserted and/or registered by their owners.
+ETSI claims no ownership of these except for any which are indicated as being the property of ETSI, and conveys no
+right to use or reproduce any trademark and/or tradename. Mention of those trademarks in the present document does
+not constitute an endorsement by ETSI of products, services or organizations associated with those trademarks.
+
+DECT™, PLUGTESTS™, UMTS™ and the ETSI logo are trademarks of ETSI registered for the benefit of its
+Members. 3GPP™, LTE™ and 5G™ logo are trademarks of ETSI registered for the benefit of its Members and of the
+3GPP Organizational Partners. oneM2M™ logo is a trademark of ETSI registered for the benefit of its Members and of
+the oneM2M Partners. GSM® and the GSM logo are trademarks registered and owned by the GSM Association.
+
+
+
+Legal Notice
+This Technical Specification (TS) has been produced by ETSI 3rd Generation Partnership Project (3GPP).
+
+The present document may refer to technical specifications or reports using their 3GPP identities. These shall be
+interpreted as being references to the corresponding ETSI deliverables.
+
+The cross reference between 3GPP and ETSI identities can be found at 3GPP to ETSI numbering cross-referencing.
+
+
+
+Modal verbs terminology
+In the present document "shall", "shall not", "should", "should not", "may", "need not", "will", "will not", "can" and
+"cannot" are to be interpreted as described in clause 3.2 of the ETSI Drafting Rules (Verbal forms for the expression of
+provisions).
+
+"must" and "must not" are NOT allowed in ETSI deliverables except when used in direct citation.
+
+
+
+
+                                                          ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                                                3                                     ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Contents
+Intellectual Property Rights ................................................................................................................................2
+Legal Notice .......................................................................................................................................................2
+Modal verbs terminology....................................................................................................................................2
+Foreword.............................................................................................................................................................5
+1        Scope ........................................................................................................................................................6
+2        References ................................................................................................................................................6
+3        Definitions and abbreviations ...................................................................................................................6
+3.1           Definitions .......................................................................................................................................................... 6
+3.2           Abbreviations ..................................................................................................................................................... 7
+4        Iuant data link layer ..................................................................................................................................7
+4.1           Invalid receptions ............................................................................................................................................... 7
+4.2           Frame lengths ..................................................................................................................................................... 7
+4.3           Default address ................................................................................................................................................... 8
+4.4           Window size ....................................................................................................................................................... 8
+4.5           Message timing .................................................................................................................................................. 8
+4.6           State model ......................................................................................................................................................... 8
+4.7           Device types ....................................................................................................................................................... 8
+4.8           XID negotiation .................................................................................................................................................. 9
+4.8.1            HDLC parameters ......................................................................................................................................... 9
+4.8.2            Protocol version ............................................................................................................................................ 9
+4.8.3            Address assignment ...................................................................................................................................... 9
+4.8.4            Device scan ................................................................................................................................................. 10
+4.8.5            Reset device ................................................................................................................................................ 10
+4.9           Link establishment ........................................................................................................................................... 11
+4.10          Link timeout ..................................................................................................................................................... 11
+
+Annex A (informative): HDLC description ..................................................................................................12
+A.1           Basic structure .................................................................................................................................................. 12
+A.2           UNC commands ............................................................................................................................................... 13
+A.2.1            Set Normal Response Mode (SNRM) ......................................................................................................... 13
+A.2.2            Disconnect (DISC) ...................................................................................................................................... 13
+A.2.3            Unnumbered Acknowledge (UA) ............................................................................................................... 13
+A.2.4            Disconnected Mode (DM) .......................................................................................................................... 13
+A.2.5            Receiver Ready (RR) .................................................................................................................................. 13
+A.2.6            Receiver Not Ready (RNR) ........................................................................................................................ 13
+A.2.7            Information (I) ............................................................................................................................................ 13
+A.2.8            Frame Reject (FRMR) ................................................................................................................................ 13
+A.3           Option 1 ............................................................................................................................................................ 14
+A.4           Option 4 ............................................................................................................................................................ 14
+A.5           Option 15.1 ....................................................................................................................................................... 14
+A.6           Link safety ........................................................................................................................................................ 14
+A.7           Full duplex link ................................................................................................................................................ 14
+
+Annex B (informative):                            HDLC parameter negotiation ......................................................................16
+Annex C (informative):                           HDLC parameter negotiation example........................................................17
+Annex D (informative):                           Address assignment example ........................................................................18
+D.1                Address assignment command .................................................................................................................... 18
+D.2                Address assignment response ..................................................................................................................... 18
+
+Annex E (informative):                           Device scan example ......................................................................................19
+Annex F (informative):                           Change History ..............................................................................................21
+
+
+
+                                                                                      ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                                           4                                 ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+History ..............................................................................................................................................................22
+
+
+
+
+                                                                                ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                  5                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Foreword
+This Technical Specification has been produced by the 3rd Generation Partnership Project (3GPP).
+
+The contents of the present document are subject to continuing work within the TSG and may change following formal
+TSG approval. Should the TSG modify the contents of the present document, it will be re-released by the TSG with an
+identifying change of release date and an increase in version number as follows:
+
+   Version x.y.z
+
+   where:
+
+      x the first digit:
+
+            1 presented to TSG for information;
+
+            2 presented to TSG for approval;
+
+            3 or greater indicates TSG approved document under change control.
+
+      y the second digit is incremented for all changes of substance, i.e. technical enhancements, corrections,
+        updates, etc.
+
+      z the third digit is incremented when editorial only changes have been incorporated in the document.
+
+
+
+
+                                                        ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                       6                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+1                Scope
+The present document specifies the signalling transport related to RETAP and TMAAP signalling to be used across the
+Iuant interface for UTRAN, E-UTRAN and NG-RAN. In this specification UTRAN, E-UTRAN and NG-RAN are
+denoted as "RAN", whereas the corresponding network entities Node B, eNB, en-gNB and NG-RAN node are denoted
+as "RAN Node". The logical Iuant interface is an interface internal to the RAN Node and defined to reside between the
+implementation specific O&M function and the RET antennas and between the implementation specific O&M function
+and the TMA control unit function.
+
+
+
+2                References
+The following documents contain provisions which, through reference in this text, constitute provisions of the present
+document.
+
+    -     References are either specific (identified by date of publication, edition number, version number, etc.) or
+          non-specific.
+
+    -     For a specific reference, subsequent revisions do not apply.
+
+    -     For a non-specific reference, the latest version applies. In the case of a reference to a 3GPP document (including
+          a GSM document), a non-specific reference implicitly refers to the latest version of that document in the same
+          Release as the present document.
+
+    [1]                 Void
+
+    [2]                 ISO/IEC 13239 (3rd Edition, 2002-07): "Information Technology – Telecommunications and
+                        information exchange between systems – High-level data link control (HDLC) procedures".
+
+    [3]                 3GPP TS 37.461: "Iuant Interface: Layer 1".
+
+    [4]                 Antenna Interface Standards Group: "Control Interface for Antenna Line Devices", Standard
+                        No. AISG v2.0.
+
+    [5]                 3GPP TR 21.905: "Vocabulary for 3GPP Specifications".
+
+
+
+3                Definitions and abbreviations
+
+3.1              Definitions
+For the purposes of the present document, the terms and definitions given in 3GPP TR 21.905 [5] and the following
+apply. A term defined in the present document takes precedence over the definition of the same term, if any, in 3GPP
+TR 21.905 [5].
+
+ASCII character: A character forming part of the International Reference Version of the 7-bit character set defined in
+ISO/IEC 646:1991 represented as one octet.
+
+Octet: 8 bits as used in ISO/IEC 13239 [2].
+
+Device type: One octet identifying the type of a device.
+
+Unique ID: A concatenation of the vendor code (2 octets) and a 1 to 17 octets long unit specific code (e.g. serial
+number) exclusive for each secondary device from the vendor to whom the vendor code is assigned. The vendor code is
+placed in the left-most (most significant) position of the unique ID. The vendor to whom the vendor code is assigned is
+responsible for ensuring the uniqueness of the unique ID for each device.
+
+Vendor code: A unique ASCII 2-character code assigned to each vendor in AISG v2.0 [4].
+
+Reset: A process by which the device is put in the state it reaches after a completed power-up.
+
+
+
+
+                                                             ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                    7                       ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+SecondaryPayloadTransmitLength: The maximum length of the INFO field of an HDLC I-frame in the direction
+secondary device to primary device.
+
+SecondaryPayloadReceiveLength: The maximum length of the INFO field of an HDLC I-frame in the direction
+primary device to secondary device.
+
+
+3.2           Abbreviations
+For the purposes of the present document, the abbreviations given in 3GPP TR 21.905 [5] and the following apply. An
+abbreviation defined in the present document takes precedence over the definition of the same abbreviation, if any, in
+3GPP TR 21.905 [5].
+
+    ADDR             Address
+    ACK              Acknowledgment
+    CRC              Cyclic Redundancy Check
+    DISC             Disconnect (frame type)
+    DM               Disconnected Mode (frame type)
+    FCS              Frame Checking Sequence
+    FI               Format Identifier
+    FRMR             Frame Reject (frame type)
+    GI               Group Identifier
+    GL               Group Length
+    HDLC             High-Level Data Link Control
+    I                Information (frame type)
+    ID               Identifier
+    INFO             Information (field name)
+    NAK              Non Acknowledgment
+    NRM              Normal Response Mode
+    P/F              Poll/Final
+    PI               Parameter Identifier
+    PL               Parameter Length
+    PV               Parameter Value
+    RET              Remote Electrical Tilting
+    RETAP            Remote Electrical Tilting Application Part
+    RNR              Receive Not Ready (frame type)
+    RR               Receive Ready (frame type)
+    SNRM             Set Normal Response Mode (frame type)
+    TMA              Tower Mounted Amplifier
+    TMAAP            Tower Mounted Amplifier Application Part
+    TWA              Two Way Alternate
+    UA               Unnumbered Acknowledgement (frame type)
+    UNC              Unbalanced Operation Normal Response Mode Class
+    XID              Exchange ID (frame type)
+
+
+
+4             Iuant data link layer
+The Data Link Layer uses HDLC Class UNC1,15.1 TWA (see 6.10 in ISO/IEC 13239 [2]) according to ISO/IEC 13239
+[2].
+
+
+4.1           Invalid receptions
+Frames shall be discarded if a framing error or data overrun occurs.
+
+
+4.2           Frame lengths
+HDLC frame lengths may vary between 4 and N octets.
+
+
+
+
+                                                          ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                      8                      ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+All secondary devices shall support an N of 78 octets. A secondary device may, after XID negotiation, support a larger
+N.
+
+
+4.3           Default address
+After reset, a secondary device shall use the no-device address (0x00). While it has the no-device address, it may only
+respond to device scan and address assignment messages, but any broadcast messages shall be evaluated without
+response.
+
+
+4.4           Window size
+All devices shall support a window size of 1. A device may, after XID negotiation, support any window size up to 7.
+
+
+4.5           Message timing
+A minimum of 3 ms shall elapse between receiving and transmitting messages.
+
+A secondary device shall, after reception of a command with the P/F bit set, start transmitting a response within 10 ms
+from the time the final flag octet of that command frame was received.
+
+The transmission of the response shall be finalised within the time t= n*10*4/datarate where n is the number of octets in
+the response frame including all HDLC framing overhead. The maximum gap time between two consecutive octets
+shall not exceed the time t= 3*10/datarate. This corresponds to a 25% utilisation of the Data Link Layer.
+
+The data rate is specified in TS 37.461 [3].
+
+
+4.6           State model
+The connection state model for the layer 2 of the secondary device is shown in figure 4.1. The events written in italic
+are procedures from higher levels e.g. link establishment. The HDLC frames that correspond to the events are written in
+bold as command / response messages.
+
+
+                          Reset (reset, power on, watchdog etc.)
+
+                          Link Timeout
+                                                                                 Address
+                                                       NoAddress               Configuration
+
+                                                                     XID/XID
+
+
+                       Link Disconnection                                 AddressAssigned
+
+                                            DISC/UA
+                                                                     SNRM/UA
+                                                                                Link Establishment
+
+                                                       Connected
+
+
+
+                                         Figure 4.6.1: Connection state model
+
+
+4.7           Device types
+Three device types are defined and identified by the assigned 1-octet unsigned integer code.
+
+
+
+
+                                                            ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                    9                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+                                       Table 4.7.1: Device types and codes
+                                   Device Type                    1-octet unsigned integer code
+                           Single-Antenna RET Device                           0x01
+                            Multi-Antenna RET Device                           0x11
+                          Tower mounted amplifier (TMA)                        0x02
+
+
+
+
+4.8           XID negotiation
+XID negotiation shall use the standard format (see 5.5.3.1-5.5.3.2.3.2 in ISO/IEC 13239 [2]). See Annex B for a brief
+description of XID negotiation and Annex C to E for examples of XID negotiations. All GL fields have a size of 1 octet.
+
+Any parameter combination of 4.8.1 (HDLC parameter), 4.8.2 (Protocol Version) and 4.8.3 (Address assignment) in an
+XID command shall be supported by all secondary devices.
+
+
+4.8.1         HDLC parameters
+Format Identifier (FI) shall be 0x81 and Group Identifier (GI) shall be 0x80. All secondary devices shall support the
+following parameters:
+
+                            Table 4.8.1.1: HDLC parameters for secondary devices
+                     PI          PL                           Description of PV
+                     5            4       Maximum information field length – transmit (bits)
+                     6            4       Maximum information field length – receive (bits)
+                     7            1       Window size – transmit (frames)
+                     8            1       Window size – receive (frames)
+
+
+The SecondaryPayloadTransmitLength shall be 74 octets by default. It can be increased via XID negotiation, but shall
+always be 74 octets or larger.
+
+The SecondaryPayloadReceiveLength shall be 74 octets by default. It can be increased via XID negotiation, but shall
+always be 74 octets or larger.
+
+
+4.8.2         Protocol version
+Format Identifier (FI) shall be 0x81 and Group Identifier (GI) shall be 0xF0. All secondary devices shall support the
+following parameter:
+
+                              Table 4.8.2.1: HDLC parameter for protocol version
+                     PI          PL                              Description of PV
+                     5            1       3GPP Release ID
+
+
+
+4.8.3         Address assignment
+The primary device broadcasts the XID commands. The secondary device(s) which match shall respond. The primary
+shall ensure that only one secondary matches the supplied parameter(s). See below for details.
+
+Format Identifier (FI) shall be 0x81 and Group Identifier (GI) shall be 0xF0. All secondary devices shall support the
+following parameters:
+
+
+
+
+                                                          ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                   10                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+                 Table 4.8.3.1: HDLC parameters for address assignment and device scan
+                     PI          PL                            Description of PV
+                     1         0 to 19    Unique ID
+                     2            1       HDLC Address
+                     3         0 to 19    Bit Mask (for Unique ID), indicates a device scan
+                     4            1       Device Type (see table 4.7.1)
+                     6            2       Vendor Code as given in AISG v2.0 [4]
+
+
+The XID message can be used to assign HDLC addresses or to scan for devices.
+
+An address assignment XID command shall contain at least PI=2 (HDLC Address) and shall not contain PI=3 (Bit
+Mask). During an address assignment all secondary devices first assume a match and then carry out the following steps:
+
+   -   If PI=1 (Unique ID) is supplied, the right-most PL octets of the secondary devices Unique ID are compared to
+       the Unique ID in the XID command. If they are different, the secondary device does not match, and the message
+       is ignored. If the Unique ID in the XID command is longer than the secondary devices Unique ID, the secondary
+       device does not match, and the message is ignored.
+
+   -   If PI=4 (Device Type) is supplied, the device type of the secondary device is compared to the device type in the
+       XID command. If they are different, the secondary device does not match, and the message is ignored.
+
+   -   If PI=6 (Vendor Code) is supplied, the vendor code of the secondary device is compared to the vendor code in
+       the XID command. If they are different, the secondary device does not match, and the message is ignored.
+
+If the secondary device still matches after these steps, the secondary device sets its HDLC address to the address
+specified in PI=2 and responds with an XID response which contains PI=1 and PI=4.
+
+   NOTE:      Unlike the normal XID negotiation, in this XID negotiation, the XID response message returns a different
+              set of parameters than the XID command message.
+
+
+4.8.4         Device scan
+The device scan messages may be utilised by the primary to identify all secondary stations in the NoAddress state on an
+interface .
+
+A device scan XID command shall only contain PI=1 (Unique ID) and PI=3 (Bit Mask), see table 4.8.3.1. PI=1 and
+PI=3 shall be of equal length PL octets.
+
+If in the NoAddress state, the secondary device masks the min(PL,2) left-most octets of its own unique ID with the
+min(PL,2) left-most octets of the bit mask in the XID command and compares the result with the min(PL,2) left-most
+octets the unique ID supplied in the XID command. If they match, the secondary device masks the max(0,PL-2) right-
+most octets of its own unique ID with the max(0,PL-2) right-most octets of the bit mask in the XID command and
+compares the result with the max(0,PL-2) right-most octets of the unique ID supplied in the XID command. If they also
+match, the secondary device transmits an XID response message with its own identification data in the fields PI=1
+(complete unique ID), PI=4 (device type) and PI=6 (vendor code).
+
+For the device scan comparison, the unique ID of the secondary device shall be padded with NUL characters (character
+code 0x00) between the second and third left-most positions to a length of 19 octets.
+
+The scan command with zero length (PL=0) of the Unique ID (PI=1) and the Bit Mask (PI=3) shall match all secondary
+devices in the NoAddress state.
+
+Only matching secondary devices in the NoAddress state shall respond to the device scan messages.
+
+
+4.8.5         Reset device
+Format identifier (FI) shall be 0x81 and group identifier (GI) shall be 0xF0. All secondary devices shall support the
+following parameter:
+
+
+
+
+                                                          ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                  11                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+                      Table 4.8.5.1: HDLC parameters for reset of secondary devices
+                     PI          PL                             Description of PV
+                     7            0       Reset device
+
+
+If the XID command reset device is received as a broadcast (0xFF) by the secondary device, the secondary device shall
+reset without responding, otherwise the addressed secondary device shall reset after responding.
+
+The reset device parameter shall not be combined with other parameters in an XID command.
+
+   NOTE:      There is no PV in the XID command Reset device.
+
+
+4.9           Link establishment
+Once the secondary device has been assigned an HDLC address, the primary device initiates the link establishment by
+sending the SNRM command frame. The secondary device responds with an UA frame and enters the state Connected.
+
+
+4.10          Link timeout
+Whenever a secondary device receives an HDLC frame addressed to itself, i.e. not an all-device address (0xFF), it shall
+restart a 3 minute timer. If this 3 minute timer expires, the secondary device shall be reset.
+
+
+
+
+                                                         ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                    12                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Annex A (informative):
+HDLC description
+HDLC is defined in ISO/IEC 13239 [2]. This description only covers the aspects of HDLC which are used by this TS.
+
+The HDLC definition “UNC1,15.1, TWA” can be broken down to:
+
+   -   UNC;
+
+       -   The “U” means Unbalanced operation;
+
+       -   The “N” means Normal response mode (sequence numbers used in data frames);
+
+       -   The “C” means Class.
+
+   -   Options supported;
+
+       -   “1” means use of XID negotiation;
+
+       -   “15.1” means use of start/stop transmission with basic transparency;
+
+       -   Two Way Alternate (TWA) is the HDLC term for half duplex.
+
+
+A.1           Basic structure
+In unbalanced operation, there is one primary station which controls the bus and a number of secondary stations which
+only are allowed to transmit when the primary station gives them permission to do so.
+
+All messages are transmitted as frames with the layout shown in table A.1.1:
+
+                                      Table A.1.1: Format of an HDLC frame
+
+  Flag          ADDR                Control                        INFO                           FCS               Flag
+ 1 octet        1 octet             1 octet                     N octets                        2 octets          1 octet
+0x7E       Secondary Station     Control bits      Variable length                       CRC                     0x7E
+           Address
+
+
+HDLC frames begin and end with a Flag (0x7E) (see A.5 for details).
+
+The transmitting station calculates a Frame Check Sequence (CRC16) on all octets which follow the starting flag but
+not including the FCS octets. The checksum is transmitted as FCS in little endian order and is followed by the closing
+flag.
+
+The receiving station calculates the checksum on all octets between the flags. When it finds the closing flag, it compares
+the checksum to 0xF0B8. If it is a match, the HDLC frame is processed.
+
+The address field contains the HDLC address of the secondary station. If the primary station sends the message, it is
+called a command and the address field contains the address of the secondary station as destination. If the secondary
+station sends the message, it is called a response and the address field contains the address of the secondary station as
+source. Secondary stations cannot communicate directly to each other.
+
+The control field defines one of three frame types:
+
+   -   I frames contain data as well as a send and receive counter;
+
+   -   S frames contain a receive counter;
+
+   -   U frames contain unnumbered commands.
+
+The INFO field is only present in I frames and XID frames. The INFO field in an I frame contains the layer 7 payload.
+
+
+
+
+                                                           ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                      13                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+A.2           UNC commands
+According to 6.6.2.1 in ISO/IEC 13239 [2] the following commands in shall be supported in UNC mode:
+
+                                 Table A.2.1: Commands supported in UNC mode
+                                     Commands                              Responses
+                                  (Primary Station)                    (Secondary Station)
+                              Frame type I                           Frame type I
+                              Frame type RR                          Frame type RR
+                              Frame type RNR                         Frame type RNR
+                              Frame type SNRM                        Frame type UA
+                              Frame type DISC                        Frame type DM
+                                                                     Frame type FRMR
+
+
+
+A.2.1         Set Normal Response Mode (SNRM)
+This command is used to set the secondary station in connected mode and reset its sequence number variables.
+
+
+A.2.2         Disconnect (DISC)
+This command is used to terminate the connection.
+
+
+A.2.3         Unnumbered Acknowledge (UA)
+This response is used to confirm that the secondary station received and acted on an SNRM or DISC command.
+
+
+A.2.4         Disconnected Mode (DM)
+This response is used to inform the primary station that the secondary station is disconnected.
+
+
+A.2.5         Receiver Ready (RR)
+This command and response is used to inform the opposite station (primary or secondary) that the transmitting station
+has empty buffers, i.e. is ready to receive an I frame. This aspect is used for flow control.
+
+It also contains the sequence number of the next frame the transmitting station expects to see. This works both as an
+ACK and a NAK depending on the value.
+
+
+A.2.6         Receiver Not Ready (RNR)
+Just like RR, except it informs the opposite station that the transmitting station does not have empty buffers, i.e. that it is
+not ready to receive an I frame. This aspect is used for flow control.
+
+
+A.2.7         Information (I)
+This command and response is used to transfer a block of data together with its sequence number. The command also
+includes the sequence number of the next frame the transmitting station expects to see. This way, it works as an RR.
+Like RR, it enables transmission of I frames from the opposite side.
+
+
+A.2.8         Frame Reject (FRMR)
+This response is used to indicate an error condition. The two most likely error conditions are:
+
+   -   Invalid command;
+
+   -   Sequence number problem.
+
+
+
+
+                                                            ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                     14                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+The latter is used when the primary station has requested retransmission of a sequence number which it has already
+acknowledged.
+
+
+A.3           Option 1
+Option 1 means the addition of the XID command/response, which is used for parameter negotiation.
+
+
+A.4           Option 4
+Option 4 means the addition of the UI command/response, which is used to transfer information without changing the
+sequence numbers used by I frames.
+
+
+A.5           Option 15.1
+Option 15.1 means that the serial link is not synchronous and start/stop flags are used (asynchronous serial link). The
+flags are coded as 0x7E and basic transparency is used.
+
+This means that all octets between the flags are part of the frame and shall not be transmitted as 0x7E. Since the frame
+may contain 0x7E, basic transparency is used, which means that 0x7E is transmitted as 0x7D 0x5E and 0x7D is
+transmitted as 0x7D 0x5D. The receiving station converts back on reception.
+
+All checksum calculations are done on unconverted data.
+
+
+A.6           Link safety
+HDLC provides the upper layer with a safe link between two stations.
+
+Unless excessive frame lengths are used, the CRC16 checksum provides excellent protection against transmission
+errors. At worst, 10−5 of the bit errors will not be detected. The likelihood of an undetected error in a frame can be
+calculated by multiplying 10−5 with the Bit Error Rate (at least 10−9 for a reasonable link) and the frame length.
+
+The sequence numbers provide protection against:
+
+   -   Message duplication;
+
+   -   Message deletion;
+
+   -   Message re-ordering.
+
+Without sequence numbers, the protection is only given by a checksum and some sort of ACK.
+
+If the original message is lost, there will be no ACK and a timeout will cause retransmission which solves the problem.
+
+If the original message is not lost, but the ACK is lost, the same timeout will cause a retransmission.
+
+With sequence numbers, the message is retransmitted, but the receiving station sees that the sequence number is the
+same, i.e. that the message is a retransmission, and throws it away without processing it further. It does send an ACK
+which informs the transmitting station that the message got through.
+
+
+A.7           Full duplex link
+The upper layer sees the HDLC link as a full duplex link, although the actual transmissions on layer 1 are half duplex.
+The reason for this is that the upper layer is not aware of any restrictions on transmissions or receptions between layer 2
+and layer 1 or between the stations.
+
+Whenever the upper layer wants to transmit, it places a message on the queue to layer 2. The message will not be
+transmitted until the primary station does a poll.
+
+   NOTE:      This applies to both the primary and the secondary station.
+
+
+
+
+                                                           ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                    15                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+The same applies to reception. The upper layer will either be told by layer 2 when a message has arrived, or it will
+periodically check to see if a message has arrived at layer 2. Neither of these two methods will in any way influence the
+reception of a message. That only depends on when the primary does a poll.
+
+   NOTE       This still applies to both the primary and the secondary station.
+
+A poll is a command frame from the primary station where the P/F (Poll/Final) bit in the control field is set to 1. This
+informs the secondary that it is allowed to transmit response frames.
+
+U frames set the P/F bit, which means that they are polls. However, since the U frames used in UNC 1,4 require a
+specific U frame response, they are not used for I frame transmission, which is what the upper layer messages depend
+upon.
+
+An I, RR or RNR frame type with the P/F bit set constitutes a poll as used above. An RNR frame prevents transmission
+of I frames, so it does not really apply.
+
+   NOTE:      Whenever an I or RR poll occurs, the secondary station may transmit whatever I frame it wishes (as long
+              as the window size is not exceeded, i.e. previous messages have been acknowledged). This means that the
+              secondary station does not have to transmit a reply to a layer 7 instruction. It is free to transmit an alarm
+              instruction, if an alarm has occurred. It is also free to transmit any valid reply to an earlier layer 7
+              instruction, if it has received (acknowledged) more than one.
+
+
+
+
+                                                           ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                    16                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Annex B (informative):
+HDLC parameter negotiation
+See also sections 5.5.3.1 – 5.5.3.2.3.2 in ISO/IEC 13239 [2].
+
+                                       Table B.1: Format of XID parameters
+
+                                FI    GI     GL      PI     PL     PV      PI     PL     PV
+
+
+XID parameter negotiation uses a specific format (see table C.1) to transfer parameters.
+
+The parameters are identified by a one octet Format Identifier (FI) code and a one octet Group Identifier (GI) code. The
+Group Length (GL) is a one octet unsigned integer giving the length in octets of the parameters following it.
+
+The parameters are a sequence of PI/PL/PV values. The Parameter Identifier (PI) is a one octet code identifying the
+parameter. Parameter Length (PL) is a one octet unsigned integer giving the length in octets of the Parameter Value.
+The parameter order is not defined.
+
+The HDLC parameter negotiation is initiated by the primary station. The primary station transmits an XID frame with
+the values it suggests. The secondary station can either accept these or lower them. Regardless, it responds with an XID
+frame with the appropriate values.
+
+Generally this means that the primary station initially uses whatever its maximum limit is for each parameter. If the
+secondary can accept this, it responds with the same values. If it cannot support that, it lowers the values.
+
+Maximum information field length is a good example. If the primary station suggests using an information field length
+of 28000 bits (3500 octets), the secondary station can respond with 28000 bits, if it can use that much or even more, or
+respond with a lower number of e.g. 592 bits (74 octets) if that is its maximum supported information field length.
+
+The same applies to the Release ID. If a release 7 primary station attempts to communicate with a release 6 secondary
+station, the initial message will suggest release 7 and the response will be release 6.
+
+On the other hand, if a release 6 primary station attempts to communicate with a release 7 secondary station, the initial
+message will suggest release 6 and the response will release 6.
+
+Regardless, the primary station will have the final decision, since it can refuse to communicate with a station that does
+not support whatever parameter values it suggests. It can always repeat the XID negotiation with a new value.
+
+
+
+
+                                                          ETSI
+3GPP TS 37.462 version 19.0.0 Release 19              17                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Annex C (informative):
+HDLC parameter negotiation example
+XID Frame from primary station:
+
+                                Table C.1: XID frame from primary station
+
+                       Field       Content                    Description
+                       ADDR          12       Station address
+                       CTRL          XID      Command
+                        FI          0x81      Format identifier
+                        GI          0x80      HDLC Parameter set
+                        GL           18       Length of the parameter field (PI) in octets
+                        PI            5       Maximum I Field length Transmit
+                        PL            4       Length of the PV field in octets
+                        PV         341040     Maximum I Field length Transmit in bits
+                        PI            6       Maximum I Field length Receive
+                        PL            4       Length of the PV field in octets
+                        PV         224000     Maximum I Field length Receive in bits
+                        PI            7       Maximum window size Transmit
+                        PL            1       Length of the PV field in octets
+                        PV            7       Maximum window size Transmit
+                        PI            8       Maximum window size Receive
+                        PL            1       Length of the PV field in octets
+                        PV            3       Maximum window size Receive
+
+
+Response from secondary station:
+
+                               Table C.2: XID frame from secondary station
+
+                       Field       Content                     Description
+                       ADDR          12      Station address
+                       CTRL          XID     Command
+                        FI          0x81     Format identifier
+                        GI          0x80     HDLC Parameters set
+                        GL           16      Length of the parameter field in octets
+                        PI            5      Maximum I field length Transmit
+                        PL            2      Length of the PV field (octets)
+                        PV          3200     Maximum I field length Transmit in bits
+                        PI            6      Maximum I field length Receive
+                        PL            4      Length of the PV field (octets)
+                        PV         341040    Maximum I field length Receive in bits
+                        PI            7      Maximum window size Transmit
+                        PL            1      Length of the PV field (octets)
+                        PV            3      Maximum window size Transmit
+                        PI            8      Maximum window size Receive
+                        PL            1      Length of the PV field (octets)
+                        PV            1      Maximum window size Receive
+
+
+
+
+                                                     ETSI
+3GPP TS 37.462 version 19.0.0 Release 19              18                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Annex D (informative):
+Address assignment example
+D.1         Address assignment command
+                 Table D.1: Format of the XID frame originated by the primary station
+
+                Field                Content                              Description
+                ADDR                  0xFF             All-station address (Broadcast)
+                CTRL                  0xBF             XID command
+                 FI                   0x81             Format identifier
+                 GI                   0xF0             User defined parameter set
+                 GL                   0x10             Length of the parameter field (rest of the
+                                                       message) in octets
+                 PI                   0x01             Unique ID
+                 PL                   0x07             Length of PV field in octets
+                 PV            0x58 0x59 0x7B 0x20     Unique ID of the secondary station
+                                 0x41 0x42 0x43
+                 PI                   0x02             HDLC address
+                 PL                   0x01             Length of PV field in octets
+                 PV                   0x17             Assigned HDLC address
+                 PI                   0x06             Vendor code as given in AISG v2.0 [4]
+                 PL                   0x02             Length of PV field in octets
+                 PV                 0x58 0x59          Unique assigned vendor code as given in AISG
+                                                       v2.0 [4] (virtual vendor code “XY” used in this
+                                                       example)
+
+
+
+D.2         Address assignment response
+            Table D.2: Format of Address Assignment Response by the secondary station
+
+               Field            Content                              Description
+                 ADDR              0x17            HDLC address of the station
+                 CTRL              0xBF            XID command
+                   FI              0x81            Format identifier
+                   GI              0xF0            User defined parameter set
+                   GL              0x0C            Length of parameter field (rest of the message) in
+                                                   octets.
+                  PI                0x01           Unique ID
+                  PL                0x07           Length of PV field in octets
+                  PV           0x58 0x59 0x7B      Unique ID of the secondary station
+                               0x20 0x41 0x42
+                                    0x43
+                  PI                0x04           Device type
+                  PL                0x01           Length of PV field in octets
+                  PV                0x01           Device type as defined in table 4.7.1
+
+
+   NOTE:    In this address assignment example messages the virtual vendor code "XY", the unique ID 0x58 0x59
+            0x7B 0x20 0x41 0x42 0x43, the HDLC address 0x17 and the device type 0x01 for a single-antenna
+            device are used.
+
+
+
+
+                                                     ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                   19                       ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Annex E (informative):
+Device scan example
+In some situations it may be found that the Unique ID of a bus device is unknown or has been inaccurately recorded.
+This HDLC command exchange is used by the primary station to perform a binary tree scan of the bus, in order to
+identify all connected and disconnected devices.
+
+                            Table E.1: Primary device scan command (XID Frame)
+                  Field              Content                                Description
+                  ADDR                0xFF            All-station address
+                                                      (Broadcast)
+                  CTRL                0xBF            XID command
+                   FI                 0x81            Format identifier
+                   GI                 0xF0            User defined parameter set
+                   GL                 0x0A            Length in octets for the rest of the message
+                   PI                 0x01            Unique ID
+                   PL                 0x03            Length of PV field in octets
+                   PV            0x58 0x11 0x15       Unique ID supplied by the primary station for masked
+                                                      comparison with the unique ID of the secondary
+                                                      station
+                   PI                 0x03            Bit mask
+                   PL                 0x03            Length of PV field in octets (same as for PI=1)
+                   PV            0xFF 0x17 0xFF       Bit mask to be applied
+
+
+   NOTE:      The parameters may occur in any order in the XID command.
+
+Device Scan Response
+
+When each secondary station in the NoAddress state receives the command it masks its Unique ID with the bit mask
+and compares the result with the Unique ID supplied as described in clause 4.8.4. If they match, the secondary station
+responds using XID format frame according to table 8 of section 5.5 of ISO/IEC 13239 [2].
+
+
+
+
+                                                         ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                    20                        ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+                Table E.2: Secondary device scan response (XID Frame) in case of a match
+                              Field                      Content                    Description
+                              ADDR                        0x00              No station address
+                              CTRL                        0xBF              XID command
+                               FI                         0x81              Format identifier
+                               GI                         0xF0              User defined parameter
+                                                                            set
+                                GL                        0x0F              Length in octets for the
+                                                                            rest of the message
+                                PI                         0x01             Unique ID
+                                PL                         0x06             Length of PV field in
+                                                                            octets
+                                PV                0x58 0x59 0x07 0x5B       Unique ID of the
+                                                       0xCD 0x15            secondary station
+                                PI                       0x06               Vendor code
+                                PL                       0x02               Length of PV field in
+                                                                            octets
+                                PV                      0x58 0x59           Unique assigned vendor
+                                                                            code as given in AISG
+                                                                            v2.0 [4] (virtual vendor
+                                                                            code “XY” is used in this
+                                                                            example)
+                                PI                         0x04             Device type
+                                PL                         0x01             Length of PV field in
+                                                                            octets
+                                PV                         0x01             Single-antenna RET
+                                                                            device type as defined in
+                                                                            table 4.7.1
+
+
+   NOTE1: In this device scan example, the virtual vendor code "XY", the unique ID “0x58 0x59 0x07 0x5B 0xCD
+          0x15”, and the device type 0x01 for a single-antenna RET device are used.
+
+   NOTE2: The parameters may occur in any order in the response.
+
+It is recommended that the response of individual devices is subject to a random delay (within the permitted response
+time) to aid collision detection at the primary station.
+
+If there is no response, the primary station knows that no secondary station had those bits in its Unique ID or that the
+secondary stations having those bits in their unique ID already have assigned addresses, so the tree scan can be
+truncated at that branch.
+
+If multiple secondary stations respond, the responses might garble each other, unless one secondary station is close
+enough to overpower the signal from the other(s).
+
+If any response arrives, a single frame, multiple frames or frames with incorrect checksums or framing errors, the
+branch of the tree is inhabited.
+
+
+
+
+                                                           ETSI
+3GPP TS 37.462 version 19.0.0 Release 19                   21                         ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+Annex F (informative):
+Change History
+                                                    Change history
+Date       Meeting    TDoc        CR     Rev Cat   Subject/Comment                                                New
+                                                                                                                  version
+ 2019-02    R3-103    R3-190095                    Text transferred from 25.462 v15.0.0 (changes shown with rev    1.15.0
+                                                   marks)
+ 2019-04    RAN#83    RP-190598                    Specification approved by RAN plenary                           15.1.0
+ 2019-12     RP-86    RP-192915   0001     6   F   Correction for Iuant                                            15.2.0
+ 2020-07   RAN#88-e       -       -        -   -   Update to Rel-16 version (MCC)                                  16.0.0
+ 2022-03   RAN#95-e   RP-220238   0002     1   D   Inclusive language review                                       17.0.0
+ 2024-03   RAN#103    RP-240617   0004     -   D   Rapporteur Editorial Review                                     18.0.0
+ 2025-09    SA#109        -       -        -   -   Update to Rel-19 version (MCC)                                  19.0.0
+
+
+
+
+                                                         ETSI
+3GPP TS 37.462 version 19.0.0 Release 19             22          ETSI TS 137 462 V19.0.0 (2025-10)
+
+
+
+History
+                                              Document history
+ V19.0.0       October 2025     Publication
+
+
+
+
+                                                    ETSI
+

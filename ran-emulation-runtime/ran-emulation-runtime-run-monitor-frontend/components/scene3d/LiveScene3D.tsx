@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Grid, Html, Line, OrbitControls } from '@react-three/drei';
 import { CELL_COLORS, COVERAGE_SCALE, CoverageLayer, RAMP_CSS, type CoverageMode } from '@/components/scene3d/CoverageLayer';
-import { computeCoverage, type CoverageResult } from '@/services/api/coverage';
+import { computeCoverage, sceneBounds, type CoverageResult } from '@/services/api/coverage';
 import { cellPositions, sceneView, sinrLevel, uePositionAt } from '@/hooks/feature/live3d';
 import type { UeFlash } from '@/hooks/feature/useRunLive3dPage';
 import type { SceneTree3d, UeKpm } from '@/types/telemetry';
@@ -21,7 +21,15 @@ const HO = new THREE.Color('#ffffff');
 
 /** 即時 3D:gNB / cell 靜態;UE 用一個 InstancedMesh 每幀依模擬時間更新位置,顏色 = 服務 cell、亮度 = SINR;UE→cell 連線同一批 LineSegments */
 export function LiveScene3D(p: Props) {
-  const view = useMemo(() => sceneView(p.tree), [p.tree]);
+  // 幾何邊界(掃描模型)—— 取到才知道整個場地多大,鏡頭才框得住
+  const [geo, setGeo] = useState<{ x: number[]; z: number[] } | null>(null);
+  useEffect(() => { let off = false;
+    sceneBounds(p.tree.scene.scene_uuid)
+      .then((b) => { if (!off && b.x_range && b.z_range) setGeo({ x: b.x_range, z: b.z_range }); })
+      .catch(() => { /* 沒有掃描模型或 physics 不通 → 用 tree 的範圍 */ });
+    return () => { off = true; };
+  }, [p.tree.scene.scene_uuid]);
+  const view = useMemo(() => sceneView(p.tree, geo), [p.tree, geo]);
   const { center, extent, scale } = view;
   const hasGeo = !!(p.tree.scene.geometry_source as { type?: string } | null)?.type;
   const [mesh, setMesh] = useState<MeshView>({ show: true, opacity: 0.3, clipY: 2.2 });
@@ -43,7 +51,7 @@ export function LiveScene3D(p: Props) {
   };
   return (
     <>
-    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [center[0] + extent * 0.45, extent * 0.35, center[2] + extent * 0.45], fov: 45, near: Math.max(0.5, extent / 500), far: Math.max(2000, extent * 8) }}
+    <Canvas key={geo ? 'geo' : 'base'} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [center[0] + extent * 0.45, extent * 0.35, center[2] + extent * 0.45], fov: 45, near: Math.max(0.5, extent / 500), far: Math.max(2000, extent * 8) }}
       style={{ background: '#0b0f14' }} onPointerMissed={() => p.onSelect(null)}>
       <ambientLight intensity={0.6} /><directionalLight position={[50, 80, 30]} intensity={0.8} />
       {/* 2026-09-20:網格壓到 y=-0.05。原本 y=0 與建築底面、掃描模型地面共面,

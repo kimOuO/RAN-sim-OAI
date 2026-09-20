@@ -10,3 +10,7 @@ export interface CoverageResult {
 
 export const computeCoverage = (scene_uuid: string, opts: { sample_height_m: number; step_m?: number | null; margin_m?: number }) =>
   post<CoverageResult>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/coverage`, { scene_uuid, ...opts }, { timeoutMs: 600_000 });
+
+/** 場景幾何的實際邊界(含掃描模型):3D 取景與覆蓋範圍都用它 */
+export const sceneBounds = (scene_uuid: string) =>
+  post<{ x_range: number[] | null; z_range: number[] | null }>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/bounds`, { scene_uuid }, { timeoutMs: 180_000 });

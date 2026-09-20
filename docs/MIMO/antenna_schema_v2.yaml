@@ -1,0 +1,713 @@
+# antenna_schema_v2.yaml
+# 機器可讀 schema，對應 antenna_spec_v2.md。
+# 每個欄位描述：{type, enum|range, unit, default, norm, src:[ID], ref}
+# norm 取值：3GPP-N | 3GPP-TR | ORAN-N | DERIVED | SIM
+# src 中的 ID 皆存在於 docs/MIMO/extracts/01~09。
+meta:
+  version: "2.0"
+  spec_doc: antenna_spec_v2.md
+  sources:
+    TR38901: {version: V19.4.0, extract: 01_38901_38104.md}
+    TS38104: {version: V19.5.0, extract: 01_38901_38104.md}
+    TS38211: {version: V19.4.0, extract: 02_38211_38212.md}
+    TS38212: {version: V19.4.0, extract: 02_38211_38212.md}
+    TS38213: {version: V19.4.0, extract: 03_procedures.md}
+    TS38214: {version: V19.4.0, extract: 03_procedures.md}
+    TS38215: {version: V19.3.0, extract: 03_procedures.md}
+    TS38321: {version: V19.3.0, extract: 03_procedures.md}
+    TS38300: {version: V19.3.0, extract: 03_procedures.md}
+    TS38331: {version: V19.3.0, extract: 04_38331_38306.md}
+    TS38306: {version: V19.3.0, extract: 04_38331_38306.md}
+    ORAN_YANG_2022: {version: "2022-12-05", extract: 05_oran.md}
+    ORAN_CUS: {version: R005-v21.00, extract: 06_oran_cus_v21.md}
+    ORAN_MP: {version: R005-v21.01, extract: 07_oran_mp_v21.md}
+    TS38133: {version: V19.4.0, extract: 08_38133_38141-2.md}
+    TS38141_2: {version: V19.5.0, extract: 08_38133_38141-2.md}
+    TS38141_1: {version: V19.5.0, extract: 09_38141-1_ALD.md}
+    TS37461: {version: V19.0.0, extract: 09_38141-1_ALD.md}
+    TS37462: {version: V19.0.0, extract: 09_38141-1_ALD.md}
+    TS37466: {version: V19.0.0, extract: 09_38141-1_ALD.md}
+
+AntennaSystemSpec:
+  description: "靜態規格（O-RU/gNB 能力與實體配置）"
+  site:
+    site_id: {type: string, norm: SIM, src: [], ref: "simulator 自訂"}
+    position_gcs: {type: "float[3]", unit: m, norm: 3GPP-TR, src: [901-002], ref: "TR 38.901 V19.4.0 §7.1.2 p.19"}
+    latitude: {type: float, range: [-90, 90], unit: deg, norm: ORAN-N, src: [WG1-005], ref: "WG1 Table 4.6.4.3-1 Req-4.6.004"}
+    longitude: {type: float, range: [-180, 180], unit: deg, norm: ORAN-N, src: [WG1-005], ref: "WG1 Table 4.6.4.3-1 Req-4.6.005"}
+    antenna_height: {type: float, unit: m, norm: ORAN-N, src: [WG1-005], ref: "WG1 Req-4.6.007（TS 28.662 §4.3.2）"}
+    bs_class: {type: enum, enum: [WA, MR, LA], norm: 3GPP-N, src: [104-034, 1412-010], ref: "TS 38.104 V19.5.0 §4.4 p.31-32; TS 38.141-2 D.6"}
+    declared_coordinate_system:
+      reference_point: {type: string, norm: 3GPP-N, src: [1412-010], ref: "TS 38.141-2 V19.5.0 Table 4.6-1 D.1"}
+      orientation: {type: string, norm: 3GPP-N, src: [1412-010], ref: "TS 38.141-2 V19.5.0 Table 4.6-1 D.2"}
+      phi_range: {type: float, range: [-180, 180], unit: deg, norm: 3GPP-N, src: [1412-004], ref: "TS 38.141-2 §4.14 p.90-91"}
+      theta_range: {type: float, range: [-90, 90], unit: deg, norm: 3GPP-N, src: [1412-004], ref: "TS 38.141-2 §4.14（仰角型，下傾為正）"}
+    sectors:
+      type: list
+      item:
+        sector_id: {type: uint, norm: SIM, src: [CUS-003], ref: "對應 eAxC BandSector_ID 概念"}
+        bearing_alpha: {type: float, unit: deg, default: 0, norm: 3GPP-TR, src: [901-003], ref: "TR 38.901 §7.1.3 p.19-20"}
+        downtilt_beta: {type: float, unit: deg, default: 0, norm: 3GPP-TR, src: [901-003, 901-007], ref: "TR 38.901 §7.1.3/§7.1.4"}
+        slant_gamma: {type: float, unit: deg, default: 0, norm: 3GPP-TR, src: [901-003], ref: "TR 38.901 §7.1.3"}
+        calibration_default_bearings: {type: "float[]", default: [30, 150, 270], unit: deg, norm: 3GPP-TR, src: [901-061], ref: "TR 38.901 Table 7.8-1 p.100"}
+        ret:
+          description: "RET（remote electrical tilt）幾何值；線上編碼為 0.1 度步距的整數（TS 37.466 §3.1/§4.4）。正值向下傾。"
+          electrical_tilt_deg: {type: float, unit: deg, wire_type: int16, wire_unit: "0.1 deg", range_ref: "[min_electrical_tilt_deg, max_electrical_tilt_deg]", norm: 3GPP-N, src: [37466-003, 37466-012], ref: "TS 37.466 V19.0.0 §3.1 p.8; §6.6.3 p.25-26（SetTilt 0x33，解析度 0.1 度）"}
+          min_electrical_tilt_deg: {type: float, unit: deg, wire_type: int16, wire_unit: "0.1 deg", norm: 3GPP-N, src: [37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x07（Minimum supported electrical tilt）"}
+          max_electrical_tilt_deg: {type: float, unit: deg, wire_type: int16, wire_unit: "0.1 deg", norm: 3GPP-N, src: [37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x06（Maximum supported electrical tilt）"}
+          installed_mechanical_tilt_deg: {type: float, unit: deg, wire_type: int16, wire_unit: "0.1 deg", norm: 3GPP-N, src: [37466-002, 37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x26；機械 tilt 與電氣 tilt 為分開的兩個值（§3.1）"}
+          antenna_bearing_deg: {type: float, unit: deg, range: [0, 359.9], wire_type: uint16, wire_range: [0, 3599], wire_unit: "0.1 deg", norm: 3GPP-N, src: [37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x25"}
+          antenna_model_number: {type: string, max_len: 15, charset: "ASCII 32..126", norm: 3GPP-N, src: [37466-006, 37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x01"}
+          antenna_serial_number: {type: string, max_len: 17, charset: "ASCII 32..126", norm: 3GPP-N, src: [37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x02"}
+          base_station_id: {type: string, max_len: 32, charset: "ASCII 32..126", norm: 3GPP-N, src: [37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x23"}
+          sector_id_ald: {type: string, max_len: 32, charset: "ASCII 32..126", norm: 3GPP-N, src: [37466-014], ref: "TS 37.466 Annex B Table B.1 field 0x24"}
+
+  physical_arrays:
+    type: list
+    item:
+      name: {type: string, norm: ORAN-N, src: [MP-010], ref: "o-ran-uplane-conf v21.01 grouping parameters L1392"}
+      direction: {type: enum, enum: [tx, rx], norm: ORAN-N, src: [MP-010], ref: "UP tx-arrays L5805 / rx-arrays L5942"}
+      band_number: {type: uint16, norm: ORAN-N, src: [MP-072, MP-010], ref: "o-ran-module-cap band-number（TS 38.104 §5.2 band 整數）"}
+      num_panels_Mg: {type: uint, range: [1, null], default: 1, norm: 3GPP-TR, src: [901-010], ref: "TR 38.901 §7.3.0 p.28"}
+      num_panels_Ng: {type: uint, range: [1, null], default: 1, norm: 3GPP-TR, src: [901-010], ref: "TR 38.901 §7.3.0 p.28"}
+      panel_spacing_dgH: {type: float, unit: lambda, norm: 3GPP-TR, src: [901-011], ref: "TR 38.901 §7.3.0; Table 7.8-2（2.5λ）"}
+      panel_spacing_dgV: {type: float, unit: lambda, norm: 3GPP-TR, src: [901-011], ref: "TR 38.901 §7.3.0"}
+      num_rows_M: {type: uint16, range: [1, 65535], norm: ORAN-N, src: [MP-010, CUS-071, 901-012], ref: "UP number-of-rows; CUS §12.5.3; TR 38.901 §7.3.0"}
+      num_columns_N: {type: uint16, range: [1, 65535], norm: ORAN-N, src: [MP-010, CUS-071, 901-012], ref: "UP number-of-columns; CUS §12.5.3"}
+      num_polarizations_P: {type: uint, range: [1, 2], norm: ORAN-N, src: [MP-010, CUS-071, 901-015], ref: "UP polarisations min 1 max 2; TR 38.901 §7.3.0"}
+      num_array_layers_Q: {type: uint8, range: [1, 255], default: 1, norm: ORAN-N, src: [MP-010, CUS-071, CUS-075], ref: "UP number-of-array-layers; CUS §12.5.3, Annex K"}
+      polarisations:
+        type: list
+        range: [1, 2]
+        item:
+          p: {type: uint8, norm: ORAN-N, src: [MP-010, CUS-071], ref: "CUS §12.5.3（依角度遞增排序）"}
+          polarisation: {type: enum, enum: [MINUS_45, ZERO, PLUS_45, PLUS_90], norm: ORAN-N, src: [MP-010], ref: "UP typedef polarisation_type L507"}
+      horizontal_spacing: {type: decimal64, fraction_digits: 5, unit: m, norm: ORAN-N, src: [MP-010, ORAN-014], ref: "UP horizontal-spacing"}
+      vertical_spacing: {type: decimal64, fraction_digits: 5, unit: m, norm: ORAN-N, src: [MP-010, ORAN-015], ref: "UP vertical-spacing"}
+      d_H_lambda: {type: float, unit: lambda, default: 0.5, norm: DERIVED, src: [901-014, MP-010], ref: "d_H = horizontal_spacing * f_c / c"}
+      d_V_lambda: {type: float, unit: lambda, default: 0.5, norm: DERIVED, src: [901-014, MP-010], ref: "d_V = vertical_spacing * f_c / c"}
+      normal_vector:
+        azimuth_angle: {type: decimal64, fraction_digits: 4, unit: deg, norm: ORAN-N, src: [MP-010, CUS-070], ref: "UP normal-vector-direction; CUS §12.5.2"}
+        zenith_angle: {type: decimal64, fraction_digits: 4, unit: deg, norm: ORAN-N, src: [MP-010, CUS-070], ref: "UP normal-vector-direction; 90 = horizon"}
+      leftmost_bottom_position:
+        x: {type: decimal64, fraction_digits: 4, unit: m, norm: ORAN-N, src: [MP-010], ref: "UP leftmost-bottom-array-element-position"}
+        y: {type: decimal64, fraction_digits: 4, unit: m, norm: ORAN-N, src: [MP-010], ref: "同上"}
+        z: {type: decimal64, fraction_digits: 4, unit: m, norm: ORAN-N, src: [MP-010], ref: "同上"}
+      K_elements: {type: uint, formula: "M*N*P*Q", range: [1, 16384], norm: ORAN-N, src: [CUS-071, CUS-082], ref: "CUS §12.5.3; antMask 上限 16384（§7.5.3.54）"}
+      element_index_formula: {type: const, value: "k = q*P*M*N + p*M*N + m*N + n", norm: ORAN-N, src: [CUS-072], ref: "CUS §12.5.4"}
+      element_pattern:
+        model: {type: enum, enum: [TR38901_BS_Table7_3_1, TR38901_UT_Table7_3_2, isotropic, vendor], default: TR38901_BS_Table7_3_1, norm: 3GPP-TR, src: [901-020, 901-027], ref: "TR 38.901 Table 7.3-1 p.29 / Table 7.3-2 p.31-32"}
+        theta_3dB: {type: float, unit: deg, default: 65, note: "UT 為 125", norm: 3GPP-TR, src: [901-020, 901-027], ref: "Table 7.3-1 / 7.3-2"}
+        phi_3dB: {type: float, unit: deg, default: 65, note: "UT 為 125", norm: 3GPP-TR, src: [901-021, 901-027], ref: "Table 7.3-1 / 7.3-2"}
+        SLA_V: {type: float, unit: dB, default: 30, note: "UT 為 22.5", norm: 3GPP-TR, src: [901-020, 901-027], ref: "Table 7.3-1"}
+        A_max: {type: float, unit: dB, default: 30, note: "UT 為 22.5；同時為水平切面與 3D pattern 的上限", norm: 3GPP-TR, src: [901-021, 901-022], ref: "Table 7.3-1"}
+        G_E_max: {type: float, unit: dBi, default: 8, note: "UT 為 5.3", norm: 3GPP-TR, src: [901-023, 901-027], ref: "Table 7.3-1 p.29"}
+        hpbw_h: {type: float, unit: deg, norm: ORAN-N, src: [CUS-071], ref: "CUS §12.5.3 -3 dB beamwidth"}
+        hpbw_v: {type: float, unit: deg, norm: ORAN-N, src: [CUS-071], ref: "CUS §12.5.3"}
+        qpbw_h: {type: float, unit: deg, norm: ORAN-N, src: [CUS-071], ref: "CUS §12.5.3 -6 dB beamwidth"}
+        qpbw_v: {type: float, unit: deg, norm: ORAN-N, src: [CUS-071], ref: "CUS §12.5.3"}
+      polarization_model: {type: enum, enum: [model1, model2], default: model2, norm: 3GPP-TR, src: [901-032, 901-033, 901-063], ref: "TR 38.901 §7.3.2 p.33; calibration 採用 Model-2"}
+      calibration_notation: {type: object, fields: [M, N, P, Mg, Ng, Mp, Np], note: "Mp/Np 為每 panel、每極化的 TXRU 數", norm: 3GPP-TR, src: [901-060], ref: "TR 38.901 Table 7.8-1A p.101 等"}
+      relations:
+        type: list
+        item:
+          peer_array: {type: string, norm: ORAN-N, src: [MP-013], ref: "UP relations L6003"}
+          relation_type: {type: enum, enum: [SHARED, COALOCATED], note: "COALOCATED 為原文拼字", norm: ORAN-N, src: [MP-013, CUS-073], ref: "CUS §12.5.5"}
+          pairs: {type: "list[uint16,uint16]", norm: ORAN-N, src: [MP-013], ref: "element-array1 / element-array2"}
+      related_o_ru_connectors:
+        type: list
+        item:
+          name: {type: string, norm: ORAN-N, src: [MP-010, MP-144], ref: "class O-RU-ANTENNA-CONNECTOR"}
+          array_element_id: {type: "uint16[]", norm: ORAN-N, src: [MP-010, CUS-072], ref: "語意依 CUS §12.5.4"}
+      tx_only:
+        min_gain: {type: decimal64, unit: dB, norm: ORAN-N, src: [MP-011], ref: "UP tx-arrays/min-gain"}
+        max_gain: {type: decimal64, unit: dB, mandatory: true, norm: ORAN-N, src: [MP-011], ref: "UP tx-arrays/max-gain"}
+        independent_power_budget: {type: bool, mandatory: true, norm: ORAN-N, src: [MP-011], ref: "UP tx-arrays/independent-power-budget"}
+        max_rms_power_per_element_W: {type: float, unit: W, norm: ORAN-N, src: [CUS-076], ref: "CUS §8.1.3.3 m_a,k"}
+      rx_only:
+        gain_correction_min: {type: decimal64, unit: dB, norm: ORAN-N, src: [MP-012], ref: "UP gain-correction-range/min"}
+        gain_correction_max: {type: decimal64, unit: dB, norm: ORAN-N, src: [MP-012], ref: "UP gain-correction-range/max"}
+
+  rf:
+    bs_type: {type: enum, enum: ["1-C", "1-H", "1-O", "2-O"], norm: 3GPP-N, src: [104-006], ref: "TS 38.104 V19.5.0 §3.1 p.21"}
+    ru_category: {type: enum, enum: [CAT_A, CAT_B], norm: ORAN-N, src: [MP-070, CUS-001], ref: "o-ran-module-cap ru-supported-category; CUS §4.2.1"}
+    num_tx_units: {type: uint, range: [1, null], note: "bs_type 1-O 時 >= 8", norm: 3GPP-N, src: [104-031, 104-032], ref: "TS 38.104 §4.3.2/§4.3.3 p.30-31"}
+    num_rx_units: {type: uint, range: [1, null], note: "bs_type 1-O 時 >= 8", norm: 3GPP-N, src: [104-032], ref: "TS 38.104 §4.3.3 p.31"}
+    n_cells: {type: uint, range: [1, null], norm: 3GPP-N, src: [104-046], ref: "TS 38.104 §6.1 p.69"}
+    n_txu_active: {type: uint, norm: 3GPP-N, src: [104-046], ref: "TS 38.104 §6.1"}
+    n_txu_counted: {type: uint, formula: "min(n_txu_active, 8*n_cells)", norm: 3GPP-N, src: [104-046], ref: "TS 38.104 §6.1 p.69"}
+    tab_connectors:
+      type: list
+      applicable_when: "bs_type == 1-H"
+      item:
+        id: {type: uint, norm: 3GPP-N, src: [104-024], ref: "TS 38.104 §3.1 p.24"}
+        tx_min_cell_group: {type: uint, norm: 3GPP-N, src: [104-046], ref: "TS 38.104 §6.1（mapping implementation dependent）"}
+    rated_carrier_trp_dBm: {type: float, unit: dBm, note: "1-O：MR <= 47、LA <= 33", norm: 3GPP-N, src: [104-043, 1412-013], ref: "TS 38.104 Table 9.3.1-1 p.229; TS 38.141-2 D.37"}
+    eaxc_format:
+      o_du_port_bitmask: {type: uint16, norm: ORAN-N, src: [MP-050, CUS-003], ref: "UP grouping eaxc L1337"}
+      band_sector_bitmask: {type: uint16, norm: ORAN-N, src: [MP-050], ref: "UP grouping eaxc"}
+      ccid_bitmask: {type: uint16, norm: ORAN-N, src: [MP-050], ref: "UP grouping eaxc"}
+      ru_port_bitmask: {type: uint16, norm: ORAN-N, src: [MP-050], ref: "UP grouping eaxc"}
+      total_bits: {type: const, value: 16, norm: ORAN-N, src: [CUS-003, MP-050], ref: "CUS §5.1.3.2.7; MP §15.2.2"}
+      bit_order_msb_first: {type: const, value: [DU_Port_ID, BandSector_ID, CC_ID, RU_Port_ID], norm: ORAN-N, src: [CUS-003], ref: "CUS Table 5.1.3.2.7-2"}
+    endpoints:
+      type: list
+      item:
+        name: {type: string, norm: ORAN-N, src: [ORAN-031, ORAN-033], ref: "static-/low-level-[tr]x-endpoints"}
+        direction: {type: enum, enum: [tx, rx], norm: ORAN-N, src: [ORAN-031, ORAN-032], ref: "UP"}
+        array: {type: leafref, target: physical_arrays.name, norm: ORAN-N, src: [ORAN-031], ref: "static-low-level-tx-endpoints/array"}
+        eaxc_id: {type: uint16, range: [0, 65535], unique_per_direction: true, norm: ORAN-N, src: [MP-050, CUS-003], ref: "MP §15.2.3"}
+        configured_bf_profile_id: {type: uint16, norm: ORAN-N, src: [MP-061], ref: "UP L4822"}
+        bf_methods: {type: "enum[]", enum: [NOBF, PDBF, WDBF, ABBF, CIBF, DMRS_BF_EQ, DMRS_BF_NEQ], norm: ORAN-N, src: [MP-005, MP-061], ref: "UP typedef beamforming-method-type L536"}
+        energy_sharing_group_id: {type: "uint8[]", norm: ORAN-N, src: [MP-063], ref: "UP L4435"}
+    number_of_ru_ports_dl: {type: uint8, note: "值為 255 時使用 extended（uint16 >= 256）", norm: ORAN-N, src: [MP-070], ref: "MC ru-capabilities L636"}
+    number_of_ru_ports_ul: {type: uint8, norm: ORAN-N, src: [MP-070], ref: "MC ru-capabilities"}
+    number_of_spatial_streams: {type: uint8, note: "v21.01：DL 與 UL 最大累計空間流數", norm: ORAN-N, src: [MP-070, ORAN-M05], ref: "MC number-of-spatial-streams"}
+    number_of_spatial_streams_dl: {type: uint8, norm: ORAN-N, src: [MP-070], ref: "MC（2023-04-10 新增）"}
+    number_of_spatial_streams_ul: {type: uint8, norm: ORAN-N, src: [MP-070], ref: "MC"}
+    min_precoded_streams_odu_cat_a: {type: const, value: 8, norm: ORAN-N, src: [CUS-002], ref: "CUS §4.2.2.1"}
+    tx_array_carriers:
+      type: list
+      item:
+        name: {type: string, norm: ORAN-N, src: [ORAN-070], ref: "UP tx-array-carriers"}
+        center_of_channel_bandwidth: {type: uint64, unit: Hz, norm: ORAN-N, src: [ORAN-070], ref: "UP L932"}
+        channel_bandwidth: {type: uint64, unit: Hz, norm: ORAN-N, src: [ORAN-070], ref: "UP"}
+        active: {type: enum, enum: [INACTIVE, SLEEP, ACTIVE], default: INACTIVE, norm: ORAN-N, src: [MP-085], ref: "UP L1701; MP §15.3.2"}
+        gain: {type: decimal64, unit: dB, mandatory: true, norm: ORAN-N, src: [MP-080, CUS-076], ref: "UP L5496; CUS §8.1.3.3"}
+        carrier_max_power_reduction: {type: decimal64, range: [0, null], unit: dB, norm: ORAN-N, src: [MP-081], ref: "UP L5509"}
+        t_da_offset: {type: uint32, unit: Tc, default: 0, norm: ORAN-N, src: [MP-084], ref: "UP t-da-offset"}
+        reference_level: {type: decimal64, unit: dB, default: 0, norm: ORAN-N, src: [MP-084], ref: "UP reference-level"}
+        configured_tx_beamId_table_index: {type: uint8, norm: ORAN-N, src: [MP-082], ref: "UP L1845"}
+    calibration:
+      self_calibration_support: {type: bool, default: false, norm: ORAN-N, src: [MP-150], ref: "o-ran-antenna-calibration"}
+      coordinated_calibration_support: {type: bool, default: false, norm: ORAN-N, src: [MP-150], ref: "o-ran-antenna-calibration"}
+      calibration_period: {type: uint16, unit: min, norm: ORAN-N, src: [MP-150], ref: "o-ran-antenna-calibration"}
+    ald_ports:
+      type: list
+      item:
+        port_id: {type: uint8, norm: ORAN-N, src: [MP-142], ref: "o-ran-ald-port"}
+        dc_control_support: {type: bool, norm: ORAN-N, src: [MP-142], ref: "o-ran-ald-port"}
+        supported_connector: {type: enum, enum: [ANTENNA_CONNECTOR, RS485_PORT], norm: ORAN-N, src: [MP-142], ref: "o-ran-ald-port"}
+        ald_req_msg_max_bytes: {type: const, value: 1200, norm: ORAN-N, src: [MP-141], ref: "MP §14.4.3（AISG 2.0 透傳）"}
+    ret_tilt_deg:
+      moved_to: AntennaSystemSpec.site.sectors.item.ret.electrical_tilt_deg
+      type: float
+      unit: deg
+      wire_type: int16
+      wire_unit: "0.1 deg"
+      norm: 3GPP-N
+      src: [37466-003, 37466-012, 37466-014]
+      ref: "TS 37.466 V19.0.0 §3.1 p.8（tilt value = 10 x 電氣下傾角，signed integer，正值向下）；值域上下界由 device data 0x06/0x07 宣告（Annex B Table B.1）"
+      note: "RET 機電 tilt。與 O-RAN 數位 beam tilt offset（RuntimeState.beam_tilt_state，MP-049，int16 -90..90 deg）為兩套獨立參數，單位/解析度/控制路徑皆不同，不可互換（R-L6-49）"
+    declarations:
+      description: "TS 38.141-1 V19.5.0 §4.6 Table 4.6-1 的傳導宣告（D.x）；1-H 專屬者已註明"
+      n_cells: {type: uint, range: [1, null], applicable_when: "bs_type == 1-H", norm: 3GPP-N, src: [1411-023], ref: "TS 38.141-1 Table 4.6-1 D.24（per operating band）"}
+      n_rxu_active: {type: uint, range: [1, null], note: "= 第 8 章效能需求宣告的 demodulation branch 數", norm: 3GPP-N, src: [1411-008], ref: "TS 38.141-1 §3.2 p.27-28"}
+      n_rxu_counted: {type: uint, formula: "min(n_rxu_active, 8*n_cells)", norm: 3GPP-N, src: [1411-010], ref: "TS 38.141-1 §7.6.1 p.187"}
+      prated_c_sys_dbm: {type: float, unit: dBm, formula: "power_sum(connectors[].rated_carrier_output_power_dbm)", norm: 3GPP-N, src: [1411-007], ref: "TS 38.141-1 §3.2 p.28（Prated,c,sys = sum of Prated,c,TABC，單一 carrier）"}
+      iuant_modem_spurious_min_hz: {type: const, value: 20000000, unit: Hz, norm: 3GPP-N, src: [1411-012], ref: "TS 38.141-1 §4.5.3 p.47（modem ON 時 spurious 只量 >20 MHz）"}
+      no_mimo_layer_declaration: {type: const, value: true, norm: 3GPP-N, src: [1411-026, 1411-020], ref: "Table 4.6-1 無 MIMO 層數/antenna port 數/NTXU,active/NRXU,active 宣告（負面規則 R-L2-40）"}
+    connectors:
+      type: list
+      description: "1-C 的 antenna connector 或 1-H 的 TAB connector；38.141-1 的傳導宣告皆為 per connector"
+      item:
+        connector_id: {type: string, norm: SIM, src: [1411-020], ref: "標準無 connector id 欄位，僅為 schema 索引"}
+        kind: {type: enum, enum: [antenna_connector, tab_connector], norm: 3GPP-N, src: [1411-001, 1411-002], ref: "TS 38.141-1 §3.1 p.24-26"}
+        band_capability: {type: enum, enum: [single-band, multi-band], norm: 3GPP-N, src: [1411-006, 1411-021], ref: "TS 38.141-1 §3.1 p.25-26; Table 4.6-1 D.8"}
+        operating_bands: {type: "string[]", norm: 3GPP-N, src: [1411-021], ref: "TS 38.141-1 Table 4.6-1 D.3（per connector）"}
+        channel_bandwidths_by_scs: {type: "map[scs -> float[]]", unit: MHz, norm: 3GPP-N, src: [1411-022], ref: "TS 38.141-1 Table 4.6-1 D.14"}
+        max_bs_rf_bandwidth_mhz: {type: float, unit: MHz, norm: 3GPP-N, src: [1411-022], ref: "TS 38.141-1 Table 4.6-1 D.11（單頻）/D.12（多頻）"}
+        max_carriers_single_band: {type: uint, norm: 3GPP-N, src: [1411-022], ref: "TS 38.141-1 Table 4.6-1 D.17"}
+        rated_carrier_output_power_dbm: {type: "float[]", unit: dBm, max_items: 3, note: "依 DL QAM 能力可 1..3 組（NOTE 1/NOTE 7）", norm: 3GPP-N, src: [1411-023, 1411-027], ref: "TS 38.141-1 Table 4.6-1 D.21（Prated,c,AC / Prated,c,TABC）"}
+        rated_total_output_power_dbm: {type: float, unit: dBm, norm: 3GPP-N, src: [1411-023], ref: "TS 38.141-1 Table 4.6-1 D.22"}
+        tx_min_cell_group_id: {type: uint, cardinality: "exactly 1 per operating band（支援 TX 時）", applicable_when: "bs_type == 1-H", norm: 3GPP-N, src: [1411-003, 1411-009, 1411-024], ref: "TS 38.141-1 §6.1.2 p.91; Table 4.6-1 D.34"}
+        rx_min_cell_group_id: {type: uint, cardinality: "exactly 1 per operating band（支援 RX 時）", applicable_when: "bs_type == 1-H", norm: 3GPP-N, src: [1411-004, 1411-010, 1411-024], ref: "TS 38.141-1 §7.6.1 p.187; Table 4.6-1 D.33"}
+        tae_group_ids: {type: "uint[]", min_items: 1, applicable_when: "bs_type == 1-H", norm: 3GPP-N, src: [1411-024], ref: "TS 38.141-1 Table 4.6-1 D.31（TAB connector beam forming group）"}
+        equivalent_group_id: {type: uint, nullable: true, default: null, norm: 3GPP-N, src: [1411-024], ref: "TS 38.141-1 Table 4.6-1 D.32（equivalent connectors）"}
+        demod_branch_ids: {type: "uint[]", applicable_when: "bs_type == 1-H", norm: 3GPP-N, src: [1411-025], ref: "TS 38.141-1 Table 4.6-1 D.37（每個 demodulation branch 至少宣告一個 TAB connector）"}
+    port_to_trx_mapping:
+      type: "matrix[N_port x N_TRX]"
+      default: identity
+      norm: SIM
+      src: [211-001, 104-031, CUS-004]
+      ref: "無標準"
+      why_sim: "38.211 將 port 定義為邏輯概念；38.104 將 TRXUA 與 RDN 規定為 implementation specific；O-RAN 僅定義 eAxC 到 stream 的對應"
+    rf_weight_matrix_W_RF:
+      type: "complex matrix[K x N_TRX]"
+      default: full_connection
+      norm: SIM
+      src: [901-030, 901-068, CUS-071, MP-043]
+      ref: "無一般化標準"
+      why_sim: "38.901 只有 ULA 固定 tilt 權重 w_m；O-RAN 僅提供 hybrid 的 h(k) 映射與 TD 權重維度 p'，element-to-TRX 類比網路未標準化"
+
+  beam_capability:
+    bf_supported: {type: bool, norm: ORAN-N, src: [MP-040], ref: "O-RU 支援 urn:o-ran:beamforming 命名空間"}
+    supported_bf_methods: {type: "enum[]", enum: [NOBF, PDBF, WDBF, ABBF, CIBF, DMRS_BF_EQ, DMRS_BF_NEQ], norm: ORAN-N, src: [MP-005, CUS-010, CUS-011], ref: "UP beamforming-method-type; CUS Table 10.2.4-1"}
+    capabilities_groups:
+      type: list
+      item:
+        capabilities_group: {type: uint16, norm: ORAN-N, src: [MP-041], ref: "BF L718"}
+        band_number: {type: uint16, norm: ORAN-N, src: [MP-041], ref: "BF per-band-config-element"}
+        tx_arrays: {type: "string[]", norm: ORAN-N, src: [MP-041], ref: "BF tx-array leaf-list"}
+        rx_arrays: {type: "string[]", norm: ORAN-N, src: [MP-041], ref: "BF rx-array leaf-list"}
+        rt_bf_weights_update_support: {type: bool, norm: ORAN-N, src: [MP-042], ref: "BF L319"}
+        beamforming_type: {type: enum, enum: [frequency, time, hybrid], norm: ORAN-N, src: [MP-042], ref: "BF choice beamforming-type L325"}
+        initial_beam_id: {type: uint16, range: [0, 32767], norm: ORAN-N, src: [MP-044], ref: "BF beamforming-parameters L237"}
+        max_number_of_beam_ids: {type: uint16, range: [0, 32767], norm: ORAN-N, src: [MP-044], ref: "BF L237"}
+        beam_id_domain_range: {type: formula, value: "[initial_beam_id, initial_beam_id + max_number_of_beam_ids - 1]", norm: ORAN-N, src: [MP-044], ref: "BF description (revision 2025-04-14)"}
+        frequency_granularity: {type: enum, enum: [CC, BAND], norm: ORAN-N, src: [MP-044], ref: "BF granularity-parameters"}
+        time_granularity: {type: enum, enum: [SLOT, SYMBOL], norm: ORAN-N, src: [MP-044], ref: "BF granularity-parameters"}
+        p_dash: {type: uint16, default: 1, norm: ORAN-N, src: [MP-044, CUS-017, CUS-019], ref: "CUS §12.4.3.4.2（K = K' * p'）"}
+        K_prime: {type: uint, range: [0, K_elements], note: "0 表示不支援 hybrid", norm: ORAN-N, src: [CUS-071], ref: "CUS §12.5.3"}
+        fd_weights_mapping:
+          type: list
+          item:
+            fd_weight_number: {type: uint16, norm: ORAN-N, src: [MP-043], ref: "BF L410（k'）"}
+            array_elements: {type: "uint16[]", norm: ORAN-N, src: [MP-043, CUS-071], ref: "h(k)"}
+        bf_compression_methods: {type: "enum[]", enum: [no_compression, block_floating_point, block_scaling, mu_law, beamspace_type_I, beamspace_type_II], default: [no_compression], norm: ORAN-N, src: [CUS-041], ref: "CUS Table 7.7.1.2-x bfwCompMeth"}
+        bfw_iq_width: {type: uint, range: [1, 16], default: 16, norm: ORAN-N, src: [CUS-041], ref: "bfwIqWidth（0 表示 16）"}
+        beams:
+          type: list
+          item:
+            beam_id: {type: uint16, range: [1, 32767], norm: ORAN-N, src: [MP-045, CUS-033], ref: "BF beamforming-properties key"}
+            beam_type: {type: enum, enum: [COARSE, FINE], norm: ORAN-N, src: [MP-045, CUS-012], ref: "BF beamforming-property"}
+            beam_group_id: {type: uint16, norm: ORAN-N, src: [MP-045], ref: "同 group 可同時傳送"}
+            coarse_fine_relation: {type: "uint16[]", norm: ORAN-N, src: [MP-045], ref: "coarse-fine-beam-capability-based-relation"}
+            neighbour_beams: {type: "uint16[]", norm: ORAN-N, src: [MP-045, CUS-012], ref: "neighbour-beams-capability-based"}
+            pointing_azimuth: {type: float, unit: deg, norm: SIM, src: [CUS-042, MP-045], ref: "YANG 未定義；語意沿用 SE2 bfAzPt（38.901 LCS phi'）", why_sim: "M-plane 無每 beam 角度 leaf"}
+            pointing_zenith: {type: float, unit: deg, norm: SIM, src: [CUS-042], ref: "語意沿用 SE2 bfZePt（theta'）", why_sim: "同上"}
+            beamwidth_az: {type: float, unit: deg, norm: SIM, src: [CUS-042], ref: "語意沿用 bfAz3dd", why_sim: "同上"}
+            beamwidth_ze: {type: float, unit: deg, norm: SIM, src: [CUS-042], ref: "語意沿用 bfZe3dd", why_sim: "同上"}
+            weights: {type: "complex[K_elements]", constraint: "|I|,|Q| <= 1", norm: ORAN-N, src: [CUS-016, CUS-041], ref: "CUS §12.4.3.3, §7.7.1"}
+    weight_file_format: {type: string, value: implementation_specific, norm: ORAN-N, src: [MP-047], ref: "MP §15.4.3"}
+    weight_file_folder: {type: const, value: "o-ran/beamforming/", norm: ORAN-N, src: [MP-047], ref: "MP §12.2"}
+    min_bf_files_per_capabilities_group: {type: const, value: 2, norm: ORAN-N, src: [MP-047], ref: "MP §15.4.3"}
+    endpoint_beam_capacity:
+      max_beams_per_symbol: {type: uint16, range: [0, 32767], note: "缺少或為 0 表示不支援 BF", norm: ORAN-N, src: [MP-062, ORAN-060], ref: "UP grouping endpoint-beam-capacity L2118"}
+      max_beams_per_slot: {type: uint16, range: [0, 32767], norm: ORAN-N, src: [MP-062], ref: "同上"}
+      max_beam_updates_per_symbol: {type: uint16, range: [0, 32767], norm: ORAN-N, src: [MP-062], ref: "同上"}
+      max_beam_updates_per_slot: {type: uint16, range: [0, 32767], norm: ORAN-N, src: [MP-062], ref: "同上"}
+    multiple_beamid_tables:
+      max_beamId_tables_supported: {type: uint8, norm: ORAN-N, src: [MP-071, MP-050b], ref: "MC L959"}
+      table_index_range: {type: range, range: [1, 255], note: "第一筆為大小 32767 的預設全域 table", norm: ORAN-N, src: [MP-050b], ref: "MP §15.4.6"}
+      enabled: {type: bool, default: false, norm: ORAN-N, src: [MP-086], ref: "general-config/multiple-beamId-tables-support-enabled"}
+    beam_tilt:
+      elevation_tilt_offset_granularity: {type: uint8, range: [0, 30], unit: deg, note: "0 表示不支援", norm: ORAN-N, src: [MP-049], ref: "BF beam-tilt-state"}
+      azimuth_tilt_offset_granularity: {type: uint8, range: [0, 30], unit: deg, norm: ORAN-N, src: [MP-049], ref: "BF beam-tilt-state"}
+      min_supported_elevation: {type: int16, range: [-90, 0], unit: deg, norm: ORAN-N, src: [MP-049], ref: "BF"}
+      max_supported_elevation: {type: int16, range: [0, 90], unit: deg, norm: ORAN-N, src: [MP-049], ref: "BF"}
+      min_supported_azimuth: {type: int16, range: [-90, 0], unit: deg, norm: ORAN-N, src: [MP-049], ref: "BF"}
+      max_supported_azimuth: {type: int16, range: [0, 90], unit: deg, norm: ORAN-N, src: [MP-049], ref: "BF"}
+      run_time_tilt_offset_supported: {type: bool, norm: ORAN-N, src: [MP-049, ORAN-B21], ref: "BF"}
+    null_steering_capability:
+      methods: {type: enum, enum: [NULL-PER-ARRAY, NULL-PER-ARRAY-CARRIER], norm: ORAN-N, src: [MP-086, CUS-013], ref: "UP general-config/null-control-method"}
+      min_max_azimuth_zenith: {type: int16, unit: "0.1 deg", norm: ORAN-N, src: [MP-130], ref: "UP null-steering-capability L5898"}
+      max_null_width_value: {type: uint8, default: 1, norm: ORAN-N, src: [MP-130], ref: "UP"}
+      max_total_null_point_width: {type: uint32, norm: ORAN-N, src: [MP-130], ref: "MP §15.4.7.2 名稱為 max-total-null-width（不一致）"}
+    ue_specific_beamforming:
+      max_number_of_ues_15bit: {type: uint16, range: [1, 32767], norm: ORAN-N, src: [MP-046], ref: "BF L734"}
+    dmrs_bf:
+      equalization_data_scaling: {type: enum, enum: [SCALING-F-1, SCALING-F-2], norm: ORAN-N, src: [MP-046], ref: "BF dmrs-bf-general-capabilities"}
+      ueid_max_layer_bits: {type: uint8, range: [1, 4], norm: ORAN-N, src: [MP-046, CUS-024], ref: "BF L790"}
+      max_num_ues_supported: {type: uint16, range: [1, 32767], norm: ORAN-N, src: [MP-046], ref: "BF"}
+    declared_beams:
+      type: list
+      item:
+        beam_identifier: {type: string, norm: 3GPP-N, src: [1412-010, 104-040], ref: "TS 38.141-2 D.3"}
+        reference_beam_direction_pair: {type: "{centre:[theta,phi], peak:[theta,phi]}", unit: deg, norm: 3GPP-N, src: [1412-010], ref: "D.8"}
+        ota_peak_directions_set: {type: "range|list", norm: 3GPP-N, src: [1412-010, 104-014], ref: "D.9"}
+        max_steering_direction_pairs: {type: "list[4]", enum: [phi_max, phi_min, theta_max, theta_min], norm: 3GPP-N, src: [1412-010], ref: "D.10"}
+        rated_beam_eirp: {type: "float[5]", unit: dBm, norm: 3GPP-N, src: [1412-010, 104-019], ref: "D.11"}
+        beamwidth: {type: "float[5]", unit: deg, norm: 3GPP-N, src: [1412-010], ref: "D.12"}
+        equivalent_beams: {type: "string[]", norm: 3GPP-N, src: [1412-010], ref: "D.13"}
+        parallel_beams: {type: "string[]", norm: 3GPP-N, src: [1412-010], ref: "D.14"}
+        eirp_accuracy_dB: {type: float, enum: [2.2, 2.7, 3.4, 4.5], note: "1-H/1-O normal、1-O extreme、2-O normal、2-O extreme", norm: 3GPP-N, src: [104-042], ref: "TS 38.104 §9.2.2/9.2.3 p.229"}
+    legacy_ula_etilt_deg: {type: float, range: [0, 180], default: 102, note: "indoor 為 110；90 表示 broadside", norm: 3GPP-TR, src: [901-030, 901-061], ref: "TR 38.901 §7.3.1 Eq 7.3-1 p.32; Table 7.8-1"}
+
+  logical_port_capability:
+    port_bases:
+      pdsch: {type: const, value: 1000, norm: 3GPP-N, src: [211-004], ref: "TS 38.211 V19.4.0 §7.2 p.121"}
+      pdcch: {type: const, value: 2000, norm: 3GPP-N, src: [211-004], ref: "§7.2"}
+      csi_rs: {type: const, value: 3000, norm: 3GPP-N, src: [211-004, 211-032], ref: "§7.2, §7.4.1.5.3"}
+      ssb: {type: const, value: 4000, note: "單一 port", norm: 3GPP-N, src: [211-040], ref: "§7.4.3.1 p.150-151"}
+      prs: {type: const, value: 5000, norm: 3GPP-N, src: [211-004], ref: "§7.2"}
+      ul_pusch_dmrs: {type: const, value: 0, norm: 3GPP-N, src: [211-003], ref: "§6.2 p.33"}
+      ul_srs_pusch: {type: const, value: 1000, norm: 3GPP-N, src: [211-003], ref: "§6.2"}
+      ul_pucch: {type: const, value: 2000, norm: 3GPP-N, src: [211-003], ref: "§6.2"}
+      ul_prach: {type: const, value: 4000, norm: 3GPP-N, src: [211-003], ref: "§6.2"}
+    pdsch_dmrs:
+      type: {type: enum, enum: [type1, type2], default: type1, norm: 3GPP-N, src: [211-020, 331-014], ref: "38.331 DMRS-DownlinkConfig p.870"}
+      type_enh: {type: bool, default: false, norm: 3GPP-N, src: [211-020], ref: "38.211 §7.4.1.1.2"}
+      max_length: {type: enum, enum: [len1, len2], default: len1, norm: 3GPP-N, src: [331-014], ref: "38.331 p.871"}
+      additional_position: {type: enum, enum: [pos0, pos1, pos2, pos3], default: pos2, note: "len2 時只能 pos0/pos1", norm: 3GPP-N, src: [214-023, 214-024], ref: "38.214 §5.1.6.2 p.65-66"}
+      max_orthogonal_ports:
+        type: table
+        norm: 3GPP-N
+        src: [211-023, 300-001]
+        ref: "38.211 Table 7.4.1.1.2-5 p.135"
+        value: {basic_single: {type1: 4, type2: 6}, basic_double: {type1: 8, type2: 12}, enhanced_single: {type1: 8, type2: 12}, enhanced_double: {type1: 16, type2: 24}}
+    csi_rs:
+      nrof_ports_per_resource: {type: enum, enum: [1, 2, 4, 8, 12, 16, 24, 32], norm: 3GPP-N, src: [211-031, 331-002], ref: "38.331 CSI-RS-ResourceMapping p.862"}
+      aggregated_ports: {type: "list[N_tot,K,N]", value: [[48, 2, 24], [48, 3, 16], [64, 4, 16], [64, 2, 32], [128, 4, 32]], norm: 3GPP-N, src: [211-031], ref: "38.211 Table 7.4.1.5.3-6 p.143"}
+      cdm_type: {type: enum, enum: [noCDM, fd-CDM2, cdm4-FD2-TD2, cdm8-FD2-TD4], cdm_group_size: [1, 2, 4, 8], norm: 3GPP-N, src: [211-034, 331-002], ref: "38.211 Table 7.4.1.5.3-1 p.142"}
+      density: {type: enum, enum: [dot5, one, three], norm: 3GPP-N, src: [331-002], ref: "38.331 p.863"}
+      freq_alloc_bits: {type: table, value: {row1: 4, row2: 12, row4: 3, other: 6}, norm: 3GPP-N, src: [211-033, 331-002], ref: "38.211 §7.4.1.5.3 p.140"}
+      first_symbol_l0: {type: int, range: [0, 13], norm: 3GPP-N, src: [331-002], ref: "38.331"}
+      first_symbol_l1: {type: int, range: [2, 12], norm: 3GPP-N, src: [331-002], ref: "38.331（Need R）"}
+    ssb:
+      case: {type: enum, enum: [A, B, C, D, E, F, G], norm: 3GPP-N, src: [213-001], ref: "38.213 §4.1 p.10-11"}
+      L_max: {type: enum, enum: [4, 8, 64], norm: 3GPP-N, src: [213-002], ref: "38.213 §4.1 p.11"}
+      positions_in_burst: {type: bitstring, length: L_max, note: "最左位元對應 index 0", norm: 3GPP-N, src: [331-030], ref: "38.331 p.1233"}
+      periodicity_ms: {type: enum, enum: [5, 10, 20, 40, 80, 160], default: 5, unit: ms, norm: 3GPP-N, src: [331-030], ref: "38.331 p.1232"}
+    srs:
+      nrof_ports: {type: enum, enum: [1, 2, 4, 8], default: 1, norm: 3GPP-N, src: [211-050, 331-018], ref: "38.211 §6.4.1.4.1 p.112"}
+      comb: {type: enum, enum: [2, 4, 8], max_cyclic_shifts: [8, 12, 6], norm: 3GPP-N, src: [211-051], ref: "38.211 Table 6.4.1.4.2-1"}
+      usage: {type: enum, enum: [beamManagement, codebook, nonCodebook, antennaSwitching], norm: 3GPP-N, src: [214-083, 331-018], ref: "38.214 §6.2.1 p.277"}
+    ssb_to_beam_map:
+      type: "list[{ssb_index, beam_id}]"
+      norm: SIM
+      src: [211-009, ORAN-063]
+      ref: "規範僅定義相同 SSB index 的 QCL；O-RAN beamId 不等於 SSB index"
+      why_sim: "3GPP 與 O-RAN 皆未標準化 SSB index 到 O-RU beamId 的對應"
+
+  mimo_capability:
+    pdsch_max_layers_spec: {type: const, value: 8, norm: 3GPP-N, src: [214-020, 211-015], ref: "38.214 §5.1.1 p.18"}
+    max_mimo_layers_pdsch_cell: {type: int, range: [1, 8], norm: 3GPP-N, src: [331-013], ref: "38.331 PDSCH-ServingCellConfig p.1061"}
+    max_mimo_layers_pdsch_bwp: {type: int, range: [1, 8], note: "未設定時沿用 cell 值", norm: 3GPP-N, src: [331-012], ref: "38.331 PDSCH-Config maxMIMO-Layers-r16 p.1056"}
+    max_mimo_layers_pusch: {type: int, range: [1, 8], note: "1..4，v1810 為 5..8", norm: 3GPP-N, src: [331-017], ref: "38.331 PUSCH-ServingCellConfig p.1118"}
+    pusch_max_rank: {type: int, range: [1, 8], note: "1..4，v1810 為 5..8", norm: 3GPP-N, src: [331-016], ref: "38.331 PUSCH-Config p.1107"}
+    pusch_tx_config: {type: enum, enum: [codebook, nonCodebook], note: "缺省時為單 port", norm: 3GPP-N, src: [331-016, 214-080], ref: "38.331 p.1109"}
+    pusch_codebook_subset: {type: enum, enum: [fullyAndPartialAndNonCoherent, partialAndNonCoherent, nonCoherent], norm: 3GPP-N, src: [331-016, 214-081], ref: "38.214 §6.1.1.1 p.228"}
+    max_codewords_per_dci: {type: enum, enum: [n1, n2], default: n1, norm: 3GPP-N, src: [331-012, S331-007], ref: "38.331 p.1051"}
+    prg_size: {type: enum, enum: ["2", "4", wideband], unit: PRB, norm: 3GPP-N, src: [214-022], ref: "38.214 §5.1.2.3 p.32"}
+    su_mimo_max_dmrs_ports_per_ue: {type: const, value: 8, norm: 3GPP-N, src: [300-001], ref: "38.300 §5.2.1"}
+    mu_mimo_max_dmrs_ports_per_ue: {type: const, value: 4, norm: 3GPP-N, src: [300-001], ref: "38.300 §5.2.1"}
+    tci:
+      max_tci_states_asn1: {type: const, value: 128, norm: 3GPP-N, src: [S331-003, 331-040], ref: "38.331 §6.4 p.1661"}
+      max_ul_tci_asn1: {type: const, value: 64, norm: 3GPP-N, src: [331-040], ref: "maxUL-TCI-r17"}
+      max_active_codepoints: {type: const, value: 8, norm: 3GPP-N, src: [214-004, 321-005], ref: "38.214 p.51; 38.321 §6.1.3.14"}
+      max_active_unified_tci_states: {type: const, value: 16, norm: 3GPP-N, src: [321-006], ref: "38.321 §6.1.3.47"}
+      dci_tci_field_bits: {type: enum, enum: [0, 3], norm: 3GPP-N, src: [212-002], ref: "38.212 §7.3.1.2.2 p.261"}
+    ue_capability:
+      max_layers_dl: {type: enum, enum: [2, 4, 8], norm: 3GPP-N, src: [331-023, 306-018], ref: "38.331 MIMO-LayersDL p.1418; 38.306 p.313"}
+      max_layers_ul: {type: enum, enum: [1, 2, 4], norm: 3GPP-N, src: [331-023], ref: "38.331 MIMO-LayersUL"}
+      max_layers_cb_pusch: {type: int, norm: 3GPP-N, src: [306-019], ref: "38.306 mimo-CB-PUSCH p.346"}
+      max_layers_noncb_pusch: {type: int, norm: 3GPP-N, src: [306-020], ref: "38.306 p.346"}
+      max_configured_tci_per_cc: {type: enum, enum: [4, 8, 16, 32, 64, 128], note: "FR2 >= 64", norm: 3GPP-N, src: [331-021, 306-004], ref: "38.306 tci-StatePDSCH p.171"}
+      max_active_tci_per_bwp: {type: enum, enum: [1, 2, 4, 8], norm: 3GPP-N, src: [331-021, 306-004], ref: "38.331 p.1418"}
+      max_number_rx_beam: {type: int, range: [2, 8], norm: 3GPP-N, src: [331-021, 306-001], ref: "38.306 p.117"}
+      max_number_non_group_beam_reporting: {type: enum, enum: [1, 2, 4], norm: 3GPP-N, src: [331-021, 306-002], ref: "38.331 p.1418"}
+      group_beam_reporting: {type: bool, norm: 3GPP-N, src: [306-003], ref: "38.306 p.107"}
+      max_tx_ports_per_resource: {type: enum, enum: [2, 4, 8, 12, 16, 24, 32], norm: 3GPP-N, src: [331-022, 306-015], ref: "38.306 codebookParameters p.74"}
+      pusch_trans_coherence: {type: enum, enum: [nonCoherent, partialCoherent, fullCoherent], norm: 3GPP-N, src: [331-021, 306-024], ref: "38.306 p.148"}
+      max_number_ssb_bfd: {type: int, range: [1, 64], note: "38.306：本版最大 16", norm: 3GPP-N, src: [331-021, 306-012], ref: "38.306 p.117"}
+      max_number_csi_rs_bfd: {type: int, range: [1, 64], note: "38.306：本版最大 16", norm: 3GPP-N, src: [331-021, 306-013], ref: "38.306 p.116"}
+      supported_srs_tx_port_switch: {type: enum, enum: [t1r2, t1r4, t2r4, t1r1, t2r2, t4r4, t1r6, t2r6, t1r8, t2r8, t4r8, t8r8, t3r3, t3r6], norm: 3GPP-N, src: [214-084], ref: "38.214 §6.2.1.2 p.286-287"}
+    codebook_catalog:
+      description: "codebookType -> 支援 port、最大 rank、RI restriction 位元數"
+      norm: 3GPP-N
+      src: [214-068, 331-009]
+      ref: "TS 38.214 V19.4.0 §5.2.2.2.x; TS 38.331 V19.3.0 §6.3.2 CodebookConfig pp.793-801"
+      entries:
+        typeI-SinglePanel-2port: {ports: [2], max_rank: 2, cbsr_bits: 6, src: [214-051]}
+        typeI-SinglePanel: {ports: [4, 8, 12, 16, 24, 32], max_rank: 8, ri_bits: 8, mode: [1, 2], src: [214-052, 214-054]}
+        typeI-SinglePanel-r19: {ports: [48, 64, 128], max_rank: 8, ri_bits: 8, mode: [modeA, modeB], o1o2: [4, 4], src: [214-055]}
+        typeI-MultiPanel: {ports: [8, 16, 32], max_rank: 4, ri_bits: 4, mode: [1, 2], src: [214-056]}
+        typeI-MultiPanel-r19: {ports: [48, 64, 128], max_rank: 4, ri_bits: 4, o1o2: [4, 4], src: [214-057]}
+        typeII: {ports: [4, 8, 12, 16, 24, 32], max_rank: 2, ri_bits: 2, L: [2, 3, 4], npsk: [4, 8], src: [214-058]}
+        typeII-PortSelection: {ports: [4, 8, 12, 16, 24, 32], max_rank: 2, ri_bits: 2, d: [1, 2, 3, 4], src: [214-059]}
+        typeII-r16: {ports: [4, 8, 12, 16, 24, 32], max_rank: 4, ri_bits: 4, param_combination: [1, 8], src: [214-060]}
+        typeII-PortSelection-r16: {ports: [4, 8, 12, 16, 24, 32], max_rank: 4, ri_bits: 4, param_combination: [1, 6], src: [214-061]}
+        typeII-PortSelection-r17: {ports: [4, 8, 12, 16, 24, 32], max_rank: 4, ri_bits: 4, param_combination: [1, 8], value_of_n: [2, 4], src: [214-062]}
+        typeII-CJT-r18: {ports_per_resource: [4, 32], n_trp_max: 4, max_rank: 4, ri_bits: 4, param_combination: [1, 7], src: [214-063]}
+        typeII-CJT-PortSelection-r18: {ports_per_resource: [4, 32], n_trp_max: 4, max_rank: 4, ri_bits: 4, param_combination: [1, 5], src: [214-064]}
+        typeII-Doppler-r18: {ports: [4, 32], max_rank: 4, ri_bits: 4, n4: [1, 2, 4, 8], param_combination: [1, 9], src: [214-065]}
+        typeII-DopplerPortSelection-r18: {ports: [4, 32], max_rank: 4, ri_bits: 4, n4: [1], param_combination: [1, 8], src: [214-066]}
+        etypeII-r19: {ports: [48, 64, 128], max_rank: 4, ri_bits: 4, param_combination: [1, 8], src: [214-067]}
+        typeII-FePortSelection-r19: {ports: [48, 64], max_rank: 4, ri_bits: 4, param_combination: [1, 7], value_of_n: [2, 4], src: [214-067]}
+        typeII-Doppler-r19: {ports: [48, 64, 128], max_rank: 4, ri_bits: 4, param_combination: [1, 9], src: [214-067]}
+    type1_sp_n1n2_table:
+      description: "P, (N1,N2), (O1,O2), TypeI-SP CBSR bits, TypeII CBSR bits"
+      norm: 3GPP-N
+      src: [214-052, 331-009]
+      ref: "TS 38.214 Table 5.2.2.2.1-2; TS 38.331 CodebookConfig p.793-794"
+      rows:
+        - {P: 4, n1: 2, n2: 1, o1: 4, o2: 1, cbsr_typeI: 8, cbsr_typeII: 16, asn1: two-one}
+        - {P: 8, n1: 2, n2: 2, o1: 4, o2: 4, cbsr_typeI: 64, cbsr_typeII: 43, asn1: two-two}
+        - {P: 8, n1: 4, n2: 1, o1: 4, o2: 1, cbsr_typeI: 16, cbsr_typeII: 32, asn1: four-one}
+        - {P: 12, n1: 3, n2: 2, o1: 4, o2: 4, cbsr_typeI: 96, cbsr_typeII: 59, asn1: three-two}
+        - {P: 12, n1: 6, n2: 1, o1: 4, o2: 1, cbsr_typeI: 24, cbsr_typeII: 48, asn1: six-one}
+        - {P: 16, n1: 4, n2: 2, o1: 4, o2: 4, cbsr_typeI: 128, cbsr_typeII: 75, asn1: four-two}
+        - {P: 16, n1: 8, n2: 1, o1: 4, o2: 1, cbsr_typeI: 32, cbsr_typeII: 64, asn1: eight-one}
+        - {P: 24, n1: 4, n2: 3, o1: 4, o2: 4, cbsr_typeI: 192, cbsr_typeII: 107, asn1: four-three}
+        - {P: 24, n1: 6, n2: 2, o1: 4, o2: 4, cbsr_typeI: 192, cbsr_typeII: 107, asn1: six-two}
+        - {P: 24, n1: 12, n2: 1, o1: 4, o2: 1, cbsr_typeI: 48, cbsr_typeII: 96, asn1: twelve-one}
+        - {P: 32, n1: 4, n2: 4, o1: 4, o2: 4, cbsr_typeI: 256, cbsr_typeII: 139, asn1: four-four}
+        - {P: 32, n1: 8, n2: 2, o1: 4, o2: 4, cbsr_typeI: 256, cbsr_typeII: 139, asn1: eight-two}
+        - {P: 32, n1: 16, n2: 1, o1: 4, o2: 1, cbsr_typeI: 64, cbsr_typeII: 128, asn1: sixteen-one}
+    type1_sp_r19_n1n2: {type: table, value: {"48": [[8, 3], [6, 4]], "64": [[16, 2], [8, 4]], "128": [[16, 4], [8, 8]]}, norm: 3GPP-N, src: [214-055], ref: "TS 38.214 Table 5.2.2.2.1a-1"}
+    type1_mp_ng_n1n2:
+      norm: 3GPP-N
+      src: [214-056, 331-009]
+      ref: "TS 38.214 Table 5.2.2.2.2-1（摘錄未以 PDF 目視核對）; 38.331 ng-n1-n2"
+      rows:
+        - {P: 8, ng: 2, n1: 2, n2: 1, cbsr_bits: 8}
+        - {P: 16, ng: 2, n1: 4, n2: 1, cbsr_bits: 16}
+        - {P: 16, ng: 4, n1: 2, n2: 1, cbsr_bits: 8}
+        - {P: 16, ng: 2, n1: 2, n2: 2, cbsr_bits: 64}
+        - {P: 32, ng: 2, n1: 8, n2: 1, cbsr_bits: 32}
+        - {P: 32, ng: 4, n1: 4, n2: 1, cbsr_bits: 16}
+        - {P: 32, ng: 2, n1: 4, n2: 2, cbsr_bits: 128}
+        - {P: 32, ng: 4, n1: 2, n2: 2, cbsr_bits: 64}
+    type1_mp_r19_cbsr_bits: {type: table, value: {two-four-three: 192, two-six-two: 192, two-eight-two: 256, four-four-two: 128, two-four-four: 256, four-four-four: 256, four-eight-two: 256}, norm: 3GPP-N, src: [S331-010, 331-009], ref: "TS 38.331 p.798"}
+
+AntennaMode:
+  description: "可切換的天線／MIMO 模式（由 RRC、M-plane 設定，屬半靜態）"
+  mode_id: {type: string, norm: SIM, src: [], ref: "simulator 自訂"}
+  active_arrays: {type: "string[]", norm: SIM, src: [MP-010], ref: "引用 physical_arrays.name"}
+  antenna_mask_mplane:
+    type: "map[array_name -> bitstring(K)]"
+    default: all_ones
+    encoding: base64
+    norm: ORAN-N
+    src: [MP-122]
+    ref: "UP tx/rx-array-antenna-mask-config; MP §20.3.2.3"
+  antenna_mask_index: {type: uint8, norm: ORAN-N, src: [MP-122], ref: "antenna-bitmask-index"}
+  max_power_level_index: {type: uint8, note: "0 表示不降低功率", norm: ORAN-N, src: [MP-011, MP-125], ref: "UP supported-max-power-level"}
+  beam_tilt_offset:
+    elevation: {type: int16, range: [-90, 90], default: 0, unit: deg, norm: ORAN-N, src: [MP-049, ORAN-B20], ref: "RPC modify-predefined-beam-tilt-offset"}
+    azimuth: {type: int16, range: [-90, 90], default: 0, unit: deg, norm: ORAN-N, src: [MP-049, ORAN-B20], ref: "同上"}
+  null_steering_config:
+    intended_nulls:
+      type: list
+      item:
+        id: {type: uint8, norm: ORAN-N, src: [MP-131], ref: "UP null-steering-cfg-grp L772"}
+        azimuth_angle: {type: int16, unit: "0.1 deg", optional: true, note: "未設定時為 elevation null stripe", norm: ORAN-N, src: [MP-131, CUS-013], ref: "CUS §12.4.2.3"}
+        zenith_angle: {type: int16, unit: "0.1 deg", mandatory: true, norm: ORAN-N, src: [MP-131], ref: "UP"}
+        null_width: {type: uint8, default: 1, norm: ORAN-N, src: [MP-131], ref: "UP"}
+        null_freq: {type: uint32, norm: ORAN-N, src: [MP-131], ref: "UP"}
+  pdsch_config:
+    max_mimo_layers: {type: int, range: [1, 8], norm: 3GPP-N, src: [331-012, 331-013], ref: "38.331"}
+    tci_states: {type: "list[TciState]", max_items: 128, norm: 3GPP-N, src: [331-012, 214-002], ref: "PDSCH-Config tci-StatesToAddModList"}
+    dmrs: {type: ref, target: logical_port_capability.pdsch_dmrs, norm: 3GPP-N, src: [331-014], ref: "DMRS-DownlinkConfig"}
+  pusch_config:
+    tx_config: {type: ref, target: mimo_capability.pusch_tx_config, norm: 3GPP-N, src: [331-016], ref: "PUSCH-Config"}
+    max_rank: {type: int, range: [1, 8], norm: 3GPP-N, src: [331-016], ref: "PUSCH-Config"}
+    max_mimo_layers: {type: int, range: [1, 8], norm: 3GPP-N, src: [331-017], ref: "PUSCH-ServingCellConfig"}
+
+RuntimeState:
+  description: "動態狀態（每 slot／每事件更新）"
+  carrier_state: {type: "map[carrier -> enum]", enum: [INACTIVE, SLEEP, ACTIVE], default: INACTIVE, norm: ORAN-N, src: [MP-085], ref: "UP active"}
+  active_trx_mask:
+    type: "map[array -> bitstring]"
+    bit_order: "LSB 對應 element k=0（CUS §12.5.4 順序）；1 表示啟用，0 表示停用"
+    length_bytes: [2, 2048]
+    log2_mask_bits: [1, 14]
+    default: all_ones
+    norm: ORAN-N
+    src: [CUS-081, CUS-082]
+    ref: "CUS §16.2, §7.5.3.51/52/54（ST4 cmdType 3/5，ARRAY-COMMAND）"
+  sleep_mode: {type: "map[array -> int]", range: [0, 3], norm: ORAN-N, src: [CUS-080, CUS-082, MP-121], ref: "CUS §16.1"}
+  beams:
+    type: list
+    item:
+      eaxc_id: {type: uint16, norm: ORAN-N, src: [CUS-003], ref: "CUS §5.1.3.2.7"}
+      beam_id: {type: uint16, range: [0, 32767], note: "0 表示不做 BF", default: 0, norm: ORAN-N, src: [CUS-033, CUS-032], ref: "CUS §7.5.3.9（15 bit）"}
+      section_type: {type: enum, enum: [0, 1, 3, 4, 5, 6, 8, 9, 10, 11], norm: ORAN-N, src: [CUS-030], ref: "CUS Table 7.3.1-1"}
+      section_extensions: {type: "uint8[]", norm: ORAN-N, src: [CUS-031, CUS-040], ref: "CUS Table 7.3.2-1 / 7.6.1-1"}
+      start_prbc: {type: uint, range: [0, 1023], norm: ORAN-N, src: [CUS-032], ref: "10 bit"}
+      num_prbc: {type: uint, range: [0, 255], norm: ORAN-N, src: [CUS-032], ref: "8 bit"}
+      re_mask: {type: bitstring, length: 12, norm: ORAN-N, src: [CUS-032], ref: "12 bit"}
+      num_bund_prb: {type: uint8, range: [1, 255], optional: true, norm: ORAN-N, src: [CUS-048], ref: "SE11（0 保留）"}
+      ue_id: {type: uint16, range: [0, 32767], optional: true, note: "CIBF/DMRS-BF 時使用；0x7FFF 在特定條件下表示不排程", norm: ORAN-N, src: [CUS-035], ref: "CUS §7.5.3.10"}
+      weights_ref: {type: string, norm: SIM, src: [CUS-041], ref: "指向 beam_capability 中的權重或 SE1/SE11/SE19 的內容"}
+  csi_rs_resources:
+    type: list
+    item:
+      nzp_csi_rs_resource_id: {type: uint, range: [0, 191], norm: 3GPP-N, src: [331-001, 331-040], ref: "maxNrofNZP-CSI-RS-Resources = 192"}
+      nrof_ports: {type: ref, target: logical_port_capability.csi_rs.nrof_ports_per_resource, norm: 3GPP-N, src: [331-002], ref: "38.331 p.862"}
+      mapping_row: {type: int, range: [1, 18], norm: 3GPP-N, src: [211-034], ref: "38.211 Table 7.4.1.5.3-1"}
+      cdm_type: {type: ref, target: logical_port_capability.csi_rs.cdm_type, norm: 3GPP-N, src: [331-002], ref: "38.331"}
+      density: {type: ref, target: logical_port_capability.csi_rs.density, norm: 3GPP-N, src: [331-002], ref: "38.331"}
+      first_ofdm_symbol: {type: int, range: [0, 13], norm: 3GPP-N, src: [331-002], ref: "38.331"}
+      frequency_domain_allocation: {type: bitstring, length_by_row: {row1: 4, row2: 12, row4: 3, other: 6}, norm: 3GPP-N, src: [331-002, 211-033], ref: "38.331 p.862"}
+      starting_rb: {type: int, multiple_of: 4, norm: 3GPP-N, src: [331-003], ref: "38.331 p.833"}
+      nrof_rbs: {type: int, multiple_of: 4, min: 24, norm: 3GPP-N, src: [331-003], ref: "38.331 p.833"}
+      power_control_offset: {type: int, range: [-8, 15], unit: dB, norm: 3GPP-N, src: [331-001, 214-070], ref: "38.331 p.1022"}
+      power_control_offset_ss: {type: enum, enum: [-3, 0, 3, 6], unit: dB, optional: true, norm: 3GPP-N, src: [331-001], ref: "38.331 db-3/db0/db3/db6"}
+      periodicity_slots: {type: int, optional: true, norm: 3GPP-N, src: [331-001], ref: "periodicityAndOffset"}
+      qcl_info_periodic_tci_id: {type: int, optional: true, norm: 3GPP-N, src: [331-001, 214-070], ref: "qcl-InfoPeriodicCSI-RS"}
+      beam_id_oru: {type: uint16, norm: SIM, src: [CUS-056], ref: "O-RU 側可用 SE19 以 port 為單位下發 beamId", why_sim: "CSI-RS resource 與 O-RU beamId 的對應未標準化"}
+  csi_rs_resource_sets:
+    type: list
+    item:
+      id: {type: int, range: [0, 63], norm: 3GPP-N, src: [331-005, 331-040], ref: "maxNrofNZP-CSI-RS-ResourceSets = 64"}
+      resources: {type: "int[]", max_items: 64, norm: 3GPP-N, src: [331-005], ref: "maxNrofNZP-CSI-RS-ResourcesPerSet"}
+      repetition: {type: enum, enum: ["on", "off"], default: "off", norm: 3GPP-N, src: [331-005, 214-037], ref: "38.331 p.1026（缺省視為 off）"}
+      trs_info: {type: bool, default: false, norm: 3GPP-N, src: [331-005], ref: "38.331 p.1027"}
+      resource_type: {type: enum, enum: [aperiodic, semiPersistent, periodic], norm: 3GPP-N, src: [331-004], ref: "CSI-ResourceConfig"}
+  csi_report_configs:
+    type: list
+    max_items: 48
+    item:
+      report_config_type: {type: enum, enum: [periodic, semiPersistentOnPUCCH, semiPersistentOnPUSCH, aperiodic], norm: 3GPP-N, src: [331-008, 214-032], ref: "38.331 p.841"}
+      report_quantity: {type: enum, enum: [none, cri-RI-PMI-CQI, cri-RI-i1, cri-RI-i1-CQI, cri-RI-CQI, cri-RSRP, cri-SINR, ssb-Index-RSRP, ssb-Index-SINR, cri-RI-LI-PMI-CQI, tdcp], note: "另有 -Index 變形與 r19 預測量", norm: 3GPP-N, src: [214-039, 331-008], ref: "38.214 §5.2.1.4.2 p.91"}
+      group_based_beam_reporting: {type: bool, default: false, norm: 3GPP-N, src: [331-008, 214-040], ref: "38.331 p.848"}
+      nrof_reported_rs: {type: enum, enum: [1, 2, 3, 4, 6, 8], default: 1, note: "n6/n8 為 v1900", norm: 3GPP-N, src: [331-008, S331-001], ref: "38.331 p.849"}
+      codebook:
+        type: {type: ref, target: mimo_capability.codebook_catalog, norm: 3GPP-N, src: [331-009], ref: "CodebookConfig(-r16/-r17/-r18/-r19)，只能擇一"}
+        n1: {type: int, norm: 3GPP-N, src: [214-052], ref: "Table 5.2.2.2.1-2"}
+        n2: {type: int, norm: 3GPP-N, src: [214-052], ref: "Table 5.2.2.2.1-2"}
+        ng: {type: int, optional: true, norm: 3GPP-N, src: [214-056], ref: "Table 5.2.2.2.2-1"}
+        codebook_mode: {type: enum, enum: ["1", "2", modeA, modeB], default: "1", norm: 3GPP-N, src: [331-009], ref: "codebookMode INTEGER (1..2) / codebookMode-r19"}
+        cbsr: {type: bitstring, length_ref: type1_sp_n1n2_table, default: all_ones, norm: 3GPP-N, src: [331-009, 214-054], ref: "Ac = N1*O1*N2*O2（Type I SP）"}
+        ri_restriction: {type: bitstring, length_by_type: {typeI-SinglePanel: 8, typeI-MultiPanel: 4, typeII: 2, typeII-PortSelection: 2, r16_r17_r18_r19_typeII: 4}, default: all_ones, norm: 3GPP-N, src: [331-009], ref: "38.331 CodebookConfig"}
+        number_of_beams_L: {type: enum, enum: [2, 3, 4], optional: true, norm: 3GPP-N, src: [214-058, 331-009], ref: "numberOfBeams"}
+        phase_alphabet_size: {type: enum, enum: [4, 8], optional: true, norm: 3GPP-N, src: [331-009], ref: "phaseAlphabetSize"}
+        subband_amplitude: {type: bool, optional: true, norm: 3GPP-N, src: [331-009], ref: "subbandAmplitude"}
+        param_combination: {type: int, optional: true, norm: 3GPP-N, src: [331-009], ref: "見 codebook_catalog"}
+      port_subset_indicator: {type: bitstring, length: [1, 32], note: "r19 為 48/64/128；bit i 對應 port 3000+i", optional: true, norm: 3GPP-N, src: [214-069], ref: "38.214 §5.2.1.4.2 p.99-100"}
+  tci_states:
+    type: list
+    max_items: 128
+    item:
+      tci_state_id: {type: int, range: [0, 127], norm: 3GPP-N, src: [331-010, 331-040], ref: "38.331 TCI-State p.1284"}
+      qcl_type1: {type: QclInfo, mandatory: true, norm: 3GPP-N, src: [331-010], ref: "38.331"}
+      qcl_type2: {type: QclInfo, optional: true, constraint: "type != qcl_type1.type", norm: 3GPP-N, src: [331-010, 214-002], ref: "38.214 §5.1.5 p.50"}
+  QclInfo:
+    cell: {type: int, optional: true, note: "僅 typeC/typeD 可位於其他 cell", norm: 3GPP-N, src: [331-010], ref: "38.331 p.1285"}
+    reference_signal: {type: "choice{csi_rs: NZP-CSI-RS-ResourceId, ssb: SSB-Index}", norm: 3GPP-N, src: [331-010], ref: "38.331"}
+    qcl_type: {type: enum, enum: [typeA, typeB, typeC, typeD], norm: 3GPP-N, src: [214-001, 331-010], ref: "38.214 §5.1.5 p.50"}
+  active_tci:
+    activated_codepoints: {type: "int[]", max_items: 8, norm: 3GPP-N, src: [321-005, 214-004], ref: "38.321 §6.1.3.14"}
+    activated_unified_states: {type: "int[]", max_items: 16, norm: 3GPP-N, src: [321-006], ref: "38.321 §6.1.3.47"}
+    indicated_dl_tci: {type: int, optional: true, norm: 3GPP-N, src: [214-005, 214-007], ref: "38.214 §5.1.5"}
+    indicated_ul_tci: {type: int, optional: true, norm: 3GPP-N, src: [214-005, 331-011], ref: "38.331 TCI-UL-State"}
+    beam_app_time_symbols: {type: enum, enum: [1, 2, 4, 7, 14, 28, 42, 56, 70, 84, 98, 112, 224, 336], norm: 3GPP-N, src: [S331-006, 214-007], ref: "38.331 beamAppTime-r17 p.1053"}
+    application_slot: {type: int, norm: DERIVED, src: [214-007, 214-008], ref: "ACK 後依 beamAppTime 或 3 ms 規則計算"}
+  layers:
+    pdsch_layers: {type: int, range: [1, 8], default: 1, norm: 3GPP-N, src: [214-020], ref: "38.214 §5.1.1"}
+    pdsch_dmrs_ports: {type: "int[]", item_range: [1000, 1023], default: [1000], norm: 3GPP-N, src: [212-001, 214-023], ref: "38.212 §7.3.1.2.2"}
+    num_codewords: {type: int, range: [1, 2], formula: "1 if layers<=4 else 2", norm: 3GPP-N, src: [211-015, 300-001], ref: "38.211 Table 7.3.1.3-1"}
+    pusch_layers: {type: int, range: [1, 8], default: 1, norm: 3GPP-N, src: [214-081, 300-002], ref: "38.214 §6.1.1"}
+    pusch_tpmi: {type: int, optional: true, norm: 3GPP-N, src: [211-011, 214-081], ref: "38.211 Tables 6.3.1.5-x"}
+    pusch_sri: {type: "int[]", optional: true, norm: 3GPP-N, src: [212-010, 214-081], ref: "38.212 §7.3.1.1.2"}
+  reports:
+    type: list
+    item:
+      time_slot: {type: int, norm: SIM, src: [], ref: "simulator 時戳"}
+      cri_or_ssbri: {type: int, note: "resource set 內的序號，不是 resource ID", norm: 3GPP-N, src: [214-044], ref: "38.214 §5.2.1.4.2"}
+      l1_rsrp_code: {type: int, range: [16, 113], unit: "RSRP_k", norm: 3GPP-N, src: [133-023, 214-042], ref: "38.133 Table 10.1.6.1-1（7 bit）"}
+      diff_rsrp_code: {type: int, range: [0, 15], step_dB: 2, norm: 3GPP-N, src: [133-024], ref: "38.133 Table 10.1.6.1-2（4 bit）"}
+      l1_sinr_code: {type: int, range: [0, 127], step_dB: 0.5, norm: 3GPP-N, src: [133-025, 214-043], ref: "38.133 Table 10.1.16.1-1"}
+      ri: {type: int, range: [1, 8], norm: 3GPP-N, src: [212-021], ref: "38.212 Table 6.3.1.1.2-3"}
+      pmi: {type: object, note: "i1,1 i1,2 (i1,3) i2", norm: 3GPP-N, src: [214-052, 212-020], ref: "38.212 Table 6.3.1.1.2-1"}
+      cqi_wb: {type: int, range: [0, 15], norm: 3GPP-N, src: [212-021, 214-050], ref: "4 bit"}
+      li: {type: int, optional: true, norm: 3GPP-N, src: [212-021], ref: "38.212"}
+  ssb_beam_state:
+    selected_ssb_index: {type: int, range: [0, 63], norm: 3GPP-N, src: [213-002], ref: "38.213 §4.1"}
+    ss_rsrp_dBm: {type: float, unit: dBm, norm: 3GPP-N, src: [215-001], ref: "38.215 §5.1.1"}
+  bfd:
+    q0: {type: "rs[]", max_items: 10, note: "隱式時 <= 2；單 port", norm: 3GPP-N, src: [213-010, 213-011, S331-005], ref: "38.213 §6 p.19"}
+    q1: {type: "rs[]", max_items: 16, note: "1 或 2 port 的 CSI-RS 或 SSB", norm: 3GPP-N, src: [213-010, S331-005], ref: "maxNrofCandidateBeams"}
+    bfi_counter: {type: int, default: 0, norm: 3GPP-N, src: [321-002], ref: "38.321 §5.17"}
+    beam_failure_instance_max_count: {type: enum, enum: [1, 2, 3, 4, 5, 6, 8, 10], norm: 3GPP-N, src: [321-001, 331-019], ref: "38.331 RadioLinkMonitoringConfig"}
+    beam_failure_detection_timer: {type: enum, enum: [1, 2, 3, 4, 5, 6, 8, 10], unit: "Qout,LR reporting periods", norm: 3GPP-N, src: [321-001, 331-019], ref: "38.331 p.1150"}
+    beam_failure_recovery_timer_ms: {type: enum, enum: [10, 20, 40, 60, 80, 100, 150, 200], unit: ms, norm: 3GPP-N, src: [321-001, 331-020], ref: "38.331 BeamFailureRecoveryConfig p.735"}
+    qout_lr_bler: {type: const, value: 0.10, norm: 3GPP-N, src: [133-011], ref: "38.133 §8.5.1"}
+    qin_lr: {type: ref, target: rsrp-ThresholdSSB, unit: dBm, norm: 3GPP-N, src: [133-011, 213-012, 331-020], ref: "RSRP-Range"}
+    bfi_period_ms: {type: formula, value: "max(min_periodicity(q0), 2)", norm: 3GPP-N, src: [213-013], ref: "38.213 §6 p.20（non-DRX）"}
+    q_new: {type: rs, optional: true, norm: 3GPP-N, src: [213-015], ref: "38.213 §6"}
+    post_response_switch_symbols: {type: const, value: 28, norm: 3GPP-N, src: [213-016], ref: "38.213 §6 p.20"}
+    state: {type: enum, enum: [normal, detecting, recovering], default: normal, norm: SIM, src: [321-002, 321-003], ref: "狀態列舉為 simulator 自訂"}
+  rlm:
+    bler_out: {type: const, value: 0.10, norm: 3GPP-N, src: [133-002], ref: "38.133 Table 8.1.1-1"}
+    bler_in: {type: const, value: 0.02, norm: 3GPP-N, src: [133-002], ref: "38.133 Table 8.1.1-1"}
+    n_rlm_max: {type: table, value: {"4": 2, "8": 4, "64": 8}, norm: 3GPP-N, src: [133-003], ref: "38.133 Table 8.1.1-2"}
+  pathloss_rs: {type: "rs[]", max_items: 4, norm: 3GPP-N, src: [213-020], ref: "38.213 §7 p.25"}
+  beam_tilt_state:
+    description: "O-RAN 數位 beam tilt offset（deg）。與 RET 機電 tilt（ald[].antenna[].tilt_value，0.1 度步距）為兩套獨立參數，不可互換（R-L6-49）"
+    elevation: {type: int16, range: [-90, 90], unit: deg, default: 0, norm: ORAN-N, src: [MP-049, ORAN-B22], ref: "BF predefined-beam-tilt-state"}
+    azimuth: {type: int16, range: [-90, 90], unit: deg, default: 0, norm: ORAN-N, src: [MP-049, ORAN-B22], ref: "BF predefined-beam-tilt-state"}
+  ald:
+    type: list
+    description: "ALD（RET / TMA）控制狀態機，TS 37.466 / 37.461 / 37.462 V19.0.0；O-RAN 下經 rpc ald-communication 以 binary 透傳（MP-140/141）"
+    item:
+      device_type: {type: enum, enum: [single_antenna_ret, multi_antenna_ret, tma], wire_codes: {single_antenna_ret: 0x01, multi_antenna_ret: 0x11, tma: 0x02}, norm: 3GPP-N, src: [37462-002], ref: "TS 37.462 V19.0.0 §4.7 Table 4.7.1 p.8-9"}
+      app_part: {type: enum, enum: [RETAP, TMAAP], norm: 3GPP-N, src: [37466-001], ref: "TS 37.466 V19.0.0 §1 p.6"}
+      device_state: {type: enum, enum: [OperatingMode, DownloadMode], default: OperatingMode, norm: 3GPP-N, src: [37466-008], ref: "TS 37.466 §6.1 Figure 6.1 p.10-11"}
+      num_antennas: {type: uint8, range: [1, 255], default: 1, norm: 3GPP-N, src: [37466-021], ref: "TS 37.466 §6.7.9 p.34（AntennaGetNumberOfAntennas 0x88）"}
+      antenna:
+        type: list
+        item:
+          antenna_number: {type: uint8, range: [1, 255], norm: 3GPP-N, src: [37466-005], ref: "TS 37.466 §4.3 p.9（Antennas are numbered 1 and upwards）"}
+          tilt_value: {type: int16, unit: "0.1 deg", norm: 3GPP-N, src: [37466-003, 37466-013], ref: "TS 37.466 §3.1 p.8; §6.6.4 p.26（GetTilt 0x34）"}
+      calibrated: {type: bool, default: false, note: "false 時 tilt 程序回 NotCalibrated", norm: 3GPP-N, src: [37466-015], ref: "TS 37.466 §6.6.1 p.23-24（Calibrate 0x31，回應 <4 min）"}
+      configured: {type: bool, default: false, note: "false 時回 NotConfigured；configuration data payload 為 vendor specific", norm: 3GPP-N, src: [37466-016], ref: "TS 37.466 §6.6.2 p.24-25（SendConfigurationData 0x32）"}
+      busy: {type: bool, default: false, note: "TCP {SetTilt, Calibrate, SelfTest} 執行中；並行 EP 上限 1，disallowed 者回 Busy", norm: 3GPP-N, src: [37466-010], ref: "TS 37.466 §6.2.3 Table 6.2.3.1 p.11-12"}
+      active_alarms: {type: "uint8[]", default: [], note: "AlarmCode 為 ReturnCode 的子集（Annex A，未摘錄）；任何 reset 清除全部", norm: 3GPP-N, src: [37466-009, 37466-017], ref: "TS 37.466 §6.2.1 p.11; §6.6.5 p.26-27"}
+      alarm_subscribed: {type: bool, default: false, note: "reset 後歸 false；未訂閱不發 AlarmIndication", norm: 3GPP-N, src: [37466-017], ref: "TS 37.466 §6.6.5 p.26-27（AlarmIndication 0x07，Class 2）"}
+      set_tilt_response_limit_s: {type: const, value: 120, unit: s, norm: 3GPP-N, src: [37466-012, 37466-019], ref: "TS 37.466 §6.6.3 p.25 / §6.7.2 p.29-30（<2 min）"}
+      calibrate_response_limit_s: {type: const, value: 240, unit: s, norm: 3GPP-N, src: [37466-015], ref: "TS 37.466 §6.6.1 p.23-24（<4 min）"}
+      tilt_overshoot_limit: {type: const, value: 5, unit: "0.1 deg", norm: 3GPP-N, src: [37466-012, 37466-019], ref: "TS 37.466 §6.6.3 p.25-26（不得超出 [current, requested] 區間 5 個單位 = 0.5 度）"}
+      self_test_travel_limit_pct: {type: const, value: 5, unit: "%", norm: 3GPP-N, src: [37466-018], ref: "TS 37.466 §6.5.6 p.18-19（致動器移動不得超過總行程 +-5%）"}
+      layer1_option: {type: enum, enum: [RS485, Modem], note: "Modem option 僅適用 UTRA/E-UTRA BS 與 NR BS type 1-C", norm: 3GPP-N, src: [37461-001], ref: "TS 37.461 V19.0.0 §4.1 p.6"}
+      data_rate_bps: {type: enum, enum: [9600, 38400, 115200], default: 9600, unit: bps, note: "+-3%；115200 僅 RS485", norm: 3GPP-N, src: [37461-001], ref: "TS 37.461 §4.1 p.6"}
+      hdlc_max_frame_octets: {type: uint, range: [78, null], default: 78, unit: octets, norm: 3GPP-N, src: [37462-001], ref: "TS 37.462 V19.0.0 §4.2 p.7（frame 4..N，強制支援 N=78）"}
+      hdlc_window_size: {type: uint, range: [1, 7], default: 1, norm: 3GPP-N, src: [37462-001], ref: "TS 37.462 §4.4 p.8"}
+      oran_ald_port_id: {type: uint8, range: [0, 1], norm: ORAN-N, src: [MP-142], ref: "o-ran-ald-port（兩個連接器時為 0/1）"}
+      tma_subunit:
+        type: list
+        applicable_when: "device_type == tma"
+        item:
+          max_gain_db: {type: float, unit: dB, wire_type: uint8, wire_unit: "dB/4", norm: 3GPP-N, src: [37466-023], ref: "TS 37.466 Annex B Table B.3 field 0x16"}
+          min_gain_db: {type: float, unit: dB, wire_type: uint8, wire_unit: "dB/4", norm: 3GPP-N, src: [37466-023], ref: "TS 37.466 Annex B Table B.3 field 0x17"}
+          gain_resolution_db: {type: float, unit: dB, wire_type: uint8, wire_unit: "dB/4", norm: 3GPP-N, src: [37466-023], ref: "TS 37.466 Annex B Table B.3 field 0x18"}
+          supports_bypass: {type: bool, norm: 3GPP-N, src: [37466-023], ref: "TS 37.466 Annex B Table B.4 field 0x13 bit 0"}
+
+validators:
+  description: "跨層一致性規則，編號對應 antenna_spec_v2.md §9"
+  rules:
+    - {id: V-01, expr: "codebook.type=='typeI-SinglePanel' and P>2 -> nrof_ports == 2*n1*n2 and (P,n1,n2) in type1_sp_n1n2_table", src: [214-052]}
+    - {id: V-02, expr: "codebook.type=='typeI-MultiPanel' -> nrof_ports == 2*ng*n1*n2 and (ng==4 -> codebook_mode==1)", src: [214-056]}
+    - {id: V-04, expr: "nrof_ports in [1,2,4,8,12,16,24,32]", src: [211-031, 331-002]}
+    - {id: V-05, expr: "N_tot in [48,64,128] -> (N_tot,K,N) in aggregated_ports and same qcl/pc offsets", src: [211-031, 214-071]}
+    - {id: V-08, expr: "len(cbsr) == table_lookup(codebook_version, n1, n2)", src: [331-009, 214-054]}
+    - {id: V-10, expr: "ri <= codebook_catalog[type].max_rank and ri_restriction[ri-1]==1", src: [214-068, 214-054]}
+    - {id: V-11, expr: "pdsch_layers <= min(max_mimo_layers_pdsch_bwp, max_mimo_layers_pdsch_cell, ue.max_layers_dl, 8)", src: [331-012, 331-013, 306-018, 214-020]}
+    - {id: V-12, expr: "pdsch_layers <= number_of_spatial_streams_dl", norm: DERIVED, src: [MP-070]}
+    - {id: V-14, expr: "num_codewords == (1 if pdsch_layers<=4 else 2)", src: [211-015, 300-001]}
+    - {id: V-15, expr: "len(pdsch_dmrs_ports) == pdsch_layers", src: [212-001, 211-023]}
+    - {id: V-17, expr: "pusch_layers <= min(max_mimo_layers_pusch, pusch_max_rank); transform_precoding -> pusch_layers==1", src: [331-016, 331-017, 300-002]}
+    - {id: V-18, expr: "tx_config=='nonCodebook' -> all(srs.nrof_ports==1)", src: [214-082]}
+    - {id: V-20, expr: "beam_id==0 -> no_weights_applied; not bf_supported -> all(beam_id==0)", src: [CUS-033, CUS-011]}
+    - {id: V-21, expr: "1 <= beam_id <= 32767 and beam_id in beam_id_domain_range", src: [CUS-033, MP-044]}
+    - {id: V-22, expr: "distinct_beam_ids_per_symbol <= endpoint_beam_capacity.max_beams_per_symbol", src: [MP-062, CUS-091]}
+    - {id: V-23, expr: "per slot, per beam_id: distinct_weight_sets <= 1", src: [CUS-014]}
+    - {id: V-24, expr: "K_elements == M*N*P*Q and len(weights)==K_elements and len(mask)>=K_elements", src: [CUS-071, CUS-041, CUS-082]}
+    - {id: V-25, expr: "hybrid -> K_elements == K_prime*p_dash", src: [CUS-017]}
+    - {id: V-26, expr: "k == q*P*M*N + p*M*N + m*N + n", src: [CUS-072]}
+    - {id: V-27, expr: "bitmasks disjoint, contiguous, popcount(or) <= 16", src: [CUS-003, MP-050]}
+    - {id: V-28, expr: "eaxc_id unique per direction per O-RU", src: [MP-050, CUS-005]}
+    - {id: V-29, expr: "ru_category=='CAT_A' -> every array P==1", src: [CUS-005]}
+    - {id: V-32, expr: "bs_type=='1-O' -> num_tx_units>=8 and num_rx_units>=8; bs_type in ['1-O','2-O'] -> no tab_connectors", src: [104-032]}
+    - {id: V-33, expr: "n_txu_counted == min(n_txu_active, 8*n_cells)", src: [104-046]}
+    - {id: V-34, expr: "beam change keeps TRP constant if peak in ota_peak_directions_set", src: [104-043]}
+    - {id: V-36, expr: "qcl_type2 present -> qcl_type2.qcl_type != qcl_type1.qcl_type", src: [214-002, 331-010]}
+    - {id: V-37, expr: "len(tci_states) <= min(128, ue.max_configured_tci_per_cc); codepoints <= 8; unified active <= 16", src: [214-002, 321-005, 321-006]}
+    - {id: V-38, expr: "repetition=='on' -> report_quantity in [cri-RSRP, cri-SINR, none] and nrof_ports in [1,2] (all equal)", src: [214-037, 214-038]}
+    - {id: V-39, expr: "group_based -> reported==2 else reported==nrof_reported_rs", src: [214-040, 331-008]}
+    - {id: V-41, expr: "all(q0.ports==1); implicit q0 <= 2", src: [213-011]}
+    - {id: V-43, expr: "len(pathloss_rs) <= 4", src: [213-020]}
+    - {id: V-44, expr: "tilt within [min_supported,max_supported] and multiple of granularity", src: [MP-049]}
+    - {id: V-45, expr: "not (mplane_mask != all_ones and cplane_mask != all_ones)", src: [MP-122]}
+    - {id: V-46, expr: "SE10/SE19 numPortc <= 64; SE16 antennas <= 64; SE27 N <= 256", src: [CUS-090]}
+    - {id: V-49, expr: "declarations.n_rxu_counted == min(declarations.n_rxu_active, 8*declarations.n_cells)", src: [1411-010]}
+    - {id: V-50, expr: "bs_type=='1-H' -> all(count(c.tx_min_cell_group_id)==1 for c in connectors if c.supports_tx) and all(count(c.rx_min_cell_group_id)==1 for c in connectors if c.supports_rx)", src: [1411-009, 1411-010, 1411-024]}
+    - {id: V-51, expr: "set(union(c.demod_branch_ids for c in connectors)) covers every demodulation branch and len(set) == declarations.n_rxu_active", src: [1411-008, 1411-025]}
+    - {id: V-52, expr: "bs_type=='1-H' -> all(len(c.tae_group_ids)>=1 for c in connectors)", src: [1411-024]}
+    - {id: V-53, expr: "declarations.prated_c_sys_dbm == 10*log10(sum(10**(p/10) for p in connectors[].rated_carrier_output_power_dbm))", norm: DERIVED, src: [1411-007]}
+    - {id: V-54, expr: "ret.min_electrical_tilt_deg <= ret.electrical_tilt_deg <= ret.max_electrical_tilt_deg and round(ret.electrical_tilt_deg*10) in int16_range", src: [37466-003, 37466-012, 37466-014]}
+    - {id: V-55, expr: "0 <= ret.antenna_bearing_deg <= 359.9 and round(ret.antenna_bearing_deg*10) in [0,3599] and is_multiple_of(ret.installed_mechanical_tilt_deg, 0.1)", src: [37466-014]}
+    - {id: V-56, expr: "ald.busy -> concurrent_eps <= 1 and concurrent_ep not in [SetTilt, Calibrate, SelfTest, ClearActiveAlarms, SendConfigurationData, DownloadStart, DownloadApplication, DownloadEnd] else return Busy", src: [37466-010]}
+    - {id: V-57, expr: "ald.layer1_option=='Modem' -> bs_type=='1-C'; ald.data_rate_bps==115200 -> ald.layer1_option=='RS485'; ald.hdlc_max_frame_octets >= 78", src: [37461-001, 37462-001]}

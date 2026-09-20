@@ -1,0 +1,874 @@
+       ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+
+TECHNICAL SPECIFICATION
+
+
+
+    Universal Mobile Telecommunications System (UMTS);
+                             LTE;
+                             5G;
+                   Iuant interface: Layer 1
+         (3GPP TS 37.461 version 19.0.0 Release 19)
+3GPP TS 37.461 version 19.0.0 Release 19                        1                             ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+
+                                                            Reference
+                                                    RTS/TSGR-0337461vj00
+
+                                                            Keywords
+                                                          5G,LTE,UMTS
+
+
+
+
+                                                               ETSI
+                                                  650 Route des Lucioles
+                                         F-06921 Sophia Antipolis Cedex - FRANCE
+
+                                       Tel.: +33 4 92 94 42 00 Fax: +33 4 93 65 47 16
+
+                                              Siret N° 348 623 562 00017 - APE 7112B
+                                            Association à but non lucratif enregistrée à la
+                                           Sous-Préfecture de Grasse (06) N° w061004871
+
+
+
+                                                       Important notice
+                                     The present document can be downloaded from the
+                                       ETSI Search & Browse Standards application.
+ The present document may be made available in electronic versions and/or in print. The content of any electronic and/or
+ print versions of the present document shall not be modified without the prior written authorization of ETSI. In case of any
+    existing or perceived difference in contents between such versions and/or in print, the prevailing version of an ETSI
+                   deliverable is the one made publicly available in PDF format on ETSI deliver repository.
+               Users should be aware that the present document may be revised or have its status changed,
+                                  this information is available in the Milestones listing.
+                         If you find errors in the present document, please send your comments to
+                                  the relevant service listed under Committee Support Staff.
+                   If you find a security vulnerability in the present document, please report it through our
+                                     Coordinated Vulnerability Disclosure (CVD) program.
+
+                                       Notice of disclaimer & limitation of liability
+The information provided in the present deliverable is directed solely to professionals who have the appropriate degree of
+         experience to understand and interpret its content in accordance with generally accepted engineering or
+                                  other professional standard and applicable regulations.
+                No recommendation as to products and services or vendors is made or should be implied.
+  No representation or warranty is made that this deliverable is technically accurate or sufficient or conforms to any law
+and/or governmental rule and/or regulation and further, no representation or warranty is made of merchantability or fitness
+                     for any particular purpose or against infringement of intellectual property rights.
+        In no event shall ETSI be held liable for loss of profits or any other incidental or consequential damages.
+
+   Any software contained in this deliverable is provided "AS IS" with no warranties, express or implied, including but not
+ limited to, the warranties of merchantability, fitness for a particular purpose and non-infringement of intellectual property
+ rights and ETSI shall not be held liable in any event for any damages whatsoever (including, without limitation, damages
+for loss of profits, business interruption, loss of information, or any other pecuniary loss) arising out of or related to the use
+                                                 of or inability to use the software.
+
+                                                   Copyright Notification
+No part may be reproduced or utilized in any form or by any means, electronic or mechanical, including photocopying and
+                             microfilm except as authorized by written permission of ETSI.
+             The content of the PDF version shall not be modified without the written authorization of ETSI.
+                    The copyright and the foregoing restriction extend to reproduction in all media.
+
+                                                          © ETSI 2025.
+                                                       All rights reserved.
+
+
+
+
+                                                              ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                   2                        ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+Intellectual Property Rights
+Essential patents
+
+IPRs essential or potentially essential to normative deliverables may have been declared to ETSI. The declarations
+pertaining to these essential IPRs, if any, are publicly available for ETSI members and non-members, and can be
+found in ETSI SR 000 314: "Intellectual Property Rights (IPRs); Essential, or potentially Essential, IPRs notified to
+ETSI in respect of ETSI standards", which is available from the ETSI Secretariat. Latest updates are available on the
+ETSI IPR online database.
+
+Pursuant to the ETSI Directives including the ETSI IPR Policy, no investigation regarding the essentiality of IPRs,
+including IPR searches, has been carried out by ETSI. No guarantee can be given as to the existence of other IPRs not
+referenced in ETSI SR 000 314 (or the updates on the ETSI Web server) which are, or may be, or may become,
+essential to the present document.
+
+Trademarks
+
+The present document may include trademarks and/or tradenames which are asserted and/or registered by their owners.
+ETSI claims no ownership of these except for any which are indicated as being the property of ETSI, and conveys no
+right to use or reproduce any trademark and/or tradename. Mention of those trademarks in the present document does
+not constitute an endorsement by ETSI of products, services or organizations associated with those trademarks.
+
+DECT™, PLUGTESTS™, UMTS™ and the ETSI logo are trademarks of ETSI registered for the benefit of its
+Members. 3GPP™, LTE™ and 5G™ logo are trademarks of ETSI registered for the benefit of its Members and of the
+3GPP Organizational Partners. oneM2M™ logo is a trademark of ETSI registered for the benefit of its Members and of
+the oneM2M Partners. GSM® and the GSM logo are trademarks registered and owned by the GSM Association.
+
+
+
+Legal Notice
+This Technical Specification (TS) has been produced by ETSI 3rd Generation Partnership Project (3GPP).
+
+The present document may refer to technical specifications or reports using their 3GPP identities. These shall be
+interpreted as being references to the corresponding ETSI deliverables.
+
+The cross reference between 3GPP and ETSI identities can be found at 3GPP to ETSI numbering cross-referencing.
+
+
+
+Modal verbs terminology
+In the present document "shall", "shall not", "should", "should not", "may", "need not", "will", "will not", "can" and
+"cannot" are to be interpreted as described in clause 3.2 of the ETSI Drafting Rules (Verbal forms for the expression of
+provisions).
+
+"must" and "must not" are NOT allowed in ETSI deliverables except when used in direct citation.
+
+
+
+
+                                                          ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                                                 3                                     ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+Contents
+Intellectual Property Rights ................................................................................................................................2
+Legal Notice .......................................................................................................................................................2
+Modal verbs terminology....................................................................................................................................2
+Foreword.............................................................................................................................................................4
+1         Scope ........................................................................................................................................................5
+2         References ................................................................................................................................................5
+3         Definitions and abbreviations ...................................................................................................................5
+3.1           Definitions .......................................................................................................................................................... 5
+3.2           Abbreviations ..................................................................................................................................................... 6
+4         Iuant layer 1 ..............................................................................................................................................6
+4.1           General ............................................................................................................................................................... 6
+4.2           RS485 option ...................................................................................................................................................... 7
+4.3           Modem option .................................................................................................................................................... 7
+4.3.1           Interference with existing systems ................................................................................................................ 9
+4.3.1.1             Carrier frequency and frequency stability ............................................................................................... 9
+4.3.1.2             Modem isolation and modem emissions ................................................................................................. 9
+4.3.1.3             Modem intermodulation attenuation ..................................................................................................... 10
+4.3.2           Recovery time ............................................................................................................................................. 10
+4.3.3           Impedance ................................................................................................................................................... 10
+4.3.4           Modulator characteristics ............................................................................................................................ 11
+4.3.4.1             Levels .................................................................................................................................................... 11
+4.3.4.2             Spectrum emission mask ....................................................................................................................... 11
+4.3.5           Demodulator characteristics........................................................................................................................ 11
+4.3.6           Duty cycle variation .................................................................................................................................... 11
+4.3.7           Operating bands .......................................................................................................................................... 12
+4.3.8           Time delay and accuracy ............................................................................................................................ 12
+4.3.9           Insertion Loss.............................................................................................................................................. 12
+4.3.10          DC port isolation......................................................................................................................................... 13
+4.3.11          RET control unit spurious emission ............................................................................................................ 13
+4.3.12          Control unit spurious emission ................................................................................................................... 13
+4.4           DC power supply .............................................................................................................................................. 14
+4.4.1           Power consumption..................................................................................................................................... 14
+4.4.2           Conducted emission .................................................................................................................................... 14
+4.4.3           Power-up characteristics ............................................................................................................................. 14
+
+Annex A (normative):                             Test procedures ..............................................................................................16
+Annex B (informative):                           Change history ...............................................................................................17
+History ..............................................................................................................................................................18
+
+
+
+
+                                                                                      ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                  4                        ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+Foreword
+This Technical Specification has been produced by the 3rd Generation Partnership Project (3GPP).
+
+The contents of the present document are subject to continuing work within the TSG and may change following formal
+TSG approval. Should the TSG modify the contents of the present document, it will be re-released by the TSG with an
+identifying change of release date and an increase in version number as follows:
+
+   Version x.y.z
+
+   where:
+
+      x the first digit:
+
+            1 presented to TSG for information;
+
+            2 presented to TSG for approval;
+
+            3 or greater indicates TSG approved document under change control.
+
+      Y the second digit is incremented for all changes of substance, i.e. technical enhancements, corrections,
+        updates, etc.
+
+      z the third digit is incremented when editorial only changes have been incorporated in the document.
+
+
+
+
+                                                        ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                       5                         ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+1                Scope
+The present document specifies the standards allowed to implement layer 1 on the Iuant interface for UTRA, E-UTRA
+and NR.
+
+The specification of transmission delay requirements and O&M requirements are not in the scope of the present
+document.
+
+The modem option of Iuant layer 1 specification in clause 4.3 applies to UTRA, E-UTRA BS and NR BS type 1-C.
+
+
+
+2                References
+The following documents contain provisions which, through reference in this text, constitute provisions of the present
+document.
+
+    -     References are either specific (identified by date of publication, edition number, version number, etc.) or
+          non-specific.
+
+    -     For a specific reference, subsequent revisions do not apply.
+
+    -     For a non-specific reference, the latest version applies. In the case of a reference to a 3GPP document (including
+          a GSM document), a non-specific reference implicitly refers to the latest version of that document in the same
+          Release as the present document.
+
+    [1]                 3GPP TS 37.462: "UTRAN Iuant interface: Signalling transport".
+
+    [2]                 ISO/IEC 8482 (1993-12): "Information technology - Telecommunications and information
+                        exchange between systems - Twisted pair multipoint interconnections".
+
+    [3]                 TIA/EIA TSB89: "Application guidelines for TIA/EIA-485-A".
+
+    [4]                 3GPP TS 25.101: "Technical Specification Group Radio Access Network; User Equipment (UE)
+                        radio transmission and reception (FDD)".
+
+    [5]                 3GPP TS 36.101: "Evolved Universal Terrestrial Radio Access (E-UTRA); User Equipment (UE)
+                        radio transmission and reception".
+
+    [6]                 3GPP TS 38.101: "NR; User Equipment (UE) radio transmission and reception (FDD)".
+
+    [7]                 3GPP TR 21.905: "Vocabulary for 3GPP Specifications".
+
+
+
+
+3                Definitions and abbreviations
+
+3.1              Definitions
+For the purposes of the present document, the terms and definitions given in TR 21.905 [1] and the following apply. A
+term defined in the present document takes precedence over the definition of the same term, if any, in TR 21.905 [7].
+
+On-Off-Keying: A modulation system in which a carrier is switched between two states, ON and OFF.
+
+Common feeder cable: Feeder cable where some antenna line devices (e.g. RET, TMA) are connected via the same
+feeder cable.
+
+
+
+
+                                                             ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                     6                        ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+3.2           Abbreviations
+For the purposes of the present document, the following abbreviations apply:
+
+    BS               Base Station
+    DC               Direct Current
+    DL               Downlink
+    FDD              Frequency Division Duplex
+    ISB              Idle-State Biasing
+    OOK              On-Off-Keying
+    RET              Remote Electrical Tilting
+    RF               Radio Frequency
+    TMA              Tower Mounted Amplifier
+    UE               User Equipment
+    UL               Uplink
+    UMTS             Universal Mobile Telecommunications System
+    UTRA             UMTS Terrestrial Radio Access
+
+
+4             Iuant layer 1
+
+4.1           General
+There are two layer 1 options:
+
+    -   RS485 option: A screened multicore cable, which supports a conventional RS485 serial multi-drop bus.
+
+    -   Modem option: A connection to a RET and/or a TMA control unit by way of a coaxial cable which is shared
+        with DC supply and RF signals.
+
+Both layer 1 options support the connection of two-way serial data and DC power to the RET and/or TMA antenna
+device.
+
+At least one of these two layer 1 options shall be supported.
+
+The default data rate for both layer 1 options shall be 9.6 kbps. Higher data rates of 38.4 kbps for both layer 1 options
+and 115.2 kbps only for the RS485 layer 1 option may optionally be supported. Each unit communicates on one of the
+three data rates, but different units on the same interface may use different data rates.
+
+After a reset, a secondary device shall alternate between supported data rates. When alternating between data rates, the
+data rate shall be held constant for 300 ms. After every correctly received device scan command (see TS 37.462 [1])
+independent of whether it matches or not, at one of the supported data rates, that data rate shall be held constant for 1.5
+seconds. After successful reception of an address assignment frame, the secondary device shall use that data rate until it
+is reset.
+
+Data rates:
+
+    -   9.6 kbps ± 3 %
+
+    -   38.4 kbps ± 3 %
+
+    -   115.2 kbps ± 3 %
+
+The format of the data octet shall be as shown in figure 4.1.1:
+
+
+
+
+                                                           ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                        7                         ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+                 Vb –Va
+                                       Idle                                                        Idle
+
+         Logical 1
+         Carrier Off
+
+
+
+
+                                                                                                           Time
+
+
+
+
+         Logical 0
+         Carrier On                                 Least significant bit                   Stop bit (1)
+
+                                               Startbit (0)                            Most significant bit
+
+
+                                Figure 4.1.1: Format and order of transmitted data
+
+
+4.2            RS485 option
+This option is constituted by a two wire bi-directional multi-drop configuration conforming to ISO/IEC 8482 [2]. The
+mapping of mark/space to logical one and zero as referred to in ISO/IEC 8482 [2] shall be according to figure 4.1.1.
+
+The use of ISB, also called idle-line failsafe in TIA/EIA TSB89 [3], is mandatory. The bias voltages shall be applied
+only by the primary device to any separate RS485 bus. The polarity of the idle-state bias is defined as a transmitted 1.
+
+The RS485 transmitter shall be set to drive the bus before the first start bit is sent and held active until the last stop bit is
+sent. The RS485 transmitter shall stop driving the bus within 20 bit-times after the last stop bit is sent.
+
+If an antenna modem is used ISB shall be implemented by the antenna modem.
+
+
+4.3            Modem option
+The connection to a RET and/or a TMA control unit by way of a coaxial cable which is shared with DC supply and RF
+signals is provided by two modems, a BS modem and an antenna modem. The BS modem shall be either connected to
+the antenna connector of the BS or integrated in the BS. It provides signal transmission to the antenna modem and
+signal reception from the antenna modem over the antenna feeder cable. The antenna modem is located between the
+antenna feeder cable and the antenna. Modem configurations and reference points for modem characteristics are
+specified in figure 4.3.1 and figure 4.3.2. Unless otherwise stated, requirements in this section apply to both BS modem
+and antenna modem.
+
+
+
+
+                                                              ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                 8                      ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+
+                                                                   Reference point 4
+                        Control data
+                                               Antenna modem
+                        DC power
+
+                                                                   Reference point 3
+
+                         Reference point 5
+                                             Iuant                 Antenna feeder cable
+
+
+                                                                   Reference point 2
+
+                       Control data                  BS modem
+                       DC power
+                                                                    Reference point 1
+                                                                  (BS antenna connector)
+                         Reference point 6
+                                                     BS without
+                                                     BS modem
+
+
+
+                       Reference point 6, DC power to the BS modem,
+                       is optional and does not exist if the BS modem
+                       has integrated power supply.
+
+    Figure 4.3.1: Modem configuration and modem reference points for a BS without BS modem
+
+
+
+
+                                                        ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                    9                        ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+
+                                                                       Reference point 4
+
+                            Control data
+                                                    Antenna modem
+                            DC power
+
+
+                                                                        Reference point 3
+                             Reference point 5
+                                                 Iuant                 Antenna feeder cable
+
+
+                                                                        Reference point 2
+                                                                      (BS antenna connector)
+
+                                                          BS
+                                                  with integrated BS
+                                                        modem
+
+
+
+
+                    Figure 4.3.2: Modem configuration and modem reference points for
+                                     a BS with integrated BS modem
+
+
+4.3.1         Interference with existing systems
+The modem circuit shall be capable of managing its transmitting characteristic according to subclause 4.3.5.
+
+4.3.1.1           Carrier frequency and frequency stability
+The following carrier frequency shall be used for this application:
+
+       2.176 MHz ± 100 ppm
+
+4.3.1.2           Modem isolation and modem emissions
+The external BS modem shall provide minimum attenuation according to figure 4.3.1.2.1 between reference point 2 and
+reference point 1 to protect the BS from emissions of the antenna modem.
+
+External BS modem emissions at reference point 1 shall be attenuated at least according to the modem attenuation in
+figure 4.3.1.2.1 below the levels specified for the modem spectrum emission mask in subclause 4.3.4.2 to protect the BS
+from emissions of the BS modem.
+
+The antenna modem shall provide minimum attenuation according to figure 4.3.1.2.1 between reference point 3 and
+reference point 4 to protect other radio systems from emission of the BS modem.
+
+Antenna modem emissions at reference point 4 shall be attenuated at least according to the modem attenuation in figure
+4.3.1.2.1 below the levels specified for the modem spectrum emission mask in subclause 4.3.4.2 to protect other radio
+systems from emission of the antenna modem.
+
+
+
+
+                                                          ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                     10                      ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+                                          42 dB
+                                41 dB                41 dB
+
+
+
+                           21 dB                        21 dB
+                                            f0
+
+                10 dB                                   200 kHz            10 dB
+
+                                         400 kHz                                                     0 dB
+
+                                          1 MHz
+        9 kHz           1 MHz                                     10 MHz           20 MHz      30 MHz
+
+
+                                        Figure 4.3.1.2.1: Modem attenuation
+
+
+4.3.1.3          Modem intermodulation attenuation
+The modem intermodulation attenuation is specified in terms of the power in intermodulation products of WCDMA
+modulated carriers present at reference point 1 or reference point 3.
+
+For 2 downlink carriers of 43 dBm the power of third order intermodulation products in the UL operating bands for the
+external BS modem and antenna modem shall not exceed:
+
+   -   – 130 dBm/100 kHz for frequencies < 1 GHz
+
+   -   – 120 dBm/1 MHz for frequencies ≥ 1 GHz
+
+   NOTE:     Using the modem with higher power than 43 dBm and or with more carriers than 2 carriers at
+             43dBm/carrier may increase intermodulation products and may degrade the receiver sensitivity of the BS
+             if these intermodulation products fall at BS receive frequencies.
+
+For the worst input configuration of power and number of carriers declared by the modem manufacturer the power of
+any intermodulation product for the external BS modem and antenna modem shall not exceed:
+
+   -   – 98dBm/100kHz
+
+In addition, for the worst input configuration of power and number of carriers declared by the modem manufacturer the
+power of fifth or higher order intermodulation products in the UL operating bands for the external BS modem and
+antenna modem shall not exceed:
+
+   -   – 135 dBm/100 kHz for frequencies < 1 GHz
+
+   -   – 125 dBm/1 MHz for frequencies ≥ 1 GHz
+
+
+4.3.2        Recovery time
+A minimum recovery time shall be allowed between receiving and transmitting messages on the bus. For this reason a
+minimum permitted response time is specified in subclause 4.5 in TS 37.462 [1].
+
+
+4.3.3        Impedance
+The modem transceiver shall provide constant impedance in both transmitting and receiving modes:
+
+   -   Nominal impedance Z0: 50 Ω;
+
+   -   Return loss at modem carrier frequency ± 0.1 MHz > 10 dB;
+
+   -   Return loss in external BS and antenna modem operating bands > 20 dB.
+
+
+
+
+                                                        ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                  11                       ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+4.3.4         Modulator characteristics
+
+4.3.4.1          Levels
+   ON-Level:            +3 dBm ± 2 dB
+
+   OFF-Level:           ≤ -40 dBm
+
+4.3.4.2          Spectrum emission mask
+The modem spectrum emission mask is specified in figure 4.3.4.2.1. Intermediate values may be obtained by linear
+interpolation between the points shown. The corresponding measurement bandwidths are specified in table 4.3.4.2.1.
+For modem configurations according to figure 4.3.1 the BS modem emissions shall not exceed the limits of the
+spectrum emission mask at reference point 2. For modem configurations according to figure 4.3.2 the BS with
+integrated BS modem emissions shall not exceed the limits of the spectrum emission mask at reference point 2 only for
+frequencies below 20 MHz. Antenna modem emissions shall not exceed the limits of the spectrum emission mask at
+reference point 3.
+
+                                    +5 dBm
+                          -5 dBm               -5 dBm
+
+                     -25 dBm                    -25 dBm
+
+
+        -36 dBm                        f0               -36 dBm
+                        200 kHz                                        -67 dBm
+                                                                                            Note 1
+                                     400 kHz
+
+    9 kHz      1 MHz                1 MHz         10 MHz        30 MHz            400 MHz            12.75 GHz
+                                                         20 MHz
+
+                              Figure 4.3.4.2.1: Modem spectrum emission mask.
+
+   Note 1:    For frequencies <1GHz the general emission limit is -108dBm, except modem operating band UL
+              frequencies where the emission limit is -135 dBm.
+              For frequencies ≥1GHz the general emission limit is -98dBm, except modem operating band UL
+              frequencies where the emission limit is -125 dBm.
+
+                Table 4.3.4.2.1: Modem spectrum emission mask measurement bandwidth
+                                         Band              Measurement Bandwidth
+                                    9 kHz - 150 kHz                1 kHz
+                                   150 kHz - 30 MHz               10 kHz
+                                    30 MHz - 1 GHz                100 kHz
+                                   1 GHz - 12.75 GHz               1 MHz
+
+
+
+4.3.5         Demodulator characteristics
+The demodulator shall fulfil the requirement in subclause 4.3.6 for a carrier ON-Level within +5 dBm to -12 dBm and a
+carrier OFF-Level less than -18 dBm. The levels within –12 dBm to –18 dBm are undefined.
+
+
+4.3.6         Duty cycle variation
+In order to guarantee proper transmission of data bits through the processes of modulation and demodulation, the
+following limit shall be met for the duty cycle variation:
+
+   ΔDCSYSTEM = |DCRX – DCTX| ≤ 10 %
+
+
+
+                                                         ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                     12                     ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+   Where:     ΔDCSYSTEM is the difference between the duty cycles of the transmitted and received bit streams,
+
+              DCTX = Duty cycle for the input bit stream, and
+
+              DCRX = Duty cycle for the output bit stream.
+
+
+
+
+               Figure 4.3.6.1: Duty cycles of the bit stream and OOK modulated subcarrier
+
+For transmission through a coaxial cable, two converters are required, one from a bit stream to OOK (modulator) and
+one from OOK back to a bit stream (demodulator). Therefore half of the total duty cycle tolerance is available for each
+converter.
+
+For an input bit stream with a duty ratio of 50 %, the cascaded modulator and demodulator shall provide an output bit
+stream with a duty ratio within the limits 40 % - 60 %, measured in each case at 0.5 times peak amplitude (see
+figure 4.3.6.1).
+
+
+4.3.7         Operating bands
+A UTRA/FDD BS, UTRA/TDD BS, E-UTRA BS, NR BS or antenna modem is designed to operate in one or several of
+the operating bands defined in 3GPP TS 25.101 [4], 3GPP TS 36.101 [5] and 3GPP TS 38.101 [6].
+
+                                                 Table 4.3.7.1: Void
+
+
+
+The operating bands of the BS modem or antenna modem shall be declared by the manufacturer.
+
+
+4.3.8         Time delay and accuracy
+The time delay in the operating bands shall be declared by the manufacturer with ± 1 ns accuracy. The time delay shall
+not exceed 30 ns. This requirement is only applicable to external BS modem and antenna modem.
+
+
+4.3.9         Insertion Loss
+The insertion loss in the external BS modem or antenna modem operating band shall be ≤ 0.3 dB.
+
+
+
+
+                                                         ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                    13                             ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+The actual insertion loss shall be declared by the manufacturer.
+
+
+4.3.10        DC port isolation
+The isolation between DC port and RF ports shall meet the minimum values in figure 4.3.10.1 and 4.3.10.2. Figure
+4.3.10.1 is valid for antenna modems between reference point 5 and 4 as well as 5 and 3 and for BS modems without
+integrated power supply between reference point 6 and 2 as well as 6 and 1. Figure 4.3.10.2 is valid as additional
+requirement for antenna modems between reference point 5 and 3 and for BS modems without integrated power supply
+between reference point 6 and 2.
+
+                                                                                  Note 1      Note 2
+                                                                21 dB
+                       16 dB            Note 3                                                            20 dB
+
+           10 dB
+
+
+
+   9 kHz    150 kHz            1 MHz               30 MHz               400 MHz       1 GHz        2.57 GHz    3 GHz
+
+
+        Note 1: 38 dB, except for UL and DL operating bands where it is 65 dB
+        Note 2: 38 dB, except for UL and DL operating bands where it is 65 dB
+        Note 3: 16 dB. Between reference point 5 and 3 as well as 6 and 2 see figure 4.3.10.2.
+
+                                          Figure 4.3.10.1: DC port isolation
+
+                                       36 dB
+                           35 dB                  35 dB
+
+
+
+                       16 dB                                              16 dB
+                                         f0
+
+
+                                                      200 kHz
+
+                                       400 kHz
+
+                                       1 MHz
+                   1 MHz                                        10 MHz            20 MHz         30 MHz
+
+
+                                          Figure 4.3.10.2: DC port isolation
+
+
+4.3.11        RET control unit spurious emission
+Void.
+
+
+4.3.12        Control unit spurious emission
+The control unit, or a combination of control units, shall not generate spurious emission, at reference point 5, above a
+level that will violate the spectrum emission mask requirement according to chapter 4.3.4.2. The DC port isolation
+according to chapter 4.3.10 shall be taken into account.
+
+
+
+
+                                                           ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                   14                        ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+4.4           DC power supply
+4.4.1         Power consumption
+The DC supply requirements refers to reference points 3 and 5 in subclause 4.3.
+
+BS modem and an antenna modem shall be able to operate with a DC supply voltage range of 10 V – 30 V.
+
+Power consumption modes are specified in table 4.4.1.1. and table 4.4.1.2.
+
+                               Table 4.4.1.1: Power consumption modes for RET
+
+                                RET Power mode         Maximum power consumption
+                                     High                       < 13 W
+                                     Low                         <2W
+
+
+                              Table 4.4.1.2: Power consumption modes for TMA
+                                    TMA Type           Maximum power consumption
+                                    Single Unit                 < 7,5 W
+                                   Multi Unit (N)             < N * 7,5 W
+
+
+BS modem and antenna modem maximum power consumption shall be < 2 W.
+
+BS modem and antenna modem shall impose a voltage drop less than 2 V between reference point 3 and 5.
+
+A Single Unit considers one RF amplifier in one TMA. A Multi Unit considers N RF amplifiers in equal or less than N
+TMAs.
+
+
+4.4.2         Conducted emission
+The levels of generated conducted noise and ripple on DC Power supply shall be within the limits given in table 4.4.2.1.
+
+                                          Table 4.4.2.1: Noise and ripple
+                   Item                 Limit            Frequency                    Remarks
+             RET power mode            70 mVpp          0.15 - 30 MHz        Only one operating unit a time
+                   High
+             RET power mode            20 mVpp          0.15 - 30 MHz
+                   Low
+                   TMA                 20 mVpp          0.15 - 30 MHz
+            Antenna modem, RF          15 mVpp          0.15 - 30 MHz        Generated Noise and Ripple at
+                    port                                                        RF feeder (in RX mode)
+             Antenna modem,            20 mVpp          0.15 - 30 MHz         Allowed Noise and Ripple at
+                 DC port                                                     external DC port (in TX mode)
+
+
+All units connected to a DC supply bus shall exhibit full performance up to the limit of 112 mVpp total noise and ripple
+within 0.15 - 30 MHz.
+
+
+4.4.3         Power-up characteristics
+A BS modem, antenna modem or RET/TMA control units shall have a power-up period of 3 s.
+
+During the power-up period a BS modem, antenna modem or a RET control unit shall exhibit the circuit equivalent of a
+DC power consumer with a current consumption of maximum 400 mA in parallel with a capacitor of maximum 0.5 µF.
+
+During the power-up period the TMA control unit shall exhibit the circuit equivalent of a DC power consumer with a
+current consumption of maximum 1A in parallel with a capacitor of maximum 0.5 µF.
+
+
+
+
+                                                          ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                  15                       ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+After the power-up period, the unit shall be fully functional and the power consumption requirement as described in
+subclause 4.4.1 applies.
+
+
+
+
+                                                         ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                  16                       ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+Annex A (normative):
+Test procedures
+Test pattern
+Spectrum mask and emission requirement shall be tested both with a consecutive series of "0" and an alternating
+sequence of "0" and "1".
+
+Emission requirement below noise floor
+As a general rule, the resolution bandwidth of the measuring equipment should be equal to the measurement bandwidth.
+However, to improve measurement accuracy and sensitivity when measuring close to or below the noise floor, the
+resolution bandwidth may be smaller than the measurement bandwidth. When the resolution bandwidth is smaller than
+the measurement bandwidth, the result should be integrated over the measurement bandwidth in order to obtain the
+equivalent noise bandwidth of the measurement bandwidth.
+
+
+Conversion between modulated and CW for IM measurement
+The requirement for IM3 below 1 GHz shall be relaxed 15 dB and tested with CW interferers at the specified levels.
+The requirement for IM3 above 1 GHz shall be relaxed 5 dB and tested with CW interferers at the specified levels.
+
+The requirement for IM5 or higher below 1 GHz shall be relaxed 10 dB and tested with CW interferers at the specified
+levels.
+
+The requirement for IM5 or higher above 1 GHz shall be relaxed 0 dB and tested with CW interferers at the specified
+levels.
+
+Example: A –130 dBm/100 kHz requirement below 1 GHz with two WCDMA-modulated carriers at 43 dBm is
+converted to a –115 dBm requirement with two CW carriers at 43 dBm.
+
+
+
+
+                                                        ETSI
+3GPP TS 37.461 version 19.0.0 Release 19                  17                         ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+Annex B (informative):
+Change history
+                                                   Change history
+Date       Meeting    TDoc        CR   Rev Cat     Subject/Comment                                                New
+                                                                                                                  version
+ 2019-02    R3-103    R3-190087                    Text transferred from 25.461 v15.3.0 (changes shown with rev    1.15.0
+                                                   marks)
+ 2019-04    RAN#83    RP-190590                    Specification approved by RAN plenary                           15.4.0
+ 2020-07   RAN#88-e       -     -          -   -   Update to Rel-16 version (MCC)                                  16.0.0
+ 2022-03   SA#95-e                                 Promotion to Release 17 without technical change                17.0.0
+ 2022-06   RAN#96     RP-221155 0003       1   A   CR on clarification scope on Iuant modem                        17.1.0
+ 2024-03   RAN#103    RP-240617 0005       -   D   Rapporteur Editorial Review                                     18.0.0
+ 2025-09    SA#109        -     -          -   -   Update to Rel-19 version (MCC)                                  19.0.0
+
+
+
+
+                                                        ETSI
+3GPP TS 37.461 version 19.0.0 Release 19             18          ETSI TS 137 461 V19.0.0 (2025-10)
+
+
+
+History
+                                              Document history
+ V19.0.0       October 2025     Publication
+
+
+
+
+                                                    ETSI
+

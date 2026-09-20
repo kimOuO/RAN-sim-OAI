@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Edges, Grid, Line, OrbitControls, Text } from '@react-three/drei';
 import { CANVAS } from '@/config';
@@ -7,6 +7,7 @@ import type { Selection } from '@/hooks/feature/useSceneEditorPage';
 import type { Building, Cell, Gnb, SceneTree, Ue } from '@/types/registry';
 import { CellMarker } from '@/components/scene-canvas/CellMarker';
 import { GnbGroupMarker } from '@/components/scene-canvas/GnbGroupMarker';
+import { sceneBounds } from '@/services/api/scenes';
 import { ueActiveAt, uePositionAt } from '@/hooks/feature/sceneGeometry';
 import { SceneMeshes, type MeshView } from '@/components/scene-canvas/SceneMeshes';
 import { SURFACE_FLAG, SurfaceClip, pickSurface, useSurfaceDrag } from '@/components/scene-canvas/surface';
@@ -41,12 +42,21 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
   const [meshView, setMeshView] = useState<MeshView>({ show: true, opacity: 0.35, clipY: 2.2 });
   const [meshInfo, setMeshInfo] = useState('');
   // 場景範圍(gNB / cell / UE 路徑 / 建築)→ 標記比例與鏡頭。大型戶外場景 scale=1,走廊這種十幾公尺的場景自動縮小
+  // 2026-09-21:掃描模型尺寸不在 tree 裡,大場景開啟時鏡頭只對著中間一小塊
+  const [geo, setGeo] = useState<{ x: number[]; z: number[] } | null>(null);
+  useEffect(() => { let off = false;
+    sceneBounds(tree.scene.scene_uuid)
+      .then((b) => { if (!off && b.x_range && b.z_range) setGeo({ x: b.x_range, z: b.z_range }); })
+      .catch(() => { /* 沒有掃描模型或 physics 不通 → 用 tree 的範圍 */ });
+    return () => { off = true; };
+  }, [tree.scene.scene_uuid]);
   const view = useMemo(() => {
     const xs: number[] = [], zs: number[] = [];
     const add = (p?: number[] | null) => { if (p && p.length === 3) { xs.push(p[0]); zs.push(p[2]); } };
     tree.gnbs.forEach((g) => { add(g.position); g.dus.forEach((d) => d.cells.forEach((c) => add(c.position))); });
     tree.ues.forEach((u) => u.waypoints.forEach((w) => { xs.push(w[1]); zs.push(w[3]); }));
     tree.buildings.forEach((b) => add(b.position));
+    if (geo) { xs.push(...geo.x); zs.push(...geo.z); }
     if (!xs.length) return { center: [0, 0, 0] as [number, number, number], extent: 80, scale: 1 };
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
     const extent = Math.max(10, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
@@ -55,7 +65,7 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
   const uePaths = useMemo(() => tree.ues.map((u) => ({ ue: u, pts: u.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number]) })), [tree.ues]);
   return (
     <>
-    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: Math.max(0.5, view.extent / 500), far: Math.max(2000, view.extent * 8) }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
+    <Canvas key={geo ? 'geo' : 'base'} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: Math.max(0.5, view.extent / 500), far: Math.max(2000, view.extent * 8) }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
       <SurfaceClip.Provider value={hasGeo && meshView.show ? meshView.clipY : null}>
       {/* 地面:放置模式時接點擊,落點貼齊滑鼠下的表面(屋頂 / 掃描模型);平常點空白處取消選取 */}
       <PlaceCatcher placing={placing} onPlace={onGroundClick} onEmpty={() => onSelect(null)} clipY={hasGeo && meshView.show ? meshView.clipY : null} />

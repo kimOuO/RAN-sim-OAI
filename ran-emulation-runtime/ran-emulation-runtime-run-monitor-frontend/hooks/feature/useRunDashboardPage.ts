@@ -22,11 +22,25 @@ export function useRunDashboardPage(runUuid: string) {
   const launches = useAsync(() => listLaunchRequests(runUuid), [runUuid]);
   const instances = useAsync(() => listRunInstances(runUuid), [runUuid]);
   const ric = useAsync(() => getRicObservation(runUuid), [runUuid]);
-  const duBase = runtimeBase((instances.data ?? []).find((i) => i.role === 'du'), DU_API, 'DU');
-  const ueBase = runtimeBase((instances.data ?? []).find((i) => i.role === 'ue'), UE_API, 'UE');
-  const e2Base = runtimeBase((instances.data ?? []).find((i) => i.role === 'e2adapter'), E2ADAPTER_API, 'E2Adapter');
-  const tick = useAsync(() => getDuTick(duBase), [duBase]); const e2 = useAsync(() => getE2AdapterStatus(e2Base), [e2Base]); const ueDrv = useAsync(() => getUeDriverStatus(ueBase), [ueBase]); const duCells = useAsync(() => listDuCells(duBase), [duBase]);
   const live = run.data?.status === 'running';
+  // 2026-09-21:run 停掉後 per-run 容器被移除、host_port 消失,runtimeBase 會退回
+  // 共用的舊 DU/UE/E2Adapter,把別的場景的 cell 當成這個 run 的顯示出來(實際踩到:
+  // 555 的 run 收工後 DU cell 表列出走廊的 src/nbr)。不在執行中就不要退回,
+  // 讓面板直接說「沒有即時資料」而不是給錯的。
+  const duInst = (instances.data ?? []).find((i) => i.role === 'du');
+  const ueInst = (instances.data ?? []).find((i) => i.role === 'ue');
+  const e2Inst = (instances.data ?? []).find((i) => i.role === 'e2adapter');
+  // run 不在執行中 → 即時狀態沒有意義:per-run 容器已移除,registry 裡的 host_port
+  // 只是紀錄,打過去不是失敗就是打到別人。共用模式下停掉的 run 同理。
+  const runtimeGone = !live;
+  const duBase = runtimeBase(duInst, DU_API, 'DU');
+  const ueBase = runtimeBase(ueInst, UE_API, 'UE');
+  const e2Base = runtimeBase(e2Inst, E2ADAPTER_API, 'E2Adapter');
+  const skip = <T,>(): Promise<T | null> => Promise.resolve(null);
+  const tick = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof getDuTick>>>() : getDuTick(duBase)), [duBase, runtimeGone]);
+  const e2 = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof getE2AdapterStatus>>>() : getE2AdapterStatus(e2Base)), [e2Base, runtimeGone]);
+  const ueDrv = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof getUeDriverStatus>>>() : getUeDriverStatus(ueBase)), [ueBase, runtimeGone]);
+  const duCells = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof listDuCells>>>() : listDuCells(duBase)), [duBase, runtimeGone]);
   const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); ueDrv.refetch(); instances.refetch(); }, [run, samples, hos, ctrls, tick, e2, ueDrv, instances]);
   usePolling(refetchAll, POLL_MS, live);
   usePolling(ric.refetch, 30000, live);   // 閘道查詢慢,30 s 一次
@@ -72,8 +86,11 @@ export function useRunDashboardPage(runUuid: string) {
     return { event: c, prbBefore: avg(all.filter((s) => s.sim_time_ms < at).slice(-N)), prbAfter: avg(all.filter((s) => s.sim_time_ms >= at).slice(0, N)) };
   }), [ctrls.data, all]);
 
+  // 面板用它顯示「per-run 容器已收掉」而不是空白
+
   return {
-    run: run.data, sceneName: (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid)?.legacy_scenario_id ?? '', status: run.status, error: run.error,
+    runtimeGone,
+    run: run.data, sceneName: (() => { const sc = (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid); return sc?.legacy_scenario_id || sc?.name || ''; })(), status: run.status, error: run.error,
     all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
     handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], commandImpact, launches: launches.data ?? [],
     duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, instances: instances.data ?? [], ric: ric.data ?? null, beamCells: beamUsage(view), perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,

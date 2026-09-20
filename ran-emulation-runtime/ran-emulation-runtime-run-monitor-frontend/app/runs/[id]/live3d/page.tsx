@@ -24,7 +24,7 @@ export default function Live3dPage() {
       <header className="runhead">
         <div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>3D 即時</h1></div>
         <span className={`pill ${p.run.status}`}>{p.run.status}</span>
-        <span className="muted">{p.driver ? `模擬 ${Math.floor((p.driver.elapsed_sim_sec ?? 0) / 60)}:${String(Math.floor((p.driver.elapsed_sim_sec ?? 0) % 60)).padStart(2, '0')} · ${p.driver.sim_speed_x}× · ` : ''}{attached}/{p.tree.ues.length} UE 附著</span>
+        <span className="muted">{p.driver ? `模擬 ${Math.floor((p.driver.elapsed_sim_sec ?? 0) / 60)}:${String(Math.floor((p.driver.elapsed_sim_sec ?? 0) % 60)).padStart(2, '0')} · ${Number.isFinite(p.driver.sim_speed_x) ? `${p.driver.sim_speed_x}× · ` : ''}` : ''}{attached}/{p.tree.ues.length} UE 附著</span>
         <span className="sp" />
         <label className="check-inline"><input type="checkbox" checked={p.showLabels} onChange={(e) => p.setShowLabels(e.target.checked)} /> 顯示全部名稱</label>
         <RunSubNav id={id} />

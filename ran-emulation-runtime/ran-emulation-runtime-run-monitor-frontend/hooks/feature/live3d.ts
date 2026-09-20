@@ -23,11 +23,13 @@ export function cellPositions(tree: SceneTree3d): Record<string, [number, number
 }
 
 /** 場景範圍 → 中心、尺度(標記大小與鏡頭距離用) */
-export function sceneView(tree: SceneTree3d) {
+export function sceneView(tree: SceneTree3d, geo?: { x: number[]; z: number[] } | null) {
   const xs: number[] = [], zs: number[] = [];
   tree.gnbs.forEach((g) => { xs.push(g.position[0]); zs.push(g.position[2]); });
   tree.ues.forEach((u) => u.waypoints.forEach((w) => { xs.push(w[1]); zs.push(w[3]); }));
   tree.buildings.forEach((b) => { xs.push(b.position[0]); zs.push(b.position[2]); });
+  // 2026-09-21:掃描模型的尺寸不在 tree 裡,不併進來的話大場景開啟時鏡頭只對著中間一小塊
+  if (geo) { xs.push(...geo.x); zs.push(...geo.z); }
   if (!xs.length) return { center: [0, 0, 0] as [number, number, number], extent: 80, scale: 1 };
   const extent = Math.max(10, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
   return { center: [(Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...zs) + Math.max(...zs)) / 2] as [number, number, number], extent, scale: Math.max(0.4, Math.min(6, extent / 120)) };

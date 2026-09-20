@@ -57,7 +57,11 @@ export default function RunDashboardPage() {
         <Panel title="RLC SDU delay DL · per cell 平均" sub="DRB.RlcSduDelayDl" span={4}><TimeSeriesChart series={p.charts.rlcDelay} yMin={0} xLabels={p.xLabels} /></Panel>
         <Panel title="平均 MCS · per cell" span={4}><TimeSeriesChart series={p.charts.mcs} yMin={0} yMax={28} xLabels={p.xLabels} /></Panel>
         <Panel title="每 cell UE 數" span={4}><TimeSeriesChart series={p.charts.ueCount} yMin={0} xLabels={p.xLabels} digits={0} /></Panel>
-        <Panel title="RAN 模擬執行狀況" sub={p.perRun ? 'per-run 容器 · UE driver / DU / E2' : '共用容器 · UE driver / DU / E2'} span={6}><RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} instances={p.instances} /></Panel>
+        <Panel title="RAN 模擬執行狀況" sub={p.runtimeGone ? 'per-run 容器已收掉 · 無即時資料' : p.perRun ? 'per-run 容器 · UE driver / DU / E2' : '共用容器 · UE driver / DU / E2'} span={6}>
+          {p.runtimeGone
+            ? <p className="muted">這個 run 已結束,per-run 容器(CU / DU / RU / UE / E2Adapter)已移除,沒有即時狀態可讀。歷史 KPM 與事件仍在上方各面板。</p>
+            : <RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} instances={p.instances} />}
+        </Panel>
         <Panel title="RIC 端觀測" sub="閘道登記 · E2 node 連線 · 觀測中的 xApp pod(30 s 更新)" span={6}><RicObservationPanel ric={p.ric} /></Panel>
         <Panel title="波束使用分佈" sub="每 cell 的 GoB 波束(色深 = 使用比例,數字 = 平均 SINR);O-RAN WG1 §4.6.4.1 每波束統計" span={6}><BeamUsagePanel cells={p.beamCells} /></Panel>
         <Panel title="換手 / RLF · 每分鐘" span={3}><ColumnChart groups={[{ name: 'HO', color: STATUS.good, cols: p.eventBars.ho.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }, { name: 'RLF', color: STATUS.critical, cols: p.eventBars.rlf.map((b) => ({ label: fmtSimTime(b.x0), value: b.n })) }]} /></Panel>
