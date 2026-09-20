@@ -255,6 +255,12 @@ def start_anr_fixture(scenario_id: str) -> bool:
                     logger.info("scenario %s 病徵時間軸已啟動(%s 步,第 %d 次嘗試)",
                                 scenario_id, d.get("steps"), attempt + 1)
                 return bool(d.get("started"))
+            # 2026-09-20:404 = 這個劇本沒有 fixture 檔(手動建立的場景一定沒有)。
+            # 重試再多次也不會變成功,以前卻照樣等滿 6 次 × 10 秒 —— 每次啟動手動場景
+            # 都白卡 60 秒,driver 在這段期間完全不動(使用者看到監控頁全空)。
+            if r.status_code == 404:
+                logger.info("scenario %s 沒有 ANR fixture,略過(手動建立的場景屬正常)", scenario_id)
+                return False
             logger.warning("start_anr_fixture non-OK %s(第 %d 次): %s",
                            r.status_code, attempt + 1, r.text[:150])
         except requests.RequestException as exc:
