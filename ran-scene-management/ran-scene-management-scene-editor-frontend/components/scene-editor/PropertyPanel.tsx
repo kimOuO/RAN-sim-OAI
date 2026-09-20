@@ -105,6 +105,12 @@ export function PropertyPanel(p: Props) {
         <label><span>倍速</span><input type="number" defaultValue={p.run?.speed_x ?? 1} onBlur={(e) => Number(e.target.value) !== (p.run?.speed_x ?? 1) && p.onRun({ speed_x: Number(e.target.value) })} /></label>
         <label><span>sim_dt ms</span><input type="number" defaultValue={p.run?.sim_dt_ms ?? 500} onBlur={(e) => Number(e.target.value) !== (p.run?.sim_dt_ms ?? 500) && p.onRun({ sim_dt_ms: Number(e.target.value) })} /></label>
         <label><span>時長 s</span><input type="number" defaultValue={p.run?.duration_sec ?? 3600} onBlur={(e) => Number(e.target.value) !== (p.run?.duration_sec ?? 3600) && p.onRun({ duration_sec: Number(e.target.value) })} /></label>
+        {/* 2026-09-20:上面三個欄位是「值有變才存」,沒有 run 時比較對象就是同一組預設值 —— 
+            接受預設值的人永遠建不出 run(啟動前檢查卡在「還沒有 run 設定」)。補一個明確的按鈕。 */}
+        <div className="actions"><button className="primary" disabled={p.saving}
+          onClick={() => p.onRun({ mode: p.run?.mode ?? 'live', speed_x: p.run?.speed_x ?? 1,
+                                   sim_dt_ms: p.run?.sim_dt_ms ?? 500, duration_sec: p.run?.duration_sec ?? 3600 })}>
+          {p.run ? '儲存 Run 設定' : '建立 Run 設定'}</button></div>
         <div className="row head">Run knobs <span className="muted">inter_freq / cell_quotas / tx_power…</span></div>
         <ul className="knobs">{p.knobs.map((k) => <li key={k.run_knob_uuid}><b className="mono">{k.key}</b><span className="mono small">{typeof k.value === 'string' ? k.value : JSON.stringify(k.value)}</span><button className="ghost" onClick={() => p.onRemoveKnob(k.run_knob_uuid)}>×</button></li>)}</ul>
         <form className="inline" onSubmit={(e) => { e.preventDefault(); if (knobVal.trim()) { p.onKnob(knobKey, knobVal.trim()); setKnobVal(''); } }}><select value={knobKey} onChange={(e) => setKnobKey(e.target.value)}>{RUN_KNOB_KEYS.map((k) => <option key={k}>{k}</option>)}</select><input placeholder="值(JSON 或字串)" value={knobVal} onChange={(e) => setKnobVal(e.target.value)} /><button type="submit" disabled={p.saving}>設定</button></form></>}
