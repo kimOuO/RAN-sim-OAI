@@ -1194,6 +1194,8 @@ class TickRunner:
                     ul_sinr_db=w.get("avg_ul_sinr_db"), sinr_layers_db=list(w.get("sinr_layers_db") or []),
                     beam_id=w.get("beam_id"),
                     beam_rsrp_top=[[int(b), round(float(d), 1)] for b, d in (ue_state.get("beam_top") or [])],
+                    # 同一個 PM 視窗的所有 UE 帶同一個序號 —— 歸檔據此分組(見 f1ap.window_seq)
+                    window_seq=self.status.tick_count // self.REPORT_EVERY_N_TICKS,
                 )
                 # 留存 1s 窗口吞吐給 dump_pm(Omniverse label 用,與此處送 CU 的值同源)
                 self._last_ue_window_kpm[uid] = {
@@ -1213,6 +1215,7 @@ class TickRunner:
                     prb_pct_ul=cw.get("prb_pct_ul", 0.0),
                     tick_count=cw["tick_count"],
                     window_seconds=window_s,
+                    window_seq=self.status.tick_count // self.REPORT_EVERY_N_TICKS,
                 )
                 self._enqueue_report(CuClientBusinessService.post_cell_measurement_report, encode_cell_measurement_report(cell_report))
             report_sent = True

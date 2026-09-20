@@ -84,6 +84,11 @@ class GnbDuMeasurementReport:
     rb_width_ul: int = 0
     ul_sinr_db: float | None = None
     sinr_layers_db: list[float] = field(default_factory=list)
+    # 2026-09-21:PM 視窗序號。歸檔原本依 CU 收到報告的「秒」分組,per_ue 又是以
+    # ue_id 為鍵的字典 —— 2× 速度下每個 UE 每實際秒有兩份報告,後者直接覆蓋前者,
+    # 實測丟掉 47%(2,000 列 → 1,066)。帶序號才能正確歸到同一個視窗。
+    # 舊 DU 不帶 → CU 端存 None,歸檔退回舊的依秒分組。
+    window_seq: int | None = None
     # B1(2026-09-16):O-RAN Cat B 的 GoB 波束(predefined-beam 的 beamId);None = 沒有 GoB
     beam_id: int | None = None
     # 2026-09-19:每波束 RSRP(O-RAN WG1 §4.6.4.1)。[[beam_id, 相對最佳波束的 dB], …],
@@ -103,6 +108,8 @@ class GnbDuCellMeasurementReport:
     prb_pct_ul: float = 0.0    # sim DL-only, 預留
     tick_count: int = 0        # window 內該 cell 的 tick 數
     window_seconds: float = 0.0
+    # 與 per-UE 報告同一個序號,歸檔才併得到同一列(見 GnbDuMeasurementReport.window_seq)
+    window_seq: int | None = None
 
 
 @dataclass

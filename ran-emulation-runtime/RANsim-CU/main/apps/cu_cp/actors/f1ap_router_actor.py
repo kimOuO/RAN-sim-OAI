@@ -369,6 +369,7 @@ class F1ApRouterActor:
             "mcs_ul": d.get("mcs_ul", 0), "rb_width_ul": d.get("rb_width_ul", 0),
             "ul_sinr_db": d.get("ul_sinr_db"), "sinr_layers_json": d.get("sinr_layers_db") or [],
             "beam_id": d.get("beam_id"),
+            "window_seq": d.get("window_seq"),
             "beam_rsrp_top_json": d.get("beam_rsrp_top") or [],
             "serving_cell": ue.serving_cell or "",
             "recorded_at": now,
@@ -479,6 +480,7 @@ class F1ApRouterActor:
             "prb_pct_ul": max(0.0, min(100.0, prb_pct_ul)),
             "tick_count": tick_count,
             "window_seconds": window_seconds,
+            "window_seq": body.get("window_seq"),
             "recorded_at": TimestampService.now(),
         })
         return success_response({"cell_id": cell_id}, "cell measurement stored")

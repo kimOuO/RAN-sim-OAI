@@ -15,6 +15,8 @@ class CellMeasurementLog(models.Model):
     prb_pct_ul = models.FloatField(default=0.0)
     tick_count = models.IntegerField(default=0)
     window_seconds = models.FloatField(default=0.0)
+    # 與 per-UE 報告同一個 PM 視窗序號:歸檔照它把 cell 與 UE 併到同一列
+    window_seq = models.IntegerField(null=True, blank=True, db_index=True)
     recorded_at = models.DateTimeField(db_index=True)
 
     class Meta:

@@ -159,22 +159,53 @@ class RunArchiver(threading.Thread):
         return delta
 
     def _archive_kpm(self, meas: list[dict], cells: list[dict], scene_t: float | None = None, dropped: int = 0) -> None:
-        """同一 PM 視窗(recorded_at 秒)→ 一列 run_kpm_sample:per_ue + per_cell。"""
+        """同一 PM 視窗 → 一列 run_kpm_sample:per_ue + per_cell。
+
+        2026-09-21:原本以 recorded_at 的「秒」為鍵,而 per_ue 是以 ue_id 為鍵的字典 ——
+        2× 速度下每個 UE 每實際秒有兩份報告,後者直接覆蓋前者。實測 2,000 列原始量測
+        依秒分組後只剩 1,066 列,**靜靜丟掉 47%**(RIC 端獨立看到我們的筆數只有他們的 65%)。
+        改以 DU 帶來的 window_seq 分組;舊 DU 不帶就退回依秒(行為與從前相同)。
+        """
         by_win: dict[str, dict] = defaultdict(lambda: {"per_ue": {}, "per_cell": {}, "tick": None})
         for m in meas:
-            w = (m.get("recorded_at") or "")[:19]
+            ws = m.get("window_seq")
+            w = f"w{ws}" if ws is not None else (m.get("recorded_at") or "")[:19]
             by_win[w]["per_ue"][m["ue_id"]] = {k: m.get(k) for k in ("serving_cell", "rsrp_dbm", "sinr_db", "throughput_dl_mbps", "throughput_ul_mbps",
                                                                     "mcs_dl", "rb_width_dl", "mimo_rank", "pdcp_sdu_volume_dl", "pdcp_sdu_volume_ul",
                                                                     "rlc_sdu_delay_dl_ms", "qos_5qi", "neighbor_cells_json",
                                                                     "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id")}
         for c in cells:
-            w = (c.get("recorded_at") or "")[:19]
+            cws = c.get("window_seq")
+            w = f"w{cws}" if cws is not None else (c.get("recorded_at") or "")[:19]
             by_win[w]["per_cell"][c["cell_id"]] = {k: c.get(k) for k in ("prb_pct_dl", "prb_pct_ul", "window_seconds")}
             # CU 是全域表,舊劇本殘留的 cell 會以 tick_count=0 出現在同一視窗;取視窗內最大值才是真的走了幾個 tick
             by_win[w]["tick"] = max(int(c.get("tick_count") or 0), int(by_win[w]["tick"] or 0))
-        wins = sorted(by_win)
+        # w<seq> 鍵要用數值排序 —— 字典序會讓 "w10" 排在 "w9" 前面,
+        # window_index 與 scene_t 的回推就都錯了。
+        def _wkey(k: str):
+            return (0, int(k[1:])) if k.startswith("w") and k[1:].isdigit() else (1, k)
+
+        wins = sorted(by_win, key=_wkey)
         # 同一輪可能封存多個視窗:最後一個對到 scene_t,較早的依 sim-time 差往回推
         tick_after = {w: sum(int(by_win[x]["tick"] or 0) for x in wins[i + 1:]) for i, w in enumerate(wins)}
+        # 2026-09-21:歸檔每 poll_sec 輪詢一次,同一個 PM 視窗的報告常跨兩輪抵達,
+        # 於是被寫成兩列互補的半截(實測 39 個不完整視窗中 36 個與鄰居相加剛好 18、
+        # 且 UE 完全不重疊)。把每批「最新」的那個視窗留到下一輪再寫。
+        carry = getattr(self, "_carry_win", None)
+        if carry:
+            ck, cv = carry
+            if ck in by_win:      # 下一輪補齊了 → 併回來
+                by_win[ck]["per_ue"] = {**cv["per_ue"], **by_win[ck]["per_ue"]}
+                by_win[ck]["per_cell"] = {**cv["per_cell"], **by_win[ck]["per_cell"]}
+                by_win[ck]["tick"] = max(int(cv["tick"] or 0), int(by_win[ck]["tick"] or 0)) or None
+            else:                 # 這一輪沒它了 → 視為已完整,寫出去
+                by_win[ck] = cv
+            self._carry_win = None
+            wins = sorted(by_win, key=_wkey)
+        if len(wins) > 1 and wins[-1].startswith("w"):
+            self._carry_win = (wins[-1], by_win.pop(wins[-1]))
+            wins = wins[:-1]
+            tick_after = {w: sum(int(by_win[x]["tick"] or 0) for x in wins[i + 1:]) for i, w in enumerate(wins)}
         for w in wins:
             b = by_win[w]
             _merge_beam_stats(b["per_cell"], b["per_ue"], self._last_beam)

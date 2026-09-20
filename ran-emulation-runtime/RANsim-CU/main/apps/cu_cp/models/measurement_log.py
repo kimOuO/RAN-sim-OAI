@@ -33,6 +33,8 @@ class MeasurementLog(models.Model):
     sinr_layers_json = models.JSONField(default=list)
     # B1(2026-09-16):O-RAN Cat B 的 GoB 波束 id
     beam_id = models.IntegerField(null=True, blank=True)
+    # DU 的 PM 視窗序號:歸檔照它分組,避免同一秒內兩份報告互相覆蓋(實測丟 47%)
+    window_seq = models.IntegerField(null=True, blank=True, db_index=True)
     # 2026-09-19:每波束 RSRP [[beam_id, 相對最佳波束 dB], …](O-RAN WG1 §4.6.4.1);空 = 沒有 GoB
     beam_rsrp_top_json = models.JSONField(default=list, blank=True)
     # 2026-08-26 第三十輪:量測「當時」的 serving cell。bySourceCell 歸屬曾用
