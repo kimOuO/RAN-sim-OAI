@@ -28,7 +28,22 @@ from main.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-_NOISE_FLOOR_DBM = get_float("RU_NOISE_FLOOR_DBM", default=-98.0)
+# 2026-09-21:見 DU channel_cache_du._derive_noise_floor 的說明 —— 舊值 -98.0 的 NF 是 0 dB。
+def _derive_noise_floor() -> float:
+    import os
+
+    from ran_sim_protocol.rsrp_model import downlink_noise_floor_dbm, scs_hz_from_numerology
+    override = os.environ.get("RU_NOISE_FLOOR_DBM", "").strip()
+    if override:
+        return float(override)
+    n_prb = int(os.environ.get("SIM_DEFAULT_PRB_PER_CELL", "106"))
+    slots = int(os.environ.get("SIM_SLOTS_PER_FRAME", "20"))
+    mu = max(0, (slots // 10).bit_length() - 1)
+    return downlink_noise_floor_dbm(n_prb, scs_hz_from_numerology(mu),
+                                    get_float("UE_NOISE_FIGURE_DB", default=7.0))
+
+
+_NOISE_FLOOR_DBM = _derive_noise_floor()
 # Fallback TX power 給沒 Cell DB record 的極早期啟動階段；正常運行讀 Cell.power_dbm。
 _TX_POWER_DBM_FALLBACK = get_float("RU_TX_POWER_DBM", default=23.0)
 _NEIGHBOR_RSRP_FLOOR_DBM = get_float("RU_NEIGHBOR_RSRP_FLOOR_DBM", default=-120.0)

@@ -80,7 +80,22 @@ CACHE_DIR = Path(os.environ.get("RU_CACHE_DIR", "/data/channel_cache"))
 MODE_FILE = Path(os.environ.get("CHANNEL_MODE_FILE", "")) if os.environ.get("CHANNEL_MODE_FILE") else CACHE_DIR / ".mode"
 # SINR 計算常數(對齊 RU dl_tti_pipeline:同 env)
 _TX_POWER_DBM = float(os.environ.get("RU_TX_POWER_DBM", "23.0"))
-_NOISE_FLOOR_DBM = float(os.environ.get("RU_NOISE_FLOOR_DBM", "-98.0"))
+# 2026-09-21:舊值 -98.0 是 40 MHz 的熱雜訊但 NF=0 dB(真實 UE 7~9 dB),而且不隨
+# cell 頻寬變。改成由 PRB 數 × SCS 推導 + UE 雜訊指數;RU_NOISE_FLOOR_DBM 設了就沿用
+# 該值(回退用)。上行與 physics coverage 本來就有推導,只有下行漏掉。
+def _derive_noise_floor() -> float:
+    override = os.environ.get("RU_NOISE_FLOOR_DBM", "").strip()
+    if override:
+        return float(override)
+    from ran_sim_protocol.rsrp_model import downlink_noise_floor_dbm, scs_hz_from_numerology
+    n_prb = int(os.environ.get("SIM_DEFAULT_PRB_PER_CELL", "106"))
+    slots = int(os.environ.get("SIM_SLOTS_PER_FRAME", "20"))      # 10 × 2^μ
+    mu = max(0, (slots // 10).bit_length() - 1)
+    nf = float(os.environ.get("UE_NOISE_FIGURE_DB", "7.0"))
+    return downlink_noise_floor_dbm(n_prb, scs_hz_from_numerology(mu), nf)
+
+
+_NOISE_FLOOR_DBM = _derive_noise_floor()
 # 收發機失真上限(對齊 RU dl_tti_pipeline._apply_evm_lin,同 env):TS 38.104 §6.5.2 256QAM EVM ≤ 3.5%
 # → SNR 上限 ≈ 29 dB。1/SINR_eff = 1/SINR + 1/SNR_evm。設 0 關掉。
 _EVM_SNR_DB = float(os.environ.get("RU_EVM_SNR_DB", "29.1"))
