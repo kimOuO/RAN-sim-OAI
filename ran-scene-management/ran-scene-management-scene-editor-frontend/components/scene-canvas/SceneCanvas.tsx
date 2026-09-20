@@ -55,13 +55,14 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
   const uePaths = useMemo(() => tree.ues.map((u) => ({ ue: u, pts: u.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number]) })), [tree.ues]);
   return (
     <>
-    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: 0.1, far: 5000 }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
+    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [view.center[0] + view.extent * 0.45, view.extent * 0.35, view.center[2] + view.extent * 0.45], fov: 45, near: Math.max(0.5, view.extent / 500), far: Math.max(2000, view.extent * 8) }} style={{ background: '#0b0f14', cursor: placing ? 'crosshair' : 'default' }}>
       <SurfaceClip.Provider value={hasGeo && meshView.show ? meshView.clipY : null}>
       {/* 地面:放置模式時接點擊,落點貼齊滑鼠下的表面(屋頂 / 掃描模型);平常點空白處取消選取 */}
       <PlaceCatcher placing={placing} onPlace={onGroundClick} onEmpty={() => onSelect(null)} clipY={hasGeo && meshView.show ? meshView.clipY : null} />
       <ambientLight intensity={0.6} />
       <directionalLight position={[50, 80, 30]} intensity={0.8} />
-      <Grid args={[CANVAS.gridSize, CANVAS.gridSize]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#4fd1ff" sectionThickness={1.2} cellThickness={0.6} fadeDistance={600} fadeStrength={1} infiniteGrid />
+      {/* y=-0.05:避免與建築底面 / 掃描模型地面共面造成 z-fighting(2026-09-20) */}
+      <Grid position={[0, -0.05, 0]} args={[CANVAS.gridSize, CANVAS.gridSize]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#4fd1ff" sectionThickness={1.2} cellThickness={0.6} fadeDistance={600} fadeStrength={1} infiniteGrid />
       <Suspense fallback={null}>
         {tree.buildings.map((b) => <BuildingMesh key={b.building_uuid} b={b} selected={selection?.kind === 'building' && selection.building.building_uuid === b.building_uuid} onSelect={() => onSelect({ kind: 'building', building: b })} />)}
         {tree.gnbs.map((g, gi) => (

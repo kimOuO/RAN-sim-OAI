@@ -116,3 +116,16 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .meshctl { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: rgba(17, 23, 32, .9); border: 1px solid #34435a; border-radius: 4px; font-size: 12px; min-width: 180px; }
 .meshctl label { display: flex; gap: 6px; align-items: center; } .meshctl input[type=range] { flex: 1; padding: 0; }
 .runhead .sub a.on { color: var(--accent, #ff8a3d); font-weight: 600; }
+
+.covctl { position: absolute; left: 12px; bottom: 12px; width: 280px; background: rgba(11,15,20,.88); border: 1px solid var(--line, #22303f); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+.covctl .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.covctl label { display: flex; gap: 4px; align-items: center; }
+.covctl input[type=number] { width: 58px; }
+.covctl input[type=range] { width: 100%; }
+.covctl .chips { display: flex; gap: 4px; margin: 6px 0; }
+.covctl .chip { padding: 2px 8px; border: 1px solid var(--line, #22303f); background: none; color: var(--muted); border-radius: 3px; cursor: pointer; }
+.covctl .chip.on { color: var(--ink); border-color: var(--cyan); }
+.covctl .ramp { display: flex; align-items: center; gap: 6px; }
+.covctl .ramp > div { height: 8px; flex: 1; border-radius: 2px; }
+.covctl .legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.covctl .legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; border-radius: 2px; }

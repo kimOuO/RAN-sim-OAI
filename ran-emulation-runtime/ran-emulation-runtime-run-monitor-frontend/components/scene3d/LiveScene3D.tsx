@@ -4,6 +4,8 @@ import { SceneMeshes, type MeshView } from '@/components/scene3d/SceneMeshes';
 import * as THREE from 'three';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Grid, Html, Line, OrbitControls } from '@react-three/drei';
+import { CELL_COLORS, COVERAGE_SCALE, CoverageLayer, RAMP_CSS, type CoverageMode } from '@/components/scene3d/CoverageLayer';
+import { computeCoverage, type CoverageResult } from '@/services/api/coverage';
 import { cellPositions, sceneView, sinrLevel, uePositionAt } from '@/hooks/feature/live3d';
 import type { UeFlash } from '@/hooks/feature/useRunLive3dPage';
 import type { SceneTree3d, UeKpm } from '@/types/telemetry';
@@ -23,12 +25,28 @@ export function LiveScene3D(p: Props) {
   const { center, extent, scale } = view;
   const hasGeo = !!(p.tree.scene.geometry_source as { type?: string } | null)?.type;
   const [mesh, setMesh] = useState<MeshView>({ show: true, opacity: 0.3, clipY: 2.2 });
+  // 覆蓋熱圖:GPU 光追一次算完後留在記憶體,不隨 run 更新(它是理想值,與即時量測不同)
+  const [cov, setCov] = useState<CoverageResult | null>(null);
+  const [covBusy, setCovBusy] = useState(false);
+  const [covErr, setCovErr] = useState<string | null>(null);
+  const [covShow, setCovShow] = useState(true);
+  const [covMode, setCovMode] = useState<CoverageMode>('sinr');
+  const [covOpacity, setCovOpacity] = useState(0.6);
+  const [covHeight, setCovHeight] = useState(1.5);
+  const runCoverage = async () => {
+    setCovBusy(true); setCovErr(null);
+    try { setCov(await computeCoverage(p.tree.scene.scene_uuid, { sample_height_m: covHeight })); setCovShow(true); }
+    catch (e) { setCovErr(e instanceof Error ? e.message : String(e)); }
+    finally { setCovBusy(false); }
+  };
   return (
     <>
-    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [center[0] + extent * 0.45, extent * 0.35, center[2] + extent * 0.45], fov: 45, near: 0.1, far: 5000 }}
+    <Canvas onCreated={({ gl }) => { gl.localClippingEnabled = true; }} camera={{ position: [center[0] + extent * 0.45, extent * 0.35, center[2] + extent * 0.45], fov: 45, near: Math.max(0.5, extent / 500), far: Math.max(2000, extent * 8) }}
       style={{ background: '#0b0f14' }} onPointerMissed={() => p.onSelect(null)}>
       <ambientLight intensity={0.6} /><directionalLight position={[50, 80, 30]} intensity={0.8} />
-      <Grid args={[400, 400]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#2f6f8a" sectionThickness={1} cellThickness={0.5} fadeDistance={600} infiniteGrid />
+      {/* 2026-09-20:網格壓到 y=-0.05。原本 y=0 與建築底面、掃描模型地面共面,
+          深度精度不足時每幀輪流勝出 -> 地板持續閃爍(z-fighting)。 */}
+      <Grid position={[0, -0.05, 0]} args={[400, 400]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#2f6f8a" sectionThickness={1} cellThickness={0.5} fadeDistance={600} infiniteGrid />
       {p.tree.buildings.filter((b) => b.size?.length === 3).map((b) => (
         <mesh key={b.building_uuid} position={[b.position[0], b.position[1] + b.size[1] / 2, b.position[2]]}>
           <boxGeometry args={[b.size[0], b.size[1], b.size[2]]} /><meshStandardMaterial color="#4fd1ff" transparent opacity={0.06} depthWrite={false} /><Edges color="#7fe3ff" />
@@ -36,6 +54,7 @@ export function LiveScene3D(p: Props) {
       <Gnbs tree={p.tree} color={p.color} scale={scale} />
       <Ues {...p} scale={scale} />
       {hasGeo && <SceneMeshes sceneUuid={p.tree.scene.scene_uuid} view={mesh} />}
+      {cov && covShow && <CoverageLayer result={cov} mode={covMode} opacity={covOpacity} />}
       <OrbitControls makeDefault enableDamping target={center} />
     </Canvas>
     {hasGeo && <div className="meshctl">
@@ -44,6 +63,24 @@ export function LiveScene3D(p: Props) {
       <label><input type="checkbox" checked={mesh.clipY != null} onChange={(e) => setMesh({ ...mesh, clipY: e.target.checked ? 2.2 : null })} /> 剖面 {mesh.clipY != null ? `${mesh.clipY.toFixed(1)} m` : ''}</label>
       {mesh.clipY != null && <input type="range" min={0.2} max={20} step={0.1} value={mesh.clipY} onChange={(e) => setMesh({ ...mesh, clipY: Number(e.target.value) })} />}
     </div>}
+    <div className="covctl">
+      <div className="row">
+        <button className="primary" disabled={covBusy} onClick={runCoverage}>{covBusy ? '計算中…' : cov ? '重新計算覆蓋' : '計算覆蓋熱圖'}</button>
+        <label>高度<input type="number" step={0.1} value={covHeight} onChange={(e) => setCovHeight(Number(e.target.value))} /> m</label>
+        {cov && <label><input type="checkbox" checked={covShow} onChange={(e) => setCovShow(e.target.checked)} /> 顯示</label>}
+      </div>
+      {covErr && <p className="err small">{covErr}</p>}
+      {cov && <>
+        <div className="chips">{([['sinr', 'SINR'], ['rsrp', 'RSRP'], ['cell', '最佳 cell']] as [CoverageMode, string][]).map(([k, l]) =>
+          <button key={k} className={`chip ${covMode === k ? 'on' : ''}`} onClick={() => setCovMode(k)}>{l}</button>)}</div>
+        <label>不透明度<input type="range" min={0.1} max={1} step={0.05} value={covOpacity} onChange={(e) => setCovOpacity(Number(e.target.value))} /></label>
+        {covMode === 'cell'
+          ? <div className="legend">{cov.summary.cell_names.map((n, i) => <span key={n}><i style={{ background: CELL_COLORS[i % CELL_COLORS.length] }} />{n}</span>)}</div>
+          : <div className="ramp"><div style={{ background: RAMP_CSS }} /><span>{COVERAGE_SCALE[covMode].min}</span><span>{COVERAGE_SCALE[covMode].max} {COVERAGE_SCALE[covMode].unit}</span></div>}
+        <p className="muted small">{cov.grid.n_cols}×{cov.grid.n_rows} 格 · {cov.grid.x_step} m · {(cov.compute_ms / 1000).toFixed(1)} s。
+          熱圖假設所有 cell 同時滿載互相干擾(最壞情況),與畫面上即時量測到的 SINR 不同,用來看覆蓋形狀與重疊。</p>
+      </>}
+    </div>
     </>
   );
 }
