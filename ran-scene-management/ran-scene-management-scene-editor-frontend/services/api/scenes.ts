@@ -28,3 +28,12 @@ export interface CoverageResult {
 }
 export const computeCoverage = (scene_uuid: string, opts: { sample_height_m: number; step_m?: number | null; max_depth?: number; margin_m?: number }) =>
   post<CoverageResult>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/coverage`, { scene_uuid, ...opts }, { timeoutMs: 600_000 });
+
+/** 場景幾何的實際邊界(含掃描模型;只有 gNB/建築盒算不出來) */
+export const sceneBounds = (scene_uuid: string) =>
+  post<{ x_range: number[] | null; z_range: number[] | null }>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/bounds`, { scene_uuid }, { timeoutMs: 180_000 });
+
+export interface HeightMap { x_range: number[]; z_range: number[]; step_m: number; n_rows: number; n_cols: number; height_m: (number | null)[][] }
+/** 每格的表面高度:明顯高於地面 = 建築,UE 隨機產生用它避障 */
+export const sceneHeightMap = (scene_uuid: string, step_m = 4) =>
+  post<HeightMap>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/height_map`, { scene_uuid, step_m }, { timeoutMs: 300_000 });

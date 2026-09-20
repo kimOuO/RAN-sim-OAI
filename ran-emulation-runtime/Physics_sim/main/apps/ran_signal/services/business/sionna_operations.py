@@ -426,6 +426,51 @@ class SionnaBusinessService:
         return result
 
     @classmethod
+    def height_map(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        """往下打射線取每格的表面高度 → 給編輯器判斷哪裡是地面、哪裡是建築屋頂。
+
+        2026-09-20:掃描模型沒有「建築盒」資料,UE 隨機產生無從避開建築。
+        這裡用 Mitsuba 的 ray_intersect 由高空垂直往下打,回傳命中點的高度(我們的 y)。
+        高度明顯高於地面 = 那一格在建築上,產生器據此排除。
+        body {geometry_source, x_range, z_range, step_m?=2, from_height_m?=500}
+        回傳 rows = z 由小到大、cols = x 由小到大,與覆蓋熱圖一致;沒打到回 null。
+        """
+        import tempfile
+
+        import mitsuba as mi
+        import numpy as np
+        import sionna.rt as rt
+
+        from main.apps.ran_signal.services.optional.ran_calculation.frame import adapt_scene_xml
+        geo = payload.get("geometry_source") or {"type": "buildings_json", "buildings": []}
+        if geo["type"] == "buildings_json":
+            tmp = tempfile.NamedTemporaryFile(prefix="hmap_", suffix=".xml", delete=False).name
+            mitsuba_builder.build_and_write(buildings=geo.get("buildings") or [], out_path=tmp, ground=geo.get("ground"))
+            path = tmp
+        else:
+            path = cls._materialize_geometry(geo)
+        xr = [float(v) for v in payload["x_range"]]
+        zr = [float(v) for v in payload["z_range"]]
+        st = max(0.25, float(payload.get("step_m", 2.0)))
+        top = float(payload.get("from_height_m", 500.0))
+        xs = np.arange(xr[0], xr[1] + st * 0.5, st, dtype=np.float32)
+        zs = np.arange(zr[0], zr[1] + st * 0.5, st, dtype=np.float32)
+        if xs.size * zs.size > 400_000:
+            raise ValueError(f"高度圖格數 {xs.size * zs.size} 太多(上限 400000),請加大 step_m")
+        gx, gz = np.meshgrid(xs, zs)            # [rows=z, cols=x]
+        sc = rt.load_scene(adapt_scene_xml(path)).mi_scene
+        # 我們 (x, y, z) → sionna (x, −z, y);垂直往下 = sionna −z 方向
+        o = mi.Point3f(gx.ravel().tolist(), (-gz).ravel().tolist(), [top] * gx.size)
+        d = mi.Vector3f([0.0] * gx.size, [0.0] * gx.size, [-1.0] * gx.size)
+        si = sc.ray_intersect(mi.Ray3f(o, d))
+        valid = np.array(si.is_valid()).reshape(gx.shape)
+        h = np.array(si.p.z).reshape(gx.shape)   # sionna z = 我們的 y
+        out = np.where(valid, h, np.nan)
+        return {"x_range": xr, "z_range": zr, "step_m": st,
+                "n_rows": int(zs.size), "n_cols": int(xs.size),
+                "height_m": [[None if np.isnan(v) else round(float(v), 2) for v in row] for row in out]}
+
+    @classmethod
     def scene_bounds(cls, payload: dict[str, Any]) -> dict[str, Any]:
         """回傳這個場景幾何的實際邊界(我們的座標系 Y-up)。
 

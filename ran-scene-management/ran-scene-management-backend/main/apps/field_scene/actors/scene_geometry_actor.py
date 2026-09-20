@@ -59,6 +59,65 @@ class SceneGeometryReader:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def bounds(request):
+        """body = {scene_uuid} → {x_range, z_range}(含掃描模型的實際邊界)。
+
+        2026-09-20:編輯器的「UE 隨機產生」範圍與覆蓋熱圖範圍原本都只看建築盒 /
+        gNB / UE 路徑,掃描模型的尺寸沒納入 —— 只有兩個 gNB 的場景就只會在一小塊
+        長方形裡生成。這支把 physics 回報的 Mitsuba bbox 一併算進去。
+        """
+        from main.apps.field_scene.services.optional.scene_geometry.coverage import geometry_bounds
+        from main.apps.field_scene.services.optional.scenario_import.scenario_v1 import export_scenario
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        uid = str(payload.get("scene_uuid") or "")
+        if not Scene.objects.filter(scene_uuid=uid).exists():
+            return error_response("Not found", uid, 404)
+        raw = export_scenario(uid)
+        gb = geometry_bounds(raw)
+        if gb is None:
+            return success_response({"x_range": None, "z_range": None}, "無幾何邊界(沒有掃描模型或 physics 不通)", 200)
+        return success_response({"x_range": gb[0], "z_range": gb[1]}, "ok", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def height_map(request):
+        """body = {scene_uuid, step_m?=4} → 每格表面高度(給 UE 隨機產生避開建築)。
+        範圍取場景幾何邊界;掃描模型沒有建築盒資料,只能靠射線取高度。"""
+        import json as _json
+        import urllib.request as _ur
+
+        from main.apps.field_scene.services.optional.scene_geometry.coverage import (
+            PHYSICS_URL, geometry_bounds,
+        )
+        from main.apps.field_scene.services.optional.scenario_import.scenario_v1 import export_scenario
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        uid = str(payload.get("scene_uuid") or "")
+        if not Scene.objects.filter(scene_uuid=uid).exists():
+            return error_response("Not found", uid, 404)
+        raw = export_scenario(uid)
+        gb = geometry_bounds(raw)
+        if gb is None:
+            return error_response("這個場景沒有可取邊界的幾何(需要掃描模型 / OSM)", None, 400)
+        body = {"geometry_source": raw.get("geometry_source"), "x_range": gb[0], "z_range": gb[1],
+                "step_m": float(payload.get("step_m", 4.0))}
+        req = _ur.Request(f"{PHYSICS_URL}/api/v0.1/Physics/RanSignal/CoverageRunner/height_map",
+                          data=_json.dumps(body).encode(), headers={"content-type": "application/json"})
+        try:
+            with _ur.urlopen(req, timeout=300) as r:
+                return success_response(_json.load(r)["data"], "ok", 200)
+        except Exception as exc:  # noqa: BLE001
+            return error_response("height_map failed", str(exc), 502)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def coverage(request):
         """body = {scene_uuid, sample_height_m?=1.5, step_m?, margin_m?=5, grid?, max_depth?=3} → {grid, summary{best_rsrp_dbm, sinr_db, best_cell, cell_names}}
         (physics 另建暫時 engine 算,不影響 live run;格數上限 40000)"""

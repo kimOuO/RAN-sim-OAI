@@ -50,7 +50,7 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
     if (!xs.length) return { center: [0, 0, 0] as [number, number, number], extent: 80, scale: 1 };
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
     const extent = Math.max(10, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
-    return { center: [cx, 0, cz] as [number, number, number], extent, scale: Math.min(1, Math.max(0.4, extent / 120)) };
+    return { center: [cx, 0, cz] as [number, number, number], extent, scale: Math.max(0.4, Math.min(6, extent / 120)) };
   }, [tree]);
   const uePaths = useMemo(() => tree.ues.map((u) => ({ ue: u, pts: u.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number]) })), [tree.ues]);
   return (

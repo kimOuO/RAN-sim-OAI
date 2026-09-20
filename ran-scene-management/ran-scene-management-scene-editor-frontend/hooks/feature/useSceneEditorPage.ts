@@ -1,14 +1,14 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { UeGenParams } from '@/config';
-import { planUes } from '@/hooks/feature/ueGenerator';
+import { planUes, walkableFromHeightMap } from '@/hooks/feature/ueGenerator';
 import { useAsync } from '@/hooks/base/useAsync';
 import { GNB_ABOVE_SURFACE_M, UE_ABOVE_SURFACE_M } from '@/components/scene-canvas/surface';
 import { listUeWaypoints, updateUeWaypoint } from '@/services/api/networkElements';
 import { createBuilding, createCell, createDu, createGnb, createRu, createUe, createUeActiveWindow, createUeTraffic, createUeWaypoint, deleteBuilding, deleteCell, deleteGnb, deleteUe, deleteUeActiveWindow, listUeActiveWindows, updateBuilding, updateCell, updateDu, updateGnb, updateRu, updateUe, updateUeTraffic } from '@/services/api/networkElements';
 import { createAntennaPreset, createGnbConfigTemplate, listAntennaPresets, listDuConfigTemplates, listGnbConfigTemplates, listMaterials, updateAntennaPreset, updateGnbConfigTemplate } from '@/services/api/presets';
 import { createRunKnob, createSceneRun, deleteRunKnob, listRunKnobs, listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, updateRunKnob, updateSceneRun, type PrecomputeStatus } from '@/services/api/runs';
-import { duplicateScene, getSceneTree, listScenes, updateScene } from '@/services/api/scenes';
+import { duplicateScene, getSceneTree, listScenes, sceneHeightMap, updateScene } from '@/services/api/scenes';
 import type { AntennaPreset, Building, Cell, Du, Gnb, GnbConfigTemplate, Scene, SceneRun, Ue, UeTraffic } from '@/types/registry';
 
 export type Selection = { kind: 'gnb'; gnb: Gnb } | { kind: 'cell'; cell: Cell; gnb: Gnb } | { kind: 'ue'; ue: Ue } | { kind: 'building'; building: Building } | null;
@@ -70,7 +70,11 @@ export function useSceneEditorPage(sceneUuid: string) {
 
   /** 步驟 3:依參數產生 UE(可選先清掉同前綴的舊 UE);每個 UE 的路徑點並行寫入 */
   const generateUes = (p: UeGenParams, replace: boolean) => withSave(`產生 ${p.count} 個 UE`, async () => {
-    const plan = planUes(p);
+    // 掃描模型場景沒有建築盒 —— 向後端要高度圖,讓隨機位置與路徑避開建築
+    let hm = null;
+    try { hm = await sceneHeightMap(sceneUuid); }
+    catch (e) { console.warn('取不到高度圖,UE 將不避障', e); }
+    const plan = planUes(p, walkableFromHeightMap(hm));
     if (replace) { const old = (tree.data?.ues ?? []).filter((u) => u.name.startsWith(p.namePrefix)); for (const [i, u] of old.entries()) { setProgress(`清除舊 UE ${i + 1}/${old.length}`); await deleteUe(u.ue_uuid); } }
     for (const [i, pu] of plan.entries()) {
       setProgress(`寫入 UE ${i + 1}/${plan.length}`);

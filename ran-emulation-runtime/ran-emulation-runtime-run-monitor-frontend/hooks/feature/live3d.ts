@@ -30,7 +30,7 @@ export function sceneView(tree: SceneTree3d) {
   tree.buildings.forEach((b) => { xs.push(b.position[0]); zs.push(b.position[2]); });
   if (!xs.length) return { center: [0, 0, 0] as [number, number, number], extent: 80, scale: 1 };
   const extent = Math.max(10, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
-  return { center: [(Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...zs) + Math.max(...zs)) / 2] as [number, number, number], extent, scale: Math.min(1, Math.max(0.4, extent / 120)) };
+  return { center: [(Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...zs) + Math.max(...zs)) / 2] as [number, number, number], extent, scale: Math.max(0.4, Math.min(6, extent / 120)) };
 }
 
 /** SINR → 0..1(-10 dB 以下最暗、30 dB 以上最亮) */

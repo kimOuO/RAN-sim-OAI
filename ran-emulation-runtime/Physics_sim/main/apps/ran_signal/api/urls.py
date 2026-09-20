@@ -74,6 +74,11 @@ urlpatterns = [
         CoverageActor.scene_bounds,
         name="coverage_runner_scene_bounds",
     ),
+    path(
+        "Physics/RanSignal/CoverageRunner/height_map",
+        CoverageActor.height_map,
+        name="coverage_runner_height_map",
+    ),
 
     # /api/v0.1/Physics/RanSignal/HealthChecker/read
     path(

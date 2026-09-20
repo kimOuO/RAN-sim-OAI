@@ -125,6 +125,20 @@ class CoverageActor:
         return success_response(resp_ser.data, message="OK", http_status=200)
 
     @api_view(["POST"])
+    def height_map(request):
+        """body = {geometry_source, x_range, z_range, step_m?, from_height_m?} → 每格表面高度。
+        給編輯器的 UE 隨機產生避開建築用(掃描模型沒有建築盒資料)。"""
+        body = request.data or {}
+        try:
+            data = SionnaBusinessService.height_map(body)
+        except (KeyError, ValueError) as exc:
+            return error_response(str(exc), http_status=400)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("height_map failed")
+            return error_response(str(exc), http_status=500)
+        return success_response(data, message="OK", http_status=200)
+
+    @api_view(["POST"])
     def scene_bounds(request):
         """body = {geometry_source} → {x_range, y_range, z_range}(我們的座標系)。
         給 registry 的 auto_grid 用:掃描模型的實際尺寸只有載入 Mitsuba 才知道。"""
