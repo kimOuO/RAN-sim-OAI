@@ -125,3 +125,6 @@ table.ne td { max-width: 22em; overflow: hidden; text-overflow: ellipsis; }
 .matlegend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; } .matlegend button { color: var(--ink); font-size: 12.5px; padding: 2px 0; } .matlegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1px solid #111; }
 .panel h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .center-hint { padding: 20px; }
+
+.palette .msg.warn { color: var(--amber, #e0a33e); }
+.palette .pal:disabled { opacity: .45; cursor: not-allowed; }

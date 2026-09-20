@@ -22,7 +22,8 @@ export default function NetworkStep() {
       next={{ href: `/scenes/${id}/ue`, label: '下一步:UE', blocked: checks.find((c) => c.level === 'error')?.text }}
       left={<>
         <GnbTemplatePicker templates={p.gnbTemplates} value={p.placeTemplateUuid} onChange={p.setPlaceTemplateUuid} />
-        <Palette kinds={['gnb', 'cell']} placeKind={p.placeKind} onPick={p.setPlaceKind} />
+        <Palette kinds={['gnb', 'cell']} placeKind={p.placeKind} onPick={p.setPlaceKind}
+          blocked={{ cell: p.selGnb ? undefined : '先在畫布上選一個 gNB(拉遠單元要掛在它的 DU 底下)' }} />
         <ObjectTree tree={tree} selection={p.selection} onSelect={p.select} sections={['gnb']} />
         <CheckList title="檢查" checks={checks} />
         <CoveragePanel c={cov} />

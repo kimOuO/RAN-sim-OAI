@@ -101,6 +101,8 @@ export function useSceneEditorPage(sceneUuid: string) {
   return {
     tree: tree.data, status: tree.status, error: tree.error, presets: presets.data ?? [], templates: templates.data ?? [], materials: materials.data ?? [], gnbTemplates: gnbTemplates.data ?? [],
     run, knobs: knobs.data ?? [], selection, select: (s: Selection) => { setSelection(s); }, saving, message, placeKind, setPlaceKind, placeAt,
+    /** 目前選到的 gNB(放 cell 的前置條件:DAS 拉遠單元要掛在某個 gNB 的 DU 底下) */
+    selGnb,
     moveCell: (c: Cell, pos: [number, number, number]) => withSave(`cell ${c.name} 位置`, () => updateCell(c.cell_uuid, { position: pos })),
     /** UE 拖到新位置:整條路徑平移(每個 waypoint 加同一個位移) */
     moveUe: (u: Ue, d: [number, number, number]) => withSave(`UE ${u.name} 位置`, async () => {
