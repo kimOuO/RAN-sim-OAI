@@ -189,6 +189,26 @@ def _nrt_allowed_targets(serving_cell: str) -> set[str] | None:
         return None  # 出錯不擋換手
 
 
+# 2026-09-20:缺漏鄰區關係造成的「換不了」以前是靜默 continue —— 現場只看得到
+# 「UE 貼著鄰區卻不換手,最後 RLF」,查不到原因(corridor_00_08 就是這樣)。
+# 這裡累計並節流輸出,並由 A3Controller/read 接出去給監控頁。
+_nrt_missing: dict[tuple[str, str], int] = {}
+
+
+def nrt_missing_counts() -> dict[str, int]:
+    """(serving→target) → 因 NRT 無此關係而略過的次數。鍵用 'src→dst' 方便閱讀。"""
+    return {f"{a}→{b}": n for (a, b), n in sorted(_nrt_missing.items(), key=lambda kv: -kv[1])}
+
+
+def _note_nrt_missing(serving: str, target: str) -> None:
+    k = (serving, target)
+    n = _nrt_missing[k] = _nrt_missing.get(k, 0) + 1
+    # 第一次一定講,之後每 500 次提醒一次(每 UE 每次評估都會走到,不節流會洗版)
+    if n == 1 or n % 500 == 0:
+        logger.warning("A3 無法換手:NRT 沒有 %s → %s 的鄰區關係(累計 %d 次)。"
+                       "UE 只能撐到 RLF 再重建;xApp 應下 ANR ADD 建立關係。", serving, target, n)
+
+
 class A3HandoverCalculation:
     def __init__(self) -> None:
         # Read from runtime config store (which defaults from env).
@@ -236,6 +256,7 @@ class A3HandoverCalculation:
             if allowed is not None and nb_cell not in allowed:
                 # 缺漏鄰區:NRT 無此關係 → 換不了(UE 只能撐到 RLF → 重建)。
                 # xApp 對此該下 ANR ADD 建立關係,而非 FLAG。
+                _note_nrt_missing(serving_cell, nb_cell)
                 ue_state.pending.pop(nb_cell, None)
                 continue
             condition_met = (nb_rsrp - self.hys_db) > (serving_rsrp + self.offset_db)

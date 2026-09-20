@@ -36,7 +36,8 @@
       "RAN_FUNC_ID_RC": "3",
       "REESTAB_MIN_RSRP_DBM": "-120",
       "SERVED_TAC": "0xa000",
-      "SST": "1"
+      "SST": "1",
+      "ANR_AUTO_ADD": "0"
     },
     "volumes": [
       {

@@ -374,6 +374,19 @@ class F1ApRouterActor:
             "recorded_at": now,
         })
 
+        # ── gNB 自主 ANR(env ANR_AUTO_ADD,預設關)──
+        # 開啟時:量測報告裡沒有鄰區關係的 cell 自己補上,讓 A3 的 NRT gate 放行。
+        # 預設關閉的理由見 services/business/anr_auto.py 的說明。
+        try:
+            from main.apps.cu_cp.services.business import anr_auto
+            if anr_auto.enabled() and ue.serving_cell:
+                anr_auto.observe_neighbors(
+                    ue.serving_cell,
+                    [n.get("cell_id") for n in (d.get("neighbor_cells") or []) if n.get("cell_id")],
+                )
+        except Exception:  # noqa: BLE001 — ANR 失敗不該影響量測與換手主流程
+            logger.exception("自主 ANR 處理失敗 ue=%s", ue_id)
+
         # ── A3 自動觸發 handover 評估（對齊 OAI rrc_gNB_mobility::trigger_HO） ──
         # 公式：RSRP(neighbor) - hys > RSRP(serving) + offset 持續 TTT_MS
         neighbors = [(n.get("cell_id"), n.get("rsrp_dbm")) for n in (d.get("neighbor_cells") or [])

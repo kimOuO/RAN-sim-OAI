@@ -27,11 +27,15 @@ class MobilityActor:
     @require_http_methods(["POST", "GET"])
     def read_a3(request):
         cfg = get_a3_config()
+        from main.apps.cu_cp.services.optional.mobility.a3_handover_calculation import nrt_missing_counts
+        missing = nrt_missing_counts()
         return success_response({
             "enabled":   cfg.enabled,
             "offset_db": cfg.offset_db,
             "hys_db":    cfg.hys_db,
             "ttt_ms":    cfg.ttt_ms,
+            # 因 NRT 缺鄰區關係而擋掉的換手次數(空 = 沒發生)。非零代表 UE 會撐到 RLF 才重建。
+            "nrt_missing": missing,
         }, "ok")
 
     @staticmethod
