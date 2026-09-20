@@ -12,7 +12,7 @@ export default function LaunchStep() {
   const { p } = useEditorStep();
   return <StepGate p={p}>{(tree) => (
     <EditorLayout tree={tree} step="launch" saving={p.saving} message={p.message}
-      left={<LaunchPanel run={p.run} checks={launchChecks(tree, p.run, p.allRuns)} precomp={p.precomp} saving={p.saving}
+      left={<LaunchPanel run={p.run} checks={launchChecks(tree, p.run, p.allRuns, p.knobs)} precomp={p.precomp} saving={p.saving}
         onPrecompute={p.precompute} onStopPrecompute={p.stopPrecompute} onStart={p.start} onStop={p.stop} onRefresh={p.refreshRuns} />}
       center={<SceneCanvas tree={tree} selection={null} placing={false} onSelect={() => undefined} onGroundClick={() => undefined} onCellMoved={() => undefined} onGnbMoved={() => undefined} />}
       right={<PropertyPanel {...panelProps(p, tree)} selection={null} tabs={['ran']} />}

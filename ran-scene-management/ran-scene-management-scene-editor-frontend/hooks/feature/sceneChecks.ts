@@ -59,7 +59,8 @@ export function ueChecks(tree: SceneTree): Check[] {
 }
 
 /** 步驟 4:啟動前檢查 */
-export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: SceneRun[]): Check[] {
+export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: SceneRun[],
+                             knobs: { key: string; value: unknown }[] = []): Check[] {
   const out: Check[] = [];
   if (!run) return [{ level: 'error', text: '還沒有 run 設定(儲存下面的設定會自動建立)' }];
   const errors = [...networkChecks(tree), ...ueChecks(tree)].filter((c) => c.level === 'error');
@@ -71,6 +72,11 @@ export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: Sce
   else if (run.mode === 'cached' && !run.cache_path) out.push({ level: 'error', text: 'cached 模式沒有 cache,請先 Precompute' });
   if (others.length >= 4) out.push({ level: 'warn', text: `已有 ${others.length} 個 run 在跑,再加一個可能吃滿主機記憶體` });
   if (run.speed_x > 5 && tree.ues.length > 10) out.push({ level: 'warn', text: `倍速 ${run.speed_x}× 搭配 ${tree.ues.length} 個 UE,RU 可能跟不上而被健康檢查重啟` });
+  // 2026-09-21:ric_purpose 是黏著的 run knob,設過一次之後這個 scene_run 每次啟動
+  // 都會以驗證場次宣告給 RIC —— 對方會排主動探測並期待我們給快照。這種有遠端後果
+  // 的設定不能只靜靜列在 knob 清單裡,啟動前要明講。
+  const purpose = knobs.find((k) => k.key === 'ric_purpose')?.value;
+  if (purpose) out.push({ level: 'warn', text: `這一場會以 labels.purpose=${String(purpose)} 宣告給 RIC —— 對方會排主動探測並期待數值快照。常規觀測請先移除這個 knob。` });
   if (!out.length) out.push({ level: 'ok', text: '可以啟動' });
   return out;
 }
