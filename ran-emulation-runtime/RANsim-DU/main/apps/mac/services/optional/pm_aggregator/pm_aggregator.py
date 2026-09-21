@@ -102,12 +102,17 @@ class _UeWindowAccumulator:
 
     def flush(self, window_seconds: float) -> dict[str, Any]:
         """回傳這個 window 的 averaged report,並 reset 累計欄位。"""
+        # 2026-09-21:這個視窗沒收到任何 CQI 樣本時(掉線轉態那一拍),原本 n = max(0,1) = 1
+        # 會把 0 的累計和除出「RSRP 0 dBm / SINR 0 dB」—— 不是量到 0,是除以假的分母。
+        # 0 dBm 比任何真實 RSRP 都強,RIC 端的鄰區判準只有下界,會把它當成強到不可思議的
+        # 鄰居放行(對方 0.1.42 已加上界擋下,但根因在我們這裡)。改回報 None = 不知道。
         n = max(self.samples, 1)
+        _no_sample = self.samples == 0
         report = {
             "serving_cell": self.serving_cell,
             "samples": self.samples,
-            "avg_sinr_db": self.sinr_db_sum / n,
-            "avg_rsrp_dbm": self.rsrp_dbm_sum / n,
+            "avg_sinr_db": None if _no_sample else self.sinr_db_sum / n,
+            "avg_rsrp_dbm": None if _no_sample else self.rsrp_dbm_sum / n,
             "avg_mcs_dl": int(round(self.mcs_dl_sum / n)),
             "avg_mcs_ul": int(round(self.mcs_ul_sum / n)),
             "avg_rank": max(1, int(round(self.rank_sum / n))),

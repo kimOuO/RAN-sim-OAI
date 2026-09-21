@@ -64,8 +64,10 @@ class UlRrcMessageTransfer:
 class GnbDuMeasurementReport:
     """DU 報 KPI 給 CU（每 N tick 一次）。"""
     ue_id: str
-    rsrp_dbm: float
-    sinr_db: float
+    # 2026-09-21:None = 這個視窗沒有量測樣本(掉線轉態那一拍)。以前除以假分母得到
+    # 0 dBm / 0 dB,而 0 dBm 比任何真實 RSRP 都強,會通過只有下界的鄰區判準。
+    rsrp_dbm: float | None
+    sinr_db: float | None
     throughput_dl_mbps: float
     throughput_ul_mbps: float = 0.0
     mcs_dl: int = 0

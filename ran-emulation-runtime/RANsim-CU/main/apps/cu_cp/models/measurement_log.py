@@ -12,8 +12,9 @@ class MeasurementLog(models.Model):
     meas_uuid = models.CharField(max_length=255, unique=True, db_index=True)
 
     ue_id = models.CharField(max_length=64, db_index=True)
-    rsrp_dbm = models.FloatField()
-    sinr_db = models.FloatField()
+    # null = 該視窗無量測樣本(不是量到 0)
+    rsrp_dbm = models.FloatField(null=True, blank=True)
+    sinr_db = models.FloatField(null=True, blank=True)
     throughput_dl_mbps = models.FloatField(default=0.0)
     throughput_ul_mbps = models.FloatField(default=0.0)
     mcs_dl = models.IntegerField(default=0)

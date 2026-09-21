@@ -42,8 +42,9 @@ class UlRrcMessageWriteSerializer(serializers.Serializer):
 
 class MeasurementReportWriteSerializer(serializers.Serializer):
     ue_id = serializers.CharField(max_length=64)
-    rsrp_dbm = serializers.FloatField()
-    sinr_db = serializers.FloatField()
+    # null = 該視窗無量測樣本(見 f1ap.GnbDuMeasurementReport)
+    rsrp_dbm = serializers.FloatField(required=False, allow_null=True, default=None)
+    sinr_db = serializers.FloatField(required=False, allow_null=True, default=None)
     throughput_dl_mbps = serializers.FloatField()
     throughput_ul_mbps = serializers.FloatField(default=0.0)
     mcs_dl = serializers.IntegerField(default=0)

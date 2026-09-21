@@ -143,9 +143,12 @@ def _beam_stats(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         srv = serving.get(b, [])
         rel = measured.get(b, [])
         rec: dict[str, Any] = {"beam_id": b, "served_ues": len(srv), "measured_ues": len(rel)}
+        # 無量測樣本的列(rsrp/sinr 為 None)不進平均 —— 混進去會把平均拉向 0
+        _srv_m = [r for r in srv if r["meas"].rsrp_dbm is not None and r["meas"].sinr_db is not None]
+        if _srv_m:
+            rec["rsrp_dbm_avg"] = round(sum(float(r["meas"].rsrp_dbm) for r in _srv_m) / len(_srv_m), 1)
+            rec["sinr_db_avg"] = round(sum(float(r["meas"].sinr_db) for r in _srv_m) / len(_srv_m), 1)
         if srv:
-            rec["rsrp_dbm_avg"] = round(sum(float(r["meas"].rsrp_dbm) for r in srv) / len(srv), 1)
-            rec["sinr_db_avg"] = round(sum(float(r["meas"].sinr_db) for r in srv) / len(srv), 1)
             rec["dl_mbps"] = round(sum(float(r["meas"].throughput_dl_mbps) for r in srv), 2)
             rec["prb_dl"] = int(sum(int(r["meas"].rb_width_dl or 0) for r in srv))
         if rel:
@@ -387,6 +390,8 @@ class FullKpmReporter:
                 if n.get("cell_id") and n["cell_id"] in active_cell_ids
                 and n["cell_id"] != ue.serving_cell
             ]
+            if m.rsrp_dbm is None:      # 該視窗無量測樣本 → 不進統計(見 f1ap 的說明)
+                continue
             all_dbm = [m.rsrp_dbm] + [float(n.get("rsrp_dbm", -120.0)) for n in neighbors]
             # (rsrp, load) 配對 — serving + 鄰區,RSRQ 的 RSSI 分母用
             cells_dbm_load = [(m.rsrp_dbm, cell_load.get(ue.serving_cell, 0.0))] + [

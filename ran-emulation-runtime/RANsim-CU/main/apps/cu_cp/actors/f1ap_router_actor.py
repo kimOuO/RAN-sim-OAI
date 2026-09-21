@@ -392,7 +392,8 @@ class F1ApRouterActor:
         # 公式：RSRP(neighbor) - hys > RSRP(serving) + offset 持續 TTT_MS
         neighbors = [(n.get("cell_id"), n.get("rsrp_dbm")) for n in (d.get("neighbor_cells") or [])
                      if n.get("cell_id") and n.get("rsrp_dbm") is not None]
-        if neighbors and ue.serving_cell:
+        # 服務 cell 沒有量測樣本(rsrp 為 None)這一拍不評估 A3 —— 沒有基準可比
+        if neighbors and ue.serving_cell and d["rsrp_dbm"] is not None:
             verdict = A3HandoverCalculation().evaluate(
                 ue_state=get_ue_state(ue_id),
                 serving_cell=ue.serving_cell,

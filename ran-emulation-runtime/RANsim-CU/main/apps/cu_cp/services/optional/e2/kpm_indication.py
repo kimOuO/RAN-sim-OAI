@@ -84,6 +84,8 @@ def _apply_calibration(meas_data: list, last_meas, ue, serving_cell: str) -> Non
         return
     if not _calib_reachable():   # kpm-calib 容器 down → 快速回退 raw(toggle 機制)
         return
+    if getattr(last_meas, "rsrp_dbm", None) is None:
+        return      # 無量測樣本的視窗不送校正(以前會送 rsrp=0 dBm)
     try:
         payload = {
             "ue_id": ue.ue_id,
