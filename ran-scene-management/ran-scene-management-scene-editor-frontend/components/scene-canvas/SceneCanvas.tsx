@@ -37,6 +37,15 @@ export interface SceneCanvasProps {
   overlay?: ReactNode;
 }
 
+
+/** 網格格距隨場景大小走。固定 1 m 一格時,650 m 的場景在鏡頭拉遠後每格遠小於一個像素,
+ *  drei 的無限網格(fragment shader 算的)會產生摩爾紋,鏡頭一動就整片跳動 ——
+ *  使用者回報的「地板的線一直跳來跳去」。2026-09-21。 */
+function gridScale(extent: number) {
+  const cell = extent > 400 ? 10 : extent > 150 ? 5 : extent > 60 ? 2 : 1;
+  return { cell, section: cell * 10, fade: Math.max(200, extent * 1.5) };
+}
+
 export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved, onUeMoved, previewT = null, overlay }: SceneCanvasProps) {
   const hasGeo = !!(tree.scene.geometry_source as { type?: string } | null)?.type || tree.buildings.some((b) => b.geometry_ref?.endsWith('.xml'));
   const [meshView, setMeshView] = useState<MeshView>({ show: true, opacity: 0.35, clipY: 2.2 });
@@ -72,7 +81,7 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
       <ambientLight intensity={0.6} />
       <directionalLight position={[50, 80, 30]} intensity={0.8} />
       {/* y=-0.05:避免與建築底面 / 掃描模型地面共面造成 z-fighting(2026-09-20) */}
-      <Grid position={[0, -0.05, 0]} args={[CANVAS.gridSize, CANVAS.gridSize]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#4fd1ff" sectionThickness={1.2} cellThickness={0.6} fadeDistance={600} fadeStrength={1} infiniteGrid />
+      <Grid position={[0, -0.05, 0]} args={[CANVAS.gridSize, CANVAS.gridSize]} cellSize={gridScale(view.extent).cell} sectionSize={gridScale(view.extent).section} cellColor="#1f2e40" sectionColor="#4fd1ff" sectionThickness={1.2} cellThickness={0.6} fadeDistance={gridScale(view.extent).fade} fadeStrength={1} infiniteGrid />
       <Suspense fallback={null}>
         {tree.buildings.map((b) => <BuildingMesh key={b.building_uuid} b={b} selected={selection?.kind === 'building' && selection.building.building_uuid === b.building_uuid} onSelect={() => onSelect({ kind: 'building', building: b })} />)}
         {tree.gnbs.map((g, gi) => (

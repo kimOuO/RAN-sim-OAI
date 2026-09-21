@@ -19,6 +19,14 @@ const IDLE = new THREE.Color('#5b6778');
 const RLF = new THREE.Color('#ff4d5a');
 const HO = new THREE.Color('#ffffff');
 
+/** 網格格距隨場景大小走。固定 1 m 一格時,650 m 的場景在鏡頭拉遠後每格遠小於一個像素,
+ *  drei 的無限網格(fragment shader 算的)會產生摩爾紋,鏡頭一動就整片跳動 ——
+ *  使用者回報的「地板的線一直跳來跳去」。2026-09-21。 */
+function gridScale(extent: number) {
+  const cell = extent > 400 ? 10 : extent > 150 ? 5 : extent > 60 ? 2 : 1;
+  return { cell, section: cell * 10, fade: Math.max(200, extent * 1.5) };
+}
+
 /** 即時 3D:gNB / cell 靜態;UE 用一個 InstancedMesh 每幀依模擬時間更新位置,顏色 = 服務 cell、亮度 = SINR;UE→cell 連線同一批 LineSegments */
 export function LiveScene3D(p: Props) {
   // 幾何邊界(掃描模型)—— 取到才知道整個場地多大,鏡頭才框得住
@@ -56,7 +64,7 @@ export function LiveScene3D(p: Props) {
       <ambientLight intensity={0.6} /><directionalLight position={[50, 80, 30]} intensity={0.8} />
       {/* 2026-09-20:網格壓到 y=-0.05。原本 y=0 與建築底面、掃描模型地面共面,
           深度精度不足時每幀輪流勝出 -> 地板持續閃爍(z-fighting)。 */}
-      <Grid position={[0, -0.05, 0]} args={[400, 400]} cellSize={1} sectionSize={10} cellColor="#1f2e40" sectionColor="#2f6f8a" sectionThickness={1} cellThickness={0.5} fadeDistance={600} infiniteGrid />
+      <Grid position={[0, -0.05, 0]} args={[400, 400]} cellSize={gridScale(extent).cell} sectionSize={gridScale(extent).section} cellColor="#1f2e40" sectionColor="#2f6f8a" sectionThickness={1} cellThickness={0.5} fadeDistance={gridScale(extent).fade} infiniteGrid />
       {p.tree.buildings.filter((b) => b.size?.length === 3).map((b) => (
         <mesh key={b.building_uuid} position={[b.position[0], b.position[1] + b.size[1] / 2, b.position[2]]}>
           <boxGeometry args={[b.size[0], b.size[1], b.size[2]]} /><meshStandardMaterial color="#4fd1ff" transparent opacity={0.06} depthWrite={false} /><Edges color="#7fe3ff" />
