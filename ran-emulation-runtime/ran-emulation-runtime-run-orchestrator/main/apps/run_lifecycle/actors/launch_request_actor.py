@@ -206,7 +206,18 @@ class LaunchController:
                 du_env = container_spawner.du_env_from_template(_du.get("config_template"), _du.get("config_override"))
                 if du_env:
                     logger.info("run %s DU 設定注入: %s", run_uuid, du_env)
-                _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue"), du_env=du_env))
+                # run knob `anr_auto_add`:CU 要不要從量測報告自己學鄰區關係。
+                # 走廊這種「每個 cell 各自一個 gNB」的場景,跨 gNB 關係不會自動種,
+                # 沒有 RIC 的 xApp 補的話 A3 會被 NRT gate 全部擋掉(實測一場 7 萬次)。
+                # 跑 RIC 的 ANR 驗證時要關,否則關係自己長出來、他們的 anr-add 看不出效果。
+                _knobs0 = run.get("knobs") or {}
+                _auto = (_knobs0.get("anr_auto_add") if isinstance(_knobs0, dict)
+                         else next((k.get("value") for k in _knobs0
+                                    if isinstance(k, dict) and k.get("key") == "anr_auto_add"), None))
+                cu_env = {}
+                if _auto is not None:
+                    cu_env["ANR_AUTO_ADD"] = "1" if str(_auto).strip().lower() in ("1", "on", "true", "yes") else "0"
+                _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue"), du_env=du_env, cu_env=cu_env))
                 health = container_spawner.wait_healthy(instances)
                 if not all(health.values()):
                     raise RuntimeError(f"per-run 容器未就緒: {health}")

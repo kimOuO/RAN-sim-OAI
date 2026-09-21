@@ -75,6 +75,13 @@ export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: Sce
   // 2026-09-21:ric_purpose 是黏著的 run knob,設過一次之後這個 scene_run 每次啟動
   // 都會以驗證場次宣告給 RIC —— 對方會排主動探測並期待我們給快照。這種有遠端後果
   // 的設定不能只靜靜列在 knob 清單裡,啟動前要明講。
+  // 走廊這種「每個 cell 各自一個 gNB」的場景,跨 gNB 鄰區關係不會自動種。
+  // 沒開 anr_auto_add 又沒有 RIC 的 xApp 補,A3 會被 NRT gate 全部擋掉(實測一場 7 萬次)。
+  const autoAnr = knobs.find((k) => k.key === 'anr_auto_add')?.value;
+  const gnbCount = tree.gnbs.length;
+  if (gnbCount > 1 && !autoAnr) {
+    out.push({ level: 'warn', text: `${gnbCount} 個 gNB 但沒設 anr_auto_add —— 跨 gNB 的鄰區關係不會自動建立,A3 換手會被擋掉。單機跑請加這個 knob(值 1);要驗證 RIC 的 ANR 才留空。` });
+  }
   const purpose = knobs.find((k) => k.key === 'ric_purpose')?.value;
   if (purpose) out.push({ level: 'warn', text: `這一場會以 labels.purpose=${String(purpose)} 宣告給 RIC —— 對方會排主動探測並期待數值快照。常規觀測請先移除這個 knob。` });
   if (!out.length) out.push({ level: 'ok', text: '可以啟動' });

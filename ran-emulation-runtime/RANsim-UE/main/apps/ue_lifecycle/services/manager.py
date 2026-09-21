@@ -75,16 +75,14 @@ class UeLifecycleManager:
         self._traffic_hint = dict(traffic or {})
 
     def _apply_presence(self, ue_id: str, present: bool) -> None:
-        """UE 進場 / 離場時同步 RAN 側狀態(env UE_ACTIVE_WINDOW_ENFORCE,預設開)。
+        """UE 進場 / 離場時同步 RAN 側狀態。**沒有開關** —— 人不在場景裡就不該算他的
+        網路連線,這是語意而非選項(2026-09-21)。
 
         離場:CU 釋放 RRC + F1AP UE Context Release(DU 一併清排程與 RLC)。
         回場:重跑一次 attach(RRC → DU register → serving cell → 流量),
         與開場的 ue_attach 同一組步驟。
         失敗只記 log:在場狀態是模擬情境的一部分,不該讓它中斷整個 driver。
         """
-        from main.utils.env_loader import get_bool
-        if not get_bool("UE_ACTIVE_WINDOW_ENFORCE", default=True):
-            return
         from main.apps.ue_lifecycle.services import cu_client
         try:
             if not present:
@@ -268,7 +266,7 @@ class UeLifecycleManager:
             self._last_visible[ue_id] = visible
             # 2026-09-20:active_windows 以前只管「看不看得到」—— 3D 不畫、Kit 藏起來,
             # 但 RRC 連線、DU 排程、流量注入全照舊,於是「人不見了卻還掛在 gNB 上傳資料」。
-            # 這裡讓它真的離場 / 回場。env UE_ACTIVE_WINDOW_ENFORCE=0 可退回舊行為。
+            # 這裡讓它真的離場 / 回場,沒有開關 —— 不在場景裡的人不該算網路連線。
             # 注意:Kit 不是我們的元件、也可能沒在跑,所以 RAN 側動作不能綁在它的成敗上。
             self._apply_presence(ue_id, visible)
             if not kit_client.set_ue_visible(ue_id, visible):
