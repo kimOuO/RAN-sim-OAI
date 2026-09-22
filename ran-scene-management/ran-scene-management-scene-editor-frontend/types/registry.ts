@@ -25,6 +25,7 @@ export interface Scene {
   /** 釘住的 E2 槽位(1~511)。釘了之後 gNB ID / cell NCI 每次啟動都一樣,
    *  外部 Agent 才能事先把這些識別寫進 xApp 的訂閱設定。null = 啟動時動態配。 */
   e2_slot: number | null;
+  category: string | null;   // 場景分類;null = 未宣告,退回名字前綴規則
   scene_created_at: string; scene_updated_at: string;
 }
 export interface Building {

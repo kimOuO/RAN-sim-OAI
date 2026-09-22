@@ -25,6 +25,10 @@ class Scene(models.Model):
     # 釘住之後:e2_node_id 與每個 cell 的 NCI 在啟動前就算得出來,而代價是同一場域同時只能跑一場
     # (不同場域各自有槽位,仍可並行)。null = 沿用舊的動態配置。
     e2_slot = models.IntegerField(null=True, blank=True, unique=True)
+    # 2026-09-22:場景分類(corridor / anr / intent / scale / other)。
+    # 以前分類是前端用名字前綴猜的,外部 Agent 的 I-1 拿不到;改成資料。
+    # null = 未宣告 → 前端與 I-1 退回前綴規則,既有場景顯示不變。
+    category = models.CharField(max_length=32, null=True, blank=True, db_index=True)
     scene_created_at = models.DateTimeField()
     scene_updated_at = models.DateTimeField()
 

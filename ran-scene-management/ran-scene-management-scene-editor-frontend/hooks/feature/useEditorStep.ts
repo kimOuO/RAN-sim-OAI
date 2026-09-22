@@ -16,7 +16,7 @@ type EditorPage = ReturnType<typeof useSceneEditorPage>;
 /** 右側屬性面板需要的一大包 props(各步驟共用) */
 export function panelProps(p: EditorPage, tree: NonNullable<EditorPage['tree']>) {
   return {
-    selection: p.selection, presets: p.presets, templates: p.templates, gnbTemplates: p.gnbTemplates, materials: p.materials, scene: tree.scene, onSceneAntenna: p.setSceneAntenna, onE2Slot: p.setE2Slot,
+    selection: p.selection, presets: p.presets, templates: p.templates, gnbTemplates: p.gnbTemplates, materials: p.materials, scene: tree.scene, onSceneAntenna: p.setSceneAntenna, onE2Slot: p.setE2Slot, onCategory: p.setCategory,
     onApplyGnbTemplate: p.applyGnbTemplate, onSaveGnbTemplate: p.saveGnbAsTemplate, onAntennaFields: p.applyAntennaFields, onSaveAntennaPreset: p.saveAntennaAsPreset,
     run: p.run, knobs: p.knobs, saving: p.saving, message: null,
     onCell: p.updateCellFields, onGnb: p.updateGnbFields, onDu: p.updateDuFields, onUe: p.updateUeFields, onBuilding: p.updateBuildingFields,

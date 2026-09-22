@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { DuFields } from '@/components/scene-editor/DuFields';
 import type { Selection } from '@/hooks/feature/useSceneEditorPage';
-import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS } from '@/config';
+import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS, CATEGORY_OPTIONS, categoryOfScene } from '@/config';
 import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, GnbConfigTemplate, Material, RunKnob, SceneRun, SceneTree, Ue } from '@/types/registry';
 
 export type Tab = 'props' | 'antenna' | 'ran';
@@ -10,6 +10,7 @@ interface Props {
   selection: Selection; presets: AntennaPreset[]; templates: DuConfigTemplate[]; gnbTemplates: GnbConfigTemplate[]; materials: Material[]; run: SceneRun | null; knobs: RunKnob[]; saving: boolean; message: string | null;
   scene: SceneTree['scene']; onSceneAntenna: (which: 'gnb' | 'ue', uuid: string | null) => void;
   onE2Slot?: (slot: number | null) => void;
+  onCategory?: (category: string | null) => void;   // 場景分類(資料化;null = 退回名字前綴規則)
   onApplyGnbTemplate: (g: Gnb, t: GnbConfigTemplate) => void; onSaveGnbTemplate: (g: Gnb, name: string, uuid: string | null) => void;
   onAntennaFields: (c: Cell, f: Partial<AntennaPreset>) => void; onSaveAntennaPreset: (c: Cell, f: Partial<AntennaPreset>, name: string, uuid: string | null) => void;
   onCell: (c: Cell, f: Partial<Cell>) => void; onGnb: (g: Gnb, f: Partial<Gnb>) => void; onDu: (d: Du, f: Partial<Du>) => void; onUe: (u: Ue, f: Partial<Ue>) => void; onBuilding: (b: Building, f: Partial<Building>) => void;
@@ -22,6 +23,8 @@ const antennaForm = (c: Cell): Record<string, string> => { const o = (c.ru?.ante
 const Field = ({ k, label, v, set, type = 'text', readOnly, title }: { k: string; label?: string; v: string; set: (k: string, v: string) => void; type?: string; readOnly?: boolean; title?: string }) => <label title={title}><span>{label ?? k}</span><input type={type} value={v} readOnly={readOnly} disabled={readOnly} onChange={(e) => set(k, e.target.value)} /></label>;
 
 /** 右側面板:屬性 / 天線 / RAN 參數 三個分頁;表單狀態在此,寫回交給 hook */
+const catLabel = (k: string) => CATEGORY_OPTIONS.find((c) => c.key === k)?.label ?? '其他';
+
 export function PropertyPanel(p: Props) {
   const { selection: sel } = p;
   const allowed = p.tabs ?? ['props', 'antenna', 'ran'];
@@ -95,6 +98,11 @@ export function PropertyPanel(p: Props) {
             const tag = gnb ? (parseInt(gnb, 16) & 0xfff).toString(16).padStart(3, '0') : null;
             return <>
               <div className="row head">Agent 介面 <span className="muted">E2 識別(給外部 Agent 部署 xApp)</span></div>
+              {p.onCategory && <label><span>分類</span>
+                <select value={p.scene.category ?? ''} onChange={(e) => p.onCategory!(e.target.value || null)}>
+                  <option value="">(未宣告 → 依名稱前綴推:{catLabel(categoryOfScene(p.scene))})</option>
+                  {CATEGORY_OPTIONS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </select></label>}
               <label><span>E2 槽位</span>
                 <input type="number" min={1} max={511} defaultValue={slot ?? ''} placeholder="留空 = 啟動時動態配"
                        onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v);

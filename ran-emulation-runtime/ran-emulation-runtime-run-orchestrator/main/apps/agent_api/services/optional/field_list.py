@@ -33,6 +33,20 @@ from main.apps.agent_api.services.optional.field_config import (
 DEFAULT_MAX_DURATION_SEC = 86400
 
 
+# 與前端 config/index.ts 的 SCENE_CATEGORIES 同一套規則;Scene.category 沒宣告時才用。
+_CATEGORY_RULES = (
+    ("anr", lambda i: i.startswith("anr_")),
+    ("corridor", lambda i: i.startswith("corridor") or i.startswith("indoor")),
+    ("intent", lambda i: i.startswith(("cco", "im", "es", "recover"))),
+    ("scale", lambda i: i.startswith(("dt_", "full_day", "multi"))),
+)
+
+
+def _category_by_prefix(scene: dict) -> str:
+    ident = str(scene.get("legacy_scenario_id") or scene.get("name") or "")
+    return next((k for k, t in _CATEGORY_RULES if t(ident)), "other")
+
+
 def _load_profile(tree: dict, scene: dict) -> dict:
     ues = tree.get("ues") or []
     n_wp = sum(len(u.get("waypoints") or []) for u in ues)
@@ -67,6 +81,10 @@ def build_one(tree: dict, run: dict | None = None) -> dict:
     return {
         "field_id": scene.get("scene_uuid"),
         "name": scene.get("name"),
+        # 分類:註冊表有宣告就用宣告的;沒有就照前端同一套名字前綴規則推(標 inferred,
+        # 讓對方知道那是猜的)。對方列選單時可以用 category 篩。
+        "category": scene.get("category") or _category_by_prefix(scene),
+        "category_inferred": not scene.get("category"),
         "site": None, "floor": None,          # registry 沒有建物/樓層欄位
         "config_version": _cfg_version(tree),
         "updated_at": scene.get("scene_updated_at"),

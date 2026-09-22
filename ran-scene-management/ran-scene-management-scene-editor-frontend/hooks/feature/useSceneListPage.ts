@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { SCENE_CATEGORIES, categoryOf } from '@/config';
+import { SCENE_CATEGORIES, categoryOfScene } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
 import { listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, updateSceneRun, type PrecomputeStatus } from '@/services/api/runs';
 import { createScene, deleteScene, listScenes } from '@/services/api/scenes';
@@ -18,11 +18,11 @@ export function useSceneListPage() {
   const [filter, setFilter] = useState(''); const [category, setCategory] = useState<string>('all');
   const runsByScene = useMemo(() => { const m = new Map<string, SceneRun[]>(); for (const r of runs.data ?? []) { const a = m.get(r.f_scene_uuid) ?? []; a.push(r); m.set(r.f_scene_uuid, a); } return m; }, [runs.data]);
   const all = useMemo(() => [...(scenes.data ?? [])].sort((a, b) => b.scene_updated_at.localeCompare(a.scene_updated_at)), [scenes.data]);
-  const counts = useMemo(() => { const m: Record<string, number> = { all: all.length }; for (const s of all) { const k = categoryOf(s.legacy_scenario_id); m[k] = (m[k] ?? 0) + 1; } return m; }, [all]);
+  const counts = useMemo(() => { const m: Record<string, number> = { all: all.length }; for (const s of all) { const k = categoryOfScene(s); m[k] = (m[k] ?? 0) + 1; } return m; }, [all]);
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return all.filter((s) => (category === 'all' || categoryOf(s.legacy_scenario_id) === category) && (!q || s.name.toLowerCase().includes(q) || s.legacy_scenario_id.toLowerCase().includes(q)))
-      .map((s) => ({ scene: s, category: categoryOf(s.legacy_scenario_id), runs: runsByScene.get(s.scene_uuid) ?? [] }));
+    return all.filter((s) => (category === 'all' || categoryOfScene(s) === category) && (!q || s.name.toLowerCase().includes(q) || s.legacy_scenario_id.toLowerCase().includes(q)))
+      .map((s) => ({ scene: s, category: categoryOfScene(s), runs: runsByScene.get(s.scene_uuid) ?? [] }));
   }, [all, filter, category, runsByScene]);
   async function withBusy(key: string, fn: () => Promise<unknown>) { setBusy(key); try { await fn(); } finally { setBusy(null); scenes.refetch(); runs.refetch(); } }
   return {

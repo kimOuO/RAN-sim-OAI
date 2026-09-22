@@ -40,6 +40,8 @@ class FieldReader:
             return error_response("Invalid JSON", str(exc), 400)
         show_all = bool(payload.get("all"))
         ready_only = bool(payload.get("ready_only"))
+        # 2026-09-22:依分類篩(corridor / anr / intent / scale / other);不給 = 全部
+        want_cat = str(payload.get("category") or "").strip().lower() or None
         try:
             scenes = (platform_clients.list_scenes() or {}).get("data") or []
             runs = (platform_clients.list_scene_runs() or {}).get("data") or []
@@ -68,6 +70,8 @@ class FieldReader:
                 continue
             row = field_list.build_one(res["data"], run_of.get(uuid))
             if ready_only and not row.get("ready"):
+                continue
+            if want_cat and str(row.get("category") or "") != want_cat:
                 continue
             fields.append(row)
 

@@ -16,6 +16,9 @@ export const SCENE_CATEGORIES: { key: string; label: string; test: (id: string) 
   { key: 'manual', label: '手動建立', test: (id) => !id },
 ];
 export const categoryOf = (legacyId: string) => SCENE_CATEGORIES.find((c) => c.test(legacyId))?.key ?? 'other';
+// 2026-09-22:分類改為資料(Scene.category),沒宣告才退回前綴規則 —— 外部 Agent 的 I-1 用同一套。
+export const categoryOfScene = (s: { category?: string | null; legacy_scenario_id: string }) => s.category || categoryOf(s.legacy_scenario_id);
+export const CATEGORY_OPTIONS = [...SCENE_CATEGORIES.map((c) => ({ key: c.key, label: c.label })), { key: 'other', label: '其他' }];
 /** run_knob 可調鍵(§計畫 run knobs);值以字串存,型別由模擬端解析 */
 export const RUN_KNOB_KEYS = ['inter_freq', 'cell_quotas', 'tx_power_dbm', 'discard_timer_ms', 'rlc_delay_model', 'antenna_pattern', 'default_serving_cell', 'trigger_config', 'anr_fixture', 'ric_purpose', 'anr_auto_add', 'anr_pci_lookup', 'anr_cgi_fail_rate'] as const;   // ric_purpose='validation' → RIC 端才會主動探測
 export const ANTENNA_PATTERNS = ['iso', 'dipole', 'hw_dipole', 'tr38901'] as const;
