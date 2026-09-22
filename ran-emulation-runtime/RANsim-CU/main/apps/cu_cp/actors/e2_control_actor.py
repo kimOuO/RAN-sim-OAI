@@ -388,12 +388,17 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
                 break
 
     executed = failed = 0
+    causes: dict[str, int] = {}
     for uid in sorted(matched):
         ho = execute_f1_handover(ue_id=uid, target_cell=target_cell, trigger="E2_RIC_CONTROL")
         if ho and not ho.get("failed"):
             executed += 1
         else:
             failed += 1
+            # 2026-09-23(RIC 第三十輪):以前 REJECTED 的 detail 是空字串,xApp 只知道「沒成功」。
+            # 失敗原因(如 stale PCI → CellNotAvailable)是補救方式的關鍵,要帶回 outcome。
+            c = str((ho or {}).get("failure_cause") or "unknown")
+            causes[c] = causes.get(c, 0) + 1
 
     result = ("NO_MATCH" if not matched else
               "EXECUTED" if failed == 0 else
@@ -403,10 +408,12 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
         "servingCellNcgi": serving,
         "matchedUeCount": len(matched), "executedCount": executed,
         "failedCount": failed,                      # RIC 第三輪要求:分辨部分成功
-        "targetCgi": target_cell, "result": result, "detail": "",
+        "targetCgi": target_cell, "result": result,
+        "detail": "; ".join(f"{c}×{n}" for c, n in sorted(causes.items())),
+        "failureCauses": causes,
     }
-    logger.info("HO_GROUP grp=%d %s→%s matched=%d exec=%d fail=%d → %s",
-                grp_id, serving, target_cell, len(matched), executed, failed, result)
+    logger.info("HO_GROUP grp=%d %s→%s matched=%d exec=%d fail=%d → %s %s",
+                grp_id, serving, target_cell, len(matched), executed, failed, result, causes or "")
     return success_response({"control_outcome": outcome}, "handover_group processed")
 
 
