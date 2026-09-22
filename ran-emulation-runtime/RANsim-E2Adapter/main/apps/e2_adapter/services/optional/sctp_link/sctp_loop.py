@@ -555,6 +555,7 @@ def _start_config_update_watcher(sock) -> None:
 
     def _run() -> None:
         global _cfg_sent_sig, _cfg_txn
+        _last_shape: list = [None]
         logger.info("E2 Node Configuration Update 監看執行緒進入迴圈")
         while not _cfg_watch_stop.wait(_CFG_WATCH_SEC):
             try:
@@ -563,7 +564,12 @@ def _start_config_update_watcher(sock) -> None:
                     logger.info("監看:CU E2NodeId 讀不到")
                     continue
                 cur = e2ap_codec.f1_component_signature(cur_node)
-                logger.debug("監看:cur=%s sent=%s", {d: len(v) for d, v in cur.items()}, {d: len(v) for d, v in _cfg_sent_sig.items()})
+                # 2026-09-23:run 40 整場沒送出更新、事後只有 debug 等級可看 → 讀值形狀變了就記 INFO
+                _shape = ({d: len(v) for d, v in cur.items()}, len(cur_node.get("components") or []))
+                if _shape != _last_shape[0]:
+                    _last_shape[0] = _shape
+                    logger.info("監看:CU F1 元件 %s(components=%d)基準 %s",
+                                _shape[0] or "(無)", _shape[1], {d: len(v) for d, v in _cfg_sent_sig.items()} or "(無)")
                 add = set(cur) - set(_cfg_sent_sig)
                 rem = set(_cfg_sent_sig) - set(cur)
                 upd = {d for d in set(cur) & set(_cfg_sent_sig) if cur[d] != _cfg_sent_sig[d]}
