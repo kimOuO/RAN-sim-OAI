@@ -131,11 +131,20 @@ def main():
     # cache_path 一定要填:前端的「啟動」鈕是看 mode=cached 且 cache_path 非空才解鎖,
     # 空的就顯示「先預算」。切片的快取是這支腳本自己切的、沒走 orchestrator 的 precompute,
     # 那條路徑才會回寫這個欄位 —— 不在這裡補,切出來的劇本前端永遠按不動(2026-09-22)。
-    post("Simulation_run/SceneRunController/create",
-         {"f_scene_uuid": dst, "mode": "cached", "speed_x": 2, "sim_dt_ms": 500,
-          "duration_sec": t1 - t0, "status": "ready",
-          "cache_path": f"/app/data/channel_cache/{dst_name}.npz"})
-    print(f"  場景資料切好({t0:.0f}–{t1:.0f} s → 0–{t1-t0:.0f} s),run 設定已建(ready)")
+    # 複製場景時已經帶了一個 draft run,這裡要**更新它**而不是再建一個 ——
+    # 否則同一場景兩個 run,前端固定取最早的那個空殼,永遠顯示「未預算」(2026-09-22 實踩)。
+    # 後端 create 現在也會自動收斂成同一筆,這裡明寫 update 只是讓意圖清楚。
+    run_fields = {"mode": "cached", "speed_x": 2, "sim_dt_ms": 500,
+                  "duration_sec": t1 - t0, "status": "ready",
+                  "cache_path": f"/app/data/channel_cache/{dst_name}.npz"}
+    existing = post("Simulation_run/SceneRunReader/read", {"f_scene_uuid": dst}) or []
+    if existing:
+        post("Simulation_run/SceneRunController/update",
+             {"scene_run_uuid": existing[0]["scene_run_uuid"], **run_fields})
+        print(f"  場景資料切好({t0:.0f}–{t1:.0f} s → 0–{t1-t0:.0f} s),沿用既有 run 設定並更新(ready)")
+    else:
+        post("Simulation_run/SceneRunController/create", {"f_scene_uuid": dst, **run_fields})
+        print(f"  場景資料切好({t0:.0f}–{t1:.0f} s → 0–{t1-t0:.0f} s),run 設定已建(ready)")
 
 
 main()
