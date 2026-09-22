@@ -27,6 +27,9 @@ _OBJECT_BY_PREFIX = (
 
 
 def _origin(source: str) -> str:
+    # son/ric_* 是 CU 對 RIC 命令的「落地」稽核(例如 PRB 配額真的套到 DU),歸 RIC 觸發
+    if source.startswith("son/ric_"):
+        return "triggered_event"
     if source.startswith("son/"):
         return "son_function"
     # agent/* 是對方自己經 I-3 注入的事件;ric/* 是 RIC / xApp 下來的控制。

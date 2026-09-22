@@ -167,5 +167,9 @@ def record_control_ack_sent(style: int, action: int, sim_action: str, pdu_size: 
     )
 
 
-def record_control_failure(reason: str, style: int = 0, action: int = 0) -> None:
-    _append_control("control_failure", reason=reason, style=style, action=action)
+def record_control_failure(reason: str, style: int = 0, action: int = 0, *,
+                           ran_func: int | None = None, inst_id: int | None = None) -> None:
+    """RICcontrolFailure 送出(或送不出)。2026-09-23:帶 ran_func / inst_id,稽核端才能把它附回
+    原本那則請求的列;以前沒帶,請求列永遠 pending、失敗自成一列(I-7 對不上)。"""
+    _append_control("control_failure", reason=reason, style=style, action=action,
+                    ran_func=ran_func, inst_id=inst_id)

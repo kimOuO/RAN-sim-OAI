@@ -1391,9 +1391,11 @@ _RC_RAN_FUNCTION_ID = 3
 
 def _send_control_failure(sock, ric_req_id: dict, ran_func_id: int,
                             cause: tuple[str, str], call_process_id: bytes,
-                            style: int, action: int, reason: str) -> None:
+                            style: int, action: int, reason: str,
+                            inst_id: int | None = None) -> None:
     """Encode + send RIC_CONTROL_FAILURE. cause = (group, value) e.g.
-    ("ricRequest", "ran-function-id-invalid")."""
+    ("ricRequest", "ran-function-id-invalid")。
+    2026-09-23:送成功也要記 control_failure(帶 inst_id),否則稽核只看到請求、沒看到結果。"""
     from main.apps.e2_adapter.models.connection_state import get_registry
     from main.apps.e2_adapter.services.business.memory_state_operations import (
         MemoryStateBusinessService,
@@ -1423,6 +1425,8 @@ def _send_control_failure(sock, ric_req_id: dict, ran_func_id: int,
     MemoryStateBusinessService.update_state(
         registry, pdu_sent_count=registry.get_connection().pdu_sent_count + 1,
     )
+    event_ring.record_control_failure(reason, style=style, action=action,
+                                        ran_func=ran_func_id, inst_id=inst_id)
     event_ring.append("control_failure_sent", style=style, action=action,
                        cause_group=cause[0], cause_value=cause[1],
                        reason=reason, pdu_size=len(pdu))
@@ -1708,7 +1712,7 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
             sock, ric_req_id, ran_func_id,
             cause=("ricRequest", "control-message-invalid"),
             call_process_id=call_proc_bytes, style=style, action=action,
-            reason=f"sim CU rejected {sim_action}",
+            reason=f"sim CU rejected {sim_action}", inst_id=_inst_rc,
         )
         return
 

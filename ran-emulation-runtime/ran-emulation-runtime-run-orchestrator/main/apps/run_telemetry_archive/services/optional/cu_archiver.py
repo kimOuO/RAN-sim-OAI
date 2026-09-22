@@ -171,7 +171,9 @@ class RunArchiver(threading.Thread):
             logger.warning("archiver CU poll failed run=%s: %s", self.run_uuid, exc)
         try:
             e = _post(self._e2, {}, timeout=5.0)["data"]
-            for x in _control_items(e):
+            # 2026-09-23:adapter 的稽核列是「最新在最前」。以前照它的順序走,第一筆(最新 seq)就把
+            # control_seq 推到最大,同一輪裡較舊的列全被當成「已歸檔」跳過 —— run 40 五筆只留兩筆。
+            for x in sorted(_control_items(e), key=lambda r: int(r.get("seq", 0))):
                 # adapter 的稽核列:command(sim action)/ result(落地目標,例 cell id)/ acked / rttMs / failure
                 outcome = "ACK" if x.get("acked") else ("FAIL" if x.get("failure") else "pending")
                 if int(x.get("seq", 0)) <= self.control_seq:

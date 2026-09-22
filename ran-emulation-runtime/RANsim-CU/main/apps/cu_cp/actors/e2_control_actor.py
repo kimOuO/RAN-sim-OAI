@@ -610,6 +610,18 @@ def _handle_slice_prb_quota(
     )
 
     outcome_str = "PRB_QUOTA_APPLIED" if not failures else "PRB_QUOTA_PARTIAL"
+    # 2026-09-23:落地結果要進稽核(對外 I-7 一列 `applied`)。adapter 的 ACK 只證明命令送到,
+    # 這裡才是「DU 真的套了配額」的證據;以前只有日誌,容器一收工就查不到。
+    try:
+        from main.apps.cu_cp.models.son_action_log import SonActionLog
+        SonActionLog.objects.create(
+            object_type="prb_quota", object_id=",".join(targets), action="applied" if not failures else "partial",
+            attribute="min/max/dedicated_prb", before="",
+            after=json.dumps({"min_prb": min_prb, "max_prb": max_prb, "dedicated_prb": dedicated,
+                              "ok": [r["cell_id"] for r in results], "failed": failures}),
+            function="ric_apply", reason=f"RC(2,6) ric_req_id={ric_req_id}", recorded_at=TimestampService.now())
+    except Exception:  # noqa: BLE001 — 稽核失敗不擋控制
+        logger.exception("PRB quota 稽核寫入失敗")
     push_control_action(
         control_style=2, control_action_id=6,
         action_label="PRB_QUOTA",
