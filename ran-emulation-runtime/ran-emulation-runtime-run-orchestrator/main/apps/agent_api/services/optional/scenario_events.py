@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 
 # 事件型別 → 能否在 cached 模式執行
 SUPPORTED_IN_CACHED = (
-    "cell_outage", "energy_saving_state", "tx_power_change", "relation_change",
+    "cell_outage", "energy_saving_state", "tx_power_change", "relation_change", "pci_change",
 )
 NEEDS_SPARE_CELL = ("cell_addition",)
 LIVE_ONLY = ("antenna_change",)
@@ -173,6 +173,41 @@ def _exec_tx_power(ev: dict, hosts: dict[str, str]) -> dict:
     }
 
 
+# pci_change 的還原值:執行當下從 DU 讀回的舊 PCI(還原事件在排程時還不知道)
+_PCI_BEFORE: dict[str, int] = {}
+
+
+def _exec_pci_change(ev: dict, hosts: dict[str, str]) -> dict:
+    """改一顆 cell 廣播的 PCI(PCI 混淆題型:把兩顆 cell 的 PCI 設成一樣)。
+
+    只改 **DU**(CellState.pci):量測報告的鄰區 pci、UE 的 serving_pci、經 DU Config Update
+    到 CU 的 CellConfig.pci、再經 E2 Configuration Update 到 RIC,全從這裡出。
+    **不改 RU / UE / 物理**:RU 用 `gnb#pci` 當通道快取的鍵,改了會查不到 path gain;
+    PCI 只是廣播的標籤,訊號本身不變 —— 這正是混淆的定義(兩顆訊號不同、標籤相同)。
+    cached 模式因此也做得到。
+    CU 的 NRT 既有關係保留舊 target_pci(真實 gNB 也是這樣:NRT 不會自己知道鄰居改了 PCI)。
+    """
+    cell = ev["target"]
+    p = ev.get("params") or {}
+    if p.get("_restore"):
+        after = _PCI_BEFORE.get(cell)
+        if after is None:
+            return {"applied": False, "error": f"{cell} 沒有可還原的舊 PCI(原事件未執行成功)"}
+    else:
+        after = p.get("pci_after")
+        if after is None:
+            return {"applied": False, "error": "params.pci_after 必填"}
+    after = int(after)
+    cur = _post(hosts["du"], "/api/v0.1/DU/MAC/MacCellController/read", {"cell_id": cell})
+    before = (cur.get("data") or {}).get("pci") if _ok(cur) else None
+    du = _post(hosts["du"], "/api/v0.1/DU/MAC/MacCellController/update", {"cell_id": cell, "pci": after})
+    ok = _ok(du)
+    if ok and before is not None and not p.get("_restore"):
+        _PCI_BEFORE.setdefault(cell, int(before))
+    return {"applied": ok, "pci_before": before, "pci_after": after,
+            "error": None if ok else f"DU 未套用:{_msg(du)}"}
+
+
 # 規格的 attributes → 我方 NrCellRelation 的旗標。語意是**相反**的:
 # 規格講「允許」,我方存的是「封鎖」。對映錯會讓對方以為關掉了換手,實際上打開了。
 _ATTR_TO_FLAG = {
@@ -299,6 +334,7 @@ EXECUTORS: dict[str, Callable[[dict, dict], dict]] = {
     "cell_outage": _exec_cell_outage,
     "energy_saving_state": _exec_energy_saving,
     "tx_power_change": _exec_tx_power,
+    "pci_change": _exec_pci_change,
     "relation_change": _exec_relation_change,
     "cell_addition": _exec_cell_addition,
     "antenna_change": _exec_antenna_change,
@@ -327,6 +363,9 @@ def event_param_schema() -> dict[str, dict]:
         "cell_outage": {"reason": "字串,hardware / planned;僅供分類,不影響模擬"},
         "energy_saving_state": {"state_after": "energySaving | notEnergySaving"},
         "tx_power_change": {"tx_power_dbm_after": "數值,dBm"},
+        "pci_change": {"pci_after": "整數 0~1007",
+                       "_note": "只改廣播的 PCI 標籤,訊號不變;設成與另一顆 cell 相同即 PCI 混淆。"
+                                "帶 duration_s 會在到期時改回原值"},
         "relation_change": {
             "source_ncgi": "字串", "target_ncgi": "字串",
             "action": "add | remove | set",
@@ -418,6 +457,16 @@ def validate(events: list[dict], *, cell_ids: list[str], inactive_cell_ids: list
             if target is None:
                 bad(f"target {target_in!r} 不是本場域的 cell;可用:{cell_ids}")
                 continue
+            if etype == "pci_change":
+                try:
+                    pa = int(params.get("pci_after"))
+                except (TypeError, ValueError):
+                    bad("pci_change 需要 params.pci_after(整數 0~1007)")
+                    continue
+                if not 0 <= pa <= 1007:
+                    bad(f"pci_after={pa} 超出 0~1007")
+                    continue
+                params["pci_after"] = pa
             if etype == "cell_addition":
                 spare = {resolve_cell(c, n2r, n2n) for c in inactive_cell_ids}
                 if target not in spare:
@@ -459,6 +508,8 @@ def expand_with_revert(events: list[dict]) -> list[dict]:
         if e["type"] in ("cell_outage", "cell_addition"):
             rev = {**e, "type": "energy_saving_state",
                    "params": {"state_after": "notEnergySaving" if e["type"] == "cell_outage" else "energySaving"}}
+        elif e["type"] == "pci_change":
+            rev = {**e, "params": {"_restore": True}}   # 舊值由執行器在原事件執行時記下
         elif e["type"] == "energy_saving_state":
             cur = (e.get("params") or {}).get("state_after")
             rev = {**e, "params": {"state_after":
