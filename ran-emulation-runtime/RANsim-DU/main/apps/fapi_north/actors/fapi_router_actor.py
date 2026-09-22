@@ -37,42 +37,10 @@ class FapiRouterController:
         if not ser.is_valid():
             return error_response("Validation failed", ser.errors, http_status=400)
         v = ser.validated_data
-        new_mcs, smoothed_bler = get_mcs_controller().update(
-            v["ue_id"], v["sinr_db"], TimestampService.now_ms(),
-        )
-        # 同步 SINR + RSRP 進 tick_runner._ue_registry。RSRP 優先用 RU 從 Sionna path_gain
-        # 算出的真值；舊版 RU（沒帶 rsrp_dbm 或為 sentinel -200）才 fallback 估算。
-        rsrp_real = float(v.get("rsrp_dbm", -200.0))
-        if rsrp_real > -150.0:  # 有效 RSRP
-            rsrp_for_pm = rsrp_real
-        else:
-            noise_floor_dbm = get_float("DU_NOISE_FLOOR_DBM", -95.0)
-            rsrp_for_pm = noise_floor_dbm + float(v["sinr_db"])  # legacy fallback
-        get_tick_runner().update_ue_sinr(v["ue_id"], float(v["sinr_db"]), rsrp_dbm=rsrp_for_pm, rank=v.get("rank"), sinr_layers=v.get("sinr_per_layer_db") or None, ul_sinr_db=v.get("ul_sinr_db"), pmi=v.get("pmi"), beam_id=v.get("beam_id"), array_gain_db=v.get("array_gain_db"), beam_top=v.get("beam_rsrp_top"), rsrq_db=v.get("rsrq_db"), cqi=v.get("cqi"))
-
-        # 緩存 neighbor measurements（A3 evaluator 用）— 每次覆蓋，要 fresh 量測
-        neighbors = v.get("neighbors") or []
-        if neighbors:
-            get_tick_runner().update_ue_neighbors(v["ue_id"], list(neighbors))
-
-        logger.debug(
-            "CQI ind ue=%s sinr=%.1f cqi=%d → mcs=%d bler=%.3f rsrp=%.1f%s neighbors=%d rank=%s layers=%s",
-            v["ue_id"], v["sinr_db"], v["cqi"], new_mcs, smoothed_bler,
-            rsrp_for_pm, "" if rsrp_real > -150.0 else " (estimated)", len(neighbors),
-            v.get("rank"), v.get("sinr_per_layer_db"),
-        )
-        # 上行 SINR 每 100 筆印一次 INFO(P6 驗證)
-        global _UL_LOG_N
-        if v.get("ul_sinr_db") is not None:
-            _UL_LOG_N += 1
-            if _UL_LOG_N % 100 == 1:
-                logger.debug("UL sinr ue=%s dl=%.1f ul=%.1f dB", v["ue_id"], v["sinr_db"], v["ul_sinr_db"])
-        # 多層時每 50 筆印一次 INFO(驗證每層 SINR 有進來;P5-4)
-        global _LAYER_LOG_N
-        if v.get("rank", 1) > 1 and v.get("sinr_per_layer_db"):
-            _LAYER_LOG_N += 1
-            if _LAYER_LOG_N % 50 == 1:
-                logger.info("MIMO cqi ue=%s rank=%d sinr=%.1f layers=%s", v["ue_id"], v["rank"], v["sinr_db"], v["sinr_per_layer_db"])
+        # 2026-09-22:邏輯抽到 indication_apply,tick 路徑改從 dl_tti 回應本體直接套用;
+        # 這個端點留給相容與除錯(RU 的逐 UE 回呼預設已關)。
+        from main.apps.fapi_north.services.business.indication_apply import apply_cqi
+        new_mcs, smoothed_bler = apply_cqi(v)
         return success_response(
             {"ue_id": v["ue_id"], "new_mcs": new_mcs, "smoothed_bler": smoothed_bler},
             "OK",
@@ -91,9 +59,8 @@ class FapiRouterController:
             return error_response("Validation failed", ser.errors, http_status=400)
         v = ser.validated_data
         # 預設 CRC ind 是 UL CRC(對齊 OAI 概念);DL CRC 由 PUCCH 帶 ACK,簡化只走 UL。
-        st = get_harq_manager().handle_feedback(
-            v["ue_id"], v["harq_pid"], "UL", v["success"],
-        )
+        from main.apps.fapi_north.services.business.indication_apply import apply_crc
+        st = apply_crc(v)
         return success_response(
             {"ue_id": v["ue_id"], "harq_pid": v["harq_pid"], "state": st.state if st else "UNKNOWN"},
             "OK",

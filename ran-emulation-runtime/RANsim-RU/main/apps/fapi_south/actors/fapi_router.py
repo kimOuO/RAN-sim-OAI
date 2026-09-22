@@ -4,6 +4,7 @@
   POST /api/v0.1/RU/FAPI/FapiRouter/ul_tti_request
 """
 import json
+import os
 
 from django.db import transaction
 from django.utils import timezone
@@ -32,6 +33,9 @@ from main.utils.response import error_response, success_response
 from django.db.utils import OperationalError
 
 logger = get_logger(__name__)
+
+# RU → DU 的逐 UE 同步回呼(舊路徑)。預設關:DU 直接吃 dl/ul_tti 回應本體的 indications。
+_LEGACY_DU_CALLBACK = os.environ.get("RU_LEGACY_DU_CALLBACK", "0").strip().lower() in ("1", "true", "on")
 
 
 def _parse(request):
@@ -110,8 +114,12 @@ class FapiRouter:
         # 推回 DU + 寫入 LastTti
         # 先全部送回 DU,再寫 LastTti(觀測用):DU 非阻塞併發送 dl_tti 時 upsert 會互相死結,
         # 以前寫表失敗會中斷迴圈 → 後面 UE 這輪的 CQI 回報全丟
-        for cqi in cqi_list:
-            du_callback.send_cqi_indication(cqi)
+        # 2026-09-22:逐 UE 同步回呼 DU 預設關閉 —— DU 改從本回應的 cqi_indications 套用。
+        # 回呼是 RU↔DU 互等的根源(DU 單 process 忙 tick 時 RU 兩個 worker 全卡在等它,
+        # DU 又等 RU 的回應而逾時 → 假 RLF)。RU_LEGACY_DU_CALLBACK=1 可回到舊行為。
+        if _LEGACY_DU_CALLBACK:
+            for cqi in cqi_list:
+                du_callback.send_cqi_indication(cqi)
         try:
             for cqi in cqi_list:
                 _record_dl(cqi.ue_id, req.sfn, req.slot, cqi.sinr_db, cqi.cqi, cqi.rank, cqi.pmi)
@@ -146,8 +154,9 @@ class FapiRouter:
         req = from_dict(UlTtiRequest, payload)
         crc_list = ul_tti_pipeline.run(req)
 
-        for crc in crc_list:
-            du_callback.send_crc_indication(crc)
+        if _LEGACY_DU_CALLBACK:
+            for crc in crc_list:
+                du_callback.send_crc_indication(crc)
             _record_ul(crc.ue_id, req.sfn, req.slot, crc.harq_pid, crc.success)
 
         _bump_ru_state(req.sfn, req.slot)
