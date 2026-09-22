@@ -413,6 +413,15 @@ class LaunchController:
             except Exception as exc:  # noqa: BLE001
                 ue = {"success": False, "message": f"ue_stop: {exc}"}   # 容器可能已死;照樣往下清
             archive_stats = cu_archiver.stop_archiver(run_uuid)
+            # 2026-09-23(RIC 第三十三輪 run 46 實測):以前先拆容器、最後才 DELETE 場景,
+            # 中間約 30 秒 RIC 仍認為場景 active,xApp 送進來的控制會打到已死的 CU →
+            # 對方收到 ControlFailure,看起來像我方拒絕。先 deactivate 讓閘道停止轉發,
+            # 再拆容器;DELETE 仍留在最後(它同時清 R-NIB 與 xApp)。
+            if settings.PER_RUN_ENABLED:
+                try:
+                    platform_clients.ric_deactivate_scenario(run_uuid)
+                except Exception as exc:  # noqa: BLE001 — 閘道不在不該擋住收工
+                    logger.info("RIC 場景 deactivate 失敗(不影響收工):%s", exc)
             containers = None
             if settings.PER_RUN_ENABLED:
                 health_monitor.stop_monitor(run_uuid)
