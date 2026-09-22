@@ -603,6 +603,28 @@ def _cache_key(ue_id: str, ue_pos: list[float], ant_sig: tuple) -> tuple:
     return (ue_id, quantize_position(ue_pos), ant_sig)
 
 
+def antenna_signature(tx_config) -> tuple:
+    """進 memo cache 鍵的天線簽章 —— 陣列形狀 + 每個 cell 的位置與指向。
+
+    2026-09-22:以前只有陣列形狀(rows/cols/polarization/pattern),
+    per-cell 的 azimuth / tilt / 位置都不在鍵裡。live 模式下改天線方位時,
+    位置沒動的 UE 會一直命中舊的 path gain —— 改了等於沒改。
+    外部 Agent 的 antenna_change 事件(I-3)就是靠這個生效的。
+
+    發射功率**刻意不放進來**:功率不影響 path gain(它是事後疊上去的),
+    放進來只會讓每次調功率都把整份快取作廢。
+    """
+    array = tx_config.antenna_array
+    geom = tuple(
+        (g.name,
+         tuple(round(float(v), 2) for v in g.position),
+         tuple((c.pci, round(float(c.azimuth_deg or 0.0), 2),
+                round(float(getattr(c, "tilt_deg", 0.0) or 0.0), 2)) for c in g.cells))
+        for g in tx_config.gnbs
+    )
+    return (array.rows, array.cols, array.polarization, array.pattern, geom)
+
+
 def run(req: DlTtiRequest) -> list[CqiIndication]:
     """跑 pipeline，回傳一組 CqiIndication（已對每個 PDU 依序產生，actor 負責 dispatch 給 DU）。"""
     if not req.pdus:
@@ -610,8 +632,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
 
     ue_ids = [p.ue_id for p in req.pdus]
     psr = build_path_solver_request(ue_ids)
-    ant = psr.tx_config.antenna_array
-    ant_sig = (ant.rows, ant.cols, ant.polarization, ant.pattern)
+    ant_sig = antenna_signature(psr.tx_config)
 
     # cache 命中 → 跳過 physics
     pos_map = {u.id: u.position for u in psr.ue_positions}

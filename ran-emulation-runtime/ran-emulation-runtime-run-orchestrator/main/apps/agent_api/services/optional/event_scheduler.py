@@ -62,6 +62,7 @@ def _record(run_uuid: str, run_seq: int, at_sim_ms: int, ev: dict,
                     "event_id": ev["event_id"],
                     "requested_at_offset_s": ev["at_offset_s"],
                     "params": ev.get("params") or {},
+                    "mode": ev.get("mode"),
                     "result": result,
                     "object_type": "neighbour_relation" if ev["type"] == "relation_change" else "cell",
                     "revert_of": ev.get("_revert_of"),
@@ -227,6 +228,7 @@ def resume(run_uuid: str, run_seq: int, hosts: dict[str, str]) -> int:
             "at_offset_s": float(d.get("requested_at_offset_s", r.at_sim_ms / 1000.0)),
             "duration_s": None,          # 還原動作啟動時就已經展開成獨立事件了
             "params": d.get("params") or {},
+            "mode": d.get("mode") or "cached",
             "_revert_of": d.get("revert_of"),
         })
     logger.info("接回事件排程 run=%s 尚未觸發 %d 筆", run_uuid, len(events))

@@ -240,6 +240,8 @@ def start_sim(
     speed_x: float = 1.0,
     sim_dt_ms: int = 500,
     scene_run_uuid: str = "",
+    ue_limit: int | None = None,
+    ue_seed: int = 0,
 ) -> dict[str, Any]:
     """Unified sim start entry.
 
@@ -303,10 +305,13 @@ def start_sim(
         drv = scenario_driver.start_scenario(
             scenario_id, target_wall_tick_ms=target_wall_tick_ms,
             sim_speed_x=float(speed_x), scene_run_uuid=scene_run_uuid,
+            ue_limit=ue_limit, ue_seed=ue_seed,
         )
         return {
             "source": "scenario",
             "scenario_id": scenario_id,
+            # 實際採用的 UE 名單 —— 取子集時對方要知道拿到的是哪幾個人
+            "ue_names": [u.name for u in drv.scenario.ues],
             "scene_run_uuid": scene_run_uuid,
             "speed_x": speed_x,
             "speed_broadcast": speed_broadcast,

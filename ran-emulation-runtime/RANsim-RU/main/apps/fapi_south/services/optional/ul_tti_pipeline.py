@@ -10,6 +10,7 @@ from ran_sim_protocol.fapi import CrcIndication, UlTtiRequest
 from main.apps.fapi_south.services.optional.dl_tti_pipeline import (
     _NOISE_FLOOR_DBM,
     _cache_key,
+    antenna_signature,
     _resolve_serving,
     _to_complex_matrix,
 )
@@ -32,8 +33,7 @@ def run(req: UlTtiRequest) -> list[CrcIndication]:
 
     ue_ids = [p.ue_id for p in req.pdus]
     psr = build_path_solver_request(ue_ids)
-    ant = psr.tx_config.antenna_array
-    ant_sig = (ant.rows, ant.cols, ant.polarization, ant.pattern)
+    ant_sig = antenna_signature(psr.tx_config)
     pos_map = {u.id: u.position for u in psr.ue_positions}
 
     miss_ids = []

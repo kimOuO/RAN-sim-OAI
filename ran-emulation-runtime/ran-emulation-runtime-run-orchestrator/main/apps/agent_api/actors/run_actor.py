@@ -41,6 +41,26 @@ def _body(request) -> dict:
     return json.loads(request.body or b"{}")
 
 
+def _ue_names(run_id: str) -> list[str] | None:
+    """該 run 實際跑的 UE 名單 —— 問 UE 容器,拿不到回 None(不是空陣列)。
+
+    空陣列會被讀成「沒有 UE」,與「我方查不到」是兩回事。
+    """
+    import urllib.request
+
+    from main.apps.run_lifecycle.services.optional import container_spawner
+    try:
+        name = container_spawner.names_for(run_id)["ue"]
+        req = urllib.request.Request(
+            f"http://{name}:8000/api/v0.1/UE/Scenario/ScenarioController/status",
+            data=b"{}", headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            d = (json.loads(resp.read().decode() or "{}") or {}).get("data") or {}
+        return d.get("ue_names")
+    except Exception:  # noqa: BLE001 — run 已停或容器不在,不該讓狀態查詢失敗
+        return None
+
+
 class RunReader:
     """Component name in URL: RunReader"""
 
@@ -94,6 +114,8 @@ class RunReader:
             # I-3 注入的事件進度 —— 對方輪詢時要知道事件是不是都觸發了。
             # 沒排事件(類型一)或 orchestrator 重啟後失去排程器時為 null。
             "events": event_scheduler.status(run_id),
+            # I-3 若以 ue_count 取子集,這裡給實際採用的名單(對照 I-2 的 ues)
+            "ue_names": _ue_names(run_id),
             "error": err,
             "unavailable_fields": [] if windows is not None else ["windows_available"],
         }, "ok", 200)

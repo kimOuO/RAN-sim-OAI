@@ -153,11 +153,27 @@ class ScenarioController:
                 "unknown load_profile",
                 {"requested": want_profile, "available": [have_profile],
                  "hint": "本場域的人流為寫定資料,型態名即場域名(見 I-1)"}, 400)
-        if payload.get("ue_count") is not None and int(payload["ue_count"]) != len(ues):
-            # 不是錯誤,但要講清楚實際用的是幾人 —— 靜默忽略會讓對方以為改成功了
-            notes.append(
-                f"ue_count={payload['ue_count']} 未採用:本場域人流為寫定路徑,"
-                f"實際 {len(ues)} 人(見 I-1 的 load_profiles[].note)")
+        # ue_count:只能往下裁,不能加人。
+        # 加人做不到的原因是通道快取的 UE 軸在預算時就寫死了(path_gain_db[tick, ue, cell]),
+        # 新的人沒有任何傳播資料;要生出來只能捏造軌跡,那是假資料。
+        # 減少是安全的 —— 快取用 UE 名稱查欄位,沒 attach 的人只是那幾欄沒被用到。
+        ue_limit = None
+        if payload.get("ue_count") is not None:
+            want = int(payload["ue_count"])
+            if want > len(ues):
+                return error_response(
+                    "ue_count exceeds field capacity",
+                    {"requested": want, "max_ue_count": len(ues),
+                     "hint": "本場域人流為寫定路徑資料,只能減少不能增加;"
+                             "需要更多終端須另建場域並重算通道快取"}, 400)
+            if want <= 0:
+                return error_response("Validation failed",
+                                      {"ue_count": "must be > 0"}, 400)
+            if want < len(ues):
+                ue_limit = want
+                notes.append(
+                    f"ue_count={want}:自本場域 {len(ues)} 人中依 seed 決定性抽樣,"
+                    f"同 seed 重跑為同一批人;實際名單見 I-4 的 ue_names")
 
         # ── 事件 ──────────────────────────────────────────────────
         pairs = _cells_of(tree)
@@ -194,8 +210,11 @@ class ScenarioController:
         seed = int(payload["seed"])
         try:
             platform_clients.set_run_knob(run_uuid, "run_seed", str(seed))
+            # 旋鈕是累積的:這次沒指定就要把上一輪的清掉,否則會沿用舊的人數
+            platform_clients.set_run_knob(run_uuid, "ue_limit",
+                                          str(ue_limit) if ue_limit else "")
         except Exception as exc:  # noqa: BLE001
-            return error_response("failed to set run seed", str(exc), 502)
+            return error_response("failed to set run knobs", str(exc), 502)
 
         # ── 啟動 ──────────────────────────────────────────────────
         speed_x = float(run_row.get("speed_x") or 1.0)
@@ -242,7 +261,7 @@ class ScenarioController:
                 "field_id": field_id,
                 "config_version": str(have_ver),
                 "load_profile": have_profile,
-                "ue_count": len(ues),
+                "ue_count": ue_limit or len(ues),
                 "duration_s": duration_s,
                 "seed": seed,
                 "magnitude": float(payload.get("magnitude") or 1.0),

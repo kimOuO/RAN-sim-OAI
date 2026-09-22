@@ -50,10 +50,14 @@ class SimController:
         speed_x = float(payload.get("speed_x") or 1.0)
         sim_dt_ms = int(payload.get("sim_dt_ms") or 500)
         scene_run_uuid = str(payload.get("scene_run_uuid") or "")   # 2026-09-13 P2:registry 直讀
+        # 2026-09-22:外部 Agent 的 I-3 ue_count —— 只能往下裁,不能加人(見 subset_ues)
+        _ul = payload.get("ue_limit")
+        ue_limit = None if _ul in (None, "", 0) else int(_ul)
+        ue_seed = int(payload.get("ue_seed") or 0)
         try:
             result = sim_orchestrator.start_sim(
                 source, scenario_id=scenario_id, speed_x=speed_x, sim_dt_ms=sim_dt_ms,
-                scene_run_uuid=scene_run_uuid,
+                scene_run_uuid=scene_run_uuid, ue_limit=ue_limit, ue_seed=ue_seed,
             )
         except ValueError as e:
             return _err(str(e), status=400)

@@ -71,8 +71,15 @@ def update_scene_run(scene_run_uuid: str, **fields) -> dict:
     return _registry("Simulation_run/SceneRunController/update", {"scene_run_uuid": scene_run_uuid, **fields})
 
 
-def ue_start(scene_run_uuid: str, speed_x: float, sim_dt_ms: int, host: str | None = None) -> dict:
-    return _ue("SimController/start", {"source": "scenario", "scene_run_uuid": scene_run_uuid, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms}, host=host)
+def ue_start(scene_run_uuid: str, speed_x: float, sim_dt_ms: int, host: str | None = None,
+             ue_limit: int | None = None, ue_seed: int = 0) -> dict:
+    body = {"source": "scenario", "scene_run_uuid": scene_run_uuid,
+            "speed_x": speed_x, "sim_dt_ms": sim_dt_ms}
+    # 2026-09-22:外部 Agent 的 I-3 ue_count(只能往下裁)。不給就完全照舊。
+    if ue_limit:
+        body["ue_limit"] = int(ue_limit)
+        body["ue_seed"] = int(ue_seed)
+    return _ue("SimController/start", body, host=host)
 
 
 def ue_stop(host: str | None = None) -> dict:

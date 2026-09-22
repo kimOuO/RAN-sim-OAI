@@ -53,6 +53,9 @@ class ScenarioDriver:
             "source": "scenario",
             "started_at_ms": None,
             "ue_count": len(scenario.ues),
+            # 2026-09-22:實際採用的 UE 名單。I-3 的 ue_count 取子集時,
+            # 對方必須知道拿到的是哪幾個人才能對照 I-2 的配置。
+            "ue_names": [u.name for u in scenario.ues],
             "traffic_count": len(scenario.traffic),
             "sim_speed_x": float(sim_speed_x),
             "scene_apply_errors": [],
@@ -536,11 +539,42 @@ def get_driver() -> ScenarioDriver | None:
     return _singleton
 
 
+def subset_ues(spec, limit: int, seed: int = 0):
+    """把劇本的 UE 裁成 limit 個(就地修改 spec)。回傳實際留下的名單。
+
+    2026-09-22:給外部 Agent 的 I-3 `ue_count` 用。
+    **只能減少,不能增加** —— 多出來的 UE 沒有路徑資料,cached 模式連通道快取
+    都沒有它的欄位(快取是 path_gain_db[tick, ue, cell],UE 軸預算時就寫死了)。
+    要憑空生出來只能捏造軌跡,那是假資料,不做。
+
+    減少是安全的:快取用 UE 名稱查欄位,沒 attach 的人只是那幾欄沒被用到。
+
+    選誰用 seed 決定性抽樣,抽完**還原劇本原順序** —— 同 seed 重跑拿到同一群人
+    (規格總則 7),換 seed 得到另一群,而不是永遠取前 N 個(那會偏向劇本裡排在
+    前面的那批,例如同一個方向來的人)。
+    """
+    import random as _random
+
+    names = [u.name for u in spec.ues]
+    if limit >= len(names):
+        return names
+    keep = set(_random.Random(int(seed)).sample(names, int(limit)))
+    kept = [n for n in names if n in keep]          # 還原原順序
+    spec.ues = [u for u in spec.ues if u.name in keep]
+    spec.traffic = [t for t in (spec.traffic or []) if t.ue_name in keep]
+    if spec.active_windows:
+        spec.active_windows = {k: v for k, v in spec.active_windows.items() if k in keep}
+    logger.info("UE 取子集:%d → %d 人(seed=%s)", len(names), len(kept), seed)
+    return kept
+
+
 def start_scenario(
     scenario_id: str,
     target_wall_tick_ms: int = 500,
     sim_speed_x: float | None = None,
     scene_run_uuid: str = "",
+    ue_limit: int | None = None,
+    ue_seed: int = 0,
 ) -> ScenarioDriver:
     global _singleton
     with _lock:
@@ -554,6 +588,10 @@ def start_scenario(
         spec = fetch_by_run(scene_run_uuid) if scene_run_uuid else fetch(scenario_id)
         if spec.total_ticks == 0:
             raise ValueError(f"Scenario {scenario_id} has zero ticks")
+        # UE 取子集要在建 driver 之前 —— attach、推給 RU 的位置、presence windows、
+        # du_cells 全都是從 spec.ues 長出來的,在這裡裁一次下游自動跟著。
+        if ue_limit is not None and int(ue_limit) > 0:
+            subset_ues(spec, int(ue_limit), ue_seed)
         _singleton = ScenarioDriver(
             spec, target_wall_tick_ms=target_wall_tick_ms, sim_speed_x=sim_speed_x,
         )

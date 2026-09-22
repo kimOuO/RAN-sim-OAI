@@ -159,6 +159,19 @@ class LaunchController:
         if not tree.get("success"):
             return error_response("scene_run not found", run_uuid, 404)
         t = tree["data"]; run = t.get("run") or {}
+
+        def _run_knob(name: str):
+            """run knob 取值(dict 或 [{key,value}] 兩種形狀都收)。
+
+            2026-09-22:原本只在 per-run 分支裡有一份區域版本,
+            但 ue_start 在那個分支外面也要用 —— 提到外層定義一次。
+            """
+            kn = run.get("knobs") or {}
+            if isinstance(kn, dict):
+                return kn.get(name)
+            return next((k.get("value") for k in kn
+                         if isinstance(k, dict) and k.get("key") == name), None)
+
         problems = []
         if not t.get("gnbs"):
             problems.append("scene has no gnb")
@@ -271,7 +284,13 @@ class LaunchController:
                     raise RuntimeError(f"e2adapter 未就緒: {health}")
                 ue_host = instances["ue"]["name"]; cu_host = instances["cu"]["name"]; e2_port = instances["e2adapter"]["host_port"]
                 health_monitor.start_monitor(run_uuid, instances)
-            ue = platform_clients.ue_start(run_uuid, speed_x, sim_dt_ms, host=ue_host)
+            # run knob `ue_limit`:外部 Agent 的 I-3 ue_count。只能往下裁(見 subset_ues);
+            # 沒給就是整個劇本的人,與加這個旋鈕之前完全相同。
+            _ue_limit = _run_knob("ue_limit")
+            ue = platform_clients.ue_start(
+                run_uuid, speed_x, sim_dt_ms, host=ue_host,
+                ue_limit=int(_ue_limit) if _ue_limit else None,
+                ue_seed=int(_run_knob("run_seed") or 0))
             ok = bool(ue.get("success"))
             SqlDbBusinessService.update_entity(LaunchRequest, UUID_FIELD, getattr(req_row, UUID_FIELD),
                                                {"status": "started" if ok else "failed", "detail": ue, "launch_request_updated_at": TimestampService.get_current_timestamp()})

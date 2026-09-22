@@ -83,6 +83,57 @@ class RuController:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def set_cell_antenna(request):
+        """改單一 cell 的天線方位／下傾。body: {cell_id | name, azimuth_deg?, tilt_deg?}
+
+        2026-09-22:給外部 Agent 的 antenna_change 事件(I-3)用。
+        兩個角度都是可選的,只給一個就只改一個。
+
+        ⚠ 只有 live 模式改得動實際物理。cached 模式下 path gain 是預算時
+        用當時的方位射線追蹤出來的,烘在 .npz 裡,執行期改這張表不會改變任何
+        傳播結果 —— 所以 orchestrator 端在 cached 模式會直接退回這個事件,
+        不會走到這支。這裡不自行判斷模式,保持單一職責。
+        """
+        try:
+            payload = _parse_body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+
+        name = str(payload.get("cell_id") or payload.get("name") or "").strip()
+        if not name:
+            return error_response("Validation failed", {"cell_id": "required"}, 400)
+        if payload.get("azimuth_deg") is None and payload.get("tilt_deg") is None:
+            return error_response("Validation failed",
+                                  {"azimuth_deg/tilt_deg": "至少要給一個"}, 400)
+
+        cell = SqlDbBusinessService.filter_entities(Cell).filter(name=name).first()
+        if cell is None:
+            return error_response("cell not found", name, 404)
+
+        before = {"azimuth_deg": float(cell.azimuth_deg),
+                  "tilt_deg": float(cell.tilt_deg or 0.0)}
+        fields = []
+        for key in ("azimuth_deg", "tilt_deg"):
+            if payload.get(key) is None:
+                continue
+            try:
+                setattr(cell, key, float(payload[key]))
+            except (TypeError, ValueError):
+                return error_response("Validation failed", {key: "must be a number"}, 400)
+            fields.append(key)
+        cell.cell_updated_at = TimestampService.get_current_timestamp()
+        cell.save(update_fields=[*fields, "cell_updated_at"])
+        after = {"azimuth_deg": float(cell.azimuth_deg),
+                 "tilt_deg": float(cell.tilt_deg or 0.0)}
+        logger.info("set_cell_antenna %s: %s → %s", name, before, after)
+        return success_response({"cell_id": name, "before": before, "after": after,
+                                 "changed": fields},
+                                "cell antenna updated", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def set_cell_power(request):
         """改單一 cell 的發射功率(dBm)。body: {cell_id | name, power_dbm}
 

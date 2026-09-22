@@ -245,9 +245,36 @@ def _exec_cell_addition(ev: dict, hosts: dict[str, str]) -> dict:
 
 
 def _exec_antenna_change(ev: dict, hosts: dict[str, str]) -> dict:
-    return {"applied": False,
-            "error": "antenna_change 在 cached 模式無法執行:天線方位/下傾已烘進通道快取,"
-                     "執行期改動不會改變任何 path gain。需要此型別請改用 live 模式(不可倍速、不可並行)"}
+    """改天線方位／下傾。**只有 live 模式做得到**。
+
+    cached 模式下 path gain 是預算時以當時的方位射線追蹤出來的,烘在 .npz 裡;
+    執行期改 RU 的那張表只會讓資料庫與物理各說各話,對方拿到的觀測資料完全
+    反映不出天線動過。所以這裡直接退回,而不是做一半。
+
+    live 模式走即時射線追蹤,每個 tick 重讀 cell 的方位,所以改得動 ——
+    前提是 RU 的 memo cache 鍵有把方位算進去(2026-09-22 已修,見
+    dl_tti_pipeline.antenna_signature),否則沒移動的 UE 會一直命中舊值。
+    """
+    if str(ev.get("mode") or "cached") != "live":
+        return {"applied": False,
+                "error": "antenna_change 在 cached 模式無法執行:天線方位/下傾已烘進通道快取,"
+                         "執行期改動不會改變任何 path gain。需要此型別請改用 live 模式"
+                         "(不可倍速、不可並行)"}
+    p = ev.get("params") or {}
+    body: dict[str, Any] = {"cell_id": ev["target"]}
+    if p.get("azimuth_deg_after") is not None:
+        body["azimuth_deg"] = float(p["azimuth_deg_after"])
+    if p.get("tilt_deg_after") is not None:
+        body["tilt_deg"] = float(p["tilt_deg_after"])
+    if len(body) == 1:
+        return {"applied": False,
+                "error": "params 需要 azimuth_deg_after 或 tilt_deg_after 至少一個"}
+
+    res = _post(hosts["ru"], "/api/v0.1/RU/Config/RuController/set_cell_antenna", body)
+    out = res.get("data") or {}
+    return {"applied": _ok(res), "before": out.get("before"), "after": out.get("after"),
+            "changed": out.get("changed"),
+            "error": None if _ok(res) else f"RU 未套用:{_msg(res)}"}
 
 
 EXECUTORS: dict[str, Callable[[dict, dict], dict]] = {
@@ -383,6 +410,9 @@ def validate(events: list[dict], *, cell_ids: list[str], inactive_cell_ids: list
         ok.append({
             "event_id": eid,
             "type": etype,
+            # 執行器要靠 mode 判斷做不做得到(antenna_change 只有 live 可行)。
+            # 記在事件上而不是另外傳,orchestrator 重啟接回時才還原得出來。
+            "mode": mode,
             "target": target,                 # 執行期 cell_id(帶槽位標籤)
             "target_requested": target_in,    # 對方原本給的識別,回覆時 echo 用
             "at_offset_s": at,
