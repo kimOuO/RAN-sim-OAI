@@ -101,13 +101,23 @@ class UeLifecycleManager:
         from main.apps.ue_lifecycle.services import du_client
         if (self._scene_clock is None
                 or now_ms - self._scene_clock[1] >= self._SCENE_CLOCK_REFRESH_MS):
-            v = du_client.get_scene_sim_ms()
+            v = du_client.get_scene_clock()
             if v is not None:
-                self._scene_clock = (v, now_ms)
+                # (劇本 ms, 讀到的牆鐘, 實際達成倍率)
+                self._scene_clock = (v[0], now_ms, v[1])
         if self._scene_clock is None:
             return 0.0
-        scene_ms, at_ms = self._scene_clock
-        return scene_ms + (now_ms - at_ms) * self._sim_speed_x
+        scene_ms, at_ms, ach = self._scene_clock
+        # 2026-09-22:外推用 DU **實際達成**的倍率,不用設定值(見 du_client.get_scene_clock),
+        # 並且**永不倒退**:校正時若 DU 的值比上次回的小,就停在原地等 DU 追上。
+        # 時鐘倒退會讓在場時段邊界的 UE 反覆離場/回場,每次都是一整套 RRC 流程,
+        # 過載時這股負載會把 DU 拖得更慢 —— 正回饋。
+        est = scene_ms + (now_ms - at_ms) * min(ach, self._sim_speed_x)
+        last = getattr(self, "_scene_now_last_ms", 0.0)
+        if est < last:
+            est = last
+        self._scene_now_last_ms = est
+        return est
 
     def _scenario_elapsed_ms(self, traj: dict, now_ms: int) -> float:
         """目前的劇本經過時間,並套用 loop/once 的收尾規則。"""

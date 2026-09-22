@@ -176,6 +176,8 @@ def _do_e2_setup(sock) -> bool:
             registry, last_error="sim CU /E2NodeId/read failed"
         )
         return False
+    global _LAST_SETUP_NODE
+    _LAST_SETUP_NODE = node_id      # Configuration Update 監看的基準 = 這次 Setup 真正送出的內容
 
     # Step 2: encode
     try:
@@ -357,6 +359,7 @@ def _link_loop(host: str, port: int) -> None:
             # Step: send E2 Setup Request, wait response
             if _do_e2_setup(sock):
                 had_success = True
+                _start_config_update_watcher(sock)
                 # setup 等待期間先到的 PDU(例如 RIC 已備妥的訂閱請求)現在才能處理:
                 # 那時 e2_setup_completed 還是 False,dispatcher 會拒收。
                 while _PENDING_PDUS:
@@ -391,6 +394,7 @@ def _link_loop(host: str, port: int) -> None:
                             rejected_ran_function_ids=[],
                         )
                         _stop_all_indication_threads()
+                        _stop_config_update_watcher()
                         break
                     if pdu is None:
                         # timeout — keep alive, no data this round
@@ -522,6 +526,80 @@ def start_if_enabled() -> None:
 
 # ── PDU dispatcher + handlers (P2.8.2-B) ──────────────────────
 
+
+# ── E2 Node Configuration Update 監看 ──────────────────────────────
+# per-run 流程裡 adapter 起在 UE 劇本之前,E2 Setup 當下 CU 還沒有任何 cell,
+# F1 元件根本不在 Setup PDU 裡(RIC 2026-09-22 實測 servedNrCells=0);
+# cell 是 UE 起場後才經 DU Config Update 進 CU。中途的 cell_addition / cell_outage
+# 也一樣。所以 setup 之後持續比對 CU 的 F1 cell 清單,變了就送 procedureCode 10。
+_CFG_WATCH_SEC = 5.0
+_cfg_watch_stop = threading.Event()
+_cfg_watch_thread: threading.Thread | None = None
+_cfg_sent_sig: dict[int, tuple] = {}
+_cfg_txn = 0
+_LAST_SETUP_NODE: dict | None = None
+
+
+def _start_config_update_watcher(sock) -> None:
+    global _cfg_watch_thread, _cfg_sent_sig
+    from main.apps.e2_adapter.services.optional.codec import e2ap_codec
+    from main.apps.e2_adapter.services.optional.sim_bridge import sim_http_client
+    _stop_config_update_watcher()
+    # 基準 = 這次 E2 Setup **實際送出**的 F1 元件(per-run 流程裡通常是空的:
+    # DU 先做零 cell 的 F1 Setup,cell 幾秒後才經 DU Config Update 進 CU)。
+    # 不能事後再抓一次 CU:那時 cell 可能已經進來,基準會等於現況,永遠不送更新。
+    _cfg_sent_sig = e2ap_codec.f1_component_signature(_LAST_SETUP_NODE or {})
+    _cfg_watch_stop.clear()
+    logger.info("E2 Node Configuration Update 監看啟動:Setup 已送 F1 元件 %s,每 %.0fs 比對 CU",
+                {d: [c[0] for c in v] for d, v in _cfg_sent_sig.items()} or "(無)", _CFG_WATCH_SEC)
+
+    def _run() -> None:
+        global _cfg_sent_sig, _cfg_txn
+        logger.info("E2 Node Configuration Update 監看執行緒進入迴圈")
+        while not _cfg_watch_stop.wait(_CFG_WATCH_SEC):
+            try:
+                cur_node = sim_http_client.fetch_e2_node_id()
+                if not cur_node:
+                    logger.info("監看:CU E2NodeId 讀不到")
+                    continue
+                cur = e2ap_codec.f1_component_signature(cur_node)
+                logger.debug("監看:cur=%s sent=%s", {d: len(v) for d, v in cur.items()}, {d: len(v) for d, v in _cfg_sent_sig.items()})
+                add = set(cur) - set(_cfg_sent_sig)
+                rem = set(_cfg_sent_sig) - set(cur)
+                upd = {d for d in set(cur) & set(_cfg_sent_sig) if cur[d] != _cfg_sent_sig[d]}
+                if not (add or rem or upd):
+                    continue
+                _cfg_txn = (_cfg_txn + 1) & 0xFF
+                pdu = e2ap_codec.encode_e2_node_config_update(
+                    cur_node, add_du_ids=add, update_du_ids=upd, remove_du_ids=rem,
+                    transaction_id=_cfg_txn)
+                if pdu is None:
+                    _cfg_sent_sig = cur
+                    continue
+                # _send_sctp 內部自己拿 _SCTP_SOCK_LOCK(不可重入),這裡不能再包一層 ——
+                # 2026-09-22 實踩:外層再鎖一次就自我死鎖,執行緒卡在送出前、連日誌都沒有。
+                ok = _send_sctp(sock, pdu)
+                logger.info("E2 Node Configuration Update 送出(%d bytes) add=%s update=%s remove=%s cells=%s → %s",
+                            len(pdu), sorted(add), sorted(upd), sorted(rem),
+                            {d: [c[0] for c in cur[d]] for d in cur}, "sent" if ok else "send failed")
+                if ok:
+                    _cfg_sent_sig = cur
+            except Exception:  # noqa: BLE001 — 監看失敗不該拆連線
+                logger.exception("E2 Node Configuration Update 監看失敗")
+
+    _cfg_watch_thread = threading.Thread(target=_run, name="e2-cfg-update-watch", daemon=True)
+    _cfg_watch_thread.start()
+
+
+def _stop_config_update_watcher() -> None:
+    global _cfg_watch_thread
+    _cfg_watch_stop.set()
+    t = _cfg_watch_thread
+    if t and t.is_alive() and t is not threading.current_thread():
+        t.join(2)
+    _cfg_watch_thread = None
+
+
 def _dispatch_pdu(sock, pdu_bytes: bytes) -> None:
     """Decode incoming PDU and route to handler based on procedureCode."""
     from main.apps.e2_adapter.services.optional.codec import e2ap_codec
@@ -533,7 +611,15 @@ def _dispatch_pdu(sock, pdu_bytes: bytes) -> None:
 
     outcome_choice, msg = decoded
     if outcome_choice != "initiatingMessage":
-        logger.debug("recv non-initiating PDU type=%s — ignoring", outcome_choice)
+        # E2 Node Configuration Update 的回應(procedureCode 10)要看得見:
+        # 這是 RIC 有沒有跟上 cell 變動的唯一證據。
+        _pc = (msg or {}).get("procedureCode")
+        if _pc == 10:
+            (logger.info if outcome_choice == "successfulOutcome" else logger.warning)(
+                "E2 Node Configuration Update %s(RIC %s)", outcome_choice,
+                "已更新 cell 清單" if outcome_choice == "successfulOutcome" else "拒絕")
+        else:
+            logger.debug("recv non-initiating PDU type=%s — ignoring", outcome_choice)
         return
 
     proc_code = msg.get("procedureCode")

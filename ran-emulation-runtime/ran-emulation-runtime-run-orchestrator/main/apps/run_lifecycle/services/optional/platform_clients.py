@@ -204,6 +204,28 @@ def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_f
     return gw
 
 
+def ric_gateway_alive(timeout: float = 5.0) -> bool:
+    """RIC 場景閘道現在問得到嗎。I-3 觸發前先探:閘道換版的空窗裡起的場次會變成
+    scenario=none(2026-09-22 12:28 實際發生),資料對 Agent 沒有用,不如直接拒絕。"""
+    r = _gw("/v1/scenarios", None, method="GET", timeout=timeout)
+    return r is not None and not (isinstance(r, dict) and r.get("error"))
+
+
+def ric_register_scenario_with_retry(*args, attempts: int = 8, every_sec: float = 5.0, **kwargs) -> dict | None:
+    """宣告失敗就重試,覆蓋閘道 Recreate 的空窗(約 20 秒)。最後一次的結果原樣回傳。"""
+    import time as _t
+    gw = None
+    for i in range(max(1, attempts)):
+        gw = ric_register_scenario(*args, **kwargs)
+        if gw and not (isinstance(gw, dict) and gw.get("error")):
+            return gw
+        if i + 1 < attempts:
+            logger.warning("RIC gateway 宣告失敗(%d/%d):%s —— %.0fs 後重試", i + 1, attempts,
+                           (gw or {}).get("error") if isinstance(gw, dict) else gw, every_sec)
+            _t.sleep(every_sec)
+    return gw
+
+
 def ric_activate_scenario(scene_run_uuid: str) -> dict | None:
     """POST /v1/scenarios/{id}/activate(閘道 0.8.4):場景啟用後才能經閘道下控制。
     閘道會現查每顆 gNB 是否 CONNECTED,沒連上回 409 並指出哪一顆;回應帶 nodes.<id>.gen 與 warnings(沒訂閱的 gNB)。"""

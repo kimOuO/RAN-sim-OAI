@@ -322,7 +322,9 @@ class LaunchController:
                 _ric_purpose = str((_knobs.get("ric_purpose") if isinstance(_knobs, dict)
                                     else next((k.get("value") for k in _knobs if isinstance(k, dict) and k.get("key") == "ric_purpose"), "")) or "")
                 if settings.PER_RUN_ENABLED and e2_node:   # RIC 場景閘道:宣告場景 + 它唯一的 meid(best effort)
-                    gw = platform_clients.ric_register_scenario(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node, gnb_id_hex=gnb_id_hex, purpose=_ric_purpose)
+                    # 2026-09-22:宣告失敗要重試。閘道換版有約 20 秒空窗,那時起的場次會整場 scenario=none,
+                    # 資料收了但分不出是哪一場(12:28 實際發生)。重試 8 次 × 5 s 蓋過空窗。
+                    gw = platform_clients.ric_register_scenario_with_retry(run_uuid, str((t.get("scene") or {}).get("legacy_scenario_id") or (t.get("scene") or {}).get("name") or ""), e2_node, gnb_id_hex=gnb_id_hex, purpose=_ric_purpose)
                     logger.info("RIC gateway register %s → %s", e2_node, gw)
                     # 2026-09-19 RIC 端請求:記下他們的場次號,兩邊對資料不用換算(InfluxDB `run` 標籤就是這個)
                     if isinstance(gw, dict):

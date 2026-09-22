@@ -39,6 +39,30 @@ def align_scene_clock() -> bool:
         return False
 
 
+def get_scene_clock() -> tuple[int, float] | None:
+    """POST DU /Tick/TickController/read → (劇本時鐘 ms, 實際達成倍率)。拿不到回 None。
+
+    2026-09-22:外推要用**實際達成**的倍率,不是設定值。走廊 30x 實測達成只有 0.7x,
+    用設定值外推每 2 秒就會多跑 60 秒再被拉回,劇本時鐘來回跳,站在在場時段邊界的
+    UE 每秒離場/回場一次。達成率拿不到就當 0(不外推,只吃 DU 的值)—— 寧可慢半拍
+    也不要往前衝。
+    """
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/read"
+    try:
+        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            return None
+        d = r.json().get("data") or {}
+        v = d.get("scene_sim_ms")
+        if v is None:
+            return None
+        ach = d.get("achieved_speed_x")
+        return int(v), max(0.0, float(ach)) if ach is not None else 0.0
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        logger.warning("DU read scene clock failed: %s", exc)
+        return None
+
+
 def get_scene_sim_ms() -> int | None:
     """POST DU /Tick/TickController/read → 劇本時鐘(ms)。拿不到回 None。
 

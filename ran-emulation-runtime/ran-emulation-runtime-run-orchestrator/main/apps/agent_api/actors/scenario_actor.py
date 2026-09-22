@@ -233,6 +233,15 @@ class ScenarioController:
         except Exception as exc:  # noqa: BLE001
             return error_response("failed to set run knobs", str(exc), 502)
 
+        # ── RIC 閘道必須在:閘道換版空窗裡起的場次會變成 scenario=none,對方拿不到基準,
+        #    整場白跑。這裡先探,探不到就明講「維護中」而不是收下請求(對方建議的旗標,
+        #    用探測代替人工切換)。啟動流程本身還有 8 次重試,這裡擋的是「現在明顯不在」。
+        if not platform_clients.ric_gateway_alive():
+            return error_response(
+                "RIC gateway unavailable",
+                {"hint": "RIC 場景閘道目前問不到(可能在換版);此時啟動的場次無法歸屬到場景、"
+                         "不會有基準。請稍後重試。"}, 503)
+
         # ── 啟動 ──────────────────────────────────────────────────
         # live 模式的倍速上限與啟動路徑同一個常數 —— 這裡先夾好,
         # echo 與 estimated_finish_at 才不會回一個實際上做不到的倍速給對方。

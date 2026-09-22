@@ -385,39 +385,13 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
 
     # 補 F1 components per DU
     for comp in components:
-        if comp.get("interface_type") != "f1":
+        item_value = _f1_component_value(comp)
+        if item_value is None:
             continue
-        gnb_du_id = int(comp.get("gnb_du_id") or 0)
-        cells = comp.get("cells") or []
-        if not cells:
-            continue
-        # 2026-09-22:優先送**真 F1AP F1SetupRequest**(E2AP §9.2.26 規定
-        # requestPart 就是該介面的 setup 訊息原文)。RIC 照 F1AP 解才看得到
-        # servedNrCells;先前的自訂 TLV 會讓 R-NIB 顯示 servedNrCells: 0。
-        # 編不出來(缺 pycrate F1AP / 欄位不全)就退回舊 TLV,不讓 E2 Setup 送不出去。
-        from .f1ap_cells_codec import encode_f1_setup_request
-        f1_payload = encode_f1_setup_request(
-            gnb_du_id, cells,
-            du_name=comp.get("du_name") or "",
-            nr_cellid_of=lambda c: _hash_nr_cell_id(
-                c.get("nr_cell_id") or c.get("cell_id") or "",
-                explicit=c.get("nr_cellid"),
-            ),
-        )
-        if f1_payload is None:
-            f1_payload = _encode_f1_cells_payload(gnb_du_id, cells)
         component_items.append({
             "id": 51,
             "criticality": "reject",
-            "value": ("E2nodeComponentConfigAddition-Item", {
-                "e2nodeComponentInterfaceType": "f1",
-                "e2nodeComponentID": ("e2nodeComponentInterfaceTypeF1",
-                                      {"gNB-DU-ID": gnb_du_id}),
-                "e2nodeComponentConfiguration": {
-                    "e2nodeComponentRequestPart": f1_payload,
-                    "e2nodeComponentResponsePart": b"",
-                },
-            }),
+            "value": ("E2nodeComponentConfigAddition-Item", item_value),
         })
 
     if not has_f1:
@@ -449,6 +423,120 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
     pdu_value = ("initiatingMessage", initiating_msg_value)
 
     pdu_cls.set_val(pdu_value)
+    return pdu_cls.to_aper()
+
+
+def _f1_component_value(comp: dict[str, Any]) -> dict[str, Any] | None:
+    """一個 F1 component(一個 DU)的 E2nodeComponentConfig 值。沒有 cell 就回 None。
+
+    E2 Setup 與 E2 Node Configuration Update 共用:requestPart 是真正的 F1AP
+    F1SetupRequest(E2AP §9.2.26),RIC 照 F1AP 解才看得到 servedNrCells;
+    編不出來就退回舊的自訂 TLV,不讓整個 PDU 送不出去。
+    """
+    if comp.get("interface_type") != "f1":
+        return None
+    gnb_du_id = int(comp.get("gnb_du_id") or 0)
+    cells = comp.get("cells") or []
+    if not cells:
+        return None
+    from .f1ap_cells_codec import encode_f1_setup_request
+    f1_payload = encode_f1_setup_request(
+        gnb_du_id, cells,
+        du_name=comp.get("du_name") or "",
+        nr_cellid_of=lambda c: _hash_nr_cell_id(
+            c.get("nr_cell_id") or c.get("cell_id") or "",
+            explicit=c.get("nr_cellid"),
+        ),
+    )
+    if f1_payload is None:
+        f1_payload = _encode_f1_cells_payload(gnb_du_id, cells)
+    return {
+        "e2nodeComponentInterfaceType": "f1",
+        "e2nodeComponentID": ("e2nodeComponentInterfaceTypeF1", {"gNB-DU-ID": gnb_du_id}),
+        "e2nodeComponentConfiguration": {
+            "e2nodeComponentRequestPart": f1_payload,
+            "e2nodeComponentResponsePart": b"",
+        },
+    }
+
+
+def f1_component_signature(node_id_payload: dict[str, Any]) -> dict[int, tuple]:
+    """gnb_du_id → 該 DU 的 cell 清單簽章(名稱/PCI/NCI/ARFCN/頻寬/啟用)。
+
+    E2 Node Configuration Update 的觸發依據:簽章變了才送。
+    per-run 流程裡 e2adapter 起在 UE 劇本之前,E2 Setup 當下 CU 還沒有 cell,
+    F1 元件根本不在 PDU 裡(RIC 2026-09-22 實測);cell 是後來才經 DU Config Update
+    進 CU 的。中途 cell_addition / cell_outage 也一樣要靠這支讓 RIC 跟上。
+    """
+    out: dict[int, tuple] = {}
+    for comp in node_id_payload.get("components") or []:
+        if comp.get("interface_type") != "f1":
+            continue
+        cells = comp.get("cells") or []
+        if not cells:
+            continue
+        out[int(comp.get("gnb_du_id") or 0)] = tuple(sorted(
+            (str(c.get("cell_id")), int(c.get("pci") or 0), c.get("nr_cellid"),
+             int(c.get("arfcn") or 0), float(c.get("bandwidth_mhz") or 0), bool(c.get("is_active", True)))
+            for c in cells))
+    return out
+
+
+_PROC_CODE_E2_NODE_CONFIG_UPDATE = 10
+_IE_ID_TRANSACTION_ID = 49
+_IE_ID_E2nodeComponentConfigUpdate = 33
+_IE_ID_E2nodeComponentConfigRemoval = 54
+
+
+def encode_e2_node_config_update(node_id_payload: dict[str, Any], *, add_du_ids: set[int],
+                                 update_du_ids: set[int], remove_du_ids: set[int],
+                                 transaction_id: int) -> bytes | None:
+    """E2 Node Configuration Update(E2AP §8.3.5,procedureCode 10)。
+
+    IE:49 TransactionID(必要)、50 Addition-List、33 Update-List、54 Removal-List(皆可選)。
+    三個清單都空就回 None(沒東西好送)。
+    """
+    rt = _load_runtime()
+    pdu_cls = rt.E2AP_PDU_Descriptions.E2AP_PDU
+    comps = {int(c.get("gnb_du_id") or 0): c
+             for c in (node_id_payload.get("components") or []) if c.get("interface_type") == "f1"}
+
+    adds, upds, rems = [], [], []
+    for du in sorted(add_du_ids):
+        v = _f1_component_value(comps.get(du, {}))
+        if v is not None:
+            adds.append({"id": 51, "criticality": "reject",
+                         "value": ("E2nodeComponentConfigAddition-Item", v)})
+    for du in sorted(update_du_ids):
+        v = _f1_component_value(comps.get(du, {}))
+        if v is not None:
+            upds.append({"id": 34, "criticality": "reject",
+                         "value": ("E2nodeComponentConfigUpdate-Item", v)})
+    for du in sorted(remove_du_ids):
+        rems.append({"id": 55, "criticality": "reject",
+                     "value": ("E2nodeComponentConfigRemoval-Item", {
+                         "e2nodeComponentInterfaceType": "f1",
+                         "e2nodeComponentID": ("e2nodeComponentInterfaceTypeF1", {"gNB-DU-ID": int(du)}),
+                     })})
+    if not (adds or upds or rems):
+        return None
+
+    ies = [{"id": _IE_ID_TRANSACTION_ID, "criticality": "reject",
+            "value": ("TransactionID", int(transaction_id) & 0xFF)}]
+    if adds:
+        ies.append({"id": _IE_ID_E2nodeComponentConfigAddition, "criticality": "reject",
+                    "value": ("E2nodeComponentConfigAddition-List", adds)})
+    if upds:
+        ies.append({"id": _IE_ID_E2nodeComponentConfigUpdate, "criticality": "reject",
+                    "value": ("E2nodeComponentConfigUpdate-List", upds)})
+    if rems:
+        ies.append({"id": _IE_ID_E2nodeComponentConfigRemoval, "criticality": "reject",
+                    "value": ("E2nodeComponentConfigRemoval-List", rems)})
+    pdu_cls.set_val(("initiatingMessage", {
+        "procedureCode": _PROC_CODE_E2_NODE_CONFIG_UPDATE,
+        "criticality": "reject",
+        "value": ("E2nodeConfigurationUpdate", {"protocolIEs": ies}),
+    }))
     return pdu_cls.to_aper()
 
 

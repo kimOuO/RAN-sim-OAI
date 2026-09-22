@@ -79,13 +79,23 @@ class ScenarioDriver:
             elapsed_wall_sec = max(0.0, (int(time.time() * 1000) - int(started)) / 1000.0)
         else:
             elapsed_wall_sec = 0.0
-        elapsed_sim_sec = elapsed_wall_sec * speed
+        # 2026-09-22:劇本經過時間改讀 DU 的劇本時鐘(cached 查表與 KPM 用的同一條)。
+        # 以前是牆鐘×設定倍速:走廊 30x 實測達成 0.7x 時,16 分鐘牆鐘被算成 29700 s,
+        # orchestrator 據此判「劇本跑完」把只跑到 17% 的 run 自動停掉。
+        # DU 讀不到才退回舊算法(仍標 clock_source 讓外面看得出來)。
+        elapsed_sim_sec = None
+        if self.state.get("running"):
+            elapsed_sim_sec = self._du_scene_sec()
+        clock_source = "du" if elapsed_sim_sec is not None else "wall_x_speed"
+        if elapsed_sim_sec is None:
+            elapsed_sim_sec = elapsed_wall_sec * speed
         sim_tick_idx = min(total, int(elapsed_sim_sec * 1000 / tick_ms)) if total else 0
         st.update({
             "total_ticks": total,
             "sim_tick_idx": sim_tick_idx,
             "elapsed_wall_sec": round(elapsed_wall_sec, 2),
             "elapsed_sim_sec": round(elapsed_sim_sec, 2),
+            "clock_source": clock_source,
             # 劇本長度與是否已跑完(orchestrator 據此自動停 run;0 = 沒定長度,不會自動停)
             "duration_sec": float(self.scenario.duration_sec or 0.0),
             "finished": bool(self.scenario.duration_sec) and elapsed_sim_sec >= float(self.scenario.duration_sec),
@@ -96,6 +106,25 @@ class ScenarioDriver:
             "trigger_config": self.scenario.trigger_config or {},
         })
         return st
+
+    _DU_CLOCK_CACHE_MS = 2000
+
+    def _du_scene_sec(self) -> float | None:
+        """DU 的劇本時鐘(秒),2 秒內重用。DU 讀不到回 None,由呼叫端退回牆鐘算法。"""
+        now_ms = int(time.time() * 1000)
+        c = getattr(self, "_du_clock_cache", None)
+        if c and now_ms - c[1] < self._DU_CLOCK_CACHE_MS:
+            return c[0]
+        try:
+            from main.apps.ue_lifecycle.services import du_client
+            v = du_client.get_scene_sim_ms()
+        except Exception:  # noqa: BLE001
+            v = None
+        if v is None:
+            return c[0] if c else None
+        sec = float(v) / 1000.0
+        self._du_clock_cache = (sec, now_ms)
+        return sec
 
     def start(self) -> bool:
         if self.state["running"]:
