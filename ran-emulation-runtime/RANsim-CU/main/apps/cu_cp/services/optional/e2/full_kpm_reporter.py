@@ -629,6 +629,10 @@ class FullKpmReporter:
                     ues_out.append({
                         "role": 1,
                         "ue_id": row["ue"].ue_id,
+                        # 2026-09-22 RIC 要求:與 ran_func 2 同一個 amf-UE-NGAP-ID。
+                        # 他們的 3-1(單 UE 換手)/ 2-6 的 UEID 是 UEID-GNB,只拿到 p03 這種名字
+                        # 對不到 NGAP ID 就下不了命令;兩條路在這裡接起來。
+                        "ngap_id": getattr(row["ue"], "amf_ue_ngap_id", None),
                         "interfered": row["interfered"],
                         "rsrp": round(float(m.rsrp_dbm), 1),
                         # RU 已依 TS 38.215 算好 RSRQ(含 RSSI);沒有才退回本地推導
@@ -675,6 +679,7 @@ class FullKpmReporter:
                     all_rsrp[g] = v
             ue_status_out.append({
                 "ue_id": ue.ue_id,
+                "ngap_id": getattr(ue, "amf_ue_ngap_id", None),
                 "serving_gnb": serv_gnb,
                 "serving_pci": int(cell_by_id[ue.serving_cell].pci),
                 "rsrp_dbm": round(float(m.rsrp_dbm), 1),
