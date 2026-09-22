@@ -7,7 +7,7 @@
 | **場景編輯器** | `:3011` | 建場景、擺元件、產 UE、設定並啟動 run |
 | **執行監控** | `:3012` | 看執行中/已結束的 run,只讀 |
 
-本文的截圖是 2026-09-20 用 headless Chromium 實際操作後擷取的,不是示意圖。
+本文的截圖是 2026-09-20 用 headless Chromium 實際操作後擷取的,不是示意圖;文字內容更新至 **2026-09-23**。
 
 ---
 
@@ -17,7 +17,10 @@
 
 ![場景清單](images/frontend/01_scene_list.png)
 
-上方的分類籤由 `legacy_scenario_id`(下稱**劇本 id**)的前綴推導:`anr_` → ANR、走廊/室內、意圖(CCO/IM/ES)、規模/全天。**沒有劇本 id 的場景一律歸到「手動建立」。**
+上方的分類籤讀 **`Scene.category` 欄位**(2026-09-22 起分類是資料,不是猜的):在步驟 2 的屬性面板選「場景分類」即可設定。
+沒宣告分類的場景才退回舊的前綴規則(`anr_` → ANR、`corridor`/`indoor` → 走廊 / 室內、`cco`/`im`/`es`/`recover` → 意圖、`dt_`/`full_day`/`multi` → 規模,都不符 → 其他;沒有劇本 id → 手動建立)。
+
+分類同時是**外部 Agent 的 I-1 篩選條件**(`{"category": "corridor"}`),與前端用同一套值;I-1 會附 `category_inferred` 說明該場是宣告的還是推的。目前實際在用的只有 `corridor`(走廊三場)與 `other`(室內 live 測試場),`anr` / `intent` / `scale` 是預留值。
 
 每張卡片顯示模式、倍速、`sim_dt`、劇本長度與預算狀態,並依狀態給不同按鈕:`cached` 未預算時會有「預算」,已有 run 時會有「監控 ↗」。
 
@@ -51,7 +54,20 @@
 
 **檢查**區會即時列出問題,例如上圖的「1 個 cell 沒指定天線(用 1×1 iso,沒有方向性)」。
 
-**A3 換手預設是關的**,要自動換手得選一個 gNB,在右側屬性面板按「儲存 A3」。預設參數 offset 1 dB、遲滯 0.5 dB、TTT 80 ms 相當積極(接近乒乓),要接近真實行為建議 offset 調到 3 dB 左右。
+**A3 換手預設是關的**,要自動換手得選一個 gNB,在右側屬性面板按「儲存 A3」。預設參數 offset 1 dB、遲滯 0.5 dB、TTT 80 ms 相當積極(接近乒乓),要接近真實行為建議 offset 調到 3 dB 左右(走廊三場實際用的是 offset 3 dB / 遲滯 1 dB / TTT 320 ms)。
+
+**選到 cell 時右側屬性面板可改的欄位**(這些就是 Agent 介面 I-2 `cells[]` 讀到的值):
+
+| 欄位 | 說明 |
+|---|---|
+| `pci` | 實體細胞識別碼 0~1007。**兩顆 cell 設成同一個 PCI 就是 PCI 混淆**;跑到一半要改用 I-3 的 `pci_change` 事件 |
+| 頻率 / 頻寬 | `center_frequency_ghz`、`bandwidth_mhz`;ARFCN 由頻率換算(TS 38.104),不另外填 |
+| `tx_power_dbm` | 每顆 cell 的發射功率。同時影響 RSRP 與 `PEE.AvgPower` 功耗;跑到一半改用 `tx_power_change` 事件 |
+| 天線 preset / 方位 / 下傾 | `azimuth_deg`、`tilt_deg` 與天線樣式。**cached 模式下這些已烘進通道快取**,改了要重新 Precompute;執行期改只有 live 模式有效(`antenna_change` 事件) |
+| `is_active` | 初始是否發射。設成關 = 備用 cell,才能被 `cell_addition` 事件開啟 |
+| RU 類別 / beamforming | O-RAN WG4:Cat A = O-DU 做 precoding、Cat B = O-RU 自己做 beamforming(mMIMO 必須) |
+
+cell 的 **NCGI / NCI 不在前端設定** —— 它由 cell 名稱以 SHA-1 取 36 bit 算出,啟動時隨 E2 槽位固定;要查值看 I-2 的 `e2_identity.cells[]`。gNB 的 E2 節點識別(`gnb_208_095_000eXX`)同理,由場景的 **E2 槽位**決定,槽位釘在場景上(同一場域同時只能跑一場)。
 
 ### 覆蓋熱圖
 
@@ -99,7 +115,42 @@
 
 警告(不擋啟動):同時 4 個以上 run 會吃記憶體;倍速 > 5× 且 UE > 10 個時 RU 可能跟不上。
 
-**Run knobs** 是傳給執行期的參數,其中 `ric_purpose=validation` 會讓 RIC 對這場做主動探測;常規觀測不要帶。
+**Run knobs** 是傳給執行期的參數(場景層設定、整場固定),在屬性面板下方選鍵、填值、按「設定」。值一律以字串存,型別由模擬端解析。
+
+| knob | 值 | 預設 | 作用 |
+|---|---|---|---|
+| `anr_auto_add` | `0` / `1` | 1(開) | gNB 量到未知 PCI 時,是否自己解析 CGI 並寫進鄰區關係表(NRT)。**設 `0` 是「缺漏鄰區」題型的前提** —— NRT 只由 xApp 或注入事件維護,CU 解析了也不寫。設 `0` 時 orchestrator 會一併帶 `ANR_GUARD_ENABLE=0` 給 RIC 的場景 xApp,免得它自動補回去 |
+| `anr_pci_lookup` | `0` / `1` | 0(關) | CU 改用「只認 PCI、查不到才解析 CGI」的真實流程。開啟後缺漏鄰區與 PCI 混淆才會真的發生,**也會改變既有場景的換手時機**,所以預設關 |
+| `anr_cgi_fail_rate` | `0`~`1` | 0 | CGI 解析的隨機失敗率(模擬訊號太弱讀不到 SIB1)。決定性:同 seed 重跑結果相同 |
+| `ric_purpose` | `validation` 等 | 空 | 標記這場的用途。`validation` 會讓 RIC 端對這場做主動探測;常規觀測不要帶 |
+| `xapp_env` | JSON 物件 | 空 | 起場時一併傳給 RIC 場景 xApp 的環境變數,例如 `{"ANR_GUARD_ENABLE":"1"}`。誰先部署 xApp 誰的 env 生效,我方在宣告後立刻部署,所以要靠這個帶 |
+| `anr_fixture` | 劇本 id | 空 | CU 開場載入的鄰區關係初始檔(`anr_fixture` 管理命令)。手動建立的場景沒有對應檔案時會略過 |
+| `tx_power_dbm` | 數值 dBm | 23 | 沒有逐 cell 設定時的全域發射功率預設 |
+| `inter_freq` | `0` / `1` | 0 | DU 排程是否啟用跨頻量測 |
+| `discard_timer_ms` | 毫秒 | 300 | PDCP discard timer |
+| `rlc_delay_model` | `calib` 等 | calib | RLC 延遲模型 |
+| `antenna_pattern` | `iso` / `dipole` / `hw_dipole` / `tr38901` | 場景設定 | 覆寫 UE 端天線樣式 |
+| `cell_quotas` | JSON 陣列 | 空 | 每個 cell 的 UE 人數配額(`[{"cell_id":…, "quota":…}]`) |
+| `default_serving_cell` | cell id | 第一顆 | UE 開場預設掛哪顆 cell |
+| `trigger_config` | JSON | 空 | 劇本觸發設定(隨劇本匯入) |
+
+另外兩個由系統自己寫、不要手動設:`run_seed`(I-3 帶進來的 seed)、`ue_limit`(I-3 裁減人數)、`agent_duration_s`(I-3 要求的劇本長度)。
+
+> **ANR 三個 knob 外部 Agent 也能設**:I-3 啟動時帶 `son` 區塊(`anr_auto_add` / `anr_pci_lookup` / `anr_cgi_fail_rate`),會覆寫這裡的設定;I-2 會回報該場現行值。
+
+### 注入事件(前端沒有,只能打 API)
+
+跑到一半發生的事 —— 關站、節能、改功率、改鄰區關係、改 PCI —— **前端沒有面板**,只能用 Agent 介面 I-3 在**啟動時**一次宣告好(帶 `at_offset_s`,排程器到那個劇本秒才執行;帶 `duration_s` 會自動還原)。事件型別與參數見 `docs/agent_need/Agent手冊_DT與RIC_2026-09-23.md`。
+
+人工要測某個事件,最快的方式是直接打 I-3:
+
+```bash
+curl -XPOST http://localhost:8302/api/v0.1/Run_orchestrator/Agent_api/ScenarioController/run \
+  -H 'content-type: application/json' -d '{
+    "field_id": "scene-…", "seed": 103, "duration_s": 1800,
+    "son": {"anr_auto_add": false},
+    "events": [{"type": "pci_change", "at_offset_s": 300, "target": "e03:nbr", "params": {"pci_after": 2}}]}'
+```
 
 ---
 
@@ -160,7 +211,7 @@ UE 以 InstancedMesh 繪製,顏色 = 服務 cell、大小/亮度 = SINR、閃白
 檢查該 UE 的「在場時段」。時段外 UE 會真的離線(見步驟 3 的說明);若劇本長度大於軌跡長度,也可能是軌跡走完了 —— 這時 UE 會停在終點,不會消失。
 
 **UE 全部擠在同一個 cell、不換手**
-依序查:A3 是否開啟(預設關)→ 鄰區關係是否存在。跨 gNB 的鄰區關係**不會自動產生**,正常情況由 xApp 經 E2 下 `anr-add` 建立;沒有 RIC 的單機情境可開 `ANR_AUTO_ADD=1` 讓 CU 自己從量測報告學。CU 的 `Mobility/A3Controller/read` 會回 `nrt_missing`,列出因缺關係而擋掉的換手次數。
+依序查:A3 是否開啟(預設關)→ 鄰區關係是否存在。跨 gNB 的鄰區關係**不會自動產生**,正常情況由 xApp 經 E2 下 `anr-add` 建立;沒有 RIC 的單機情境把 run knob `anr_auto_add` 設 `1`(預設就是 1)讓 CU 自己從量測報告學 —— 若這場是為了出「缺漏鄰區」題而設成 `0`,沒有 xApp 補關係時本來就不會換手,屬預期。CU 的 `Mobility/A3Controller/read` 會回 `nrt_missing`,列出因缺關係而擋掉的換手次數。
 
 **地圖搜尋出現 `Unexpected token '<'`**
 前端拿到 HTML 錯誤頁而不是 JSON,表示請求打錯位址。檢查編輯器容器的 `NEXT_PUBLIC_INGEST_BASE_URL`;若改過 compose,記得清 `.next` 建置快取,否則舊值仍被編進 bundle。
