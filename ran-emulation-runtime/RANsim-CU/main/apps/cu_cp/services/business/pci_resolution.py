@@ -138,7 +138,7 @@ def observe(serving_cell: str, neighbors: list[dict]) -> int:
                 _audit(oid, "resolve", "", truth, f"{verdict};ANR_AUTO_ADD=0 → 已解析但不寫 NRT(交 xApp)")
                 logger.info("CGI 解析成功但 ANR 自主建立關閉:%s 的 PCI %s → %s,不寫 NRT", serving_cell, pci, truth)
             continue
-        _, created = NrCellRelation.objects.get_or_create(
+        rel, created = NrCellRelation.objects.get_or_create(
             source_cell_id=serving_cell, target_cgi=truth,
             defaults={
                 "target_pci": tgt.pci, "target_arfcn": int(arfcn or 0),
@@ -150,6 +150,20 @@ def observe(serving_cell: str, neighbors: list[dict]) -> int:
                 "created_at": now, "updated_at": now,
             },
         )
+        if not created:
+            # 2026-09-23(混淆場 A 實測):關係已在、但 NRT 存的 target_pci 是舊值(鄰居改了 PCI),
+            # 以前這裡什麼都不做 → 每個視窗都判 missing、再解析一次、再記一筆稽核(1800 s 210 筆),
+            # NRT 永遠不會更新。真實 gNB 的 CGI 回報會把該關係的 PCI/ARFCN 更新掉 —— 照做,並只記一次。
+            if int(rel.target_pci or 0) != int(tgt.pci or 0) or int(rel.target_arfcn or 0) != int(arfcn or 0):
+                _audit(oid, "update", f"pci{rel.target_pci}@{rel.target_arfcn}", f"pci{tgt.pci}@{arfcn}",
+                       f"{verdict};關係已在但 PCI/ARFCN 與回報不符 → 依 CGI 回報更新")
+                logger.info("CGI 解析:%s → %s 關係已在,更新 PCI %s→%s", serving_cell, truth, rel.target_pci, tgt.pci)
+                rel.target_pci = tgt.pci or 0
+                rel.target_arfcn = int(arfcn or 0)
+                rel.version = int(rel.version or 0) + 1
+                rel.updated_at = now
+                rel.save(update_fields=["target_pci", "target_arfcn", "version", "updated_at"])
+            continue
         _audit(oid, "resolve", "", truth, verdict)
         if created:
             added += 1

@@ -266,7 +266,10 @@ def _handle_reportcgi(message, ric_req_id):
         "control_outcome": {
             "physicalCellId": pci,
             "arfcn": arfcn,
-            "cgi": res.get("cgi") or _first_cgi(res),
+            # 2026-09-23(混淆場 A 實測):同 PCI 對到兩顆 cell 時以前仍回第一顆 —— xApp 拿到一個
+            # 看似確定的 CGI,混淆就被蓋掉了。真實 UE 的 ReportCGI 讀到哪顆 SIB1 是不確定的;
+            # 這裡回 None + confusion=true + results 列出兩顆,交 xApp 判。
+            "cgi": res.get("cgi") or (None if res.get("confusion") else _first_cgi(res)),
             "plmn": res.get("plmnIdentity", ""),
             "unique": res.get("unique"),
             "confusion": res.get("confusion"),
