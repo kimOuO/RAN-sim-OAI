@@ -106,6 +106,57 @@ def _arfcn_of(cfg: CellConfig) -> int | None:
         return None
 
 
+# 2026-09-23:鄰區量測的鍵。"cell" = 現況(以 cell 身分為鍵,上帝視角);
+# "pci" = 真實 UE 量得到的程度 —— 每筆 {pci, arfcn, rsrp, rsrq},只有 CU 的鄰區表(NRT)
+# 已解出該 PCI@ARFCN 對應的 cell 時才附 ncgi;PCI 混淆(同鍵對到多顆)時合併成一筆且不附。
+# 預設維持 "cell",與 RIC 約好窗口再切(提案見 docs/agent_need/給RIC的提案_2026-09-22_*)。
+_NEIGHBOR_KEY = os.environ.get("E2_NEIGHBOR_KEY", "cell").strip().lower()
+
+
+def _dbm_sum(values: list[float]) -> float:
+    """多筆 RSRP 以功率相加(混淆的兩顆 cell 同 PCI 同頻,UE 量到的是疊加後的訊號)。"""
+    mw = sum(10.0 ** (v / 10.0) for v in values)
+    return 10.0 * math.log10(mw) if mw > 0 else -140.0
+
+
+def _nrt_resolver(cells: list[CellConfig]):
+    """回 resolve(serving_cell_id, pci, arfcn) → ncgi | None。
+
+    「解得出」= NRT 裡 serving cell 對該 (pci, arfcn) **恰好一個**目標,且目標是已知 cell。
+    零筆 = 缺漏鄰區(gNB 不知道這 PCI 是誰);兩筆以上 = PCI 混淆。兩者都回 None ——
+    這正是真實 gNB 知道的程度,也是 Agent 要出的兩類題。
+    """
+    from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+    by_id = {c.cell_id: c for c in cells}
+    table: dict[tuple[str, int, int | None], set[str]] = {}
+    try:
+        for r in NrCellRelation.objects.values_list("source_cell_id", "target_cgi", "target_pci", "target_arfcn"):
+            src, tgt, pci, arfcn = r
+            key = (str(src), int(pci or 0), int(arfcn) if arfcn else None)
+            table.setdefault(key, set()).add(str(tgt))
+    except Exception:  # noqa: BLE001 — NRT 讀不到就全部視為未解出,不要猜
+        table = {}
+
+    def resolve(serving: str, pci: int, arfcn: int | None) -> str | None:
+        targets = table.get((serving, int(pci), arfcn)) or table.get((serving, int(pci), None)) or set()
+        if len(targets) != 1:
+            return None
+        cfg = by_id.get(next(iter(targets)))
+        return _ncgi_of(cfg) if cfg is not None else None
+    return resolve
+
+
+def _ncgi_of(cfg: CellConfig) -> str:
+    """NCGI 字串,格式與 Agent 介面 I-2 的 `ncgi` 相同:`<mcc><mnc 3 位>-<36-bit NCI 9 hex>`。
+    NCI 走與 E2 Setup / KPM 同一套 explicit-first / SHA-1(cell_id_map.to_nr_cellid),
+    所以 RIC 從 nodeConfigs 解出的 NCI 直接對得上。"""
+    from main.apps.cu_cp.services.common.cell_id_map import to_nr_cellid
+    plmn = str(cfg.served_plmn or "00101")
+    mcc, mnc = plmn[:3], plmn[3:].zfill(3)
+    nci = int(to_nr_cellid(cfg.cell_id, explicit=getattr(cfg, "nr_cellid", None))) & ((1 << 36) - 1)
+    return f"{mcc}{mnc}-{nci:09x}"
+
+
 def _cell_hex_id(cfg: CellConfig) -> str:
     """範例 cell_id 是 36-bit NCI hex(15 位)。有 nr_cellid 用 hex,否則退回字串 id。"""
     if cfg.nr_cellid:
@@ -606,11 +657,30 @@ class FullKpmReporter:
                 if (cfg.gnb_id or "unknown") != gid:
                     continue
                 ues_out = []
+                resolve_ncgi = _nrt_resolver(cells) if _NEIGHBOR_KEY == "pci" else None
                 rb_cursor = 0  # 同 cell 內以實際 rb_width 疊出虛擬連續配置的起點
                 for row in conn_per_cell.get(cfg.cell_id, []):
                     m = row["meas"]
                     neigh_list = []
-                    for n in row["neighbors"]:
+                    if _NEIGHBOR_KEY == "pci":
+                        # 依 (pci, arfcn) 合併:混淆的兩顆 cell UE 分不出來,只會量到一個疊加的訊號。
+                        # 同鍵送兩筆會被 RIC 的標籤寫入 last-write-wins 吃掉一筆,那正是混淆的證據。
+                        grouped: dict[tuple[int, int | None], list[float]] = {}
+                        for n in row["neighbors"]:
+                            n_cfg = cell_by_id.get(n["cell_id"])
+                            n_pci = int(n_cfg.pci) if n_cfg is not None else int(n.get("pci") or 0)
+                            n_arfcn = _arfcn_of(n_cfg) if n_cfg is not None else n.get("arfcn")
+                            grouped.setdefault((n_pci, n_arfcn), []).append(float(n.get("rsrp_dbm", -120.0)))
+                        for (n_pci, n_arfcn), rsrps in sorted(grouped.items()):
+                            n_rsrp = _dbm_sum(rsrps)
+                            entry = {"pci": n_pci, "arfcn": n_arfcn,
+                                     "rsrp": round(n_rsrp, 1),
+                                     "rsrq": round(float(_derive_rsrq(n_rsrp, row["cells_dbm_load"])), 1)}
+                            ncgi = resolve_ncgi(cfg.cell_id, n_pci, n_arfcn)
+                            if ncgi is not None and len(rsrps) == 1:
+                                entry["ncgi"] = ncgi      # NRT 已解出且無混淆才給
+                            neigh_list.append(entry)
+                    for n in ([] if _NEIGHBOR_KEY == "pci" else row["neighbors"]):
                         n_cfg = cell_by_id.get(n["cell_id"])
                         n_hex = _cell_hex_id(n_cfg) if n_cfg else n["cell_id"]
                         n_rsrp = float(n.get("rsrp_dbm", -120.0))
@@ -668,15 +738,29 @@ class FullKpmReporter:
         ue_status_out: list[dict[str, Any]] = []
         for row in ue_rows:
             ue, m = row["ue"], row["meas"]
-            all_rsrp: dict[str, float] = {}
+            all_rsrp: Any = {}
             serv_gnb = gnb_of_cell.get(ue.serving_cell, "unknown")
-            all_rsrp[serv_gnb] = round(float(m.rsrp_dbm), 1)
-            for n in row["neighbors"]:
-                g = gnb_of_cell.get(n["cell_id"], n["cell_id"])
-                v = round(float(n.get("rsrp_dbm", -120.0)), 1)
-                # 同 gNB 多 cell → 取最強
-                if g not in all_rsrp or v > all_rsrp[g]:
-                    all_rsrp[g] = v
+            if _NEIGHBOR_KEY == "pci":
+                # list 形式,以 (pci, arfcn) 為識別;服務那筆 pci 必須等於 ue_status.serving_pci
+                _serv_cfg = cell_by_id[ue.serving_cell]
+                _agg: dict[tuple[int, int | None], list[float]] = {}
+                for n in row["neighbors"]:
+                    n_cfg = cell_by_id.get(n["cell_id"])
+                    k = (int(n_cfg.pci) if n_cfg is not None else int(n.get("pci") or 0),
+                         _arfcn_of(n_cfg) if n_cfg is not None else n.get("arfcn"))
+                    _agg.setdefault(k, []).append(float(n.get("rsrp_dbm", -120.0)))
+                all_rsrp = [{"pci": int(_serv_cfg.pci), "arfcn": _arfcn_of(_serv_cfg),
+                             "rsrp": round(float(m.rsrp_dbm), 1), "serving": True}]
+                all_rsrp += [{"pci": k[0], "arfcn": k[1], "rsrp": round(_dbm_sum(v), 1)}
+                             for k, v in sorted(_agg.items())]
+            else:
+                all_rsrp[serv_gnb] = round(float(m.rsrp_dbm), 1)
+                for n in row["neighbors"]:
+                    g = gnb_of_cell.get(n["cell_id"], n["cell_id"])
+                    v = round(float(n.get("rsrp_dbm", -120.0)), 1)
+                    # 同 gNB 多 cell → 取最強
+                    if g not in all_rsrp or v > all_rsrp[g]:
+                        all_rsrp[g] = v
             ue_status_out.append({
                 "ue_id": ue.ue_id,
                 "ngap_id": getattr(ue, "amf_ue_ngap_id", None),
