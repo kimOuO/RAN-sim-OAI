@@ -69,7 +69,10 @@ def _apply_request_antenna(body: dict) -> None:
         "ue_v_spacing": float(ra.get("vertical_spacing", 0.5)), "ue_h_spacing": float(ra.get("horizontal_spacing", 0.5)),
     }
     tilts = {f"{g.get('name')}#{c.get('pci')}": float(c.get("tilt_deg", 0) or 0) for g in tx.get("gnbs") or [] for c in g.get("cells") or []}
-    if SionnaBusinessService.ensure_antenna(antenna_cfg, tilts):
+    # 2026-09-22:方位也要比。Transmitter 的 orientation 是建場景時定的,
+    # 請求帶了新方位卻不重建的話,執行期改天線完全不會影響 ray tracing。
+    azimuths = {f"{g.get('name')}#{c.get('pci')}": float(c.get("azimuth_deg", 0) or 0) for g in tx.get("gnbs") or [] for c in g.get("cells") or []}
+    if SionnaBusinessService.ensure_antenna(antenna_cfg, tilts, azimuths):
         logger.info("antenna config applied from request: gnb %sx%s %s/%s ue %sx%s %s", antenna_cfg["gnb_array_rows"], antenna_cfg["gnb_array_cols"], antenna_cfg["gnb_antenna_pattern"], antenna_cfg["gnb_polarization"], antenna_cfg["ue_array_rows"], antenna_cfg["ue_array_cols"], antenna_cfg["ue_antenna_pattern"])
 
 

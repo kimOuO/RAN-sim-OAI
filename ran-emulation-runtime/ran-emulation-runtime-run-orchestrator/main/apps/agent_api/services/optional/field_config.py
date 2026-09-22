@@ -163,8 +163,13 @@ def build(tree: dict, bounds: dict | None = None) -> dict:
             "antenna": _antenna(c),
             # is_active/is_barred 是我們僅有的兩個狀態旗標,對映到 3GPP 的兩個 state。
             "administrative_state": "unlocked" if c.get("is_active") else "locked",
-            "operational_state": "disabled" if c.get("is_barred") else "enabled",
-            # 我們沒有節能功能,所以恆為 notEnergySaving(不是缺值,是確定沒有)
+            # 2026-09-22:is_active=False 也要算 disabled。被鎖住的 cell 不可能在運作,
+            # 只看 is_barred 會讓場域預留的備用 cell(cell_addition 的目標)看起來像正常服務中。
+            "operational_state": ("disabled" if (c.get("is_barred") or not c.get("is_active"))
+                                  else "enabled"),
+            # 這是**場域基準配置**的節能狀態,註冊表沒有這個旗標,所以恆為 notEnergySaving。
+            # 模擬中的節能狀態會變(I-3 的 energy_saving_state 事件),但那屬於執行期,
+            # 要看 I-7 的組態變更紀錄,不是這裡。
             "energy_saving_state": "notEnergySaving",
             "ric_managed": True,
             "noise_figure_db": (c.get("ru") or {}).get("noise_figure_db"),

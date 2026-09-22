@@ -201,11 +201,14 @@ _RSRQ_MIN_DB, _RSRQ_MAX_DB = -43.0, 20.0
 
 
 def _rssi_dbm_from(path_gain_dict: dict, tx_to_cell: dict, gnb_to_cell: dict,
-                   cell_to_power: dict) -> float | None:
+                   cell_to_power: dict, active_cells: set | None = None) -> float | None:
     """UE 在量測頻寬內的總接收功率(dBm):所有 cell 的接收功率 + 雜訊底。
 
     刻意不做頻率重疊判斷 —— RSSI 是「天線收到的全部東西」,異頻 cell 的功率
     同樣會進到寬頻接收機。這點與 SINR 的分母不同(那裡只算會互擾的)。
+
+    2026-09-22:沒在發射的 cell 要排除。關站的 cell 還算進 RSSI 的話,
+    關站反而不會讓 RSRQ 變好 —— 與物理相反,也讓節能事件的效果看不出來。
     """
     total_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     hit = False
@@ -213,6 +216,8 @@ def _rssi_dbm_from(path_gain_dict: dict, tx_to_cell: dict, gnb_to_cell: dict,
         if not isinstance(pg, (int, float)) or pg <= 0:
             continue
         cid = tx_to_cell.get(tx_name) or gnb_to_cell.get(tx_name)
+        if active_cells and cid and cid not in active_cells:
+            continue
         rx_dbm = _path_gain_to_rsrp_dbm(pg, cell_power_dbm=cell_to_power.get(cid))
         total_mw += 10.0 ** (rx_dbm / 10.0)
         hit = True
@@ -365,6 +370,25 @@ def _build_cell_to_tx_map() -> dict[str, str]:
         return out
     except Exception:
         return {}
+
+
+def _build_active_cell_set() -> set[str]:
+    """目前**有在發射**的 cell(name 集合)。
+
+    2026-09-22:RU 以前完全不看 is_active —— 關站的 cell 照樣被算進 path gain,
+    UE 量得到它的 RSRP;場域預留的備用 cell 也從頭就在發射。
+    實體上不成立:沒在發 SSB 的 cell,UE 量不到。這會讓三種事件失去意義 ——
+    cell_outage / energy_saving_state 關了卻還看得到訊號,
+    cell_addition 打開前就看得到,等於沒有「新 cell 出現」這回事。
+
+    查不到就回 None 語意的空集合由呼叫端處理(不過濾),寧可維持舊行為也不要
+    因為讀不到 DB 就把所有 cell 當成關閉。
+    """
+    try:
+        from main.apps.antenna.models.cell import Cell
+        return {c.name for c in Cell.objects.filter(is_active=True)}
+    except Exception:  # noqa: BLE001
+        return set()
 
 
 def _build_cell_to_power_map() -> dict[str, float]:
@@ -713,6 +737,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
     # AK8: 每 cell 的 TX 功率 — Dashboard 透過 update_cells 推進來，這裡用來算 RSRP，
     # 一次撈起來給整個 batch 用，不在 inner loop 打 DB。
     cell_to_power = _build_cell_to_power_map()   # cell.name → power_dbm
+    # 有在發射的 cell。空集合 = 查不到(或全關),一律不過濾以維持舊行為。
+    active_cells = _build_active_cell_set()
     cell_to_freq = _build_cell_to_freq_map()     # cell.name → (freq_ghz, bw_mhz),頻率重疊干擾用
 
     out: list[CqiIndication] = []
@@ -769,7 +795,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         neighbors_list: list[dict] = []
         tx_to_cell = {v: k for k, v in cell_to_tx.items()}   # gnb4#0 → gnb4_c0
         # RSSI 是 UE 收到的總功率,對同一台 UE 而言只有一個值,先算好給服務與各鄰區共用
-        _rssi_dbm = _rssi_dbm_from(path_gain_dict, tx_to_cell, gnb_to_cell, cell_to_power)
+        _rssi_dbm = _rssi_dbm_from(path_gain_dict, tx_to_cell, gnb_to_cell, cell_to_power, active_cells)
         for key, pg in path_gain_dict.items():
             if key == serving_tx or key == serving_gnb:
                 continue
@@ -779,6 +805,9 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             # tx_name (gnb4#0) → sim cell_id (gnb4_c0); 退 gnb_name → first cell of that gnb
             cell_id_for_a3 = tx_to_cell.get(key) or gnb_to_cell.get(key)
             if not cell_id_for_a3:
+                continue
+            # 沒在發射的 cell 量不到 —— 關站 / 備用 cell 不該出現在鄰區量測裡
+            if active_cells and cell_id_for_a3 not in active_cells:
                 continue
             neigh_rsrp = _path_gain_to_rsrp_dbm(
                 pg,

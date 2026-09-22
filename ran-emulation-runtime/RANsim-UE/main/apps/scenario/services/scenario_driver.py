@@ -403,6 +403,9 @@ class ScenarioDriver:
                     "bandwidth_mhz": cell_bw,
                     "gnb_id": g.name,
                     "power_dbm": g.power_dbm,
+                    # 備用 cell(is_active=False)不該發射 —— RU 會據此把它排除在
+                    # 鄰區量測與 RSSI 之外,直到 cell_addition 把它打開。
+                    "is_active": bool(getattr(c, "is_active", True)),
                 })
                 du_cells.append({
                     "cell_id": cell_id,
@@ -413,6 +416,9 @@ class ScenarioDriver:
                     # 2026-09-22: 發射功率帶到 DU → F1 → CU,供 PEE.AvgPower / PEE.Energy。
                     # 走廊場景 src/nbr 10 dBm、mid 5 dBm —— 三顆功耗本來就不一樣。
                     "tx_power_dbm": float(g.power_dbm),
+                    # 起始啟用狀態。False 的是場景預留的備用 cell(cell_addition 用),
+                    # 不帶的話 DU 預設 True,備用 cell 會從頭就在服務。
+                    "is_active": bool(getattr(c, "is_active", True)),
                 })
 
         # 劇本第一個 tick 的 UE 位置(餵 RU update_ues)

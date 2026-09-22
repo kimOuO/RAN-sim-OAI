@@ -46,6 +46,11 @@ class CellScenarioRow:
     frequency_ghz: float | None = None
     bandwidth_mhz: float | None = None
     tilt_deg: float = 0.0   # 機械下傾,正 = 往下(P5)
+    # 2026-09-22:cell 起始啟用狀態。False = 場景裡預留但一開始不開的「備用 cell」,
+    # 外部 Agent 的 cell_addition 事件(I-3)就是把它打開。
+    # 以前這個欄位在載入時被丟掉,結果場景標了停用、DU 照樣開起來 ——
+    # 備用 cell 從頭就在服務,cell_addition 變成空動作。
+    is_active: bool = True
 
 
 @dataclass
@@ -429,6 +434,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
                     frequency_ghz=(float(f) if (f is not None and f != f0) else None),
                     bandwidth_mhz=(float(bw) if (bw is not None and bw != bw0) else None),
                     tilt_deg=float(c.get("tilt_deg") or 0.0),
+                    is_active=bool(c.get("is_active", True)),
                 ))
         pos = g.get("position") or [0.0, 0.0, 0.0]
         gnbs.append(GnbScenarioRow(

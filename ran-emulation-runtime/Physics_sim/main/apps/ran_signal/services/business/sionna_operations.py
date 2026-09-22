@@ -575,10 +575,14 @@ class SionnaBusinessService:
 
     # ── P5:請求帶的天線設定(RU tx_config / rx_config)→ 有變就重建 engine ──
     @classmethod
-    def ensure_antenna(cls, antenna_cfg: dict[str, Any], cell_tilts: dict[str, float]) -> bool:
-        """讓 scene 的天線陣列 + 每 tx tilt 跟請求一致;不一致就用同一份幾何重建 engine(~4 s)。
+    def ensure_antenna(cls, antenna_cfg: dict[str, Any], cell_tilts: dict[str, float],
+                       cell_azimuths: dict[str, float] | None = None) -> bool:
+        """讓 scene 的天線陣列 + 每 tx 的 tilt/方位跟請求一致;不一致就用同一份幾何重建 engine(~4 s)。
         回 True 表示有重建。Sionna 的 tx_array / rx_array 是 scene-global,所以陣列是整個 run 一組;
-        tilt 才是 per-cell(進 Transmitter orientation)。"""
+        tilt 與方位才是 per-cell(進 Transmitter orientation)。
+
+        2026-09-22:以前只比 tilt,方位變了不會重建 —— Transmitter 是建場景時一次建好的,
+        所以執行期改方位對 ray tracing 毫無影響(I-3 的 antenna_change 等於空動作)。"""
         cls.ensure_loaded()
         cur = cls._engine.antenna_signature() if cls._engine is not None else {}
         want = {
@@ -587,7 +591,11 @@ class SionnaBusinessService:
         }
         cur_tilts = cur.get("tilts") or {}
         tilt_diff = any(abs(float(cur_tilts.get(k, 0.0)) - float(v)) > 1e-6 for k, v in cell_tilts.items() if k in cur_tilts)
-        if cur.get("gnb") == want["gnb"] and cur.get("ue") == want["ue"] and not tilt_diff:
+        cell_azimuths = cell_azimuths or {}
+        cur_az = cur.get("azimuths") or {}
+        az_diff = any(abs(float(cur_az.get(k, 0.0)) - float(v)) > 1e-6
+                      for k, v in cell_azimuths.items() if k in cur_az)
+        if cur.get("gnb") == want["gnb"] and cur.get("ue") == want["ue"] and not tilt_diff and not az_diff:
             return False
         merged_cfg = copy.deepcopy(cls._loaded_config or {})
         for g in merged_cfg.get("gnbs", []):
@@ -597,10 +605,17 @@ class SionnaBusinessService:
                     key = f"{g['name']}#{c.get('pci')}"
                     if key in cell_tilts:
                         c["tilt_deg"] = float(cell_tilts[key])
-            elif g.get("name") in cell_tilts:
-                g["tilt_deg"] = float(cell_tilts[g["name"]])
+                    if key in cell_azimuths:
+                        c["azimuth_deg"] = float(cell_azimuths[key])
+            else:
+                if g.get("name") in cell_tilts:
+                    g["tilt_deg"] = float(cell_tilts[g["name"]])
+                if g.get("name") in cell_azimuths:
+                    g["azimuth_deg"] = float(cell_azimuths[g["name"]])
         mitsuba_path = cls._current_mitsuba_path or get_str("MITSUBA_SCENE_PATH", "/app/scenes/umi_3sector.xml")
-        logger.info("rebuilding Sionna engine for antenna change: %s → %s tilts=%s", cur, want, {k: v for k, v in cell_tilts.items() if v})
+        logger.info("rebuilding Sionna engine for antenna change: %s → %s tilts=%s az=%s", cur, want,
+                    {k: v for k, v in cell_tilts.items() if v},
+                    {k: v for k, v in cell_azimuths.items() if v})
         engine = sionna_engine.SionnaEngine(
             mitsuba_scene_path=mitsuba_path, gnbs=merged_cfg.get("gnbs", []),
             gnb_antenna_pattern=want["gnb"][0], gnb_polarization=want["gnb"][1], gnb_array_rows=want["gnb"][2], gnb_array_cols=want["gnb"][3], gnb_v_spacing=want["gnb"][4], gnb_h_spacing=want["gnb"][5],

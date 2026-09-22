@@ -87,6 +87,7 @@ class SionnaEngine:
         #   legacy:舊行為 azimuth → α(把扇區轉成仰角,物理上錯;只留給對照舊 cache 用)。
         self._orientation_mode = get_str("PHY_ORIENTATION_MODE", default="yup").lower()
         self._cell_tilts: dict[str, float] = {}
+        self._cell_azimuths: dict[str, float] = {}
 
         # 延遲 import Sionna——避免 Django management command 也拖 GPU kernel
         try:
@@ -165,6 +166,9 @@ class SionnaEngine:
                     tx_position = cell.get("position") or g["position"]
                     tilt_deg = float(cell.get("tilt_deg", 0) or 0)
                     self._cell_tilts[tx_name] = tilt_deg
+                    # 2026-09-22:方位也要記,否則 path_solver 比不出「請求帶的方位變了」,
+                    # 執行期改天線方位(I-3 的 antenna_change)就完全不會生效。
+                    self._cell_azimuths[tx_name] = float(cell.get("azimuth_deg", 0) or 0)
                     tx = rt.Transmitter(
                         name=tx_name,
                         position=self._to_sionna(tx_position),
@@ -181,6 +185,7 @@ class SionnaEngine:
                 azimuth_rad = math.radians(float(g.get("azimuth_deg", 0)))
                 tilt_deg = float(g.get("tilt_deg", 0) or 0)
                 self._cell_tilts[g["name"]] = tilt_deg
+                self._cell_azimuths[g["name"]] = float(g.get("azimuth_deg", 0) or 0)
                 tx = rt.Transmitter(
                     name=g["name"],
                     position=self._to_sionna(g["position"]),
@@ -233,6 +238,7 @@ class SionnaEngine:
             "gnb": [self.gnb_antenna_pattern, self.gnb_polarization, self.gnb_array_rows, self.gnb_array_cols, self.gnb_v_spacing, self.gnb_h_spacing],
             "ue": [self.ue_antenna_pattern, self.ue_polarization, self.ue_array_rows, self.ue_array_cols, self.ue_v_spacing, self.ue_h_spacing],
             "tilts": dict(sorted(self._cell_tilts.items())),
+            "azimuths": dict(sorted(self._cell_azimuths.items())),
             "orientation_mode": self._orientation_mode,
             "frame": "zup" if self._zup else "yup",
         }

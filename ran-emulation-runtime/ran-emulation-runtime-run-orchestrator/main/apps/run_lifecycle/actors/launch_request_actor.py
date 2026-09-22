@@ -21,6 +21,11 @@ from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
 
 logger = get_logger(__name__)
+
+# live 模式的倍速上限(cached 不受此限)。實測見 2026-09-22 的量測:
+# 走廊場景設 10x 只達成 5.8~6.5x,且其中約七成 tick 是 RU 位置量化快取命中的。
+# 取 2x 是保守值 —— 確保各種場景都跟得上,劇本時鐘不會與牆鐘脫節。
+LIVE_MAX_SPEED_X = 2.0
 UUID_FIELD = "launch_request_uuid"
 
 
@@ -185,6 +190,15 @@ class LaunchController:
         if problems:
             return error_response("scene incomplete", problems, 400)
         speed_x = float(payload.get("speed_x") or run.get("speed_x") or 1.0)
+        # 2026-09-22 live 模式倍速上限。
+        # live 每個 tick 都要即時射線追蹤,實測走廊場景設 10x 只達成 5.8~6.5x,
+        # 而且那六成多還是靠 RU 的位置量化快取撐的 —— 換成移動快的場景會更低。
+        # 達不到的倍速會讓劇本時鐘與牆鐘脫節(事件時間、KPM 視窗都跟著失準),
+        # 所以寧可設一個保守且跟得上的上限,而不是讓使用者設一個做不到的數字。
+        _mode = str(run.get("mode") or "cached")
+        if _mode == "live" and speed_x > LIVE_MAX_SPEED_X:
+            logger.info("run %s live 模式倍速自 %.1fx 降為上限 %.1fx", run_uuid, speed_x, LIVE_MAX_SPEED_X)
+            speed_x = LIVE_MAX_SPEED_X
         sim_dt_ms = int(payload.get("sim_dt_ms") or run.get("sim_dt_ms") or 500)
         now = TimestampService.get_current_timestamp()
         req_row = SqlDbBusinessService.create_entity(LaunchRequest, {

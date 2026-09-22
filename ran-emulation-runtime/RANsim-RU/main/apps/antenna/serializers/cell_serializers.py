@@ -29,6 +29,9 @@ class CellWriteSerializer(serializers.Serializer):
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
     # 預設 23 dBm 對齊 OAI rfsim 實效 link budget(字面 4 + max_rxgain 補)。
     power_dbm = serializers.FloatField(default=23.0)
+    # 2026-09-22:起始啟用狀態。未宣告的話 DRF 會靜默丟掉,RU 的 Cell 一律 default=True ——
+    # 場域預留的備用 cell 會從頭就在發射,cell_addition 就沒有「新 cell 出現」可言。
+    is_active = serializers.BooleanField(required=False, default=True)
 
 
 class CellListWriteSerializer(serializers.Serializer):

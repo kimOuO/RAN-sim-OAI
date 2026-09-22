@@ -25,6 +25,7 @@ from django.views.decorators.http import require_http_methods
 
 from main.apps.agent_api.services.optional import e2_identity, event_scheduler, scenario_events
 from main.apps.agent_api.services.optional.field_config import _cells_of, _cfg_version
+from main.apps.run_lifecycle.actors.launch_request_actor import LIVE_MAX_SPEED_X
 from main.apps.run_lifecycle.services.optional import container_spawner, platform_clients
 from main.apps.run_telemetry_archive.services.optional import cu_archiver
 from main.utils.logger import get_logger
@@ -217,7 +218,13 @@ class ScenarioController:
             return error_response("failed to set run knobs", str(exc), 502)
 
         # ── 啟動 ──────────────────────────────────────────────────
+        # live 模式的倍速上限與啟動路徑同一個常數 —— 這裡先夾好,
+        # echo 與 estimated_finish_at 才不會回一個實際上做不到的倍速給對方。
         speed_x = float(run_row.get("speed_x") or 1.0)
+        if mode == "live" and speed_x > LIVE_MAX_SPEED_X:
+            notes.append(f"speed_x={speed_x} 未採用:live 模式上限 {LIVE_MAX_SPEED_X}x"
+                         f"(即時射線追蹤跟不上更高倍速,劇本時鐘會與牆鐘脫節)")
+            speed_x = LIVE_MAX_SPEED_X
         started_at = timezone.now()
         try:
             req = urllib.request.Request(

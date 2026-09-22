@@ -83,6 +83,39 @@ class RuController:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def set_cell_active(request):
+        """開/關單一 cell 的發射。body: {cell_id | name, is_active}
+
+        2026-09-22:關站與節能在 DU 端是「不排程」,但 RU 這邊若照舊發射,
+        UE 仍然量得到該 cell 的 RSRP —— 與物理相反,也讓 cell_outage /
+        energy_saving_state / cell_addition 三種事件在觀測上看不出差別。
+        """
+        try:
+            payload = _parse_body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+        name = str(payload.get("cell_id") or payload.get("name") or "").strip()
+        if not name:
+            return error_response("Validation failed", {"cell_id": "required"}, 400)
+        if payload.get("is_active") is None:
+            return error_response("Validation failed", {"is_active": "required"}, 400)
+        want = bool(payload["is_active"])
+
+        cell = SqlDbBusinessService.filter_entities(Cell).filter(name=name).first()
+        if cell is None:
+            return error_response("cell not found", name, 404)
+        before = bool(cell.is_active)
+        cell.is_active = want
+        cell.cell_updated_at = TimestampService.get_current_timestamp()
+        cell.save(update_fields=["is_active", "cell_updated_at"])
+        logger.info("set_cell_active %s: %s → %s", name, before, want)
+        return success_response({"cell_id": name, "is_active_before": before,
+                                 "is_active_after": want}, "cell active updated", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def set_cell_antenna(request):
         """改單一 cell 的天線方位／下傾。body: {cell_id | name, azimuth_deg?, tilt_deg?}
 
@@ -210,6 +243,8 @@ class RuController:
                 "bandwidth_mhz": c["bandwidth_mhz"],
                 "gnb_id": c.get("gnb_id", ""),
                 "power_dbm": c.get("power_dbm", 23.0),
+                # 起始啟用狀態。False = 備用 cell,不發射(見 _build_active_cell_set)
+                "is_active": bool(c.get("is_active", True)),
                 "cell_updated_at": now,
                 "cell_created_at": now,
             }

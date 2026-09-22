@@ -101,12 +101,30 @@ def _post(host: str, path: str, body: dict, timeout: float = 10.0) -> dict:
 # ── 各型別的執行 ──────────────────────────────────────────────────
 
 
+def _set_active(hosts: dict[str, str], cell: str, active: bool) -> dict:
+    """同時切 DU(排程)與 RU(發射)。
+
+    只切 DU 的話 RU 照樣發射,UE 仍量得到該 cell 的 RSRP —— 關站在觀測上看不出來。
+    只切 RU 的話 DU 還會排程給它。兩邊都要,而且要分別回報,
+    其中一邊沒成功必須讓對方看得見。
+    """
+    op = "enable" if active else "disable"
+    du = _post(hosts["du"], f"/api/v0.1/DU/MAC/MacCellController/{op}", {"cell_id": cell})
+    ru = _post(hosts["ru"], "/api/v0.1/RU/Config/RuController/set_cell_active",
+               {"cell_id": cell, "is_active": active})
+    ok = _ok(du) and _ok(ru)
+    out = {"applied": ok, "du_applied": _ok(du), "ru_applied": _ok(ru),
+           "detail": du.get("data")}
+    if not ok:
+        out["error"] = f"DU={_msg(du) or 'ok'} / RU={_msg(ru) or 'ok'}"
+    return out
+
+
 def _exec_cell_outage(ev: dict, hosts: dict[str, str]) -> dict:
     """關站。reason 只進紀錄 —— 對模擬行為沒有差別,但對方要據此分類題目。"""
-    cell = ev["target"]
-    res = _post(hosts["du"], "/api/v0.1/DU/MAC/MacCellController/disable", {"cell_id": cell})
-    return {"applied": _ok(res), "detail": res.get("data"),
-            "reason": (ev.get("params") or {}).get("reason")}
+    out = _set_active(hosts, ev["target"], False)
+    out["reason"] = (ev.get("params") or {}).get("reason")
+    return out
 
 
 def _exec_energy_saving(ev: dict, hosts: dict[str, str]) -> dict:
@@ -118,9 +136,9 @@ def _exec_energy_saving(ev: dict, hosts: dict[str, str]) -> dict:
     state = str((ev.get("params") or {}).get("state_after") or "").strip()
     if state not in ("energySaving", "notEnergySaving"):
         return {"applied": False, "error": f"state_after 必須是 energySaving / notEnergySaving,收到 {state!r}"}
-    op = "disable" if state == "energySaving" else "enable"
-    res = _post(hosts["du"], f"/api/v0.1/DU/MAC/MacCellController/{op}", {"cell_id": ev["target"]})
-    return {"applied": _ok(res), "detail": res.get("data"), "state_after": state}
+    out = _set_active(hosts, ev["target"], state != "energySaving")
+    out["state_after"] = state
+    return out
 
 
 def _exec_tx_power(ev: dict, hosts: dict[str, str]) -> dict:
@@ -231,10 +249,10 @@ def _exec_cell_addition(ev: dict, hosts: dict[str, str]) -> dict:
     這裡只套用功率(可執行期改),其餘不符就回報差異,讓對方知道實際用的是什麼。
     """
     cell = ev["target"]
-    res = _post(hosts["du"], "/api/v0.1/DU/MAC/MacCellController/enable", {"cell_id": cell})
-    if not _ok(res):
-        return {"applied": False, "error": f"DU 開不起來 {cell}:{_msg(res)}"}
-    out: dict[str, Any] = {"applied": True, "enabled": cell}
+    res = _set_active(hosts, cell, True)
+    if not res.get("applied"):
+        return {"applied": False, "error": f"開不起來 {cell}:{res.get('error')}"}
+    out: dict[str, Any] = {"applied": True, "enabled": cell, **res}
     p = ev.get("params") or {}
     if p.get("tx_power_dbm") is not None:
         out["tx_power"] = _exec_tx_power(
@@ -316,7 +334,8 @@ def event_param_schema() -> dict[str, dict]:
         },
         "cell_addition": {
             "tx_power_dbm": "數值,可選;其餘識別以場域既有設定為準",
-            "_note": "僅能開啟預算時已納入的備用 cell;target 須為 I-2 中 operational_state=disabled 的 cell",
+            "_note": "僅能開啟場域預留的備用 cell(cached 模式下還必須是預算時已納入的);"
+                     "target 須為 I-2 中 administrative_state=locked 的 cell",
         },
         "antenna_change": {
             "tilt_deg_after": "數值", "azimuth_deg_after": "數值",
