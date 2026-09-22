@@ -172,11 +172,21 @@ class RunArchiver(threading.Thread):
         try:
             e = _post(self._e2, {}, timeout=5.0)["data"]
             for x in _control_items(e):
-                if int(x.get("seq", 0)) <= self.control_seq:
-                    continue
-                self.control_seq = int(x.get("seq", 0))
                 # adapter 的稽核列:command(sim action)/ result(落地目標,例 cell id)/ acked / rttMs / failure
                 outcome = "ACK" if x.get("acked") else ("FAIL" if x.get("failure") else "pending")
+                if int(x.get("seq", 0)) <= self.control_seq:
+                    # 2026-09-23:已歸檔過的命令,ack/failure 常在下一次輪詢才到 → 補寫結果,
+                    # 否則 I-7 永遠是 pending(RIC 對 2-6 的 ACK 我方就對不上)。
+                    _row = (RunControlEvent.objects
+                            .filter(f_scene_run_uuid=self.run_uuid, run_seq=self.run_seq,
+                                    source__startswith="ric/", detail__seq=x.get("seq")).first())
+                    if _row is not None and _row.outcome != outcome:
+                        _row.outcome = outcome; _row.detail = x
+                        _row.target = str(x.get("result") or x.get("target") or "")[:128]
+                        _row.run_control_event_updated_at = TimestampService.now()
+                        _row.save(update_fields=["outcome", "detail", "target", "run_control_event_updated_at"])
+                    continue
+                self.control_seq = int(x.get("seq", 0))
                 DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                     "at_sim_ms": self._last_scene_ms if self._last_scene_ms is not None else self.ticks_so_far * self.sim_dt_ms,
                     "source": f"ric/{x.get('ranFuncName') or 'RC'}",
