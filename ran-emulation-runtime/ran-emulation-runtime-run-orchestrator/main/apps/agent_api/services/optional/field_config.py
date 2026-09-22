@@ -211,5 +211,15 @@ def build(tree: dict, bounds: dict | None = None) -> dict:
             "clock_source": "simulated",
         },
         "e2_identity": e2,
+        # gNB 自主 SON 功能的現行開關(場景層設定;I-3 可帶 `son` 覆寫,啟動時生效、整場固定)
+        "son": _son_block(tree),
         "unavailable_fields": sorted(set(unavailable)),
     }
+
+
+def _son_block(tree: dict) -> dict:
+    from main.apps.agent_api.actors.scenario_actor import son_effective_from_knobs
+    kn = (tree.get("run") or {}).get("knobs") or {}
+    if isinstance(kn, list):
+        kn = {k.get("key"): k.get("value") for k in kn if isinstance(k, dict)}
+    return son_effective_from_knobs(kn)

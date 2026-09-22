@@ -63,6 +63,67 @@ def _instance_id(payload: dict) -> str:
     return "SC-" + hashlib.sha1(blob.encode()).hexdigest()[:10]
 
 
+# I-3 `son` 區塊 → run knob。鍵名對外用規格的語彙,對內是 CU 既有旋鈕。
+_SON_FIELDS = {
+    "anr_auto_add": ("anr_auto_add", "bool"),        # CU 量到未知 PCI 時是否自動解析並寫 NRT
+    "anr_pci_lookup": ("anr_pci_lookup", "bool"),    # 是否做 PCI→CGI 解析(關掉連解析都不做)
+    "anr_cgi_fail_rate": ("anr_cgi_fail_rate", "rate"),  # CGI 解析隨機失敗率 0~1
+}
+
+
+def _son_knobs(block) -> tuple[dict[str, str], dict | None]:
+    """驗證 I-3 的 `son` 區塊,回 (要寫的 knob, 錯誤)。"""
+    if block is None:
+        return {}, None
+    if not isinstance(block, dict):
+        return {}, {"_": "must be an object", "fields": sorted(_SON_FIELDS)}
+    out: dict[str, str] = {}
+    errs: dict[str, str] = {}
+    for k, v in block.items():
+        spec = _SON_FIELDS.get(k)
+        if spec is None:
+            errs[k] = f"unknown; supported: {sorted(_SON_FIELDS)}"
+            continue
+        knob, kind = spec
+        if kind == "bool":
+            if not isinstance(v, bool):
+                errs[k] = "must be boolean"; continue
+            out[knob] = "1" if v else "0"
+        else:
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                errs[k] = "must be number 0~1"; continue
+            if not 0.0 <= f <= 1.0:
+                errs[k] = "must be 0~1"; continue
+            out[knob] = str(f)
+    return out, (errs or None)
+
+
+def _son_effective(run_uuid: str) -> dict:
+    """這場實際生效的 SON 開關(讀回 knob;沒設的回 CU 預設)。"""
+    try:
+        kn = {r.get("key"): r.get("value") for r in platform_clients.read_run_knobs(run_uuid)}
+    except Exception:  # noqa: BLE001
+        kn = {}
+    return son_effective_from_knobs(kn)
+
+
+def son_effective_from_knobs(kn: dict) -> dict:
+    """knob 原值 → I-2 / I-3 對外的 `son` 形狀。預設值與 CU 的 env 預設一致(anr_auto_add 開、pci_lookup 關、fail_rate 0)。"""
+    def _b(v, default):
+        if v in (None, ""):
+            return default
+        return str(v).strip().lower() not in ("0", "false", "off", "no")
+    try:
+        fr = float(kn.get("anr_cgi_fail_rate") or 0.0)
+    except (TypeError, ValueError):
+        fr = 0.0
+    return {"anr_auto_add": _b(kn.get("anr_auto_add"), True),
+            "anr_pci_lookup": _b(kn.get("anr_pci_lookup"), False),
+            "anr_cgi_fail_rate": fr}
+
+
 def _pick_run(scene_uuid: str) -> dict | None:
     """場域(scene)→ 可啟動的 scene_run。
 
@@ -220,6 +281,11 @@ class ScenarioController:
                  "cells": cell_ids}, 400)
         scheduled = scenario_events.expand_with_revert(events)
 
+        # ── gNB 自主 SON 開關(選配)────────────────────────────────
+        son_knobs, son_err = _son_knobs(payload.get("son"))
+        if son_err:
+            return error_response("Validation failed", {"son": son_err}, 400)
+
         # ── 決定性:run seed 下到 DU 的 slot 引擎 ──────────────────
         seed = int(payload["seed"])
         try:
@@ -230,6 +296,11 @@ class ScenarioController:
             # I-4 要回報「對方要的長度」而不是劇本自身長度(走廊是 28800s),
             # 否則 progress_s=150/28800 看起來像 0.5%。排程器重啟後也讀得到。
             platform_clients.set_run_knob(run_uuid, "agent_duration_s", str(duration_s))
+            # 2026-09-23:gNB 自主 SON 功能的開關也開給對方(啟動時決定、整場固定)。
+            # 缺漏鄰區題型的前提是 CU 不自動補 NRT,以前只能在前端 run knob 先設好,對方看不到也改不了。
+            # 沒帶就沿用場景現值(不清掉:那是場景的預設,不是上一輪的殘留)。
+            for k, v in son_knobs.items():
+                platform_clients.set_run_knob(run_uuid, k, v)
         except Exception as exc:  # noqa: BLE001
             return error_response("failed to set run knobs", str(exc), 502)
 
@@ -302,6 +373,8 @@ class ScenarioController:
                 "speed_x": speed_x,
                 "events": len(events),
                 "events_scheduled": n_sched,     # 含自動補的還原動作
+                # 這場實際生效的 SON 開關(帶的 + 沿用場景現值的),對方不用再打 I-2 確認
+                "son": _son_effective(run_uuid),
                 "requester_task_id": payload.get("requester_task_id"),
                 # 實際採用的 UE 名單(取子集時對方才知道拿到誰)。UE 端啟動回應就帶了,
                 # 不必等對方去 I-4 問。
