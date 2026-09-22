@@ -47,9 +47,18 @@ class ControlAuditActor:
             kind = e.get("kind")
             if kind not in ("control_req_recv", "control_ack_sent", "control_failure"):
                 continue
-            key = (e.get("ran_func"), e.get("inst_id"), e.get("sim_action"))
-            if e.get("inst_id") is None:      # 舊格式或沒帶 instId → 用 seq 自成一列
-                key = ("_seq", e.get("seq"), kind)
+            # 2026-09-23:一則請求一列。以前以 (ran_func, inst_id, sim_action) 為鍵,
+            # RIC 的 xApp 對多筆命令重用同一個 instId → 6 筆 anr-add 被併成 1 列、
+            # 3-1 / 2-6 併進更早的列 —— 歸檔端只認新 seq,併掉的全部消失在 I-7。
+            # 改成:control_req_recv 一律開新列(鍵 = 自己的 seq);ack / failure 附到
+            # 同 (ran_func, inst_id) **最近一筆尚未 ack 的列**,找不到才自成一列。
+            if kind == "control_req_recv" or e.get("inst_id") is None:
+                key = ("_seq", e.get("seq"), kind if kind != "control_req_recv" else "req")
+            else:
+                key = next((k for k in reversed(order)
+                            if k[0] == "_seq" and rows[k].get("ranFunc") == e.get("ran_func")
+                            and rows[k].get("instId") == e.get("inst_id") and not rows[k]["acked"]
+                            and not rows[k]["failure"]), ("_seq", e.get("seq"), kind))
             if key not in rows:
                 rows[key] = {
                     "seq": e["seq"], "ts_ms": e["ts_ms"],

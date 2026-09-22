@@ -53,6 +53,9 @@ def _resolve_fails(serving_cell: str, pci: int, arfcn: int) -> bool:
     return (int.from_bytes(h[:2], "big") / 65535.0) < rate
 
 
+_NOWRITE_AUDIT_AT: dict[str, object] = {}
+
+
 def classify(serving_cell: str, pci: int | None, arfcn: int | None) -> tuple[str, list[str]]:
     """這個 (PCI, ARFCN) 在 serving 的鄰區關係表裡是什麼狀況。回 (判定, 命中的 target_cgi)。"""
     if pci is None:
@@ -120,6 +123,20 @@ def observe(serving_cell: str, neighbors: list[dict]) -> int:
         tgt = CellConfig.objects.filter(cell_id=truth).first()
         if tgt is None:
             _audit(oid, "fail", "", "", f"{verdict};解析出的 cell 不在 CellConfig")
+            continue
+        # 2026-09-23:ANR 自主建立關閉時,解析出 CGI 也**不寫 NRT**(交給 xApp / 管理面決定)。
+        # 以前這條路沒受 ANR_AUTO_ADD 管:anr_auto_add=0 的場次,外部 Agent 經 I-3 remove 一條
+        # 關係,2.5 s 後這裡就自己加回去 —— 對方注入的題目被我方自主行為蓋掉。
+        # 真實 gNB 的 ANR 關閉時,CGI 回報後同樣不會自行寫入 NRT。
+        from main.apps.cu_cp.services.business import anr_auto
+        if not anr_auto.enabled():
+            # 不寫 NRT 的話每個視窗都會再解析一次;同一個 (cell, pci) 每 5 分鐘只記一筆稽核,
+            # 否則 I-7 會被灌爆(run 38 實測 20 分鐘 7282 筆 son_function)。
+            _last = _NOWRITE_AUDIT_AT.get(oid)
+            if _last is None or (now - _last).total_seconds() >= 300:
+                _NOWRITE_AUDIT_AT[oid] = now
+                _audit(oid, "resolve", "", truth, f"{verdict};ANR_AUTO_ADD=0 → 已解析但不寫 NRT(交 xApp)")
+                logger.info("CGI 解析成功但 ANR 自主建立關閉:%s 的 PCI %s → %s,不寫 NRT", serving_cell, pci, truth)
             continue
         _, created = NrCellRelation.objects.get_or_create(
             source_cell_id=serving_cell, target_cgi=truth,

@@ -142,6 +142,18 @@ def apply_son_trigger(req: dict) -> dict:
     now = TimestampService.now()
     rtype = req.get("requestType")
     source = req.get("sourceCellId")
+    # 2026-09-23:source cell 一定要是這顆 gNB 的 cell。以前不驗,RIC 自測用掃錯的假名
+    # (gnbDT_c0>gnbDT_c1)下 anr-add 也被回 ADDED —— 對不存在的 cell 建了關係,還回成功。
+    from main.apps.cu_cp.models.cell_config import CellConfig as _CC
+    if source and not _CC.objects.filter(cell_id=source).exists():
+        logger.warning("ANR %s rejected: source cell %s 不存在", rtype, source)
+        return _outcome(str(rtype), source, req.get("targetCgi") or (req.get("target") or {}).get("cgi") or "",
+                        "NOT_FOUND", None, "source cell 不在本 gNB")
+    if rtype == "ADD":
+        _tcgi = (req.get("target") or {}).get("cgi")
+        if _tcgi and not _CC.objects.filter(cell_id=_tcgi).exists():
+            logger.warning("ANR ADD rejected: target %s 不存在", _tcgi)
+            return _outcome("ADD", source, _tcgi, "NOT_FOUND", None, "target cell 不在本 gNB(跨 gNB 目標請帶 nr_cellid)")
 
     if rtype == "ADD":
         tgt = req.get("target") or {}

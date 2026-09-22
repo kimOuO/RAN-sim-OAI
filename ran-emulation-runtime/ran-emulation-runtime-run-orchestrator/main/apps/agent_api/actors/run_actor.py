@@ -161,6 +161,22 @@ class RunReader:
             if r.get("run_control_event_created_at") is not None:
                 r["run_control_event_created_at"] = r["run_control_event_created_at"].isoformat()
         changes = [config_changes.to_change(r) for r in rows]
+        # 2026-09-23:ts_iso 改與 I-6 同源 —— 用同一輪 KPM 視窗的牆鐘依 offset_s 對映。
+        # 以前拿 RunControlEvent 的建立時間:SON 事件是歸檔輪詢(2 s)後才寫入,牆鐘落後
+        # 最多 2 s(10x 下 = 10 個劇本秒);RIC 拿它跟我方排程器的精確時戳相除算出 1.6x
+        # 的達成率,與實際 4.9x 對不起來。offset_s 才是權威值。
+        try:
+            q_kpm = RunKpmSample.objects.filter(f_scene_run_uuid=run_id)
+            if seqs:
+                q_kpm = q_kpm.filter(run_seq=seqs[0])
+            to_wall = run_events.wall_clock_mapper(
+                list(q_kpm.order_by("window_index").values("sim_time_ms", "wall_time_ms")))
+            for c in changes:
+                ts, ts_iso = to_wall(c["offset_s"])
+                if ts_iso:
+                    c["ts_iso"] = ts_iso
+        except Exception:  # noqa: BLE001 — 對映失敗就保留原時間,不擋回應
+            pass
         want = payload.get("origin")
         if want:
             changes = [c for c in changes if c["origin"] == want]
