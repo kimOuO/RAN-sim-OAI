@@ -1,6 +1,8 @@
 """LaunchRequest actors — Controller(create/update/delete)+ Reader(read)。全 POST(backend_rule §7-2)。"""
 from __future__ import annotations
 
+import os
+
 import json
 import threading
 
@@ -287,6 +289,9 @@ class LaunchController:
                 _fail = _knob("anr_cgi_fail_rate")
                 if _fail is not None:
                     cu_env["ANR_CGI_FAIL_RATE"] = str(_fail)
+                # 2026-09-23:鄰區量測以 PCI@ARFCN 為鍵(RIC 寫入端 0.0.25 已雙形狀相容,約定切換)。
+                # 全域由 orchestrator env E2_NEIGHBOR_KEY 決定,預設 pci;要退回舊格式設 cell。
+                cu_env["E2_NEIGHBOR_KEY"] = os.environ.get("E2_NEIGHBOR_KEY", "pci").strip().lower()
                 # 2026-09-22 外部 Agent 規格總則 7:run 級 seed。混進 slot 引擎的 RNG,
                 # 同 seed 重跑逐 tick 重現,換 seed 得到另一組雜訊實現。
                 # 不給就是 0 —— 與加這個旋鈕之前的行為完全相同。
