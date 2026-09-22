@@ -37,12 +37,13 @@ export default function ScenesPage() {
                   {/* 倍速只有 cached 有意義:live 每 tick 都要即時 ray tracing,實測
                       (18 UE × 3 cell、sim_dt 500 ms)只到約 1.6×,所以鎖 1×。
                       cached 的上限也不是無限 —— 同一組場景實測 5× 達成 4.99× 且丟包 0,
-                      30× 只達成 27.3× 且丟了 1091 筆量測報告,所以 10× 以上標成吃力。 */}
+                      30× 只達成 27.3× 且丟了 1091 筆量測報告;2026-09-22 再實測 30× 在場 14 人時 DU 過載進 RLF 風暴,
+                      整場作廢。cached 上限改為 10×(orchestrator 端也會夾),live 上限 2×。 */}
                   <select value={r.speed_x}
                           disabled={r.mode === 'live' || !r.cache_path || p.busy === r.scene_run_uuid}
                           title={r.mode === 'live' ? 'live 模式即時運算,固定 1×' : !r.cache_path ? '先預算才能加速' : undefined}
                           onChange={(e) => p.setSpeed(r, Number(e.target.value))}>
-                    {[1, 2, 5, 10, 20, 30].map((v) => <option key={v} value={v}>{v}×{v > 5 ? '(吃力)' : ''}</option>)}
+                    {[1, 2, 5, 10].map((v) => <option key={v} value={v}>{v}×{v >= 10 ? '(上限)' : ''}</option>)}
                   </select></label>
               </div>)}
             {r && r.status === 'precomputing' && (() => { const s = p.precomp[r.scene_run_uuid]; const pr = s?.progress; return <div className="prog-row"><div className="prog"><i style={{ width: `${pr?.pct ?? 0}%` }} /></div><span className="muted small">{pr ? `${pr.pct.toFixed(1)}% · ${pr.rate_tps.toFixed(1)} t/s · 剩 ${Math.round(pr.eta_sec / 60)} 分` : (s?.state ?? '啟動中…')}</span></div>; })()}

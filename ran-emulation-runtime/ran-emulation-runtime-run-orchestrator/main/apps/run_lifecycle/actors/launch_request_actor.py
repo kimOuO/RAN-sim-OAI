@@ -26,6 +26,10 @@ logger = get_logger(__name__)
 # 走廊場景設 10x 只達成 5.8~6.5x,且其中約七成 tick 是 RU 位置量化快取命中的。
 # 取 2x 是保守值 —— 確保各種場景都跟得上,劇本時鐘不會與牆鐘脫節。
 LIVE_MAX_SPEED_X = 2.0
+# cached 模式上限。2026-09-22 實測走廊 30x:在場 UE 到 14 人時 DU 過載,RU→DU 的同步回呼
+# 互等把整場拖進 RLF 風暴(達成率 0.7x、10 分鐘 731 次假 RLF),資料整場作廢。
+# 早上同場景 30x 也只達成 6x。10x 是有餘裕且資料正確的上限。
+CACHED_MAX_SPEED_X = 10.0
 UUID_FIELD = "launch_request_uuid"
 
 
@@ -196,9 +200,10 @@ class LaunchController:
         # 達不到的倍速會讓劇本時鐘與牆鐘脫節(事件時間、KPM 視窗都跟著失準),
         # 所以寧可設一個保守且跟得上的上限,而不是讓使用者設一個做不到的數字。
         _mode = str(run.get("mode") or "cached")
-        if _mode == "live" and speed_x > LIVE_MAX_SPEED_X:
-            logger.info("run %s live 模式倍速自 %.1fx 降為上限 %.1fx", run_uuid, speed_x, LIVE_MAX_SPEED_X)
-            speed_x = LIVE_MAX_SPEED_X
+        _cap = LIVE_MAX_SPEED_X if _mode == "live" else CACHED_MAX_SPEED_X
+        if speed_x > _cap:
+            logger.info("run %s %s 模式倍速自 %.1fx 降為上限 %.1fx", run_uuid, _mode, speed_x, _cap)
+            speed_x = _cap
         sim_dt_ms = int(payload.get("sim_dt_ms") or run.get("sim_dt_ms") or 500)
         now = TimestampService.get_current_timestamp()
         req_row = SqlDbBusinessService.create_entity(LaunchRequest, {
