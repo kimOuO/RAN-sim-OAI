@@ -20,10 +20,13 @@ from typing import Any
 from main.apps.agent_api.services.optional.e2_identity import field_e2_identity
 
 # 收集參數。PM 視窗秒數與 DU 的 PM_WINDOW_SEC 同源(預設 1.0 秒)。
-GRANULARITY_PERIOD_SEC = 1.0
+# 2026-09-22:I-5 觀測統一由 RIC 閘道提供,視窗與基準規則以 RIC 的 preproc 為準:
+# 60 s 一窗;基準最快在第 10 個視窗才有(前 3 窗判不出期望報告數,之後累積 6 個合格窗)。
+# 以前寫 1 s / 6 窗是照我方 KPM 樣本節奏,對方拿去算最短長度會少一個數量級。
+GRANULARITY_PERIOD_SEC = 60.0
 TIMEZONE = "Asia/Taipei"
 # 對方計算各時段常態基準所需的最少無事件窗數(規格 I-2 collection)。
-BASELINE_WINDOWS_REQUIRED = 6
+BASELINE_WINDOWS_REQUIRED = 10
 COORDINATE_CONVENTION = "x 向右、z 向前、y 向上,單位公尺,原點為場域基準點"
 
 

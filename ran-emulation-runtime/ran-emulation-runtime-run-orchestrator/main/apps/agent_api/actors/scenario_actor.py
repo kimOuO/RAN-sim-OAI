@@ -24,7 +24,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from main.apps.agent_api.services.optional import e2_identity, event_scheduler, scenario_events
-from main.apps.agent_api.services.optional.field_config import _cells_of, _cfg_version
+from main.apps.agent_api.services.optional.field_config import (
+    BASELINE_WINDOWS_REQUIRED, GRANULARITY_PERIOD_SEC, _cells_of, _cfg_version,
+)
 from main.apps.run_lifecycle.actors.launch_request_actor import LIVE_MAX_SPEED_X
 from main.apps.run_lifecycle.services.optional import container_spawner, platform_clients
 from main.apps.run_telemetry_archive.services.optional import cu_archiver
@@ -136,6 +138,17 @@ class ScenarioController:
 
         # ── 長度 ──────────────────────────────────────────────────
         duration_s = int(payload["duration_s"])
+        # 規格 I-3:duration_s 不得低於「基準所需窗數 + 事件後窗數」× 視窗長度。
+        # RIC 的基準最快在第 10 窗(600 s)才長得出來,再留 2 窗給事件後的觀測 = 720 s。
+        # 2026-09-22 RIC 實測:22 場裡 17 場短於 10 分鐘,dt_preproc 有基準的列數 = 0,
+        # 對方「現值 vs 常態」的判準全部無法運作 —— 所以照規格擋,而不是收下再讓資料沒用。
+        min_dur = int((BASELINE_WINDOWS_REQUIRED + 2) * GRANULARITY_PERIOD_SEC)
+        if duration_s < min_dur:
+            return error_response(
+                "duration_s too short for baseline",
+                {"requested": duration_s, "min_duration_s": min_dur,
+                 "hint": f"基準需 {BASELINE_WINDOWS_REQUIRED} 個 {int(GRANULARITY_PERIOD_SEC)} s 視窗"
+                         f"才會出現,再留 2 窗給事件後觀測;低於 {min_dur} s 的場次無法做問題判定"}, 400)
         max_dur = int(run_row.get("duration_sec") or 0)
         if max_dur and duration_s > max_dur:
             # 快取只有這麼長,跑不過去。給實際上限而不是硬截斷 —— 對方要知道拿到的窗數會變少
