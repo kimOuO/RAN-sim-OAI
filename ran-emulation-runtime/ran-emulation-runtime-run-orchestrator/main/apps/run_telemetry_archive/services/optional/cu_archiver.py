@@ -267,7 +267,16 @@ class RunArchiver(threading.Thread):
                 "sim_time_ms": (b["scene_ms"] if b.get("scene_ms") is not None
                                 else self.ticks_so_far * self.sim_dt_ms),
                 "wall_time_ms": int(time.time() * 1000), "per_cell": b["per_cell"],
-                "scene_t_sec": (None if scene_t is None else round(max(0.0, scene_t - tick_after[w] * self.sim_dt_ms / 1000.0), 2)), "per_ue": b["per_ue"], "warnings": _win_warnings(b, tick) + ([] if tick is not None else ["no cell row → sim_time unknown"])
+                # 2026-09-22:scene_t_sec 改與 sim_time_ms 同源(DU 的劇本時鐘)。
+                # 以前取 UE 的 elapsed_sim_sec —— 那是「牆鐘 × 設定倍速」的推算,
+                # 倍速達不到時會嚴重高估(實測一場 DU 走 904s、UE 算成 3633s)。
+                # 換手 / RLF 事件用的是 DU 的 scene_sim_ms,兩邊不同源的話
+                # 外部 Agent 無法把觀測資料與事件對到同一條時間軸上。
+                # 舊 DU 不帶 scene_sim_ms 時才退回原本的 UE 推算。
+                "scene_t_sec": (round(b["scene_ms"] / 1000.0, 2) if b.get("scene_ms") is not None
+                                else (None if scene_t is None
+                                      else round(max(0.0, scene_t - tick_after[w] * self.sim_dt_ms / 1000.0), 2))),
+                "per_ue": b["per_ue"], "warnings": _win_warnings(b, tick) + ([] if tick is not None else ["no cell row → sim_time unknown"])
                              + ([] if not (dropped and w == wins[-1]) else
                                 [f"自上次封存以來 DU 丟棄量測報告 {dropped} 筆(CU 消化不及)→ 這段期間各視窗的 UE 可能不完整"])})
             self.window_index += 1
@@ -338,6 +347,20 @@ def current_run_seq(scene_run_uuid: str) -> int:
     from django.db.models import Max
     return int((RunKpmSample.objects.filter(f_scene_run_uuid=scene_run_uuid)
                 .aggregate(m=Max("run_seq")).get("m")) or 0)
+
+
+def active_run_seq(scene_run_uuid: str) -> int:
+    """**正在跑**的那一輪的 run_seq —— 直接問 archiver thread。
+
+    2026-09-22:不要用 current_run_seq() 代替。那支是從 RunKpmSample 取 max,
+    而 archiver 剛啟動、還沒寫出第一個視窗時,max 仍是**上一輪**的號碼。
+    外部 Agent 的事件紀錄若用到上一輪的號碼,I-7 依「最新 run_seq」過濾就會
+    整批看不到這次注入的事件。archiver 還沒起來才退回資料庫的值。
+    """
+    t = _threads.get(scene_run_uuid)
+    if t is not None and getattr(t, "run_seq", None):
+        return int(t.run_seq)
+    return current_run_seq(scene_run_uuid)
 
 
 def current_ric_run(scene_run_uuid: str) -> int:

@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from main.apps.run_lifecycle.services.optional import platform_clients
-from main.apps.agent_api.services.optional import config_changes, run_events
+from main.apps.agent_api.services.optional import config_changes, event_scheduler, run_events
 from main.apps.agent_api.services.optional.e2_identity import TAG_SEP
 from main.apps.run_telemetry_archive.models.run_handover_event import RunHandoverEvent
 from main.apps.run_telemetry_archive.models.run_control_event import RunControlEvent
@@ -91,6 +91,9 @@ class RunReader:
             "started_at": row.get("started_at"),
             "finished_at": row.get("stopped_at"),
             "windows_available": windows,
+            # I-3 注入的事件進度 —— 對方輪詢時要知道事件是不是都觸發了。
+            # 沒排事件(類型一)或 orchestrator 重啟後失去排程器時為 null。
+            "events": event_scheduler.status(run_id),
             "error": err,
             "unavailable_fields": [] if windows is not None else ["windows_available"],
         }, "ok", 200)

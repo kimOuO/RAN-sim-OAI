@@ -36,6 +36,17 @@ class RunLifecycleConfig(AppConfig):
                     cu_archiver.start_archiver(run, int(r.get("sim_dt_ms") or 500), cu_host=cu_host, e2_port=e2_port, new_run=False)
                     if settings.PER_RUN_ENABLED and insts:
                         health_monitor.start_monitor(run, insts)
+                    # 2026-09-22:外部 Agent 經 I-3 注入的事件也要接回 ——
+                    # 排程器同樣是 in-process thread,不接回的話後面的事件永遠不會發生。
+                    try:
+                        from main.apps.agent_api.services.optional import event_scheduler
+                        n = event_scheduler.resume(
+                            run, cu_archiver.active_run_seq(run),
+                            container_spawner.names_for(run))
+                        if n:
+                            log.info("resumed %d pending agent event(s) for run %s", n, run)
+                    except Exception:  # noqa: BLE001 — 接不回不該擋住其他 run 的接回
+                        log.exception("resume agent events failed for run %s", run)
                     log.info("resumed archiver/health for running run %s (cu=%s e2_port=%s)", run, cu_host, e2_port)
             except Exception:  # noqa: BLE001
                 import logging

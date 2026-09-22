@@ -83,6 +83,47 @@ class RuController:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def set_cell_power(request):
+        """改單一 cell 的發射功率(dBm)。body: {cell_id | name, power_dbm}
+
+        2026-09-22:給外部 Agent 的 tx_power_change 事件(I-3)用。
+        不走 update_cells —— 那是全量替換,要改一顆得把整份清單重送,
+        少送任何一顆就會被刪掉。執行期的單點改動用單點介面才安全。
+
+        發射功率在 RU 是執行期疊到(快取的)path gain 上的,所以 cached 模式也改得動。
+        """
+        try:
+            payload = _parse_body(request)
+        except json.JSONDecodeError as exc:
+            return error_response("Invalid JSON", str(exc), 400)
+
+        name = str(payload.get("cell_id") or payload.get("name") or "").strip()
+        if not name:
+            return error_response("Validation failed", {"cell_id": "required"}, 400)
+        if payload.get("power_dbm") is None:
+            return error_response("Validation failed", {"power_dbm": "required"}, 400)
+        try:
+            power = float(payload["power_dbm"])
+        except (TypeError, ValueError):
+            return error_response("Validation failed", {"power_dbm": "must be a number"}, 400)
+
+        cell = SqlDbBusinessService.filter_entities(Cell).filter(name=name).first()
+        if cell is None:
+            return error_response("cell not found", name, 404)
+
+        before = float(cell.power_dbm)
+        cell.power_dbm = power
+        cell.cell_updated_at = TimestampService.get_current_timestamp()
+        cell.save(update_fields=["power_dbm", "cell_updated_at"])
+        logger.info("set_cell_power %s: %.1f → %.1f dBm", name, before, power)
+        return success_response(
+            {"cell_id": name, "power_dbm_before": before, "power_dbm_after": power},
+            "cell power updated", 200)
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def update_cells(request):
         try:
             payload = _parse_body(request)

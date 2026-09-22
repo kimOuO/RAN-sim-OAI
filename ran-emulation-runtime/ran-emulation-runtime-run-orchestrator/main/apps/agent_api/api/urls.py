@@ -6,12 +6,15 @@ from django.urls import path
 
 from main.apps.agent_api.actors.field_actor import FieldReader
 from main.apps.agent_api.actors.run_actor import RunReader
+from main.apps.agent_api.actors.scenario_actor import ScenarioController
 
 urlpatterns = [
     # I-1 查詢場域清單
     path("FieldReader/list", FieldReader.list, name="agent_field_list"),
     # I-2 取得場域配置
     path("FieldReader/config", FieldReader.config, name="agent_field_config"),
+    # I-3 觸發情境(含事件清單)
+    path("ScenarioController/run", ScenarioController.run, name="agent_scenario_run"),
     # I-4 查詢執行狀態
     path("RunReader/status", RunReader.status, name="agent_run_status"),
     # I-6 取得事件紀錄

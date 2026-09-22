@@ -53,6 +53,16 @@ def list_scene_runs() -> dict:
     return _registry("Simulation_run/SceneRunReader/read", {})
 
 
+def set_run_knob(scene_run_uuid: str, key: str, value) -> dict:
+    """寫一個 run knob。create 是 upsert(同 scene_run + key 覆蓋)。
+
+    2026-09-22:外部 Agent 的 I-3 用這個下 run_seed —— 旋鈕是既有機制,
+    不必為了一個參數另開一條路。
+    """
+    return _registry("Simulation_run/RunKnobController/create",
+                     {"f_scene_run_uuid": scene_run_uuid, "key": key, "value": value})
+
+
 def scene_bounds(scene_uuid: str) -> dict:
     return _registry("Field_scene/SceneGeometryReader/bounds", {"scene_uuid": scene_uuid})
 

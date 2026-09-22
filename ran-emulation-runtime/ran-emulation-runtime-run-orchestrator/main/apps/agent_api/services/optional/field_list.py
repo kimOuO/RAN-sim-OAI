@@ -9,14 +9,16 @@
     名稱取自場域名,`default_ue_count` 為實際 UE 數,並在 `note` 說明不可覆寫人數。
     若對方確實需要多種型態,需另行預算通道快取(一個 24h 場域約 15 小時)。
 
-  event_types —— 事件注入(I-3)尚未實作,一律回空陣列。回假的型別名會讓對方
-    設計出我方接不住的情境。
+  event_types —— 只列**該場域在該模式下真的做得到**的型別。回假的型別名會讓對方
+    設計出我方接不住的情境:cell_addition 需要預算時已納入但初始關閉的備用 cell,
+    antenna_change 在 cached 模式根本不可能(天線已烘進通道快取)。
 
   limits.concurrent_runs —— 釘了 e2_slot 的場域同時只能一場(識別要固定給 xApp);
     沒釘的可並行,但那種場域也不該給對方用(識別會浮動)。
 """
 from __future__ import annotations
 
+from main.apps.agent_api.services.optional import scenario_events
 from main.apps.agent_api.services.optional.e2_identity import field_e2_identity
 from main.apps.agent_api.services.optional.field_config import (
     BASELINE_WINDOWS_REQUIRED,
@@ -72,7 +74,12 @@ def build_one(tree: dict, run: dict | None = None) -> dict:
         "gnb_count": len(tree.get("gnbs") or []),
         "ue_count": len(tree.get("ues") or []),
         "load_profiles": [_load_profile(tree, scene)],
-        "event_types": [],                    # I-3 事件注入尚未實作
+        "event_types": scenario_events.supported_types(
+            [c.get("name") or "" for _g, c in pairs],
+            [c.get("name") or "" for _g, c in pairs if c.get("is_active") is False],
+            str((run or {}).get("mode") or "cached"),
+        ),
+        "event_param_schema": scenario_events.event_param_schema(),
         "intrinsic_features": None,           # 無場域固有屬性之登記
         "coordinate_convention": COORDINATE_CONVENTION,
         "limits": {

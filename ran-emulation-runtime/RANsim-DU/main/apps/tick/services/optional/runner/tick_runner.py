@@ -108,6 +108,17 @@ _MU_MIMO = get_bool("DU_MU_MIMO", True)
 # slot 引擎正式接管 delay KPM(退掉 /30):on 時 RLC delay 走 slot 引擎(現役 PRB 已由 scheduler 改操作點)
 # + cadence,不再用 calib /30。配 pf_scheduler 的 SLOT_ENGINE_TAKEOVER 一起(同 flag),PRB/throughput/delay 自洽。
 _SLOT_ENGINE_TAKEOVER = get_bool("SLOT_ENGINE_TAKEOVER", False)
+
+# 2026-09-22 決定性(外部 Agent 規格總則 7):同一組參數 + 同一 seed 重跑須得相同資料。
+# slot 引擎的 RNG 本來就只吃 tick_count —— 也就是「已經可重現,但無法換一個實現」。
+# 把 run 級 seed 混進去:同 seed 逐 tick 完全重現,換 seed 得到另一組雜訊實現。
+# 乘上質數是為了讓相鄰 seed 的序列不重疊(seed=1 的 tick 1 不等於 seed=0 的 tick N)。
+_RUN_SEED = get_int("RUN_SEED", 0)
+
+
+def _slot_seed(tick: int) -> int:
+    """run seed + tick → slot 引擎的 RNG 種子。RUN_SEED=0 時行為與過去完全相同。"""
+    return int(_RUN_SEED) * 1_000_003 + int(tick)
 # SLOT_OAI_DELAY_SCOPE:DRB.RlcSduDelayDl 量測範圍對齊 OAI(到達→首次被服務,扣 pipeline 延遲,不含傳輸)。
 # 預設 off=舊 completion scope;on=OAI scope(同-tick 排空記 0 → delay==0% 往 OAI 靠)。
 _SLOT_OAI_DELAY_SCOPE = get_bool("SLOT_OAI_DELAY_SCOPE", False)
@@ -1084,7 +1095,7 @@ class TickRunner:
                         sdus=arrivals, mean_sinr_db=sinr, n_prb=prb_now,
                         sim_dt_ms=self._sim_dt_ms, state=st,
                         params=SlotParams(
-                            seed=self.status.tick_count,
+                            seed=_slot_seed(self.status.tick_count),
                             sched_period_slots=1,  # 不用 occasion gate;baseline 改走 load-adaptive pipeline 延遲
                             sched_pipeline_slots=(_pipe_slots if _SLOT_ENGINE_TAKEOVER else 2),
                             n_layers=_nl,
@@ -1098,7 +1109,7 @@ class TickRunner:
                     res_op = simulate_sdu_delays(  # 反事實:操作點 PRB + cadence baseline(完整修法預測)
                         sdus=arrivals, mean_sinr_db=sinr, n_prb=prb_op,
                         sim_dt_ms=self._sim_dt_ms, state=st_op,
-                        params=SlotParams(seed=self.status.tick_count,
+                        params=SlotParams(seed=_slot_seed(self.status.tick_count),
                                           sched_period_slots=_SLOT_CADENCE_PERIOD,
                                           n_layers=_nl,
                                           sinr_layers=_sl, mcs_hint=ue.get("mcs_dl"),

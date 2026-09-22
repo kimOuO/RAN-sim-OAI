@@ -5,7 +5,8 @@ I-7 的用途只有一個:讓對方分辨「我方注入的事件」與「貴方
 對方無從得知正確答案已被破壞。
 
 來源前綴決定 origin:
-    ric/*  → triggered_event   (RIC / xApp 下來的控制,含對方經 I-3 注入的事件)
+    ric/*    → triggered_event   (RIC / xApp 下來的控制)
+    agent/*  → triggered_event   (對方經 I-3 注入的事件)
     son/*  → son_function      (我方自主:anr_auto 等)
     其他   → system
 """
@@ -28,7 +29,9 @@ _OBJECT_BY_PREFIX = (
 def _origin(source: str) -> str:
     if source.startswith("son/"):
         return "son_function"
-    if source.startswith("ric/"):
+    # agent/* 是對方自己經 I-3 注入的事件;ric/* 是 RIC / xApp 下來的控制。
+    # 兩者對 I-7 都是 triggered_event(非我方自主),與 son_function 分得開即可。
+    if source.startswith(("ric/", "agent/")):
         return "triggered_event"
     return "system"
 

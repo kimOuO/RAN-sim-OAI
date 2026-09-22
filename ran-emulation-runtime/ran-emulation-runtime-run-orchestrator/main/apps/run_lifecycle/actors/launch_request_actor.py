@@ -255,6 +255,12 @@ class LaunchController:
                 _fail = _knob("anr_cgi_fail_rate")
                 if _fail is not None:
                     cu_env["ANR_CGI_FAIL_RATE"] = str(_fail)
+                # 2026-09-22 外部 Agent 規格總則 7:run 級 seed。混進 slot 引擎的 RNG,
+                # 同 seed 重跑逐 tick 重現,換 seed 得到另一組雜訊實現。
+                # 不給就是 0 —— 與加這個旋鈕之前的行為完全相同。
+                _seed = _knob("run_seed")
+                if _seed is not None:
+                    du_env = {**(du_env or {}), "RUN_SEED": str(int(_seed))}
                 _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue"), du_env=du_env, cu_env=cu_env))
                 health = container_spawner.wait_healthy(instances)
                 if not all(health.values()):
