@@ -15,6 +15,9 @@ class SceneRun(models.Model):
     gnb_id_hex = models.CharField(max_length=16, blank=True, default='')   # per-run CU 的 GNB_ID_HEX(22-bit),RIC meid 由此推導
     e2_node_id = models.CharField(max_length=64, blank=True, default='')
     snapshot_json = models.JSONField(null=True, blank=True)
+    # 2026-09-22:已模擬秒數(DU 的劇本時鐘)。外部 Agent 的 I-4 要輪詢進度,
+    # 我們自己的監控頁以前也只能去看 DU 容器 log 才知道跑到哪。
+    progress_sec = models.FloatField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     stopped_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default='')

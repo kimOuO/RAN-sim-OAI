@@ -16,6 +16,8 @@ class _CellConfigSerializer(serializers.Serializer):
     # 2026-05-16 P2.9: F1 Setup 帶上 OAI 真實 nr_cellid;沒帶 → CU 走 SHA-1 hash fallback
     nr_cellid = serializers.IntegerField(required=False, allow_null=True, default=None)
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
+    # 2026-09-22: 每 cell 發射功率 (dBm) — 未宣告的話 DRF 會靜默丟掉,PEE.AvgPower 就永遠是 null。
+    tx_power_dbm = serializers.FloatField(required=False, allow_null=True, default=None)
 
 
 class _DrbConfigSerializer(serializers.Serializer):
@@ -28,6 +30,10 @@ class _NeighborMeasSerializer(serializers.Serializer):
     cell_id = serializers.CharField(max_length=64)
     rsrp_dbm = serializers.FloatField()
     rsrq_db = serializers.FloatField()
+    # UE 真實看得到的兩個識別。DRF 會靜默丟掉沒宣告的欄位 ——
+    # 2026-09-22 就是漏了這行,DU 有送、協定有欄位,卻整批存成 null。
+    pci = serializers.IntegerField(required=False, allow_null=True, default=None)
+    arfcn = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class F1SetupWriteSerializer(serializers.Serializer):
@@ -64,6 +70,12 @@ class MeasurementReportWriteSerializer(serializers.Serializer):
     beam_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     # 2026-09-21:PM 視窗序號(舊 DU 不帶 → None,歸檔退回依秒分組)
     window_seq = serializers.IntegerField(required=False, allow_null=True, default=None)
+    # 2026-09-22:劇本時鐘。serializer 沒宣告的欄位 DRF 會靜默丟掉 ——
+    # DU 有送、協定有欄位,卻因為漏了這一行而整批存成 null(實測 23189 筆全空)。
+    scene_sim_ms = serializers.IntegerField(required=False, allow_null=True, default=None)
+    # 服務 cell 的 RSRQ(TS 38.215)。舊 DU 不帶 → None。
+    rsrq_db = serializers.FloatField(required=False, allow_null=True, default=None)
+    cqi = serializers.FloatField(required=False, allow_null=True, default=None)
     beam_rsrp_top = serializers.ListField(required=False, default=list)
 
 

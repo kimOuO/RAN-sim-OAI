@@ -32,6 +32,9 @@ class RlfEvent(models.Model):
     reestab_pci = models.IntegerField(default=-1)
     outcome = models.CharField(max_length=24, choices=OUTCOME_CHOICES, default="DECLARED")
 
+    # 2026-09-22:劇本時鐘(DU 的 scene_tick × sim_dt_ms)。null = 舊版 DU 沒帶,
+    # 歸檔退回原本的 tick 累加推算。
+    scene_sim_ms = models.BigIntegerField(null=True, blank=True)
     detected_at = models.DateTimeField(db_index=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
 

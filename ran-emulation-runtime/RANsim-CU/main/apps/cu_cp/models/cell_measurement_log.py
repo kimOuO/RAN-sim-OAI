@@ -17,6 +17,12 @@ class CellMeasurementLog(models.Model):
     window_seconds = models.FloatField(default=0.0)
     # 與 per-UE 報告同一個 PM 視窗序號:歸檔照它把 cell 與 UE 併到同一列
     window_seq = models.IntegerField(null=True, blank=True, db_index=True)
+    # 視窗結束時掛在本 cell 的 UE 數(見 f1ap.GnbDuCellMeasurementReport.connected_ues)。
+    # null = 舊版 DU 沒帶,歸檔退回舊行為。
+    connected_ues = models.IntegerField(null=True, blank=True)
+    # 2026-09-22:劇本時鐘(DU 的 scene_tick × sim_dt_ms)。null = 舊版 DU 沒帶,
+    # 歸檔退回原本的 tick 累加推算。
+    scene_sim_ms = models.BigIntegerField(null=True, blank=True)
     recorded_at = models.DateTimeField(db_index=True)
 
     class Meta:

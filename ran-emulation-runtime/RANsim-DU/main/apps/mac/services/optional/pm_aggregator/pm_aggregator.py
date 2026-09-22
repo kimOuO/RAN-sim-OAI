@@ -41,6 +41,11 @@ class _UeWindowAccumulator:
     samples: int = 0
     sinr_db_sum: float = 0.0
     rsrp_dbm_sum: float = 0.0
+    # RSRQ 另外計數 —— RU 算不出來時會送 None,不能跟 rsrp 共用分母
+    rsrq_db_sum: float = 0.0
+    rsrq_n: int = 0
+    cqi_sum: int = 0
+    cqi_n: int = 0
     mcs_dl_sum: int = 0
     mcs_ul_sum: int = 0
     rank_sum: int = 0
@@ -80,6 +85,8 @@ class _UeWindowAccumulator:
         ul_sinr_db: float | None = None,
         sinr_layers: list[float] | None = None,
         beam_id: int | None = None,
+        rsrq_db: float | None = None,
+        cqi: int | None = None,
     ) -> None:
         self.serving_cell = serving_cell
         self.samples += 1
@@ -91,6 +98,10 @@ class _UeWindowAccumulator:
             self.last_beam_id = int(beam_id)
         self.sinr_db_sum += sinr_db
         self.rsrp_dbm_sum += rsrp_dbm
+        if rsrq_db is not None:
+            self.rsrq_db_sum += float(rsrq_db); self.rsrq_n += 1
+        if cqi is not None:
+            self.cqi_sum += int(cqi); self.cqi_n += 1
         self.mcs_dl_sum += mcs_dl
         self.mcs_ul_sum += mcs_ul
         self.rank_sum += rank
@@ -113,6 +124,8 @@ class _UeWindowAccumulator:
             "samples": self.samples,
             "avg_sinr_db": None if _no_sample else self.sinr_db_sum / n,
             "avg_rsrp_dbm": None if _no_sample else self.rsrp_dbm_sum / n,
+            "avg_rsrq_db": (self.rsrq_db_sum / self.rsrq_n) if self.rsrq_n else None,
+            "avg_cqi": (self.cqi_sum / self.cqi_n) if self.cqi_n else None,
             "avg_mcs_dl": int(round(self.mcs_dl_sum / n)),
             "avg_mcs_ul": int(round(self.mcs_ul_sum / n)),
             "avg_rank": max(1, int(round(self.rank_sum / n))),
@@ -143,6 +156,8 @@ class _UeWindowAccumulator:
         self.samples = 0
         self.sinr_db_sum = 0.0
         self.rsrp_dbm_sum = 0.0
+        self.rsrq_db_sum = 0.0; self.rsrq_n = 0
+        self.cqi_sum = 0; self.cqi_n = 0
         self.mcs_dl_sum = 0
         self.mcs_ul_sum = 0
         self.rank_sum = 0
@@ -188,6 +203,12 @@ class _CellWindowAccumulator:
     這是 cell-level 累計, **不從 per-UE sum 來**, 避開 UE 樣本數不齊造成的 > 100% 假象.
     """
     tick_count: int = 0           # window 內該 cell 真實 tick 次數 (含沒 UE 的 tick)
+    # 2026-09-22:cell 可用率(TS 28.552 cellAvailablePer)的累計。
+    # 「可用」= 該 tick cell 實際在運作;節能關站(is_active=False)的 cell 會被
+    # tick_body 跳過,tick 就不會累加 —— 兩者的差就是不可用時間。
+    avail_ticks_cum: int = 0      # 這個 cell 有運作的 tick 數(累計,不隨視窗 flush 歸零)
+    first_tick: int = -1          # 第一次運作的 tick 序號 —— 分母要從 cell 出現才起算,
+                                  # 否則晚建立的 cell 會被算成「前面都不可用」
     prb_used_sum: int = 0         # window 內該 cell 累計 DL PRB usage (每 tick 0..n_prb_total)
     prb_used_ul_sum: int = 0      # window 內該 cell 累計 UL PRB usage(UL 獨立時隙)
     # 3GPP TS 28.552 RRU.PrbTotDl 分母 = cell 物理 PRB 容量,**不受 PRB quota 影響**。
@@ -195,8 +216,12 @@ class _CellWindowAccumulator:
     # 一下 max_prb=3 RC 立刻看到 PRB%=100%,違反 28.552 語意。
     n_prb_total_sum: int = 0      # window 內每 tick 物理 PRB capacity 累計
 
-    def add_tick(self, prb_used: int, n_prb_total: int, prb_used_ul: int = 0) -> None:
+    def add_tick(self, prb_used: int, n_prb_total: int, prb_used_ul: int = 0,
+                 now_tick: int = -1) -> None:
         self.tick_count += 1
+        self.avail_ticks_cum += 1
+        if self.first_tick < 0 and now_tick >= 0:
+            self.first_tick = int(now_tick)
         self.prb_used_sum += int(prb_used)
         self.prb_used_ul_sum += int(prb_used_ul)
         self.n_prb_total_sum += int(n_prb_total)
@@ -246,6 +271,7 @@ class PmAggregatorService:
     # AL2 — cell-level PRB accumulation (對齊 OAI prb_used_dl 語意)
     def accumulate_cell_tick(
         self, cell_id: str, prb_used: int, n_prb_total: int, prb_used_ul: int = 0,
+        now_tick: int = -1,
     ) -> None:
         """每 tick 每 cell 呼一次, 不管該 tick 有沒有 UE。prb_used_ul = 該 cell 本 tick UL PRB。"""
         if not cell_id:
@@ -254,7 +280,7 @@ class PmAggregatorService:
         if acc is None:
             acc = _CellWindowAccumulator()
             self._cell_window[cell_id] = acc
-        acc.add_tick(prb_used, n_prb_total, prb_used_ul)
+        acc.add_tick(prb_used, n_prb_total, prb_used_ul, now_tick=now_tick)
 
     def accumulate_cell_ul(self, cell_id: str, prb_ul: int) -> None:
         """per-UE 累加該 cell 本 tick 的 UL PRB(在 accumulate_cell_tick 之後、per-UE 迴圈裡呼)。
@@ -307,6 +333,8 @@ class PmAggregatorService:
         ul_sinr_db: float | None = None,
         sinr_layers: list[float] | None = None,
         beam_id: int | None = None,
+        rsrq_db: float | None = None,
+        cqi: int | None = None,
     ) -> None:
         acc = self._acc_for(gnb_name)
         if 0 <= mcs_dl < MCS_BINS:
@@ -320,17 +348,25 @@ class PmAggregatorService:
         acc.prb_used_ul += prb_ul
         acc.pdcp_bytes_dl[qos_5qi] += dl_bytes
         acc.pdcp_bytes_ul[qos_5qi] += ul_bytes
-        if sinr_db >= 12:
-            acc.harq_rounds_dl[0] += 1
-            acc.harq_rounds_ul[0] += 1
-        elif sinr_db >= 6:
-            acc.harq_rounds_dl[1] += 1
-            acc.harq_rounds_ul[1] += 1
-        elif sinr_db >= 0:
-            acc.harq_rounds_dl[2] += 1
-            acc.harq_rounds_ul[2] += 1
-        else:
+        # HARQ 輪次(依 SINR 分箱近似:≥12 dB 首傳成功、≥6 第二輪、≥0 第三輪、<0 最終失敗)。
+        # 2026-09-22:上行本來是照抄下行的分箱 —— 拿下行 SINR 判上行成敗沒有物理意義,
+        # 實測 rounds_ul 與 rounds_dl 一模一樣。上行有自己的 SINR(RU 的 _compute_ul_sinr_db),
+        # 改用它;舊 RU 不帶 ul_sinr_db 時不累加(寧可沒有,也不要抄下行的假值)。
+        def _harq_bin(v: float, rounds: list[int]) -> bool:
+            """回 True = 有成功的輪次;False = 最終失敗。"""
+            if v >= 12:
+                rounds[0] += 1
+            elif v >= 6:
+                rounds[1] += 1
+            elif v >= 0:
+                rounds[2] += 1
+            else:
+                return False
+            return True
+
+        if not _harq_bin(sinr_db, acc.harq_rounds_dl):
             acc.harq_errors_dl += 1
+        if ul_sinr_db is not None and not _harq_bin(float(ul_sinr_db), acc.harq_rounds_ul):
             acc.harq_errors_ul += 1
         acc.last_sinr_x10_sum += int(sinr_db * 10)
         acc.num_sinr_meas += 1
@@ -350,7 +386,7 @@ class PmAggregatorService:
                 dl_bytes=dl_bytes,
                 ul_bytes=ul_bytes,
                 qos_5qi=qos_5qi,
-            ul_sinr_db=ul_sinr_db, sinr_layers=sinr_layers, beam_id=beam_id,
+            ul_sinr_db=ul_sinr_db, sinr_layers=sinr_layers, beam_id=beam_id, rsrq_db=rsrq_db, cqi=cqi,
             )
 
     def accumulate_rlc_delay(self, ue_id: str, delay_samples_ms: list[float]) -> None:
@@ -424,6 +460,11 @@ class PmAggregatorService:
                 "harq_errors_dl": acc.harq_errors_dl,
                 "harq_rounds_ul": acc.harq_rounds_ul,
                 "harq_errors_ul": acc.harq_errors_ul,
+                # cell 可用率的兩個分量(TS 28.552 cellAvailablePer)。
+                # cell 名與 gnb 累加器同名時才對得上;對不上就留 None,CU 端不輸出。
+                **(lambda cw: {"avail_ticks_cum": cw.avail_ticks_cum,
+                               "first_tick": cw.first_tick} if cw else {})(
+                    self._cell_window.get(name)),
                 "avg_sinr_db": avg_sinr,
                 "avg_rsrp_dbm": avg_rsrp,
                 # P0-1:per-cell RLC drop(PdcpPacketDiscardDL 資料源)

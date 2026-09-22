@@ -23,6 +23,7 @@ from main.apps.cu_cp.services.common.uuid_service import UUIDService
 from main.apps.cu_cp.services.optional.f1ap.f1ap_handler import F1apHandler
 from main.utils.logger import get_logger
 from main.utils.response import error_response, success_response
+from main.apps.cu_cp.services.optional import scene_clock
 
 logger = get_logger(__name__)
 
@@ -181,6 +182,8 @@ class SessionControllerActor:
                 "trigger": "MANUAL",
                 "status": "PREP",
                 "started_at": now,
+                # RIC 觸發的換手不在量測處理流程裡,拿不到 window_seq —— 讀 CU 維持的劇本時鐘
+                "scene_sim_ms": scene_clock.now_ms(),
             })
         else:
             logger.info("serving_cell 直接設定(非換手):UE %s %s → %s", ue_id, src or "(無)", target_cell)

@@ -68,6 +68,16 @@ def observe_neighbors(serving_cell: str, neighbor_cell_ids: list[str]) -> int:
         if created:
             added += 1
             logger.info("自主 ANR:新增鄰區關係 %s → %s(來源:UE 量測報告)", serving_cell, cgi)
+            # 記進自主行為稽核 —— 外部 Agent 的 I-7 要靠它分辨「對方注入的事件」與
+            # 「我方自己動的」。只寫 log 的話,對方刻意留空的鄰區被我方補上就查不出來。
+            try:
+                from main.apps.cu_cp.models.son_action_log import SonActionLog
+                SonActionLog.objects.create(
+                    object_type="neighbour_relation", object_id=f"{serving_cell}>{cgi}",
+                    action="add", attribute="exists", before="false", after="true",
+                    function="anr_auto", reason="UE 量測報告回報了未建立關係的鄰區", recorded_at=now)
+            except Exception:  # noqa: BLE001 — 稽核寫不進去不該擋住關係建立
+                logger.exception("自主 ANR:稽核寫入失敗 %s → %s", serving_cell, cgi)
             # 關係建立後還要跑 Xn Setup,否則換手會以 TXnRELOCprepExpiry 失敗。
             # 重用 xApp anr-add 用的同一條路徑(背景延遲、建反向關係、雙向標記 Xn 已建立),
             # 行為與經 RIC 新增的關係一致。

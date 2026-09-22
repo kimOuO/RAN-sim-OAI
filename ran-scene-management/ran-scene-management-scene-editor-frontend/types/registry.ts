@@ -22,6 +22,9 @@ export interface Scene {
   scene_uuid: string; name: string; description: string; origin_lat: number | null; origin_lon: number | null; bounds: unknown;
   legacy_scenario_id: string; geometry_scene_id: string; geometry_source: unknown; f_material_uuid: string | null;
   f_gnb_antenna_preset_uuid: string | null; f_ue_antenna_preset_uuid: string | null;
+  /** 釘住的 E2 槽位(1~511)。釘了之後 gNB ID / cell NCI 每次啟動都一樣,
+   *  外部 Agent 才能事先把這些識別寫進 xApp 的訂閱設定。null = 啟動時動態配。 */
+  e2_slot: number | null;
   scene_created_at: string; scene_updated_at: string;
 }
 export interface Building {

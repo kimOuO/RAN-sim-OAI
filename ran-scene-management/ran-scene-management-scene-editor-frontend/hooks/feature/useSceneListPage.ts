@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SCENE_CATEGORIES, categoryOf } from '@/config';
 import { useAsync } from '@/hooks/base/useAsync';
-import { listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, type PrecomputeStatus } from '@/services/api/runs';
+import { listSceneRuns, precomputeRun, readPrecompute, startRun, stopPrecompute, stopRun, updateSceneRun, type PrecomputeStatus } from '@/services/api/runs';
 import { createScene, deleteScene, listScenes } from '@/services/api/scenes';
 import type { Scene, SceneRun } from '@/types/registry';
 
@@ -33,6 +33,13 @@ export function useSceneListPage() {
     start: (r: SceneRun) => withBusy(r.scene_run_uuid, () => startRun(r.scene_run_uuid, r.speed_x, r.sim_dt_ms)),
     stop: (r: SceneRun) => withBusy(r.scene_run_uuid, () => stopRun(r.scene_run_uuid)),
     precompute: (r: SceneRun) => withBusy(r.scene_run_uuid, () => precomputeRun(r.scene_run_uuid)),
+    // 場景管理頁直接切模式 / 倍速,不必進編輯器。切到 live 時把倍速壓回 1 ——
+    // live 每個 tick 都要即時 ray tracing,實測(18 UE × 3 cell、sim_dt 500 ms)
+    // 只到約 1.6× 實時,設高了 RU 跟不上會被健康檢查重啟。
+    setMode: (r: SceneRun, mode: SceneRun['mode']) => withBusy(r.scene_run_uuid,
+      () => updateSceneRun(r.scene_run_uuid, mode === 'live' ? { mode, speed_x: 1 } : { mode })),
+    setSpeed: (r: SceneRun, speed_x: number) => withBusy(r.scene_run_uuid,
+      () => updateSceneRun(r.scene_run_uuid, { speed_x })),
     stopPrecompute: (r: SceneRun) => withBusy(r.scene_run_uuid, () => stopPrecompute(r.scene_run_uuid)),
     precomp,
   };

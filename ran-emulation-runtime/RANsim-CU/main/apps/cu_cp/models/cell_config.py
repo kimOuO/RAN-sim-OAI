@@ -25,6 +25,10 @@ class CellConfig(models.Model):
 
     # Cross-table reference to DuRegistry.gnb_du_id (kept as plain int — not FK
     # because we may onboard DUs lazily before their cells are registered).
+    # 2026-09-22: 每 cell 發射功率 (dBm),由 F1 Setup / DU Config Update 帶上來。
+    # null = 場景沒設定 → PEE.AvgPower / PEE.Energy 不輸出(不猜值)。
+    tx_power_dbm = models.FloatField(null=True, blank=True)
+
     served_by_du_id = models.BigIntegerField(db_index=True)
 
     created_at = models.DateTimeField()

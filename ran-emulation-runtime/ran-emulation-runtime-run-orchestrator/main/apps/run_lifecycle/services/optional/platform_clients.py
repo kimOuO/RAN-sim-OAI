@@ -32,6 +32,31 @@ def read_full_tree(scene_run_uuid: str) -> dict:
     return _registry("Field_scene/SceneReader/read_full_tree", {"scene_run_uuid": scene_run_uuid})
 
 
+def read_scene_tree(scene_uuid: str) -> dict:
+    """依場景(而非 run)讀完整樹 —— Agent 介面 I-2 在觸發模擬前就要拿配置。"""
+    return _registry("Field_scene/SceneReader/read_full_tree", {"scene_uuid": scene_uuid})
+
+
+def read_scene_run(scene_run_uuid: str) -> dict:
+    return _registry("Simulation_run/SceneRunReader/read", {"scene_run_uuid": scene_run_uuid})
+
+
+def read_scene_tree_by_run(scene_run_uuid: str) -> dict:
+    return _registry("Field_scene/SceneReader/read_full_tree", {"scene_run_uuid": scene_run_uuid})
+
+
+def list_scenes() -> dict:
+    return _registry("Field_scene/SceneReader/read", {})
+
+
+def list_scene_runs() -> dict:
+    return _registry("Simulation_run/SceneRunReader/read", {})
+
+
+def scene_bounds(scene_uuid: str) -> dict:
+    return _registry("Field_scene/SceneGeometryReader/bounds", {"scene_uuid": scene_uuid})
+
+
 def update_scene_run(scene_run_uuid: str, **fields) -> dict:
     return _registry("Simulation_run/SceneRunController/update", {"scene_run_uuid": scene_run_uuid, **fields})
 

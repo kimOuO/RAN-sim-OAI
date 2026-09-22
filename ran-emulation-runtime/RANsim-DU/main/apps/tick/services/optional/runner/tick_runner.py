@@ -335,6 +335,9 @@ class TickRunner:
                 rlf["serving_cell"] = ue.get("serving_cell", "")
                 rlf["strongest_cell"] = best.get("cell_id") if best else ""
                 rlf["strongest_rsrp"] = float(best.get("rsrp_dbm", -140.0)) if best else -140.0
+                # 事件自己帶劇本時鐘,不靠 CU 的「最後已知值」—— 開場的 RLF 早於第一份
+                # 量測報告,CU 那時還沒有時鐘,那些事件就會落成 0(實測開場 1813 筆)。
+                rlf["scene_sim_ms"] = int(self.scene_tick * self._sim_dt_ms)
                 declared.append(rlf)
         if declared:
             # serving PCI(對齊 reestablishmentInboundByPreviousPci — 缺漏鄰區證據鏈)
@@ -355,11 +358,17 @@ class TickRunner:
             self._pending_rlf_reports.append(rlf)
         self._flush_pending_rlf_reports()
 
-    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None, array_gain_db: float | None = None, beam_top: list | None = None) -> None:
+    def update_ue_sinr(self, ue_id: str, sinr_db: float, rsrp_dbm: float | None = None, rank: int | None = None, sinr_layers: list[float] | None = None, ul_sinr_db: float | None = None, pmi: int | None = None, beam_id: int | None = None, array_gain_db: float | None = None, beam_top: list | None = None, rsrq_db: float | None = None, cqi: int | None = None) -> None:
         if ue_id in self._ue_registry:
             self._ue_registry[ue_id]["sinr_db"] = sinr_db
             if rsrp_dbm is not None:
                 self._ue_registry[ue_id]["rsrp_dbm"] = rsrp_dbm
+            # RSRQ 由 RU 依 TS 38.215 算(舊 RU 不帶 → None,PM 聚合會跳過不計)
+            if rsrq_db is not None:
+                self._ue_registry[ue_id]["rsrq_db"] = rsrq_db
+            # CQI 是 RU 由 SINR 依 cqi_table 算的;DU 以前收到只拿去調 MCS,沒留下來
+            if cqi is not None:
+                self._ue_registry[ue_id]["cqi"] = int(cqi)
             # RU 由 H 的 SVD 回報的 RI(2026-09-13 P5-3 之前從沒寫進 registry → 層數永遠 1)
             if rank is not None:
                 self._ue_registry[ue_id]["rank"] = max(1, min(4, int(rank)))
@@ -376,6 +385,26 @@ class TickRunner:
             self._ue_registry[ue_id]["array_gain_db"] = float(array_gain_db or 0.0)
             # 階段 D:RU 的前 K 名波束相對增益 → MU-MIMO 估兩個 UE 波束互漏
             self._ue_registry[ue_id]["beam_top"] = [(int(b), float(d)) for b, d in (beam_top or [])]
+
+    _CELL_IDENT_TTL_SEC = 2.0
+
+    def _cell_ident_map(self) -> dict[str, tuple[int | None, int | None]]:
+        """cell_id → (pci, arfcn)。設定很少變,但每個 UE 每個視窗都要查,所以快取 2 秒。"""
+        import time as _t
+        now = _t.time()
+        if now - getattr(self, "_cell_ident_at", 0.0) < self._CELL_IDENT_TTL_SEC:
+            return getattr(self, "_cell_ident_cache", {})
+        out: dict[str, tuple[int | None, int | None]] = {}
+        try:
+            from ran_sim_protocol.nr_frequency import nr_arfcn_from_ghz
+            from main.apps.mac.models.cell_state import CellState
+            for cid, pci, fghz in CellState.objects.values_list("cell_id", "pci", "freq_ghz"):
+                out[cid] = (int(pci) if pci is not None else None, nr_arfcn_from_ghz(fghz))
+        except Exception:  # noqa: BLE001 — 查不到就回空,鄰區量測的 pci/arfcn 會是 None
+            logger.exception("cell 識別表讀取失敗")
+        self._cell_ident_cache = out
+        self._cell_ident_at = now
+        return out
 
     def _flush_pending_rlf_reports(self) -> None:
         """重送 RLF 報告直到 CU 收下(CU 重啟窗防死鎖,見 declared 迴圈註解)。"""
@@ -822,6 +851,9 @@ class TickRunner:
                 cell_id=cell_name,
                 prb_used=used,
                 n_prb_total=prb_per_cell,
+                # cell 可用率要知道「這個 cell 從第幾個 tick 開始存在」——
+                # 晚建立的 cell 不該被算成前面那段都不可用
+                now_tick=self.status.tick_count,
             )
 
         # 沒 traffic 的 CONNECTED UE 也要送 dl_tti (PRB=0, measurement-only).
@@ -999,6 +1031,7 @@ class TickRunner:
                 qos_5qi=ue["qos_5qi"],
                 rank=ue.get("rank", 1),
                 ul_sinr_db=ue.get("ul_sinr_db"), sinr_layers=ue.get("sinr_layers"), beam_id=ue.get("beam_id"),
+                rsrq_db=ue.get("rsrq_db"), cqi=ue.get("cqi"),
             )
         # 4b) Accumulate RLC SDU delay (從 step 1 收的 samples)
         # slot 引擎接管時不用 calib /30,改在 4b-shadow 用 slot 引擎輸出餵 PM。
@@ -1135,11 +1168,17 @@ class TickRunner:
                 # 帶 neighbor measurements — 從 _ue_registry 拿緩存的最新 RU CQI 樣本
                 ue_state = self._ue_registry.get(uid, {})
                 neighbor_dicts = ue_state.get("neighbors") or []
+                # UE 真實量測到的是 PCI 與載波頻率,不是 cell 身分。兩者都從 CellState 來
+                # (PCI 是設定值;ARFCN 由 freq_ghz 依 TS 38.104 換算,3.5 GHz → 633333,
+                # 與 registry 設的值一致)。cell_id 仍保留給 CGI 解析與既有 ANR 比對用。
+                _cs = self._cell_ident_map()
                 neighbor_meas_list = [
                     NeighborMeas(
                         cell_id=n.get("cell_id", ""),
                         rsrp_dbm=float(n.get("rsrp_dbm", -120.0)),
-                        rsrq_db=float(n.get("rsrq_db", 0.0)),
+                        rsrq_db=(None if n.get("rsrq_db") is None else float(n["rsrq_db"])),
+                        pci=(_cs.get(n.get("cell_id", "")) or (None, None))[0],
+                        arfcn=(_cs.get(n.get("cell_id", "")) or (None, None))[1],
                     )
                     for n in neighbor_dicts
                     if n.get("cell_id")
@@ -1179,6 +1218,8 @@ class TickRunner:
                 report = GnbDuMeasurementReport(
                     ue_id=uid,
                     rsrp_dbm=w["avg_rsrp_dbm"],
+                    rsrq_db=w.get("avg_rsrq_db"),
+                    cqi=w.get("avg_cqi"),
                     sinr_db=w["avg_sinr_db"],
                     throughput_dl_mbps=w["throughput_dl_mbps"],
                     throughput_ul_mbps=w["throughput_ul_mbps"],
@@ -1196,6 +1237,7 @@ class TickRunner:
                     beam_rsrp_top=[[int(b), round(float(d), 1)] for b, d in (ue_state.get("beam_top") or [])],
                     # 同一個 PM 視窗的所有 UE 帶同一個序號 —— 歸檔據此分組(見 f1ap.window_seq)
                     window_seq=self.status.tick_count // self.REPORT_EVERY_N_TICKS,
+                    scene_sim_ms=int(self.scene_tick * self._sim_dt_ms),
                 )
                 # 留存 1s 窗口吞吐給 dump_pm(Omniverse label 用,與此處送 CU 的值同源)
                 self._last_ue_window_kpm[uid] = {
@@ -1216,6 +1258,9 @@ class TickRunner:
                     tick_count=cw["tick_count"],
                     window_seconds=window_s,
                     window_seq=self.status.tick_count // self.REPORT_EVERY_N_TICKS,
+                    connected_ues=sum(1 for u in self._ue_registry.values()
+                                      if u.get("serving_cell") == cell_id),
+                    scene_sim_ms=int(self.scene_tick * self._sim_dt_ms),
                 )
                 self._enqueue_report(CuClientBusinessService.post_cell_measurement_report, encode_cell_measurement_report(cell_report))
             report_sent = True

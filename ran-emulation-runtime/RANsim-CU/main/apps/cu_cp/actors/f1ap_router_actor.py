@@ -138,6 +138,8 @@ class F1ApRouterActor:
                     "served_by_du_id": gnb_du_id,
                     # P2.1: OAI 真實 nr_cellid 從 F1 Setup 帶上來;沒帶就留 None → SHA-1 hash fallback
                     "nr_cellid": cell.get("nr_cellid"),
+                    # 2026-09-22: PEE.AvgPower / PEE.Energy 的輸入
+                    "tx_power_dbm": cell.get("tx_power_dbm"),
                     "created_at": now,
                     "updated_at": now,
                 },
@@ -205,6 +207,7 @@ class F1ApRouterActor:
                     "served_plmn": cell.get("served_plmn") or default_served_plmn(),
                     "gnb_id": cell.get("gnb_id", ""),
                     "is_active": cell.get("is_active", True),
+                    "tx_power_dbm": cell.get("tx_power_dbm"),
                     "served_by_du_id": gnb_du_id,
                     "created_at": now,
                     "updated_at": now,
@@ -341,6 +344,10 @@ class F1ApRouterActor:
         if ue is None:
             return error_response(f"unknown UE {ue_id}", status=404)
 
+        # 先更新劇本時鐘,再往下做 A3 / RLF 判斷 —— 那些會建立事件,要蓋上「劇本第幾秒」
+        from main.apps.cu_cp.services.optional import scene_clock
+        scene_clock.update(d.get("scene_sim_ms"))
+
         # 量測回報門檻(對齊 TS 38.331 reportConfig):真實 UE 只回報達門檻的鄰區,
         # 不是把所有 cell 照報。沒有門檻時「深邊緣稀疏樣本」情境(卷面第3題)做不出來 ——
         # 每台 UE 都會回報每個 cell,樣本永遠不稀疏。
@@ -370,6 +377,9 @@ class F1ApRouterActor:
             "ul_sinr_db": d.get("ul_sinr_db"), "sinr_layers_json": d.get("sinr_layers_db") or [],
             "beam_id": d.get("beam_id"),
             "window_seq": d.get("window_seq"),
+            "scene_sim_ms": d.get("scene_sim_ms"),
+            "rsrq_db": d.get("rsrq_db"),
+            "cqi": d.get("cqi"),
             "beam_rsrp_top_json": d.get("beam_rsrp_top") or [],
             "serving_cell": ue.serving_cell or "",
             "recorded_at": now,
@@ -379,12 +389,18 @@ class F1ApRouterActor:
         # 開啟時:量測報告裡沒有鄰區關係的 cell 自己補上,讓 A3 的 NRT gate 放行。
         # 預設關閉的理由見 services/business/anr_auto.py 的說明。
         try:
-            from main.apps.cu_cp.services.business import anr_auto
-            if anr_auto.enabled() and ue.serving_cell:
-                anr_auto.observe_neighbors(
-                    ue.serving_cell,
-                    [n.get("cell_id") for n in (d.get("neighbor_cells") or []) if n.get("cell_id")],
-                )
+            from main.apps.cu_cp.services.business import anr_auto, pci_resolution
+            if ue.serving_cell:
+                if pci_resolution.enabled():
+                    # 真實做法:只認 PCI,查不到或查到多個才去解析 CGI。
+                    # 這條會讓「缺漏鄰區」「PCI 混淆」真的發生,故預設關閉。
+                    pci_resolution.observe(ue.serving_cell, d.get("neighbor_cells") or [])
+                elif anr_auto.enabled():
+                    # 舊行為:量測報告直接帶 cell_id,等同已完成 PCI→CGI 解析
+                    anr_auto.observe_neighbors(
+                        ue.serving_cell,
+                        [n.get("cell_id") for n in (d.get("neighbor_cells") or []) if n.get("cell_id")],
+                    )
         except Exception:  # noqa: BLE001 — ANR 失敗不該影響量測與換手主流程
             logger.exception("自主 ANR 處理失敗 ue=%s", ue_id)
 
@@ -445,6 +461,10 @@ class F1ApRouterActor:
             return error_response("invalid JSON", str(exc), status=400)
         if not body.get("ue_id"):
             return error_response("ue_id required", status=400)
+        # RLF 報告也帶劇本時鐘,而且通常早於第一份量測報告 —— 開場就把時鐘校準,
+        # 後續由它衍生的重建/換手事件才不會落成 0
+        from main.apps.cu_cp.services.optional import scene_clock
+        scene_clock.update(body.get("scene_sim_ms"))
         from main.apps.cu_cp.services.business.reestablishment import handle_rlf
         outcome = handle_rlf(body)
         logger.info("RLF handled: %s", outcome)
@@ -467,6 +487,9 @@ class F1ApRouterActor:
         cell_id = (body.get("cell_id") or "").strip()
         if not cell_id:
             return error_response("cell_id required", status=400)
+        # 沒有 UE 在場的視窗只有 cell 報告,時鐘也要跟著走
+        from main.apps.cu_cp.services.optional import scene_clock
+        scene_clock.update(body.get("scene_sim_ms"))
         try:
             prb_pct_dl = float(body.get("prb_pct_dl", 0.0))
             prb_pct_ul = float(body.get("prb_pct_ul", 0.0))
@@ -482,6 +505,8 @@ class F1ApRouterActor:
             "tick_count": tick_count,
             "window_seconds": window_seconds,
             "window_seq": body.get("window_seq"),
+            "connected_ues": body.get("connected_ues"),
+            "scene_sim_ms": body.get("scene_sim_ms"),
             "recorded_at": TimestampService.now(),
         })
         return success_response({"cell_id": cell_id}, "cell measurement stored")

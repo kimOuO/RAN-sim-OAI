@@ -187,6 +187,48 @@ _DL_NEIGHBOR_LOAD_FALLBACK = float(_os.environ.get("RU_DL_NEIGHBOR_LOAD", "1.0")
 _DL_MIN_NEIGHBOR_LOAD = float(_os.environ.get("DL_MIN_NEIGHBOR_LOAD", "0.1"))        # SSB / CSI-RS / PDCCH 一直在發
 
 
+# ── RSRQ(TS 38.215 §5.1.3)────────────────────────────────────────────────
+# RSRQ = N × RSRP / RSSI。我們的 _path_gain_to_rsrp_dbm 回的是「該 cell 全頻寬的
+# 接收功率」而不是 per-RE,所以換算成標準定義時要除掉每個 RB 的 12 個子載波:
+#     RSRP_perRE = P_rx / (N_RB × 12)
+#     RSRQ       = N_RB × RSRP_perRE / RSSI = P_rx / (12 × RSSI)
+# 於是 dB 形式只剩:RSRQ_dB = P_rx_dBm − RSSI_dBm − 10log10(12)
+# RSSI 是 UE 在量測頻寬內收到的**總功率**:所有 cell 的接收功率 + 雜訊。
+# 這與 SINR 用的是同一組功率(_rx_mw),只差 SINR 把 serving 排除在分母外。
+_RE_PER_RB = 12
+# TS 38.133 §10.1.11 的回報範圍,超出就夾住(真實 UE 也只報得出這個區間)
+_RSRQ_MIN_DB, _RSRQ_MAX_DB = -43.0, 20.0
+
+
+def _rssi_dbm_from(path_gain_dict: dict, tx_to_cell: dict, gnb_to_cell: dict,
+                   cell_to_power: dict) -> float | None:
+    """UE 在量測頻寬內的總接收功率(dBm):所有 cell 的接收功率 + 雜訊底。
+
+    刻意不做頻率重疊判斷 —— RSSI 是「天線收到的全部東西」,異頻 cell 的功率
+    同樣會進到寬頻接收機。這點與 SINR 的分母不同(那裡只算會互擾的)。
+    """
+    total_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
+    hit = False
+    for tx_name, pg in (path_gain_dict or {}).items():
+        if not isinstance(pg, (int, float)) or pg <= 0:
+            continue
+        cid = tx_to_cell.get(tx_name) or gnb_to_cell.get(tx_name)
+        rx_dbm = _path_gain_to_rsrp_dbm(pg, cell_power_dbm=cell_to_power.get(cid))
+        total_mw += 10.0 ** (rx_dbm / 10.0)
+        hit = True
+    if not hit:
+        return None          # 一個 cell 都沒有 → 回 None,不要拿純雜訊當 RSSI
+    return 10.0 * math.log10(total_mw)
+
+
+def _rsrq_db(rsrp_dbm: float | None, rssi_dbm: float | None) -> float | None:
+    """RSRP(該 cell 全頻寬接收功率)+ RSSI → RSRQ。任一缺就回 None,不用 0 頂替。"""
+    if rsrp_dbm is None or rssi_dbm is None:
+        return None
+    v = rsrp_dbm - rssi_dbm - 10.0 * math.log10(_RE_PER_RB)
+    return round(max(_RSRQ_MIN_DB, min(_RSRQ_MAX_DB, v)), 2)
+
+
 def _compute_sinr_db_with_real_interference(
     *,
     path_gain_dict: dict[str, float],
@@ -705,6 +747,8 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
         # AK7: 同 gNB 不同 sectored cell 現在都是 neighbor candidate, 不再過早 collapse.
         neighbors_list: list[dict] = []
         tx_to_cell = {v: k for k, v in cell_to_tx.items()}   # gnb4#0 → gnb4_c0
+        # RSSI 是 UE 收到的總功率,對同一台 UE 而言只有一個值,先算好給服務與各鄰區共用
+        _rssi_dbm = _rssi_dbm_from(path_gain_dict, tx_to_cell, gnb_to_cell, cell_to_power)
         for key, pg in path_gain_dict.items():
             if key == serving_tx or key == serving_gnb:
                 continue
@@ -724,7 +768,9 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             neighbors_list.append({
                 "cell_id": cell_id_for_a3,
                 "rsrp_dbm": neigh_rsrp,
-                "rsrq_db": 0.0,
+                # 2026-09-22:以前這裡固定 0.0 —— 宣告了欄位卻從沒算過,而 0 dB 是
+                # 不可能的 RSRQ,對外會被當成有效觀測值。現在按 TS 38.215 真的算。
+                "rsrq_db": _rsrq_db(neigh_rsrp, _rssi_dbm),
             })
 
         # SINR 統一算法(cached + live 同源):從 path_gain_dict 算真實 inter-cell
@@ -831,6 +877,7 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             beam_id=beam_id, beam_rsrp_top=beam_top,   # B1:GoB 波束(O-RAN WG1 每波束 KPI)
             array_gain_db=round(float(array_gain_db), 2),
             rsrp_dbm=rsrp_dbm,
+            rsrq_db=_rsrq_db(rsrp_dbm, _rssi_dbm),
             serving_cell=serving_label,
             neighbors=neighbors_list,
         ))

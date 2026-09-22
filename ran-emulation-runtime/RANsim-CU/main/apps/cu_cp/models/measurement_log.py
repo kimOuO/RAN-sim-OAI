@@ -42,6 +42,14 @@ class MeasurementLog(models.Model):
     # 查詢當下的 UeContext.serving_cell,UE 移動時整窗樣本被記到單一 cell(argmax 假象)。
     serving_cell = models.CharField(max_length=64, default="", blank=True)
 
+    # 2026-09-22:服務 cell 的 RSRQ(TS 38.215)。以前完全沒有這個欄位,
+    # 鄰區的則固定填 0.0(宣告了卻沒算)。null = 算不出來。
+    rsrq_db = models.FloatField(null=True, blank=True)
+    # 寬頻 CQI(0~15 的加權平均,故用浮點)。null = 舊版 DU 沒帶。
+    cqi = models.FloatField(null=True, blank=True)
+    # 2026-09-22:劇本時鐘(DU 的 scene_tick × sim_dt_ms)。null = 舊版 DU 沒帶,
+    # 歸檔退回原本的 tick 累加推算。
+    scene_sim_ms = models.BigIntegerField(null=True, blank=True)
     recorded_at = models.DateTimeField(db_index=True)
 
     class Meta:

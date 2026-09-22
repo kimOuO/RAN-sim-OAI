@@ -85,6 +85,9 @@ class CqiIndication:
     # RSRP from path_gain (RU 端 dl_tti_pipeline 算)；
     # 預設 -200 表示未填（保持 backward compat），DU 收到 -200 會用估算 fallback。
     rsrp_dbm: float = -200.0
+    # 2026-09-22:服務 cell 的 RSRQ(TS 38.215)。None = 算不出來(沒有任何 cell 的
+    # path gain);不用 0 頂替 —— 0 dB 是不可能的 RSRQ,會被當成有效觀測值。
+    rsrq_db: float | None = None
     serving_cell: str = ""  # RU 知道 UE serving cell（for context, not authoritative）
     # Neighbor cell measurements — 給 A3 evaluator 用
     # 對齊 3GPP TS 38.331 §5.5.4.4 — 每個 neighbor 帶 cell_id + RSRP，A3 比較用

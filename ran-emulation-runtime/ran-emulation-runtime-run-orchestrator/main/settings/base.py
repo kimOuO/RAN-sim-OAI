@@ -1,7 +1,7 @@
 """Base Django settings — ran-emulation-runtime-run-orchestrator。"""
 from __future__ import annotations
 from pathlib import Path
-from main.utils.env_loader import get_bool, get_int, get_list, get_str
+from main.utils.env_loader import get_bool, get_float, get_int, get_list, get_str
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = get_str("DJANGO_SECRET_KEY", "run-orchestrator-insecure-default")
@@ -51,6 +51,17 @@ RIC_STOP_WEBHOOK_URL = get_str("RIC_STOP_WEBHOOK_URL", "")
 PRECOMPUTE_LOG_DIR = get_str("PRECOMPUTE_LOG_DIR", "/data/channel_cache")   # precompute 容器的 log / npz 目錄(唯讀 mount)
 # per-run 容器收工前的 log 落地目錄(2026-09-20:容器一移除 log 就沒了,無法事後追)
 PER_RUN_LOG_DIR = get_str("PER_RUN_LOG_DIR", "/data/run_logs")
+# full KPM 快照的間隔(劇本秒)。單筆約 24 KB,太密會讓歸檔爆掉;
+# 對方要的彙整粒度是 60 秒,逐秒的原始觀測 RunKpmSample 已經有。
+PM_SNAPSHOT_EVERY_SEC = get_float("PM_SNAPSHOT_EVERY_SEC", 60.0)
+# ── 歸檔保存策略(2026-09-22)────────────────────────────────────────────────
+# 沒有策略的後果:實測 run_kpm_sample 已累積 163 萬列 / 2.2 GB,其中單一 scene_run
+# 因為重跑多次而有 46 萬筆視窗(8 小時劇本應該只有 28800)。外部 Agent 是 pull 模式,
+# 資料要留到他來拿,但不該無限長。
+# 每個 scene_run 保留最近幾輪(run_seq);0 = 不清。
+ARCHIVE_KEEP_RUN_SEQ = get_int("ARCHIVE_KEEP_RUN_SEQ", 3)
+# 超過這個天數的歸檔一律清掉;0 = 不依時間清。
+ARCHIVE_RETENTION_DAYS = get_int("ARCHIVE_RETENTION_DAYS", 30)
 PER_RUN_LOG_TAIL = int(get_str("PER_RUN_LOG_TAIL", "200000"))
 # RIC 場景閘道(ric-scenario-gw,RIC 端 2026-09-14):場景註冊 / R-NIB 清理 / meid 反查。空 = 只記 log
 RIC_GATEWAY_URL = get_str("RIC_GATEWAY_URL", "")

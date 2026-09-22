@@ -34,6 +34,8 @@ def _now_ms() -> int:
 class UeLifecycleManager:
     """Singleton — 管所有 per-UE thread。Thread-safe via lock。"""
 
+    _SCENE_CLOCK_REFRESH_MS = 2000
+
     def __init__(self) -> None:
         self._threads: dict[str, UeThread] = {}
         self._lock = threading.Lock()
@@ -54,6 +56,13 @@ class UeLifecycleManager:
         self._active_windows: dict[str, list[list[float]]] = {}
         self._serving_hint: dict[str, str] = {}      # 回場時要 attach 回哪個 cell
         self._traffic_hint: dict[str, dict] = {}     # 回場時要還原的流量 profile
+        # 劇本倍速。軌跡與在場時段的 t 都是「劇本秒」,而這裡的時鐘是牆鐘,
+        # 兩者差一個 speed_x —— 不乘回去,2x 的場景位置就慢一半,30x 的人永遠進不了場。
+        self._sim_speed_x: float = 1.0
+        # 劇本時鐘快取:(DU 回報的 scene_sim_ms, 取得當下的牆鐘 ms)。
+        # 每 _SCENE_CLOCK_REFRESH_MS 跟 DU 對一次,中間用倍速外推 —— 每個 tick 都打 DU 太吵,
+        # 而 2 秒內的漂移遠小於在場時段的解析度。
+        self._scene_clock: tuple[int, int] | None = None
         self._last_visible: dict[str, bool] = {}
         # 天線高度 {ue: 公尺}。waypoints 的 y 是腳底高度(視覺層要的),
         # 推給 RU/Sionna 時要加上這個值 —— 少了它等於把人埋在地板裡算通道。
@@ -72,7 +81,42 @@ class UeLifecycleManager:
         """UE 回場重新 attach 時要還原的 serving cell 與流量 profile。
         由 sim_orchestrator 在 start 時從劇本填入。"""
         self._serving_hint = dict(serving or {})
-        self._traffic_hint = dict(traffic or {})
+        # traffic=None 是「這次沒有要改流量提示」,不是「清空」—— sim_orchestrator 與
+        # scenario_driver 都會呼叫,兩者順序不該讓後者的 profile 被前者洗掉。
+        if traffic is not None:
+            self._traffic_hint = dict(traffic)
+
+    def set_sim_speed(self, speed_x: float) -> None:
+        """劇本倍速,由 driver 在 start 時填入。軌跡/在場時段換算劇本時間要用。"""
+        self._sim_speed_x = max(0.01, float(speed_x or 1.0))
+        self._scene_clock = None
+        logger.info("UeLifecycleManager sim_speed_x=%.3f", self._sim_speed_x)
+
+    def _scenario_now_ms(self, now_ms: int) -> float:
+        """目前的劇本時間(ms)。來源是 DU 的 scene clock —— cached 通道查表用的同一個。
+
+        DU 沒跑滿設定倍速時,牆鐘×倍速會比真正的劇本時鐘跑得快;在場時段若用前者,
+        進出場的時間點就會跟通道與 KPM 對不起來。
+        """
+        from main.apps.ue_lifecycle.services import du_client
+        if (self._scene_clock is None
+                or now_ms - self._scene_clock[1] >= self._SCENE_CLOCK_REFRESH_MS):
+            v = du_client.get_scene_sim_ms()
+            if v is not None:
+                self._scene_clock = (v, now_ms)
+        if self._scene_clock is None:
+            return 0.0
+        scene_ms, at_ms = self._scene_clock
+        return scene_ms + (now_ms - at_ms) * self._sim_speed_x
+
+    def _scenario_elapsed_ms(self, traj: dict, now_ms: int) -> float:
+        """目前的劇本經過時間,並套用 loop/once 的收尾規則。"""
+        elapsed_ms = self._scenario_now_ms(now_ms)
+        wps = traj.get("waypoints") or []
+        total_ms = wps[-1].get("t_ms", 0) if wps else 0
+        if total_ms > 0 and traj.get("mode", "loop") == "loop":
+            elapsed_ms %= total_ms
+        return max(0.0, elapsed_ms)
 
     def _apply_presence(self, ue_id: str, present: bool) -> None:
         """UE 進場 / 離場時同步 RAN 側狀態。**沒有開關** —— 人不在場景裡就不該算他的
@@ -96,7 +140,11 @@ class UeLifecycleManager:
             if serving:
                 du_client.register_ue_at(ue_id, serving_cell=serving)
                 cu_client.force_serving_cell(ue_id, serving)
-            # 流量 profile 不用還原:release_ue 沒有清掉它
+            # 開場就不在場的人 CU 端從沒收過 profile(release_ue 只是沒清掉既有的),
+            # 所以有提示就推一次;沒有提示才沿用 CU 既存值。
+            prof = self._traffic_hint.get(ue_id)
+            if prof:
+                cu_client.update_traffic_profile(ue_id, prof)
             logger.info("UE %s 回場:已重新 attach(serving=%s)", ue_id, serving or "(由 CU 決定)")
         except Exception:  # noqa: BLE001
             logger.exception("UE %s 進出場同步失敗(present=%s)", ue_id, present)
@@ -181,7 +229,7 @@ class UeLifecycleManager:
             # 會 set initial position). 至少 sionna 能跑.
             traj = traj_store.get(ue_id)
             if traj:
-                elapsed = now_ms - traj["start_at_ms"]
+                elapsed = self._scenario_elapsed_ms(traj, now_ms)
                 x, y, z = interp_position(
                     traj["waypoints"], elapsed, mode=traj.get("mode", "loop"),
                 )
@@ -220,7 +268,11 @@ class UeLifecycleManager:
                 # 直接推過去人會浮在半空。UE 走在地面上，高度由 build 時決定，
                 # 每 tick 只需要更新平面位置。
                 kit_client.move_ue(ue_id, x, z)
-            self._sync_visibility(traj_store, now_ms)
+
+        # 在場判斷只看劇本時間與 trajectory,跟「現在有沒有人在場上」無關,
+        # 所以不能掛在 positions_for_ru 底下 —— 2026-09-21:全員離場時這個 list 是空的,
+        # 於是可見性永遠不再同步,誰都回不來(要在場上才進得來的死結)。
+        self._sync_visibility(traj_store, now_ms)
 
         # ── (4) Signal history ingest(每 N 個 tick 一次,寫 signal_history + UeState)
         # Playback / KpmSummaryLine / /scenarios chart 都依賴 signal_history。
@@ -254,12 +306,7 @@ class UeLifecycleManager:
             traj = traj_store.get(ue_id)
             if not traj:
                 continue
-            wps = traj.get("waypoints") or []
-            total_ms = wps[-1].get("t_ms", 0) if wps else 0
-            elapsed_ms = now_ms - traj["start_at_ms"]
-            if total_ms > 0 and traj.get("mode", "loop") == "loop":
-                elapsed_ms %= total_ms
-            t = max(0.0, elapsed_ms / 1000.0)
+            t = self._scenario_elapsed_ms(traj, now_ms) / 1000.0
             visible = any(a <= t < b for a, b in windows)
             if self._last_visible.get(ue_id) == visible:
                 continue

@@ -16,6 +16,7 @@ from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from main.apps.cu_cp.services.common.uuid_service import UUIDService
 from main.apps.cu_cp.services.optional.f1ap.f1ap_handler import F1apHandler
 from main.utils.logger import get_logger
+from main.apps.cu_cp.services.optional import scene_clock
 
 
 logger = get_logger(__name__)
@@ -150,6 +151,7 @@ def execute_f1_handover(
             "source_cell": source_cell, "target_cell": target_cell,
             "trigger": trigger, "status": "FAIL", "failure_cause": fail_cause,
             "started_at": now, "completed_at": now,
+            "scene_sim_ms": scene_clock.now_ms(),
         })
         logger.warning("F1 Handover FAILED [%s]: UE %s %s → %s cause=%s",
                        trigger, ue_id, source_cell, target_cell, fail_cause)
@@ -166,6 +168,7 @@ def execute_f1_handover(
         "status": "SUCC",
         "started_at": now,
         "completed_at": now,
+        "scene_sim_ms": scene_clock.now_ms(),
     })
     # 2026-08-26(RIC 第三十七輪):換手成功 = 該鄰區關係已驗證(TS 38.300 §15.3.3;
     # E2SM-RC §9.3.38 hoValidated)。此前全網恆 false,第 12 題的鑑別線是死的,

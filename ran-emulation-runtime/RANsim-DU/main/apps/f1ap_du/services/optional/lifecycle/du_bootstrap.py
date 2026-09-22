@@ -91,6 +91,7 @@ def _build_setup_message() -> F1Setup:
                     gnb_id=getattr(c, "gnb_id", "") or "",
                     # P2.9: F1 Setup 把 OAI 真實 nr_cellid 帶上 CU
                     nr_cellid=getattr(c, "nr_cellid", None),
+                    tx_power_dbm=getattr(c, "tx_power_dbm", None),
                 ),
             )
     # 2026-09-15:DB 還空時不再塞 "default-cell-0" 幽靈 cell(它會進 CU cell_config / cell_measurement_log,

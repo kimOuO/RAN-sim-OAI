@@ -128,8 +128,14 @@ class TickController:
                 "sim_dt_ms": runner.sim_dt_ms,
                 "sim_speed_x": runner.sim_speed_x,
                 "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
-                "body_ms": runner.body_ms,   # tick body 耗時 avg/max(倍速上限診斷)
+                "body_ms": runner.body_ms,
+        # 劇本時鐘(align_scene_clock 之後由 0 起算)。cached 通道查表用的就是它,
+        # UE 的在場時段也必須讀同一個時鐘 —— 各自用牆鐘外推,DU 沒跑滿倍速時就會漂移。
+        "scene_sim_ms": int(runner.scene_tick * runner.sim_dt_ms),   # tick body 耗時 avg/max(倍速上限診斷)
                 "report_every_n_ticks": runner.REPORT_EVERY_N_TICKS,
+                # 2026-09-22:每個 cell 的物理 PRB 容量 —— PRB 使用率的分母。
+                # 訂閱端只拿得到用量,無法反推可用量;功耗估算也需要它。
+                "prb_per_cell": _prb_per_cell(),
                 "ue_registry": list(runner._ue_registry.keys()),
                 "ue_latest": ue_latest,         # 瞬時 RSRP/SINR/neighbors
                 "last_ue_stats": runner.last_ue_stats,      # ← per-tick 即時 throughput/delay/PRB/MCS
@@ -265,6 +271,12 @@ class TickController:
         )
 
 
+def _prb_per_cell() -> int:
+    """物理 PRB 容量(每 cell)。DU 排程器用同一個值。"""
+    from main.utils.env_loader import get_int
+    return get_int("SIM_DEFAULT_PRB_PER_CELL", 106)
+
+
 def _status_dict() -> dict:
     runner = get_tick_runner()
     s = runner.status
@@ -281,4 +293,7 @@ def _status_dict() -> dict:
         "achieved_speed_x": runner.achieved_speed_x,  # P0a — 實際達成倍速
         "report_dropped": runner.report_dropped,   # 量測報告佇列丟包累計(0 以外代表 KPM 會變稀疏)
         "body_ms": runner.body_ms,
+        # 劇本時鐘(align_scene_clock 之後由 0 起算)。cached 通道查表用的就是它,
+        # UE 的在場時段也必須讀同一個時鐘 —— 各自用牆鐘外推,DU 沒跑滿倍速時就會漂移。
+        "scene_sim_ms": int(runner.scene_tick * runner.sim_dt_ms),
     }).data

@@ -189,10 +189,30 @@ class LaunchController:
                 # E2 node 身分:從執行中 run 的 e2_node_id 反推已用槽位,配一個沒人用的(RIC 以 PLMN+gNB ID 當 meid)
                 # 2026-09-16 事故:docker 重啟後兩個 run 同時自動重啟,都看到對方「不是 running」→ 都拿到槽位 1(同 meid、adapter port 撞)。
                 # 配槽位 + 立刻把 gnb_id_hex/status=starting 寫回 registry 要在同一把鎖內;used 也把 starting 算進去。
+                # 2026-09-22:場域若釘了 e2_slot 就一律用它。外部 Agent 會依 I-2 回報的
+                # gNB ID / cell NCI 去部署 xApp(訂閱與 control 都用 meid + NCI 定位),
+                # 槽位浮動 = 識別浮動 = xApp 訂不到。代價是同一場域同時只能跑一場。
+                pinned = (t.get("scene") or {}).get("e2_slot")
                 with _SLOT_LOCK:
                     used = [r.get("gnb_id_hex") or "" for st in ("running", "starting")
                             for r in platform_clients.list_runs_by_status(st) if r.get("scene_run_uuid") != run_uuid]
-                    slot = container_spawner.allocate_slot(used)
+                    if pinned:
+                        taken = {int(h, 16) & container_spawner.GNB_ID_SLOTS for h in used if h}
+                        if int(pinned) in taken:
+                            raise RuntimeError(
+                                f"場域已釘 E2 槽位 {pinned},但該槽位正被另一個 run 占用 —— "
+                                f"同一場域同時只能跑一場(識別要固定給 xApp 用);請先停掉另一場")
+                        slot = int(pinned)
+                    else:
+                        # 動態分配要避開所有被釘住的號碼(見 allocate_slot 的說明)
+                        reserved = set()
+                        try:
+                            for sc in (platform_clients.list_scenes() or {}).get("data") or []:
+                                if sc.get("e2_slot"):
+                                    reserved.add(int(sc["e2_slot"]))
+                        except Exception:  # noqa: BLE001 — 查不到就退回舊行為,不擋啟動
+                            logger.warning("讀取已釘槽位失敗,動態分配可能與釘住的場域衝突")
+                        slot = container_spawner.allocate_slot(used, reserved)
                     gnb_id_hex = container_spawner.gnb_id_hex_for_slot(slot)
                     e2_node = container_spawner.e2_node_name(gnb_id_hex)
                     platform_clients.update_scene_run(run_uuid, status="starting", gnb_id_hex=gnb_id_hex, e2_node_id=e2_node)
@@ -211,12 +231,30 @@ class LaunchController:
                 # 沒有 RIC 的 xApp 補的話 A3 會被 NRT gate 全部擋掉(實測一場 7 萬次)。
                 # 跑 RIC 的 ANR 驗證時要關,否則關係自己長出來、他們的 anr-add 看不出效果。
                 _knobs0 = run.get("knobs") or {}
-                _auto = (_knobs0.get("anr_auto_add") if isinstance(_knobs0, dict)
-                         else next((k.get("value") for k in _knobs0
-                                    if isinstance(k, dict) and k.get("key") == "anr_auto_add"), None))
+
+                def _knob(name: str):
+                    if isinstance(_knobs0, dict):
+                        return _knobs0.get(name)
+                    return next((k.get("value") for k in _knobs0
+                                 if isinstance(k, dict) and k.get("key") == name), None)
+
+                def _on(v) -> str:
+                    return "1" if str(v).strip().lower() in ("1", "on", "true", "yes") else "0"
+
                 cu_env = {}
+                _auto = _knob("anr_auto_add")
                 if _auto is not None:
-                    cu_env["ANR_AUTO_ADD"] = "1" if str(_auto).strip().lower() in ("1", "on", "true", "yes") else "0"
+                    cu_env["ANR_AUTO_ADD"] = _on(_auto)
+                # run knob `anr_pci_lookup`:CU 改用「只認 PCI、查不到才解析 CGI」的真實流程。
+                # 開啟會讓缺漏鄰區與 PCI 混淆真的發生 —— 也就會改變既有場景的換手時機,
+                # 所以預設關閉,只有要出這類題目的場景才打開。
+                _pci = _knob("anr_pci_lookup")
+                if _pci is not None:
+                    cu_env["ANR_PCI_LOOKUP"] = _on(_pci)
+                # CGI 解析失敗率(模擬訊號太弱讀不到 SIB1);決定性,同參數重跑結果相同
+                _fail = _knob("anr_cgi_fail_rate")
+                if _fail is not None:
+                    cu_env["ANR_CGI_FAIL_RATE"] = str(_fail)
                 _register(container_spawner.spawn(run_uuid, mode, gnb_id_hex=gnb_id_hex, slot=slot, roles=("cu", "du", "ru", "ue"), du_env=du_env, cu_env=cu_env))
                 health = container_spawner.wait_healthy(instances)
                 if not all(health.values()):
@@ -255,6 +293,12 @@ class LaunchController:
                         import threading as _th
                         _th.Thread(target=platform_clients.ric_activate_when_ready, args=(run_uuid,),
                                    name=f"ric-activate-{run_uuid[-8:]}", daemon=True).start()
+                # 啟動新的一輪 = 上一輪已經用完 —— 這時候清過期歸檔最安全
+                # (跑完就清會讓外部 Agent 來不及 pull;見 archive_retention 的說明)
+                from main.apps.run_telemetry_archive.services.optional import archive_retention
+                _purged = archive_retention.apply_on_start(run_uuid)
+                if _purged:
+                    logger.info("run %s 啟動前歸檔清理: %s", run_uuid, _purged)
                 cu_archiver.start_archiver(run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port, ric_run=_ric_run)   # P2-3:run 期間封存 CU 落地表(P4-1:per-run CU)
             else:
                 platform_clients.update_scene_run(run_uuid, status="failed", notes=str(ue.get("message") or "")[:500])

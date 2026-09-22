@@ -24,6 +24,10 @@ class CellConfig:
     is_active: bool = True
     # OAI 真實 nr_cellid (36-bit int) 對齊用;空值時走 SHA-1 hash fallback。
     nr_cellid: int | None = None
+    # 2026-09-22: 每 cell 發射功率 (dBm)。來源是場景的 gNB/cell 設定,
+    # 原本只有 RU 拿得到 (RU 直接讀 Cell DB);CU 端要算 TS 28.552 PEE.AvgPower
+    # 就必須把它一路帶上來。None = 沒設定,PEE 欄位就不輸出(不要猜)。
+    tx_power_dbm: float | None = None
 
 
 @dataclass
@@ -35,9 +39,16 @@ class DrbConfig:
 
 @dataclass
 class NeighborMeas:
+    # cell_id 是模擬器的「上帝視角」—— 真實 UE 量測鄰區只讀得到 PCI 與載波頻率,
+    # 要知道對方是誰得另外叫 UE 去讀它的 SIB1(CGI 解析)。保留它是為了讓 CGI 解析
+    # 程序有真值可回,以及維持既有 ANR 的比對;對外分析應以 pci + arfcn 為準。
     cell_id: str
     rsrp_dbm: float
-    rsrq_db: float
+    rsrq_db: float | None
+    # 2026-09-22:UE 真實看得到的兩個識別。None = 舊版 DU 沒帶。
+    # 缺了這兩個,「缺漏鄰區」「PCI 混淆」這類判斷在對外資料上做不出來。
+    pci: int | None = None
+    arfcn: int | None = None
 
 
 @dataclass

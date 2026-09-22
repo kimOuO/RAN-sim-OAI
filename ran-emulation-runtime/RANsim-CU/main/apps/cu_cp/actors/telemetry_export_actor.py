@@ -15,17 +15,21 @@ from main.apps.cu_cp.models.cell_measurement_log import CellMeasurementLog
 from main.apps.cu_cp.models.handover_event import HandoverEvent
 from main.apps.cu_cp.models.measurement_log import MeasurementLog
 from main.apps.cu_cp.models.rlf_event import RlfEvent
+from main.apps.cu_cp.models.son_action_log import SonActionLog
 from main.utils.response import error_response, success_response
 
 _TABLES = {
     "measurement": (MeasurementLog, ("id", "ue_id", "serving_cell", "rsrp_dbm", "sinr_db", "throughput_dl_mbps", "throughput_ul_mbps",
                                      "mcs_dl", "rb_width_dl", "mimo_rank", "pdcp_sdu_volume_dl", "pdcp_sdu_volume_ul",
                                      "rlc_sdu_delay_dl_ms", "qos_5qi", "neighbor_cells_json", "recorded_at",
-                                     "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id", "window_seq")),
-    "cell": (CellMeasurementLog, ("id", "cell_id", "prb_pct_dl", "prb_pct_ul", "tick_count", "window_seconds", "window_seq", "recorded_at")),
+                                     "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id", "window_seq", "scene_sim_ms", "rsrq_db", "cqi")),
+    "cell": (CellMeasurementLog, ("id", "cell_id", "prb_pct_dl", "prb_pct_ul", "tick_count", "window_seconds", "window_seq", "connected_ues", "scene_sim_ms", "recorded_at")),
     "handover": (HandoverEvent, ("id", "ue_id", "source_cell", "target_cell", "trigger", "status", "started_at", "completed_at",
-                                 "failure_cause", "mro_class")),
-    "rlf": (RlfEvent, ("id", "ue_id", "source_cell", "source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_cell", "reestab_pci")),
+                                 "failure_cause", "mro_class", "scene_sim_ms")),
+    "rlf": (RlfEvent, ("id", "ue_id", "source_cell", "source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_cell", "reestab_pci", "scene_sim_ms")),
+    # 自主(非 RIC 觸發)的組態變更 —— Agent 介面 I-7 要用它跟 RIC 下來的控制分開
+    "son": (SonActionLog, ("id", "object_type", "object_id", "action", "attribute", "before", "after",
+                           "function", "reason", "recorded_at")),
 }
 
 

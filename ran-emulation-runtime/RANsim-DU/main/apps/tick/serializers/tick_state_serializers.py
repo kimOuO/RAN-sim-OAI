@@ -15,3 +15,4 @@ class TickStateReadSerializer(serializers.Serializer):
     achieved_speed_x = serializers.FloatField(required=False)   # P0a — 實際達成(0=尚未量到)
     report_dropped = serializers.IntegerField(required=False)   # 量測報告佇列丟包累計
     body_ms = serializers.DictField(required=False)   # tick body 耗時 avg/max(ms)
+    scene_sim_ms = serializers.IntegerField(required=False)   # 劇本時鐘(UE 在場時段共用)

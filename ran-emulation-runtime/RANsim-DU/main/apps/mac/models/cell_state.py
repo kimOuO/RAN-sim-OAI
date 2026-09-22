@@ -15,6 +15,9 @@ class CellState(models.Model):
     nr_cellid = models.BigIntegerField(null=True, blank=True, db_index=True)
     gnb_id = models.CharField(max_length=64, db_index=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
+    # 2026-09-22: 每 cell 發射功率 (dBm),由場景下發。null = 未設定,
+    # CU 端 PEE.AvgPower 就不輸出而不是猜一個值。
+    tx_power_dbm = models.FloatField(null=True, blank=True)
     cell_created_at = models.BigIntegerField()
     cell_updated_at = models.BigIntegerField()
 

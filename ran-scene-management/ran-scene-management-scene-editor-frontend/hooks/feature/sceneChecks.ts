@@ -36,7 +36,10 @@ export function networkChecks(tree: SceneTree): Check[] {
   const noA3 = tree.gnbs.filter((g) => !g.a3_enabled).length;
   if (cells.length > 1 && noA3) out.push({ level: 'warn', text: `${noA3} 個 gNB 沒開 A3 換手:UE 只能在 RLF 後重新駐留換 cell` });
   const noAnt = cells.filter(({ c }) => !c.ru?.f_antenna_preset_uuid && !tree.scene.f_gnb_antenna_preset_uuid).length;
-  if (noAnt) out.push({ level: 'warn', text: `${noAnt} 個 cell 沒指定天線(用 1×1 iso,沒有方向性)` });
+  // 2026-09-22:原本寫「用 1×1 iso,沒有方向性」是錯的 —— Physics 端沒指定 preset 時的
+  // 預設是 1×1 tr38901,元件本身有 8 dBi 指向性與 65° HPBW,方位角是有作用的。
+  // 缺的是「陣列」增益與波束成形(要多元件),不是方向性。
+  if (noAnt) out.push({ level: 'ok', text: `${noAnt} 個 cell 沒指定天線 preset(用 1×1 tr38901:有元件方向性,無陣列增益與波束成形)` });
   if (!out.length) out.push({ level: 'ok', text: `${tree.gnbs.length} gNB · ${cells.length} cell 設定沒有明顯問題` });
   return out;
 }

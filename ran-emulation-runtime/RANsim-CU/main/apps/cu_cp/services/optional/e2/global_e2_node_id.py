@@ -83,6 +83,11 @@ def _read_du_components() -> list[dict]:
                 "served_plmn": c.served_plmn,
                 "s_nssai": {"sst": sst},
                 "is_active": c.is_active,
+                # 2026-09-22: F1AP Served-Cell-Information 的 NR-Mode-Info 需要
+                # ARFCN + SCS + PRB 數;沒有這些就編不出合法的 servedNrCells。
+                "arfcn": _arfcn(c.frequency_ghz),
+                "frequency_ghz": float(c.frequency_ghz),
+                "bandwidth_mhz": float(c.bandwidth_mhz),
             })
         if not cell_list:
             continue
@@ -93,6 +98,16 @@ def _read_du_components() -> list[dict]:
             "cells": cell_list,
         })
     return components
+
+
+
+def _arfcn(freq_ghz: float) -> int:
+    """TS 38.104 §5.4.2.1 NR-ARFCN。算不出來就回 0,編碼端會跳過該 cell 的頻率資訊。"""
+    try:
+        from ran_sim_protocol.nr_frequency import nr_arfcn_from_ghz
+        return int(nr_arfcn_from_ghz(float(freq_ghz)))
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def read_global_e2_node_id() -> dict:

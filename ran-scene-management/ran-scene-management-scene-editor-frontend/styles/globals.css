@@ -66,6 +66,11 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .tree .node { margin: 4px 0; } .tree .row { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 4px 6px; border-radius: 3px; color: var(--ink); font-size: 13px; }
 .tree button.row:hover { background: var(--bg-3); } .tree .row.sub { padding-left: 22px; } .tree .row.sel { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent); }
 .tpl-row { background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 3px; padding: 6px 10px 8px; margin-bottom: 8px; } .tpl-row .row.head { margin-top: 0; } .tpl-row select { width: 100%; } .tpl-row .actions { margin: 8px 0 0; }
+.runctl { display: flex; gap: 10px; margin: 2px 0 6px; }
+.runctl label { display: flex; align-items: center; gap: 5px; margin: 0; font-size: 12px; }
+.runctl label span { color: var(--fg-2); }
+.runctl select { padding: 2px 4px; font-size: 12px; }
+.runctl select:disabled { opacity: .45; }
 .prog-row { display: flex; gap: 8px; align-items: center; } .prog { flex: 1; height: 6px; background: var(--bg-3); border-radius: 3px; overflow: hidden; } .prog i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), #3987e5); }
 .pill.precomputing { background: var(--fair); color: var(--fair-fg); border-color: transparent; }
 /* ── 場景建置步驟(2026-09-17)── */

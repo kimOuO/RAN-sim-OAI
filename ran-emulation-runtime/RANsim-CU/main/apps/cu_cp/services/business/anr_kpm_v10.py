@@ -260,6 +260,15 @@ def _ccc_config_events(lookback_min: float = 60.0) -> list[dict[str, Any]]:
     return out
 
 
+def _scene_clock_now_ms() -> int | None:
+    """目前的劇本時間 —— 由 DU 的量測報告帶上來,CU 端維護(見 services/optional/scene_clock)。"""
+    try:
+        from main.apps.cu_cp.services.optional import scene_clock
+        return scene_clock.now_ms()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def indication_v10(cell_id: str | None = None,
                    window_min: float = 10.0) -> dict[str, Any]:
     """組出 v10 形狀的完整觀測資料。"""
@@ -331,6 +340,9 @@ def indication_v10(cell_id: str | None = None,
 
     return {
         "timestamp": now.isoformat(),
+        # 2026-09-22:劇本時間(自模擬起點的毫秒)。規格要求 offset_s 與絕對時戳並列,
+        # 而牆鐘換算不可靠(倍速達成率不穩)。None = 尚未收到 DU 報告。
+        "sceneSimMs": _scene_clock_now_ms(),
         # granularityPeriod = 速率語意的定義域(E2SM-KPM §8.3.8)。
         # **必須等於這批速率實際的計算窗**,否則 xApp 的「每分鐘」會對不上。
         # 先前用獨立 env 寫死 60s,而速率其實是用 window_min(預設 10 分鐘)算的 ——

@@ -10,7 +10,7 @@ class SceneRunWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SceneRun
-        fields = ['mode', 'speed_x', 'sim_dt_ms', 'duration_sec', 'status', 'cache_path', 'e2_node_id', 'gnb_id_hex', 'snapshot_json', 'started_at', 'stopped_at', 'notes', 'f_scene_uuid']
+        fields = ['mode', 'speed_x', 'sim_dt_ms', 'duration_sec', 'status', 'progress_sec', 'cache_path', 'e2_node_id', 'gnb_id_hex', 'snapshot_json', 'started_at', 'stopped_at', 'notes', 'f_scene_uuid']
 
 
 class SceneRunReadSerializer(serializers.ModelSerializer):
@@ -18,4 +18,4 @@ class SceneRunReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SceneRun
-        fields = ['id', 'scene_run_uuid', 'mode', 'speed_x', 'sim_dt_ms', 'duration_sec', 'status', 'cache_path', 'e2_node_id', 'gnb_id_hex', 'snapshot_json', 'started_at', 'stopped_at', 'notes', 'f_scene_uuid', 'scene_run_created_at', 'scene_run_updated_at']
+        fields = ['id', 'scene_run_uuid', 'mode', 'speed_x', 'sim_dt_ms', 'duration_sec', 'status', 'progress_sec', 'cache_path', 'e2_node_id', 'gnb_id_hex', 'snapshot_json', 'started_at', 'stopped_at', 'notes', 'f_scene_uuid', 'scene_run_created_at', 'scene_run_updated_at']

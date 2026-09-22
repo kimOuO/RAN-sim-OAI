@@ -79,6 +79,8 @@ def _load_live_db() -> dict[str, Any]:
             # per-cell 頻率/頻寬覆寫(對齊 OAI 1-gNB-2-DU 異頻);沒給就 fallback gNB 值。
             cell_freq = float(c.get("frequency_ghz") or freq)
             cell_bw = float(c.get("bandwidth_mhz") or bw)
+            # per-cell 功率覆寫(走廊場景 src/nbr 10 dBm、mid 5 dBm);沒給就 fallback gNB 值。
+            cell_power = float(c.get("power_dbm") if c.get("power_dbm") is not None else power)
             ru_cells.append({
                 "name": cell_id,
                 "pci": int(c.get("pci") or 0),
@@ -87,7 +89,7 @@ def _load_live_db() -> dict[str, Any]:
                 "frequency_ghz": cell_freq,
                 "bandwidth_mhz": cell_bw,
                 "gnb_id": gnb_name,
-                "power_dbm": power,
+                "power_dbm": cell_power,
             })
             du_cells.append({
                 "cell_id": cell_id,
@@ -95,6 +97,8 @@ def _load_live_db() -> dict[str, Any]:
                 "freq_ghz": cell_freq,
                 "bw_mhz": cell_bw,
                 "gnb_id": gnb_name,
+                # 2026-09-22: 帶給 DU → F1 → CU,供 PEE.AvgPower / PEE.Energy 計算。
+                "tx_power_dbm": cell_power,
             })
 
     ru_ue_payload = []

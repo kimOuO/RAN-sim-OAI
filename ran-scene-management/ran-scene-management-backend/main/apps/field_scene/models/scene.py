@@ -19,6 +19,12 @@ class Scene(models.Model):
     # None → gNB 取第一個 cell 的 RU preset、UE 取第一個 UE 的 preset(舊行為),都沒有就 1×1。
     gnb_antenna_preset = models.ForeignKey("equipment_preset.AntennaPreset", on_delete=models.SET_NULL, to_field="antenna_preset_uuid", db_column="f_gnb_antenna_preset_uuid", related_name="scenes_as_gnb", null=True, blank=True)
     ue_antenna_preset = models.ForeignKey("equipment_preset.AntennaPreset", on_delete=models.SET_NULL, to_field="antenna_preset_uuid", db_column="f_ue_antenna_preset_uuid", related_name="scenes_as_ue", null=True, blank=True)
+    # 2026-09-22:釘在場域上的 E2 槽位(1~511)。以前槽位是啟動當下依「哪些沒人用」動態配,
+    # 於是同一個場域每次跑的 gNB ID / cell NCI 都可能不同。外部 Agent 要依這些識別**部署 xApp
+    # 到 RIC**(訂閱與 RICcontrolRequest 都用 meid + NCI 定位),識別浮動就訂不到、下不了。
+    # 釘住之後:e2_node_id 與每個 cell 的 NCI 在啟動前就算得出來,而代價是同一場域同時只能跑一場
+    # (不同場域各自有槽位,仍可並行)。null = 沿用舊的動態配置。
+    e2_slot = models.IntegerField(null=True, blank=True, unique=True)
     scene_created_at = models.DateTimeField()
     scene_updated_at = models.DateTimeField()
 

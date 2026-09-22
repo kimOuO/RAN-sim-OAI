@@ -26,6 +26,9 @@ class HandoverEvent(models.Model):
     trigger = models.CharField(max_length=16, choices=TRIGGER_CHOICES, default="A3_TTT")
     status = models.CharField(max_length=8, choices=STATUS_CHOICES, default="PREP")
 
+    # 2026-09-22:劇本時鐘(DU 的 scene_tick × sim_dt_ms)。null = 舊版 DU 沒帶,
+    # 歸檔退回原本的 tick 累加推算。
+    scene_sim_ms = models.BigIntegerField(null=True, blank=True)
     started_at = models.DateTimeField()
     completed_at = models.DateTimeField(null=True, blank=True)
 

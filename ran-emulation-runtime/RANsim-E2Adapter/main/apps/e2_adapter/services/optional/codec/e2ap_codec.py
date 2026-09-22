@@ -391,7 +391,21 @@ def encode_e2_setup_request(node_id_payload: dict[str, Any]) -> bytes:
         cells = comp.get("cells") or []
         if not cells:
             continue
-        f1_payload = _encode_f1_cells_payload(gnb_du_id, cells)
+        # 2026-09-22:優先送**真 F1AP F1SetupRequest**(E2AP §9.2.26 規定
+        # requestPart 就是該介面的 setup 訊息原文)。RIC 照 F1AP 解才看得到
+        # servedNrCells;先前的自訂 TLV 會讓 R-NIB 顯示 servedNrCells: 0。
+        # 編不出來(缺 pycrate F1AP / 欄位不全)就退回舊 TLV,不讓 E2 Setup 送不出去。
+        from .f1ap_cells_codec import encode_f1_setup_request
+        f1_payload = encode_f1_setup_request(
+            gnb_du_id, cells,
+            du_name=comp.get("du_name") or "",
+            nr_cellid_of=lambda c: _hash_nr_cell_id(
+                c.get("nr_cell_id") or c.get("cell_id") or "",
+                explicit=c.get("nr_cellid"),
+            ),
+        )
+        if f1_payload is None:
+            f1_payload = _encode_f1_cells_payload(gnb_du_id, cells)
         component_items.append({
             "id": 51,
             "criticality": "reject",

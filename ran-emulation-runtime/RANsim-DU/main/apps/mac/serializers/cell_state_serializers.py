@@ -15,6 +15,8 @@ class CellStateWriteSerializer(serializers.Serializer):
     nr_cellid = serializers.IntegerField(required=False, allow_null=True, default=None)
     gnb_id = serializers.CharField(max_length=64, default="", allow_blank=True)
     is_active = serializers.BooleanField(default=True)
+    # 2026-09-22: 每 cell 發射功率 (dBm) — 沒宣告的話 DRF 會靜默丟掉。
+    tx_power_dbm = serializers.FloatField(required=False, allow_null=True, default=None)
 
 
 class CellStateListWriteSerializer(serializers.Serializer):
@@ -32,5 +34,6 @@ class CellStateReadSerializer(serializers.Serializer):
     nr_cellid = serializers.IntegerField(allow_null=True, default=None)
     gnb_id = serializers.CharField(default="")
     is_active = serializers.BooleanField(default=True)
+    tx_power_dbm = serializers.FloatField(allow_null=True, default=None)
     cell_created_at = serializers.IntegerField()
     cell_updated_at = serializers.IntegerField()

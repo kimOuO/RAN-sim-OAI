@@ -446,8 +446,14 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
         color=None, rotation_xyz_deg=tuple(float(x) for x in b["rotation"]) if b.get("rotation") else None,  # type: ignore[arg-type]
         material=str((b.get("default_material") or {}).get("key") or ""), target_height_m=None,
     ) for b in t.get("buildings") or []]
+    # 2026-09-21:以前這裡 `if u.get("active_windows")` 會把「空清單」的人整個丟掉,
+    # 於是切片出來、整段都不在場的人反而被當成「沒有時段限制 = 全程在場」。
+    # 空清單要保留,代表這齣戲他一次都不出現。但整個場景都沒有時段資料時(live 模式、
+    # 舊劇本)仍要維持「不限制」,否則會把所有人都藏起來 —— 所以只在有人帶時段時才啟用。
     windows = {str(u["name"]): [[float(a), float(b)] for a, b in (u.get("active_windows") or [])]
-               for u in t.get("ues") or [] if u.get("active_windows")}
+               for u in t.get("ues") or []}
+    if not any(windows.values()):
+        windows = {}
     # default_serving_cell 必須是樹裡真的有的 cell;舊劇本常寫 "<gnb>_c0" 但 cell 叫 "<gnb>",
     # 掛到不存在的 cell 會在 CU 生出幽靈 serving cell(2026-09-13 P4-1 發現)。不在樹裡就退回第一個 cell。
     cell_names = [c.cell_id for g in gnbs for c in g.cells]

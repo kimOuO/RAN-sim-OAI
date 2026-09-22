@@ -5,7 +5,9 @@ import { useNetworkElementsPage, type NeTab } from '@/hooks/feature/useNetworkEl
 
 type Col = { k: string; l: string; t?: 'number' | 'text' | 'bool' | 'select' | 'ref'; opts?: readonly string[]; ref?: 'du' | 'antenna';
   /** 唯讀推導欄(不可編輯),例如由三層欄位算出的元件總數 */
-  calc?: (r: Record<string, unknown>) => string };
+  calc?: (r: Record<string, unknown>) => string;
+  /** 存得下去但模擬不讀的欄位(描述用)。表頭加記號,避免以為調了會有效果 */
+  inert?: string };
 const nPol = (p: unknown) => (p === 'cross' || p === 'VH' ? 2 : 1);
 const elemCount = (r: Record<string, unknown>) =>
   Number(r.panels_mg ?? 1) * Number(r.panels_ng ?? 1) * Number(r.rows ?? 1) * Number(r.cols ?? 1) * nPol(r.polarization);
@@ -18,7 +20,7 @@ const ANT: Col[] = [
   { k: 'polarization', l: '極化', t: 'select', opts: POLARIZATIONS },
   { k: 'panels_mg', l: '面板 Mg', t: 'number' }, { k: 'panels_ng', l: '面板 Ng', t: 'number' },
   { k: 'v_spacing', l: 'dV λ', t: 'number' }, { k: 'h_spacing', l: 'dH λ', t: 'number' },
-  { k: 'max_gain_dbi', l: '增益 dBi', t: 'number' },
+  { k: 'max_gain_dbi', l: '增益 dBi', t: 'number', inert: 'tr38901 元件的 8 dBi 已包含在 Sionna 的輻射圖裡,模擬不另外讀這個值(讀了會重複計算)。此欄僅供辨識 preset。' },
   { k: '_elem', l: '元件數', calc: (r) => `${elemCount(r)}` },
   // ── TRX 層(TR 38.901 式 7.3-1 虛擬化)──────────────────────
   { k: 'trx_v_group', l: '每TRX垂直', t: 'number' }, { k: 'trx_count', l: 'TRX', t: 'number' },
@@ -29,7 +31,7 @@ const ANT: Col[] = [
   { k: 'port_n1', l: 'N1', t: 'number' }, { k: 'port_n2', l: 'N2', t: 'number' },
   // ── O-RAN 類別 / beamforming ─────────────────────────────
   { k: 'ru_category', l: 'O-RU Cat', t: 'select', opts: RU_CATEGORIES },
-  { k: 'bf_method', l: 'BF 方法', t: 'select', opts: BF_METHODS },
+  { k: 'bf_method', l: 'BF 方法', t: 'select', opts: BF_METHODS, inert: '會存進 RU 的 AntennaConfig,但目前沒有任何邏輯讀它(規劃中的階段 B1/B2 才會用到)。' },
   { k: 'gob_az_beams', l: 'GoB 方位', t: 'number' }, { k: 'gob_el_beams', l: 'GoB 仰角', t: 'number' },
 ];
 const DU: Col[] = [{ k: 'name', l: '名稱' }, { k: 'tdd_pattern', l: 'TDD' }, { k: 'numerology', l: 'μ', t: 'number' }, { k: 'n_prb', l: 'PRB', t: 'number' }, { k: 'min_prb', l: 'min PRB', t: 'number' }, { k: 'pf_alpha', l: 'PF α', t: 'number' }, { k: 'target_bler', l: 'BLER', t: 'number' }, { k: 'rlc_discard_timer_ms', l: 'discard ms', t: 'number' }, { k: 'rlc_tx_maxsize_bytes', l: 'RLC tx B', t: 'number' }, { k: 'harq_max_retx', l: 'HARQ', t: 'number' }, { k: 'qos_gbr_first', l: 'GBR 優先', t: 'bool' }, { k: 'gbr_max_share', l: 'GBR 上限', t: 'number' }];
@@ -57,8 +59,9 @@ export default function NetworkElementsPage() {
       <header className="pagehead"><h1>網路元件</h1><span className="muted">可重用的設定資源;場景裡的 cell / DU / 建築引用這些</span></header>
       <div className="tabs big">{TABS.map((t) => <button key={t.k} className={p.tab === t.k ? 'on' : ''} onClick={() => { p.setTab(t.k); p.setEditing(null); }}>{t.l}</button>)}</div>
       <p className="muted">{TABS.find((t) => t.k === p.tab)?.d}</p>
+      {cols.some((c) => c.inert) && <p className="muted small">標 ° 的欄位存得下去但模擬不讀(滑過看原因)。</p>}
       <div className="card">
-        <div className="tablewrap"><table className="ne"><thead><tr><th></th>{cols.map((c) => <th key={c.k}>{c.l}</th>)}<th></th></tr></thead>
+        <div className="tablewrap"><table className="ne"><thead><tr><th></th>{cols.map((c) => <th key={c.k} title={c.inert}>{c.l}{c.inert && <span className="muted"> °</span>}</th>)}<th></th></tr></thead>
           <tbody>
             {p.editing === 'new' && editRow}
             {rows.map((r) => { const id = String(r[idKey]); return p.editing === id ? <tr key={id} className="edit"><td className="muted">編輯</td>{cols.map((c) => <td key={c.k}>{cellInput(c)}</td>)}<td className="acts"><button className="primary" disabled={p.busy} onClick={save}>儲存</button><button className="ghost" onClick={() => p.setEditing(null)}>取消</button></td></tr>

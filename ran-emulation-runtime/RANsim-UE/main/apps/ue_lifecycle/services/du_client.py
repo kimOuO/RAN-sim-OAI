@@ -39,6 +39,24 @@ def align_scene_clock() -> bool:
         return False
 
 
+def get_scene_sim_ms() -> int | None:
+    """POST DU /Tick/TickController/read → 劇本時鐘(ms)。拿不到回 None。
+
+    在場時段必須跟 cached 通道查表用同一個時鐘。UE 這端自己用牆鐘×倍速外推的話,
+    DU 一沒跑滿倍速兩者就漂移(2026-09-21 實測整段 8h 劇本 DU 走了 32203s)。
+    """
+    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/read"
+    try:
+        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
+        if not r.ok:
+            return None
+        v = (r.json().get("data") or {}).get("scene_sim_ms")
+        return int(v) if v is not None else None
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("DU read scene_sim_ms failed: %s", exc)
+        return None
+
+
 def tick_stop() -> bool:
     """POST DU /Tick/TickController/stop。"""
     url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/stop"

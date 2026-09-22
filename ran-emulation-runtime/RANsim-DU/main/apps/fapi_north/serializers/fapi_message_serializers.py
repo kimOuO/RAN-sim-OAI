@@ -5,7 +5,9 @@ class _NeighborMeasSerializer(serializers.Serializer):
     """A3 measurement event 用的 neighbor cell 量測 — RU 從 Sionna path_gain 算出。"""
     cell_id = serializers.CharField(max_length=64)
     rsrp_dbm = serializers.FloatField()
-    rsrq_db = serializers.FloatField(default=0.0)
+    # 2026-09-22:以前 default=0.0 —— RU 根本沒算,這個 0 就一路流到對外資料。
+    # 改成可為 null:算不出來就明講,不用 0 頂替(0 dB 是不可能的 RSRQ)。
+    rsrq_db = serializers.FloatField(required=False, allow_null=True, default=None)
 
 
 class CqiIndicationSerializer(serializers.Serializer):
@@ -22,6 +24,8 @@ class CqiIndicationSerializer(serializers.Serializer):
     array_gain_db = serializers.FloatField(required=False, default=0.0)   # 階段 C:cached 重算 SINR 要加回
     # RU 從 Sionna path_gain 算的真 RSRP (RU 0.x 版本沒帶，預設 -200 表「未填」)
     rsrp_dbm = serializers.FloatField(default=-200.0)
+    # 服務 cell 的 RSRQ(TS 38.215)。DRF 不宣告就會靜默丟掉,RU 送了也是白送。
+    rsrq_db = serializers.FloatField(required=False, allow_null=True, default=None)
     serving_cell = serializers.CharField(default="", allow_blank=True)
     # Neighbor cells — RU 從 Sionna 算所有非 serving gNB 的 RSRP
     # 對應 A3 evaluator 比對 RSRP(serving) vs RSRP(neighbor)

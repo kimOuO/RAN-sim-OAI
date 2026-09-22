@@ -17,7 +17,7 @@ export const SCENE_CATEGORIES: { key: string; label: string; test: (id: string) 
 ];
 export const categoryOf = (legacyId: string) => SCENE_CATEGORIES.find((c) => c.test(legacyId))?.key ?? 'other';
 /** run_knob 可調鍵(§計畫 run knobs);值以字串存,型別由模擬端解析 */
-export const RUN_KNOB_KEYS = ['inter_freq', 'cell_quotas', 'tx_power_dbm', 'discard_timer_ms', 'rlc_delay_model', 'antenna_pattern', 'default_serving_cell', 'trigger_config', 'anr_fixture', 'ric_purpose', 'anr_auto_add'] as const;   // ric_purpose='validation' → RIC 端才會主動探測
+export const RUN_KNOB_KEYS = ['inter_freq', 'cell_quotas', 'tx_power_dbm', 'discard_timer_ms', 'rlc_delay_model', 'antenna_pattern', 'default_serving_cell', 'trigger_config', 'anr_fixture', 'ric_purpose', 'anr_auto_add', 'anr_pci_lookup', 'anr_cgi_fail_rate'] as const;   // ric_purpose='validation' → RIC 端才會主動探測
 export const ANTENNA_PATTERNS = ['iso', 'dipole', 'hw_dipole', 'tr38901'] as const;
 export const POLARIZATIONS = ['V', 'H', 'VH', 'cross'] as const;
 /** O-RAN WG4 CUS-plane O-RU 類別:A = O-DU 做 precoding;B = O-RU 自己做 beamforming(mMIMO 必須) */

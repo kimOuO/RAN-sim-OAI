@@ -45,6 +45,11 @@ class _ComponentCellSerializer(serializers.Serializer):
     # 2026-05-16 P3.3: S-NSSAI 空殼接口
     s_nssai = _SNssaiSerializer(required=False)
     is_active = serializers.BooleanField()
+    # 2026-09-22: F1AP Served-Cell-Information 的 NR-Mode-Info 需要這三個;
+    # 沒在這裡宣告 DRF 會靜默丟掉,e2adapter 就編不出 servedNrCells。
+    arfcn = serializers.IntegerField(required=False, default=0)
+    frequency_ghz = serializers.FloatField(required=False, default=0.0)
+    bandwidth_mhz = serializers.FloatField(required=False, default=0.0)
 
 
 class _ComponentSerializer(serializers.Serializer):

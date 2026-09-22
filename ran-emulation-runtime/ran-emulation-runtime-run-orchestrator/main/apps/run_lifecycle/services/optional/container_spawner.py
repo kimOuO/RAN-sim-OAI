@@ -108,8 +108,14 @@ def e2_node_name(gnb_id_hex: str, mcc: str = "208", mnc: str = "95") -> str:
     return f"gnb_{mcc}_{mnc.zfill(3)}_{int(gnb_id_hex, 16):06x}"
 
 
-def allocate_slot(used_gnb_id_hex: list[str]) -> int:
-    used = {int(h, 16) & GNB_ID_SLOTS for h in used_gnb_id_hex if h}
+def allocate_slot(used_gnb_id_hex: list[str], reserved: set[int] | None = None) -> int:
+    """挑一個沒人用的槽位。
+
+    reserved = 被場域釘住(scene.e2_slot)的號碼,動態分配一律避開 —— 這些場域對外
+    宣告過固定的 gNB ID 與 cell NCI 給 xApp 訂閱,號碼被別人先搶走就啟動不了。
+    這裡是「挑最小空號」,而釘住的通常正好是小號,不避開等於隨便一個場景都能卡死它們。
+    """
+    used = {int(h, 16) & GNB_ID_SLOTS for h in used_gnb_id_hex if h} | (reserved or set())
     for k in range(1, GNB_ID_SLOTS + 1):
         if k not in used:
             return k

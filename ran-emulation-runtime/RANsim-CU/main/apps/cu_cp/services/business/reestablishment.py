@@ -30,6 +30,7 @@ from main.apps.cu_cp.services.common.timestamp_service import TimestampService
 from main.apps.cu_cp.services.business.sqldb_operations import SqlDbBusinessService
 from main.utils.env_loader import get_float
 from main.utils.logger import get_logger
+from main.apps.cu_cp.services.optional import scene_clock
 
 logger = get_logger(__name__)
 
@@ -90,6 +91,8 @@ def handle_rlf(report: dict[str, Any]) -> dict[str, Any]:
         "reason": report.get("reason", "T310_EXPIRY"),
         "outcome": "DECLARED",
         "detected_at": now,
+        # DU 報告自己帶的時間優先(開場的 RLF 早於第一份量測報告,CU 那時還沒有時鐘)
+        "scene_sim_ms": report.get("scene_sim_ms") or scene_clock.now_ms(),
     })
 
     ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)

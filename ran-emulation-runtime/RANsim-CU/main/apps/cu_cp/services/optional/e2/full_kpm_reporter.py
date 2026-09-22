@@ -19,6 +19,7 @@ legacy 公式(10log10(P/ΣP)−10.8)已棄用;新公式在「全滿載+忽略雜
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -49,6 +50,15 @@ _conn_max_seen: dict[str, int] = defaultdict(int)
 
 
 # ── 小工具 ─────────────────────────────────────────────────────────
+
+
+def _env_float(name: str, default: float) -> float:
+    """功耗模型常數 —— 實機校準時用環境變數覆寫,不必改碼。壞值就用預設。"""
+    try:
+        return float(os.environ.get(name, "") or default)
+    except (TypeError, ValueError):
+        return default
+
 
 def _lin(dbm: float) -> float:
     return 10.0 ** (dbm / 10.0)
@@ -84,6 +94,16 @@ def _quality(sinr_db: float) -> str:
     if sinr_db >= 0.0:
         return "fair"
     return "poor"
+
+
+def _arfcn_of(cfg: CellConfig) -> int | None:
+    """cell → NR-ARFCN。CellConfig 只存 frequency_ghz,依 TS 38.104 §5.4.2.1 換算
+    (3.5 GHz → 633333,與 registry 設定一致)。"""
+    try:
+        from ran_sim_protocol.nr_frequency import nr_arfcn_from_ghz
+        return nr_arfcn_from_ghz(getattr(cfg, "frequency_ghz", None))
+    except Exception:  # noqa: BLE001 — 換算不出來就回 None,不猜
+        return None
 
 
 def _cell_hex_id(cfg: CellConfig) -> str:
@@ -164,6 +184,9 @@ def _pm_record(
     conn_max: int,
     ho: dict[str, int],
     du_acc: dict[str, Any],
+    prb_avail: int = 0,
+    du_tick_now: int = 0,
+    cell_ue_rows: list[dict] | None = None,
     prb_log: CellMeasurementLog | None,
     cell_delay_ms: float,
     cpu_temp: float,
@@ -172,6 +195,7 @@ def _pm_record(
     estab: tuple[int, int] = (0, 0),
     cell_delay_q1_ms: float = 0.0,
     conn_mean: float | None = None,
+    sim_dt_ms: int = 0,
 ) -> dict[str, str]:
     """單一 cell 的 pm dict — 鍵名/順序/值型別(字串)完全對齊範例。"""
     ts_start = now.strftime("%Y%m%d.%H%M%z")
@@ -326,11 +350,132 @@ def _pm_record(
     for i in range(MCS_BINS):
         rec[f"du_CARR.PUSCHMCSDist.BinTable1.BinMCS{i}"] = str(int(mcs_ul[i]) if i < len(mcs_ul) else 0)
     for i in range(CQI_BINS):
-        rec[f"du_CARR.WBCQIDist.BinCQI{i}.BinTable2"] = str(int(cqi[i]) if i < len(cqi) else 0)
+        _c = int(cqi[i]) if i < len(cqi) else 0
+        rec[f"du_CARR.WBCQIDist.BinCQI{i}.BinTable2"] = str(_c)
+        # 標準名並存(理由同 PrbTot)。RIC 端找 du_wbCqiDist.* 找不到,
+        # 誤判成「連分箱都沒有」。
+        rec[f"du_wbCqiDist.BinCQI{i}"] = str(_c)
 
     # PRB 累計 — 真值(DU 累計 PRB 數)
-    rec["du_CARR.PRBUsageDLNbr"] = str(int(du_acc.get("prb_used_dl", 0)))
-    rec["du_CARR.PRBUsageULNbr"] = str(int(du_acc.get("prb_used_ul", 0)))
+    # 2026-09-22:PRB 可用數 —— 使用率的分母,訂閱端無法從用量反推。
+    # 也是功耗估算(P = P_static + P_dyn × PRB率)的必要輸入。
+    _prb_avail = int(prb_avail or 0)
+    if _prb_avail:
+        rec["du_RRU.PrbAvailDl"] = str(_prb_avail)
+        rec["du_RRU.PrbAvailUl"] = str(_prb_avail)
+    _prb_dl = int(du_acc.get("prb_used_dl", 0))
+    _prb_ul = int(du_acc.get("prb_used_ul", 0))
+    rec["du_CARR.PRBUsageDLNbr"] = str(_prb_dl)
+    rec["du_CARR.PRBUsageULNbr"] = str(_prb_ul)
+    # 2026-09-22:同一組數值再用 TS 28.552 標準名出一份。
+    # RIC 端照規格找 RRU.PrbTotDl 找不到,誤判成「有分母沒分子」——
+    # 其實分子一直都在,只是叫 du_CARR.PRBUsageDLNbr。
+    # 用「並存」而非改名:既有 xApp 已經在讀舊名,改名會讓它們解不到欄位。
+    rec["du_RRU.PrbTotDl"] = str(_prb_dl)
+    rec["du_RRU.PrbTotUl"] = str(_prb_ul)
+    # 2026-09-22:活動終端數與每終端吞吐 —— 都是逐 UE 資料的聚合,
+    # 訂閱端要自己從 e2 區塊推,兩邊推法不同就對不起來,索性在這裡算好。
+    _rows = cell_ue_rows or []
+    _act_dl = [r for r in _rows if float(getattr(r["meas"], "throughput_dl_mbps", 0) or 0) > 0]
+    _act_ul = [r for r in _rows if float(getattr(r["meas"], "throughput_ul_mbps", 0) or 0) > 0]
+    rec["du_DRB.MeanActiveUeDl"] = str(len(_act_dl))
+    rec["du_DRB.MeanActiveUeUl"] = str(len(_act_ul))
+    # UEThp = 該 cell 所有連線 UE 的吞吐平均(Mbps);沒有 UE 時回 0 而非除零
+    _thp_dl = [float(r["meas"].throughput_dl_mbps or 0) for r in _rows]
+    _thp_ul = [float(r["meas"].throughput_ul_mbps or 0) for r in _rows]
+    rec["du_DRB.UEThpDl"] = f"{(sum(_thp_dl) / len(_thp_dl)) if _thp_dl else 0.0:.3f}"
+    rec["du_DRB.UEThpUl"] = f"{(sum(_thp_ul) / len(_thp_ul)) if _thp_ul else 0.0:.3f}"
+    # 2026-09-22:傳輸區塊計數(TS 28.552 §5.1.1.x)。DU 的 HARQ 計數器一直都有值,
+    # 只是從沒對外輸出 —— RIC 端因此判定「du_TB 整族都沒有」。
+    #   harq_rounds_dl[i] = 依下行 SINR 分箱估的「第 i 輪才成功」TB 數
+    #   harq_errors_dl    = SINR < 0 dB 的 TB 數(視為最終失敗)
+    # ⚠ 這是 SINR 分箱的**近似**,不是逐 TB 的 HARQ 實際回報。方向與量級可用,
+    #   但不宜拿來做嚴格的 BLER 校驗。文件已標註。
+    # 對映:TotNbr = 首傳數(每個 TB 只算一次);Tot = 含重傳的總傳輸次數。
+    _hr = list(du_acc.get("harq_rounds_dl") or [])
+    _herr = int(du_acc.get("harq_errors_dl") or 0)
+    def _tb_counts(rounds: list, errors: int) -> tuple[int, int]:
+        """(TB 數, 傳輸次數)。
+
+        TotNbr 是**每個 TB 只算一次** —— 不管它第幾輪成功,首傳都發生過。
+        2026-09-22:先前誤寫成 rounds[0] + errors,把第二、三輪才成功的 TB 漏掉,
+        分母偏小使錯誤率從 16% 灌水到 47%。
+        Tot 是含重傳的總傳輸次數:第 i 輪成功的 TB 傳了 i+1 次;最終失敗的用滿重傳上限。
+        """
+        rs = [int(x) for x in rounds]
+        tb = sum(rs) + int(errors)
+        max_tx = len([x for x in rs if x]) + 1 if any(rs) else 1
+        tx = sum(v * (i + 1) for i, v in enumerate(rs)) + int(errors) * max_tx
+        return tb, tx
+
+    if any(_hr) or _herr:
+        _tb, _tx = _tb_counts(_hr, _herr)
+        rec["du_TB.TotNbrDl"] = str(_tb)            # TB 數(每個 TB 算一次)
+        rec["du_TB.TotNbrDl.Tot"] = str(_tx)        # 傳輸次數(含重傳)
+        rec["du_TB.ErrTotalNbrDl"] = str(_herr)
+        rec["du_TB.ErrTotalNbrDl.Tot"] = str(_herr)
+    # cell 可用率(TS 28.552 cellAvailablePer):該 cell 實際運作的 tick 數
+    # ÷ 它存在期間經過的 tick 數 × 100。
+    # 「不可用」在我們的模型裡 = 節能關站(is_active=False)—— tick_body 會跳過那些 cell,
+    # tick 就不累加,兩者的差自然就是中斷時間。分母從 cell 第一次出現起算。
+    _av = du_acc.get("avail_ticks_cum")
+    _ft = du_acc.get("first_tick")
+    _elapsed = 0   # cell 出現至今經過的 tick 數;下面的功耗模型也用它當時間基準
+    if _av is not None and _ft is not None and int(_ft) >= 0 and du_tick_now > 0:
+        _elapsed = max(1, int(du_tick_now) - int(_ft) + 1)
+        rec["du_gnb.PEE.cellAvailablePer"] = f"{min(100.0, 100.0 * int(_av) / _elapsed):.2f}"
+
+    # ── 功耗(TS 28.552 §5.1.1.19 PEE.AvgPower / PEE.Energy)────────────────
+    # 模型:ETSI ES 203 228 / EARTH 線性功耗模型
+    #     P_in = N_TRX × (P_static + Δp × P_out_max × load)      (運作中)
+    #     P_in = N_TRX × P_sleep                                  (節能關站)
+    # P_out_max 由該 cell 的發射功率換算(dBm → W);走廊場景 src/nbr 10 dBm、
+    # mid 5 dBm,所以三顆的功耗本來就不同 —— 這也是為什麼要把 tx_power_dbm
+    # 一路從場景帶到 CU,而不是用 DU 的單一全域旋鈕。
+    # load 取下行 PRB 使用率(未經 OAI 校正的 raw 值 —— 校正係數是為了對齊 OAI
+    # 的 KPM 讀數,拿來當實體佔用率會高估近 10 倍)。
+    # 常數預設取 pico/small-cell 級別;實機校準時用 env 覆寫,不必改碼。
+    _tx_dbm = getattr(cfg, "tx_power_dbm", None)
+    if _tx_dbm is not None and du_tick_now > 0:
+        _n_trx = _env_float("PEE_N_TRX", 1.0)
+        _p_static = _env_float("PEE_STATIC_W", 6.8)
+        _p_slope = _env_float("PEE_SLOPE", 4.0)
+        _p_sleep = _env_float("PEE_SLEEP_W", 4.3)
+        _p_out_max_w = 10.0 ** ((float(_tx_dbm) - 30.0) / 10.0)
+        # 負載 = 累計已用 PRB ÷ 同期間的 PRB 容量。DU 的 per-cell 累加器是
+        # 「開機以來累計」(snapshot 不 reset),所以分母也用累計 tick 數,
+        # 兩邊同基準。算出來的是全程平均負載 —— 正好對應 AvgPower 的語意。
+        _span = int(_elapsed) if _elapsed else int(du_tick_now)
+        _cap = _prb_avail * max(1, _span)
+        _load = min(1.0, max(0.0, (_prb_dl / _cap) if _cap > 0 else 0.0))
+        # 關站中的 cell 走 sleep 功耗(is_active 由 DU Config Update 同步過來)。
+        _watts = _n_trx * (
+            (_p_static + _p_slope * _p_out_max_w * _load)
+            if getattr(cfg, "is_active", True) else _p_sleep
+        )
+        rec["du_gnb.PEE.AvgPower"] = f"{_watts:.3f}"
+        # Energy:TS 28.552 是量測期間的耗能(kWh)。這裡給 cell 出現至今的
+        # **累計**值 —— 訂閱端做差分就能得到任意期間的耗能,反之不行。
+        # 關站期間按 sleep 功耗計,所以節能關站會在曲線上看得出來。
+        if _av is not None and sim_dt_ms > 0 and _elapsed > 0:
+            _dt_s = float(sim_dt_ms) / 1000.0
+            _on_s = int(_av) * _dt_s
+            _off_s = max(0, int(_elapsed) - int(_av)) * _dt_s
+            _p_on = _n_trx * (_p_static + _p_slope * _p_out_max_w * _load)
+            _kwh = (_p_on * _on_s + _n_trx * _p_sleep * _off_s) / 3_600_000.0
+            rec["du_gnb.PEE.Energy"] = f"{_kwh:.6f}"
+
+    # 上行同理。2026-09-22 之前這一族是直接複製下行的(同一段程式用下行 SINR 累加兩個方向),
+    # 已改成用上行自己的 SINR(RU 的 _compute_ul_sinr_db)。舊 RU 不帶 ul_sinr_db 時
+    # DU 不累加,這裡就整族不輸出 —— 沒有值好過抄來的值。
+    _hru = list(du_acc.get("harq_rounds_ul") or [])
+    _herru = int(du_acc.get("harq_errors_ul") or 0)
+    if any(_hru) or _herru:
+        _tbu, _txu = _tb_counts(_hru, _herru)
+        rec["du_TB.TotNbrUl"] = str(_tbu)
+        rec["du_TB.TotNbrUl.Tot"] = str(_txu)
+        rec["du_TB.ErrTotalNbrUl"] = str(_herru)
+        rec["du_TB.ErrTotalNbrUl.Tot"] = str(_herru)
     # 空口 delay — RLC SDU delay 當 proxy(5QI9;UL 未建模 → 0)
     rec["du_DRB.AirIfDelayDlAvg.5QI1"] = f"{cell_delay_q1_ms:.0f}"  # D:5QI1(語音)delay 轉真
     rec["du_DRB.AirIfDelayDlAvg.5QI9"] = f"{cell_delay_ms:.0f}"
@@ -472,19 +617,30 @@ class FullKpmReporter:
                         # 一律用 3GPP 公式重算(RU 舊值公式不明,棄用求一致)
                         n_rsrq = _derive_rsrq(n_rsrp, row["cells_dbm_load"])
                         neigh_list.append({n_hex: {
-                            "rsrp": int(round(n_rsrp)),
-                            "rsrq": int(round(float(n_rsrq))),
+                            # 2026-09-22:補上 pci / arfcn。真實 UE 量測鄰區只讀得到這兩個,
+                            # 沒有它們,訂閱端就做不出「缺漏鄰區」「PCI 混淆」的判定 ——
+                            # 那是外部 Agent 的核心題型。以 cell_id 為鍵是我方的上帝視角。
+                            "pci": int(n_cfg.pci) if n_cfg is not None else n.get("pci"),
+                            "arfcn": _arfcn_of(n_cfg) if n_cfg is not None else n.get("arfcn"),
+                            # 小數保留一位:整數化會讓訂閱端算不出可用的標準差
+                            "rsrp": round(n_rsrp, 1),
+                            "rsrq": round(float(n_rsrq), 1),
                         }})
                     ues_out.append({
                         "role": 1,
                         "ue_id": row["ue"].ue_id,
                         "interfered": row["interfered"],
-                        "rsrp": int(round(m.rsrp_dbm)),
-                        "rsrq": _derive_rsrq(m.rsrp_dbm, row["cells_dbm_load"]),
-                        "sinr": int(round(m.sinr_db)),
+                        "rsrp": round(float(m.rsrp_dbm), 1),
+                        # RU 已依 TS 38.215 算好 RSRQ(含 RSSI);沒有才退回本地推導
+                        "rsrq": (round(float(m.rsrq_db), 1) if getattr(m, "rsrq_db", None) is not None
+                                 else _derive_rsrq(m.rsrp_dbm, row["cells_dbm_load"])),
+                        "sinr": round(float(m.sinr_db), 1),
+                        "ul_sinr": (round(float(m.ul_sinr_db), 1)
+                                    if getattr(m, "ul_sinr_db", None) is not None else None),
+                        "cqi": (round(float(m.cqi), 1) if getattr(m, "cqi", None) is not None else None),
                         "neighbors": neigh_list,
-                        "dl_throughput": int(round(m.throughput_dl_mbps)),
-                        "ul_throughput": int(round(m.throughput_ul_mbps)),
+                        "dl_throughput": round(float(m.throughput_dl_mbps), 2),
+                        "ul_throughput": round(float(m.throughput_ul_mbps), 2),
                         "rb_start": rb_cursor,
                         "rb_width": int(m.rb_width_dl),
                     })
@@ -574,6 +730,9 @@ class FullKpmReporter:
                     ho=ho_per_cell.get(cfg.cell_id, {}),
                     rlf=rlf_per_cell.get(cfg.cell_id, {}),
                     du_acc=du_gnbs.get(cfg.cell_id, {}),
+                    prb_avail=int(du_dump.get("prb_per_cell") or 0),
+                    du_tick_now=int(du_dump.get("tick_count") or 0),
+                    cell_ue_rows=conn_per_cell.get(cfg.cell_id, []),
                     prb_log=None,
                     cell_delay_ms=(sum(delays) / len(delays)) if delays else 0.0,
                     cell_delay_q1_ms=delay_q1_ms,
@@ -581,6 +740,7 @@ class FullKpmReporter:
                     session_time_sec=session_time_sec,
                     estab=estab_by_cell.get(cfg.cell_id, (0, 0)),
                     conn_mean=conn_mean_db,
+                    sim_dt_ms=int(du_dump.get("sim_dt_ms") or 0),
                 ))
             pm_out[f"gnb-{gid}"] = recs
 
@@ -591,6 +751,10 @@ class FullKpmReporter:
 
         return {
             "timestamp_ms": now_ms,
+            # 2026-09-22:劇本時間(自模擬起點的毫秒)。E2 原本只有牆鐘時戳,
+            # 訂閱端無從得知事件發生在劇本第幾秒 —— 而牆鐘換算不可靠
+            # (倍速達成率不穩,實測設 30× 只達成 27.3×)。None = DU 尚未回報。
+            "scene_sim_ms": du_dump.get("scene_sim_ms"),
             "compute_ms": int((time.monotonic() - t0) * 1000),
             "tick_ms": tick_ms,
             "e2": e2_out,

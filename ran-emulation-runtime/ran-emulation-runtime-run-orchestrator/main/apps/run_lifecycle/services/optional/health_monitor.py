@@ -115,6 +115,22 @@ def _auto_restart(run_uuid: str, reason: str) -> None:
 
 
 SCENARIO_STATUS_PATH = "/api/v0.1/UE/Scenario/ScenarioController/status"
+DU_TICK_PATH = "/api/v0.1/DU/Tick/TickController/read"
+PROGRESS_WRITE_SEC = 15.0   # 進度回寫間隔;比健康檢查疏,不必每次都打 registry
+
+
+def scene_progress_sec(du_name: str) -> float | None:
+    """DU 的劇本時鐘(秒)。取 DU 而非 UE —— cached 通道查表、KPM 視窗都用這一條,
+    UE 端的時鐘是另外推算的,兩者在倍速下會漂移(2026-09-21 實測 8h 劇本差 3400 s)。"""
+    try:
+        req = urllib.request.Request(f"http://{du_name}:8000{DU_TICK_PATH}", data=b"{}",
+                                     headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            d = (json.loads(resp.read().decode() or "{}") or {}).get("data") or {}
+    except Exception:  # noqa: BLE001
+        return None
+    ms = d.get("scene_sim_ms")
+    return None if ms is None else float(ms) / 1000.0
 
 
 def scenario_finished(ue_name: str) -> dict | None:
@@ -135,7 +151,10 @@ def _auto_stop(run_uuid: str, reason: str) -> None:
                                      data=json.dumps({"scene_run_uuid": run_uuid}).encode(), headers={"content-type": "application/json"})
         with urllib.request.urlopen(req, timeout=540) as resp:
             logger.warning("auto-stop %s → HTTP %s(%s)", run_uuid, resp.status, reason)
-        platform_clients.update_scene_run(run_uuid, notes=f"auto-stop {platform_clients.now_iso()}: {reason[:200]}")
+        # 跑完 ≠ 被人停掉。stop 已經寫了 stopped,這裡覆蓋成 done ——
+        # 外部 Agent 的 I-4 靠這個分辨「可以去取資料」與「中途失敗要重跑」。
+        platform_clients.update_scene_run(run_uuid, status="done",
+                                          notes=f"auto-stop {platform_clients.now_iso()}: {reason[:200]}")
     except Exception as exc:  # noqa: BLE001
         logger.error("auto-stop %s failed: %s", run_uuid, exc)
 
@@ -147,6 +166,7 @@ class HealthMonitor(threading.Thread):
         self._unhealthy_since: float | None = None   # 任一角色非 running 的起點
         self._last_restart_at: float = 0.0
         self._last_mem_check: float = 0.0
+        self._last_progress_at: float = 0.0
         self._mem_detail: dict[str, str] = {}   # role → 最近一次記憶體檢查結果(兩次檢查之間沿用)
 
     def stop(self) -> None:
@@ -165,6 +185,14 @@ class HealthMonitor(threading.Thread):
                         logger.warning("run %s: %s → auto-stop", self.run_uuid, reason)
                         threading.Thread(target=_auto_stop, args=(self.run_uuid, reason), name=f"auto-stop-{self.run_uuid[-8:]}", daemon=True).start()
                         return
+                if st.get("du") == "running" and time.time() - self._last_progress_at >= PROGRESS_WRITE_SEC:
+                    self._last_progress_at = time.time()
+                    p = scene_progress_sec(names["du"])
+                    if p is not None:
+                        try:
+                            platform_clients.update_scene_run(self.run_uuid, progress_sec=round(p, 1))
+                        except Exception:  # noqa: BLE001 — 寫不進去不該影響健康監控
+                            logger.info("progress 回寫失敗 %s", self.run_uuid)
                 if time.time() - self._last_mem_check >= MEM_CHECK_SEC:
                     self._last_mem_check = time.time()
                     self._mem_detail = {r: memory_issue(names[r]) for r in self.instances if st.get(r) == "running"}

@@ -407,6 +407,9 @@ class ScenarioDriver:
                     "freq_ghz": cell_freq,
                     "bw_mhz": cell_bw,
                     "gnb_id": g.name,
+                    # 2026-09-22: 發射功率帶到 DU → F1 → CU,供 PEE.AvgPower / PEE.Energy。
+                    # 走廊場景 src/nbr 10 dBm、mid 5 dBm —— 三顆功耗本來就不一樣。
+                    "tx_power_dbm": float(g.power_dbm),
                 })
 
         # 劇本第一個 tick 的 UE 位置(餵 RU update_ues)
@@ -464,13 +467,37 @@ class ScenarioDriver:
 
         每個 UE 帶 scenario 自己的 piecewise traffic profile(取代之前的 default CBR 1 Mbps)。
         """
+        # 2026-09-21:開場只 attach「t=0 當下在場」的人。以前這裡無條件 attach 全部,
+        # 會把 _sync_visibility 剛釋放掉的離場者又接回去(釋放 12:29:35 → 重接 12:29:44),
+        # 於是切片裡整段不在場的人照樣掛在 gNB 上跑。回場時 _apply_presence 會補 attach。
+        aw = self.scenario.active_windows or {}
+        def _present_at_zero(name: str) -> bool:
+            if not aw:                      # 場景沒有在場時段資料 → 不限制
+                return True
+            return any(a <= 0.0 < b for a, b in aw.get(name) or [])
+
         ues_payload = [
             {
                 "name": ue.name,
                 "traffic_profile": self._build_piecewise_profile(ue.name),
             }
             for ue in self.scenario.ues
+            if _present_at_zero(ue.name)
         ]
+        logger.info("開場 attach %d/%d 個 UE(其餘不在 t=0 的在場時段內)",
+                    len(ues_payload), len(self.scenario.ues))
+        # 開場沒 attach 的人回場時要拿得到自己的流量 profile —— 這裡是唯一算得出
+        # piecewise profile 的地方,先存進 manager 當回場提示。
+        try:
+            from main.apps.ue_lifecycle.services import manager as ue_manager
+            m = ue_manager.get_manager()
+            m.set_sim_speed(float(self.state["sim_speed_x"]))
+            m.set_presence_hints(
+                {u.name: self.scenario.default_serving_cell for u in self.scenario.ues},
+                {u.name: self._build_piecewise_profile(u.name) for u in self.scenario.ues},
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("設定回場提示失敗")
         UeAttachService.attach_all(
             ues_payload,
             default_serving_cell=self.scenario.default_serving_cell,

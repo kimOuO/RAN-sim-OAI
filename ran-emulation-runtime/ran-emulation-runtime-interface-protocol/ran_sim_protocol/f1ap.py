@@ -91,6 +91,17 @@ class GnbDuMeasurementReport:
     # 實測丟掉 47%(2,000 列 → 1,066)。帶序號才能正確歸到同一個視窗。
     # 舊 DU 不帶 → CU 端存 None,歸檔退回舊的依秒分組。
     window_seq: int | None = None
+    # 2026-09-22:劇本時鐘(DU 的 scene_tick × sim_dt_ms,就是 cached 通道查表的索引)。
+    # 事件與視窗都要標「劇本第幾秒」,而歸檔原本是把各視窗的 tick_count 累加來推算 ——
+    # 報告一掉就失真(實測 8h 劇本一場少算 59%、另一場多算 12%),事件更是一律填 0。
+    # None = 舊版 DU 沒帶,歸檔退回累加。
+    scene_sim_ms: int | None = None
+    # 2026-09-22:服務 cell 的 RSRQ(TS 38.215)。以前根本沒有這個欄位,
+    # 而鄰區的 rsrq_db 從頭到尾固定填 0.0(宣告了卻沒算)。None = 算不出來。
+    rsrq_db: float | None = None
+    # 2026-09-22:寬頻 CQI(RU 由 SINR 依 cqi_table 算)。DU 以前收到只拿去調 MCS,
+    # 沒有往上帶 —— 規格 I-5 列為建議欄位。None = 舊版 DU。
+    cqi: float | None = None
     # B1(2026-09-16):O-RAN Cat B 的 GoB 波束(predefined-beam 的 beamId);None = 沒有 GoB
     beam_id: int | None = None
     # 2026-09-19:每波束 RSRP(O-RAN WG1 §4.6.4.1)。[[beam_id, 相對最佳波束的 dB], …],
@@ -112,6 +123,15 @@ class GnbDuCellMeasurementReport:
     window_seconds: float = 0.0
     # 與 per-UE 報告同一個序號,歸檔才併得到同一列(見 GnbDuMeasurementReport.window_seq)
     window_seq: int | None = None
+    # 這個視窗結束時掛在本 cell 的 UE 數。歸檔端用它分辨「真的沒人」與「報告掉了」——
+    # 沒有這個數字,空視窗只能一律標 no ue rows,而在場時段外本來就該是空的
+    # (2026-09-21 走廊 00–08 有 17404 個視窗被誤標成警告)。None = 舊版 DU 沒帶。
+    connected_ues: int | None = None
+    # 2026-09-22:劇本時鐘(DU 的 scene_tick × sim_dt_ms,就是 cached 通道查表的索引)。
+    # 事件與視窗都要標「劇本第幾秒」,而歸檔原本是把各視窗的 tick_count 累加來推算 ——
+    # 報告一掉就失真(實測 8h 劇本一場少算 59%、另一場多算 12%),事件更是一律填 0。
+    # None = 舊版 DU 沒帶,歸檔退回累加。
+    scene_sim_ms: int | None = None
 
 
 @dataclass
