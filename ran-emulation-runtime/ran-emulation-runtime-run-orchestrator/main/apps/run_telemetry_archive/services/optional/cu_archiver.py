@@ -260,6 +260,23 @@ class RunArchiver(threading.Thread):
                 self.ticks_so_far += int(tick)
             if b.get("scene_ms") is not None:
                 self._last_scene_ms = int(b["scene_ms"])
+            # 2026-09-22:同一個劇本秒已有列就**合併**,不再新增。
+            # CU 過載時同一視窗的報告會跨兩次輪詢抵達(第一次寫了部分 UE,第二次剩下的 UE
+            # 又被當成新視窗寫一列);carry 只保護每批最後一窗。實測 10x 一場 1800 s 有 4830 列、
+            # 35% 的劇本秒重複,且拆掉 RU↔DU 互等後也沒變 —— 這是歸檔端的問題,在這裡收斂。
+            _sim_ms = (b["scene_ms"] if b.get("scene_ms") is not None else self.ticks_so_far * self.sim_dt_ms)
+            _exist = (RunKpmSample.objects
+                      .filter(f_scene_run_uuid=self.run_uuid, run_seq=self.run_seq, sim_time_ms=_sim_ms)
+                      .order_by("id").first()) if b.get("scene_ms") is not None else None
+            if _exist is not None:
+                _pu = dict(_exist.per_ue or {}); _pu.update(b["per_ue"] or {})
+                _pc = dict(_exist.per_cell or {}); _pc.update(b["per_cell"] or {})
+                _w = list(_exist.warnings or []) + [x for x in _win_warnings(b, tick) if x not in (_exist.warnings or [])]
+                _exist.per_ue = _pu; _exist.per_cell = _pc; _exist.warnings = _w
+                _exist.run_kpm_sample_updated_at = TimestampService.now()   # 欄位沒有 auto_now,要自己填
+                _exist.save(update_fields=["per_ue", "per_cell", "warnings", "run_kpm_sample_updated_at"])
+                self.stats["merged"] = self.stats.get("merged", 0) + 1
+                continue
             DB.create_entity(RunKpmSample, {**_stamp("run_kpm_sample"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
                 # 劇本時鐘優先。tick 累加只是舊 DU 的退路 —— 報告一掉就失真
                 # (實測 8h 劇本一場少算 59%、另一場多算 12%)。
