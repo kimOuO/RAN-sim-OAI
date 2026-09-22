@@ -525,6 +525,14 @@ def _handle_slice_prb_quota(
     node = header.get("node")
 
     targets: list[str] = []
+    if not cell_id:
+        # 2026-09-23:E2 路徑的 Control Header Format 1 沒有 cell 欄位,
+        # 要限定單一 cell 由 ranP[4] 的 NR-CGI 帶進來(adapter 解成 control_message.target_cgi)。
+        _tc = message.get("target_cgi")
+        if _tc:
+            cell_id, _ = resolve_target_cell({"target_cgi": _tc})
+            if not cell_id:
+                return error_response("target_cgi unresolved — check NR Cell Identity", status=409)
     if cell_id:
         targets = [cell_id]
     elif node:

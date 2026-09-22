@@ -467,8 +467,13 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
 
     if style == 2 and action == 6:
         # PRB quota (IM/ES) — ranP[1]=min, [2]=max, [3]=dedicated（按 wrapper 慣例）
+        #   ranP[4] = Target Cell(NR-CGI,選配;格式同 2-8 ranP[1] / 3-1 Target Primary Cell ID)
+        # 2026-09-23(RIC 第三十一輪):Control Header Format 1 只有 UEID、沒有 cell 欄位,
+        # 所以要把配額限定到單一 cell 只能走 RAN Parameter。沒帶 = 套整個 gNB(原行為)。
         numeric_vals: list[int] = []
         for pid in sorted(params.keys()):
+            if pid == 4:                      # 目標 cell,不是配額數值
+                continue
             pv = params[pid]
             if isinstance(pv, dict) and pv.get("_type") == "valueInt":
                 numeric_vals.append(int(pv.get("value", 0)))
@@ -482,6 +487,11 @@ def to_sim_control_payload(rc_decoded: dict[str, Any]) -> dict[str, Any] | None:
             "dedicated_prb": dedicated_prb,
             "_raw_ran_params": params,
         }
+        if 4 in params:
+            _tc = _extract_target_cgi({1: params[4]})
+            if _tc:
+                base["control_message"]["target_cgi"] = _tc
+                logger.info("PRB quota decode: 限定單一 cell target_cgi=%s", _tc)
         return base
 
     if style == 2 and action == 8:
