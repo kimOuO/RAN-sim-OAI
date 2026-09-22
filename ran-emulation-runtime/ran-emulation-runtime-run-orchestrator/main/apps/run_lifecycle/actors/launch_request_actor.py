@@ -338,7 +338,18 @@ class LaunchController:
                         except (TypeError, ValueError):
                             _ric_run = 0
                     if settings.RIC_GATEWAY_DEPLOY_XAPP and gw and not gw.get("error"):   # 專屬 xApp pod;RIC 端 dt-anr 參數化前先關(env)
-                        xa = platform_clients.ric_deploy_xapp(run_uuid)
+                        # 2026-09-23:xApp 的 env 隨場次帶(RIC 第十七輪:誰先 POST /xapp 誰的 env 生效,
+                        # 我方在宣告後立刻打,所以貴方 watcher 的覆寫檔不會作用 —— 得由這裡帶)。
+                        # 來源:run knob `xapp_env`(JSON 物件);另外 anr_auto_add=0 的場次預設把
+                        # RIC 端 guard 也關掉,不然「缺漏鄰區」題型會被它 30 秒內補齊。
+                        _xenv: dict = {}
+                        try:
+                            _xenv = dict(json.loads(_run_knob("xapp_env") or "{}") or {})
+                        except (TypeError, ValueError):
+                            logger.warning("run knob xapp_env 不是 JSON 物件,忽略")
+                        if str(_run_knob("anr_auto_add") or "1") == "0":
+                            _xenv.setdefault("ANR_GUARD_ENABLE", "0")
+                        xa = platform_clients.ric_deploy_xapp(run_uuid, env=_xenv or None)
                         logger.info("RIC gateway xapp deploy %s → %s", run_uuid, str(xa)[:200])
                     if gw and not gw.get("error"):   # 閘道 0.8.4:E2 Setup 完成後啟用,之後才能經閘道下控制
                         import threading as _th

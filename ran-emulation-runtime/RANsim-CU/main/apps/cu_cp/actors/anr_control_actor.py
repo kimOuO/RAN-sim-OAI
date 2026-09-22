@@ -156,7 +156,17 @@ def apply_son_trigger(req: dict) -> dict:
             return _outcome("ADD", source, _tcgi, "NOT_FOUND", None, "target cell 不在本 gNB(跨 gNB 目標請帶 nr_cellid)")
 
     if rtype == "ADD":
-        tgt = req.get("target") or {}
+        tgt = dict(req.get("target") or {})
+        # 2026-09-23:xApp / Agent 的 ADD 常只帶 cgi。以前 pci/arfcn 缺就寫 0,
+        # 但 E2 上鄰區改以 (pci, arfcn) 查 NRT 解 ncgi,寫 0 的關係永遠解不出來 ——
+        # 等於「加了關係卻沒效」。目標是本 gNB 的 cell 時直接用它的設定補齊。
+        _tcfg = _CC.objects.filter(cell_id=tgt.get("cgi")).first() if tgt.get("cgi") else None
+        if _tcfg is not None:
+            from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz as _arf
+            if tgt.get("pci") is None:
+                tgt["pci"] = _tcfg.pci or 0
+            if tgt.get("arfcn") is None:
+                tgt["arfcn"] = _arf(_tcfg.frequency_ghz)
         cgi = tgt.get("cgi")
         # 卷面前置檢查:ANR 自動建立功能之部署組態。停用時 gNB 不得自動寫入 NRT,
         # xApp 只能通報管理面(SMO_NOTIFY)。停用 != 禁止改 NRT(REMOVE/FLAG 不受此限)。
