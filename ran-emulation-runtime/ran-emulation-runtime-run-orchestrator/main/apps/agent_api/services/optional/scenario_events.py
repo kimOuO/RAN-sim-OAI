@@ -26,7 +26,7 @@
     antenna_change                     ❌ cached 模式做不到
         天線方位/下傾會改變射線追蹤的結果,而那是烘在快取裡的。
         要換天線必須用 sidecar 重新合成(path_synth),那是離線工作,不是執行期動作。
-        live 模式才有意義 —— 但 live 模式不能倍速也不能並行,對方要的話須另行商定。
+        live 模式才有意義 —— live 倍速上限 2x(實測走廊約 6x 但靠快取撐,保守取 2x),且同場域不可並行。
 
 全部拒絕都走「明講理由」而不是靜默失敗:對方拿我方的請求當正確答案存檔,
 我方假裝做了但沒做,會讓整個題庫的答案是錯的。
@@ -277,7 +277,7 @@ def _exec_antenna_change(ev: dict, hosts: dict[str, str]) -> dict:
         return {"applied": False,
                 "error": "antenna_change 在 cached 模式無法執行:天線方位/下傾已烘進通道快取,"
                          "執行期改動不會改變任何 path gain。需要此型別請改用 live 模式"
-                         "(不可倍速、不可並行)"}
+                         "(倍速上限 2x、同場域不可並行)"}
     p = ev.get("params") or {}
     body: dict[str, Any] = {"cell_id": ev["target"]}
     if p.get("azimuth_deg_after") is not None:

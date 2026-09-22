@@ -53,12 +53,23 @@ def list_scene_runs() -> dict:
     return _registry("Simulation_run/SceneRunReader/read", {})
 
 
-def set_run_knob(scene_run_uuid: str, key: str, value) -> dict:
-    """寫一個 run knob。create 是 upsert(同 scene_run + key 覆蓋)。
+def read_run_knobs(scene_run_uuid: str) -> list[dict]:
+    """該 run 的旋鈕列(原始列,含 run_knob_uuid)。"""
+    return _registry("Simulation_run/RunKnobReader/read", {"f_scene_run_uuid": scene_run_uuid}).get("data") or []
 
-    2026-09-22:外部 Agent 的 I-3 用這個下 run_seed —— 旋鈕是既有機制,
-    不必為了一個參數另開一條路。
+
+def set_run_knob(scene_run_uuid: str, key: str, value) -> dict:
+    """寫一個 run knob:同 scene_run + key 已存在就 update,否則 create。
+
+    2026-09-22 修正:RunKnobController/create 是**純新增**,不是 upsert(先前寫錯,
+    每觸發一次 I-3 就多一列 run_seed,實測堆了 17 列重複)。而全樹把 knobs 壓成
+    dict 時是無序 filter 的最後一筆贏 —— 重複列會讓「這次到底用哪個 seed」變成
+    看資料庫排序,決定性就沒了。
     """
+    hit = next((r for r in read_run_knobs(scene_run_uuid) if r.get("key") == key), None)
+    if hit and hit.get("run_knob_uuid"):
+        return _registry("Simulation_run/RunKnobController/update",
+                         {"run_knob_uuid": hit["run_knob_uuid"], "value": value})
     return _registry("Simulation_run/RunKnobController/create",
                      {"f_scene_run_uuid": scene_run_uuid, "key": key, "value": value})
 

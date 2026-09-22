@@ -127,6 +127,17 @@ class EventScheduler(threading.Thread):
                 data=json.dumps({"scene_run_uuid": self.run_uuid}).encode(),
                 headers={"content-type": "application/json"})
             urllib.request.urlopen(req, timeout=180).read()
+            # 停止介面把 status 設成 stopped,而 I-4 把 stopped 對映成 failed(人為中止)。
+            # 但這裡是**對方要求的長度跑完了**,是正常完成 —— 不標 done 的話對方輪詢
+            # 看到 failed 就會把整份資料丟掉(2026-09-22 實測踩到)。與 health_monitor
+            # 的劇本跑完 auto-stop 同一套作法。
+            from main.apps.run_lifecycle.services.optional import platform_clients
+            # progress_sec 一併寫:健康監控每 15 s 才回寫一次,30x 下 120 s 的 run
+            # 4 s 就跑完,對方看到 progress_s=0 但 status=done 會困惑。
+            platform_clients.update_scene_run(
+                self.run_uuid, status="done", progress_sec=round(now_s, 1),
+                notes=f"agent duration_s={self.deadline_s:.0f} reached at scene {now_s:.1f}s "
+                      f"({platform_clients.now_iso()})")
         except Exception:  # noqa: BLE001
             logger.exception("依 duration_s 停止 run 失敗 %s", self.run_uuid)
 
@@ -216,7 +227,17 @@ def resume(run_uuid: str, run_seq: int, hosts: dict[str, str]) -> int:
                 .filter(f_scene_run_uuid=run_uuid, run_seq=run_seq,
                         source__startswith="agent/", outcome="scheduled")
                 .order_by("at_sim_ms"))
-    if not rows:
+    # 對方要求的長度(deadline)也要接回 —— 只接事件不接 deadline 的話,orchestrator
+    # 重啟過的 run 會一路跑到劇本自身的長度(走廊 8 小時),對方等不到 done。
+    deadline_s = None
+    try:
+        from main.apps.run_lifecycle.services.optional import platform_clients
+        kn = {r.get("key"): r.get("value") for r in platform_clients.read_run_knobs(run_uuid)}
+        if kn.get("agent_duration_s"):
+            deadline_s = float(kn["agent_duration_s"])
+    except Exception:  # noqa: BLE001
+        logger.warning("接回 deadline 失敗 run=%s", run_uuid)
+    if not rows and deadline_s is None:
         return 0
     events = []
     for r in rows:
@@ -236,7 +257,7 @@ def resume(run_uuid: str, run_seq: int, hosts: dict[str, str]) -> int:
         old = _threads.get(run_uuid)
         if old and old.is_alive():
             old.stop()
-        t = EventScheduler(run_uuid, events, hosts, run_seq)
+        t = EventScheduler(run_uuid, events, hosts, run_seq, deadline_s)
         _threads[run_uuid] = t
         t.start()
     return len(events)

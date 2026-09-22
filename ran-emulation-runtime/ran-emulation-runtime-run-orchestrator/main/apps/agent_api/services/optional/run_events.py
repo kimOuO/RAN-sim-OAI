@@ -38,14 +38,67 @@ _CAUSE_CATEGORY = {
 
 def _base(type_: str, offset_s: float, gnb_id: str, cell_id: str, ue_id: str | None,
           payload: dict) -> dict:
+    # ts / ts_iso 由 actor 端用 wall_clock_mapper 回填(需要該輪 KPM 的牆鐘對照)
     return {
         "type": type_,
         "offset_s": round(float(offset_s), 3),
+        "ts": None,
+        "ts_iso": None,
         "gnb_id": gnb_id,
         "cell_id": cell_id,
         "ue_id": ue_id,
         "payload": payload,
     }
+
+
+def wall_clock_mapper(kpm_rows: list[dict]):
+    """劇本偏移秒 → (epoch 秒, ISO 字串)。
+
+    規格總則 2 要求偏移秒與絕對時戳並列。事件表只存劇本時鐘(at_sim_ms),沒有牆鐘;
+    但 KPM 視窗兩者都有(sim_time_ms / wall_time_ms),而且是同一輪、同一條 DU 時鐘。
+    所以拿「劇本時間最接近的那個視窗」的牆鐘當事件的絕對時戳,誤差在一個視窗(1 s)內。
+    對方要的絕對時戳用途是與 pm 的 cu_timestamp 對齊,那也是牆鐘,這樣才對得上。
+    kpm_rows 為空(還沒有任何視窗)就一律回 (None, None),不猜。
+    """
+    from bisect import bisect_left
+    from datetime import datetime, timezone
+
+    raw = sorted((int(r["sim_time_ms"]), int(r["wall_time_ms"])) for r in kpm_rows
+                 if r.get("sim_time_ms") is not None and r.get("wall_time_ms"))
+    # wall_time 是「歸檔時刻」不是視窗當下,同一次輪詢寫出的多個視窗牆鐘相同、
+    # 跨輪詢補齊的視窗反而較晚 —— 依劇本時間排序後牆鐘不保證單調,直接內插會讓
+    # 偏移 1.0s 的事件拿到比偏移 0.5s 更早的時戳(實測踩到)。同一劇本時間只留第一筆,
+    # 牆鐘取累計最大值,強制單調。
+    pts: list[tuple[int, int]] = []
+    last_sim, run_max = None, 0
+    for sim, wall in raw:
+        if sim == last_sim:
+            continue
+        run_max = max(run_max, wall)
+        pts.append((sim, run_max))
+        last_sim = sim
+    sims = [a for a, _b in pts]
+
+    def to_wall(offset_s: float):
+        if not pts:
+            return None, None
+        ms = int(float(offset_s) * 1000)
+        i = bisect_left(sims, ms)
+        cands = [j for j in (i - 1, i) if 0 <= j < len(pts)]
+        j = min(cands, key=lambda k: abs(sims[k] - ms))
+        # 視窗內再按比例推:視窗是 1 s,劇本與牆鐘的比例用相鄰兩點估,沒有就當 1:1
+        sim0, wall0 = pts[j]
+        if j + 1 < len(pts) and pts[j + 1][0] > sim0:
+            ratio = (pts[j + 1][1] - wall0) / (pts[j + 1][0] - sim0)
+        elif j > 0 and sim0 > pts[j - 1][0]:
+            ratio = (wall0 - pts[j - 1][1]) / (sim0 - pts[j - 1][0])
+        else:
+            ratio = 1.0
+        wall_ms = wall0 + (ms - sim0) * ratio
+        ts = wall_ms / 1000.0
+        return round(ts, 3), datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="milliseconds")
+
+    return to_wall
 
 
 def meas_reports(kpm_rows: list[dict], gnb_of_cell: dict[str, str],
@@ -83,8 +136,14 @@ def meas_reports(kpm_rows: list[dict], gnb_of_cell: dict[str, str],
     return out
 
 
-def handover_events(rows: list[dict], gnb_of_cell: dict[str, str], strip) -> list[dict]:
-    """換手 / RLF 事件。RLF 若有重建,額外導出一筆 rrc_reestab_req。"""
+def handover_events(rows: list[dict], gnb_of_cell: dict[str, str], strip,
+                    pci_of_cell: dict[str, int] | None = None) -> list[dict]:
+    """換手 / RLF 事件。RLF 若有重建,額外導出一筆 rrc_reestab_req。
+
+    pci_of_cell:規格的 ho_* payload 要 target_pci;事件表只存 target_cell,
+    由 registry 的 cell 設定回查。查不到留 None(不猜)。
+    """
+    pci_of_cell = pci_of_cell or {}
     out = []
     for r in rows:
         t = (r.get("at_sim_ms") or 0) / 1000.0
@@ -119,6 +178,7 @@ def handover_events(rows: list[dict], gnb_of_cell: dict[str, str], strip) -> lis
         out.append(_base(type_, t, gnb, src, r.get("ue_id"), {
             "target_cell_id": tgt,
             "target_ncgi": tgt or None,
+            "target_pci": pci_of_cell.get(tgt),
             "trigger": d.get("trigger"),
             "cause": cause or None,
             "cause_category": _CAUSE_CATEGORY.get(cause) if cause else None,

@@ -87,6 +87,12 @@ class RunReader:
             return error_response("run not found", run_id, 404)
 
         raw = str(row.get("status") or "")
+        # 對方經 I-3 指定的長度(旋鈕);沒有就是走前端啟動的 run,回劇本自身長度
+        try:
+            _kn = {r.get("key"): r.get("value") for r in platform_clients.read_run_knobs(run_id)}
+            agent_dur = int(float(_kn["agent_duration_s"])) if _kn.get("agent_duration_s") else None
+        except Exception:  # noqa: BLE001
+            agent_dur = None
         # 封存筆數 = 對方可取回的窗數。只算最後一次 run_seq —— 同一個 scene_run 重跑過
         # 的話舊資料還在表裡,全部加起來會讓對方以為有更多窗可取。
         try:
@@ -107,7 +113,7 @@ class RunReader:
             "status": _STATUS_MAP.get(raw, "running"),
             "native_status": raw,          # 我方原始值,除錯用
             "progress_s": row.get("progress_sec"),
-            "duration_s": row.get("duration_sec"),
+            "duration_s": agent_dur if agent_dur is not None else row.get("duration_sec"),
             "started_at": row.get("started_at"),
             "finished_at": row.get("stopped_at"),
             "windows_available": windows,
@@ -115,9 +121,11 @@ class RunReader:
             # 沒排事件(類型一)或 orchestrator 重啟後失去排程器時為 null。
             "events": event_scheduler.status(run_id),
             # I-3 若以 ue_count 取子集,這裡給實際採用的名單(對照 I-2 的 ues)
-            "ue_names": _ue_names(run_id),
+            "ue_names": (_names := _ue_names(run_id)),
             "error": err,
-            "unavailable_fields": [] if windows is not None else ["windows_available"],
+            "unavailable_fields": ([] if windows is not None else ["windows_available"])
+                                  + ([] if _names is not None else
+                                     ["ue_names(run 已停,UE 容器不在;啟動時的名單見 I-3 回應的 echo.ue_names)"]),
         }, "ok", 200)
 
     @staticmethod
@@ -190,12 +198,15 @@ class RunReader:
 
         # gNB 歸屬:執行期的 cell 沒有帶 gnb_id,匯出時回查 registry 還原分組
         gnb_of_cell: dict[str, str] = {}
+        pci_of_cell: dict[str, int] = {}
         try:
             tree = (platform_clients.read_scene_tree_by_run(run_id) or {}).get("data") or {}
             for g in tree.get("gnbs") or []:
                 for du in g.get("dus") or []:
                     for c in du.get("cells") or []:
                         gnb_of_cell[str(c.get("name") or "")] = str(g.get("name") or "")
+                        if c.get("pci") is not None:
+                            pci_of_cell[str(c.get("name") or "")] = int(c["pci"])
         except Exception:  # noqa: BLE001 — 查不到就讓 gnb_id 留空,不擋整支
             logger.info("gNB 歸屬回查失敗:%s", run_id)
 
@@ -205,16 +216,19 @@ class RunReader:
             return qs.filter(run_seq=seqs[0]) if seqs else qs
 
         out: list[dict] = []
+        # 牆鐘對照永遠要建(不管有沒有要 meas_report):所有事件的 ts / ts_iso 都靠它
+        q_kpm = _seq_filter(RunKpmSample.objects.filter(f_scene_run_uuid=run_id))
+        to_wall = run_events.wall_clock_mapper(
+            list(q_kpm.order_by("window_index").values("sim_time_ms", "wall_time_ms")))
         if want & {run_events.MEAS_REPORT}:
-            q = _seq_filter(RunKpmSample.objects.filter(f_scene_run_uuid=run_id))
-            rows = list(q.order_by("window_index").values("sim_time_ms", "per_ue"))
+            rows = list(q_kpm.order_by("window_index").values("sim_time_ms", "per_ue"))
             out += run_events.meas_reports(rows, gnb_of_cell, _strip)
         if want & {run_events.HO_EXE_SUCC, run_events.HO_EXE_FAIL, run_events.HO_PREP_FAIL,
                    run_events.RLF, run_events.RRC_REESTAB_REQ}:
             q = _seq_filter(RunHandoverEvent.objects.filter(f_scene_run_uuid=run_id))
             rows = list(q.order_by("at_sim_ms", "id").values(
                 "at_sim_ms", "ue_id", "source_cell", "target_cell", "outcome", "detail"))
-            out += run_events.handover_events(rows, gnb_of_cell, _strip)
+            out += run_events.handover_events(rows, gnb_of_cell, _strip, pci_of_cell)
         if want & {run_events.CGI_RESOLUTION}:
             q = _seq_filter(RunControlEvent.objects.filter(f_scene_run_uuid=run_id))
             rows = list(q.order_by("at_sim_ms", "id").values(
@@ -227,6 +241,9 @@ class RunReader:
         if t1 is not None:
             out = [e for e in out if e["offset_s"] <= float(t1)]
         out.sort(key=lambda e: (e["offset_s"], e["type"]))
+        for e in out:
+            e["ts"], e["ts_iso"] = to_wall(e["offset_s"])
+        no_wall = bool(out) and out[0]["ts"] is None
 
         counts: dict[str, int] = {}
         for e in out:
@@ -242,6 +259,6 @@ class RunReader:
                 "觸發結果見 ho_exe_succ / ho_exe_fail 的 payload.trigger(A3_TTT)",
                 "rrc_reestab_req 由 RLF 事件導出,無獨立訊息紀錄(時間與對應的 rlf 相同)",
             ],
-            "unavailable_fields": ["events[].payload.last_rsrp(RLF 當下只留 SINR)",
+            "unavailable_fields": (["events[].ts / ts_iso(這一輪尚無 KPM 視窗可對照牆鐘)"] if no_wall else []) + ["events[].payload.last_rsrp(RLF 當下只留 SINR)",
                                    "conn_release(無此事件)"],
         }, "ok", 200)

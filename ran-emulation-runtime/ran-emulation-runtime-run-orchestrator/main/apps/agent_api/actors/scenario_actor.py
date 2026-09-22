@@ -214,6 +214,9 @@ class ScenarioController:
             # 旋鈕是累積的:這次沒指定就要把上一輪的清掉,否則會沿用舊的人數
             platform_clients.set_run_knob(run_uuid, "ue_limit",
                                           str(ue_limit) if ue_limit else "")
+            # I-4 要回報「對方要的長度」而不是劇本自身長度(走廊是 28800s),
+            # 否則 progress_s=150/28800 看起來像 0.5%。排程器重啟後也讀得到。
+            platform_clients.set_run_knob(run_uuid, "agent_duration_s", str(duration_s))
         except Exception as exc:  # noqa: BLE001
             return error_response("failed to set run knobs", str(exc), 502)
 
@@ -277,6 +280,9 @@ class ScenarioController:
                 "events": len(events),
                 "events_scheduled": n_sched,     # 含自動補的還原動作
                 "requester_task_id": payload.get("requester_task_id"),
+                # 實際採用的 UE 名單(取子集時對方才知道拿到誰)。UE 端啟動回應就帶了,
+                # 不必等對方去 I-4 問。
+                "ue_names": ((launch.get("data") or {}).get("ue") or {}).get("ue_names"),
             },
             # magnitude 我方沒有對應的調節維度 —— 收下但不作用,必須講明
             "unavailable_fields": ["magnitude(我方事件無強度維度,收下但不作用)"],
