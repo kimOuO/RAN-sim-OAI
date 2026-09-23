@@ -31,7 +31,11 @@ CQI_BINS = 16
 import os as _os
 # P1.11 calibration — 從 env var 讀,方便 scenarios(sim_dt=100ms) 和 editor(sim_dt=500ms) 用不同值。
 # sim_dt=500ms → 10.0 (原始實測);sim_dt=100ms → 需跑完後重測。
-PRB_OAI_CALIB: float = float(_os.getenv("PRB_OAI_CALIB", "10.0"))
+# 2026-09-23:預設改為 1.0(不校正)。10.0 是 2026-05-23 對齊 OAI rfsim 某一個操作點
+# 反推的經驗映射,不是物理常數:raw 只要超過 10% 乘完就撞 100% clamp,RC PRB quota
+# 的效果會完全看不出來(下 max_prb=3 仍報 100%)。真實 RAN 的 RRU.PrbTotDl 就是
+# 「用掉的 PRB ÷ 物理容量」,不該再乘任何係數。要做 OAI 對照時才用 env 切回 10.0。
+PRB_OAI_CALIB: float = float(_os.getenv("PRB_OAI_CALIB", "1.0"))
 
 
 @dataclass

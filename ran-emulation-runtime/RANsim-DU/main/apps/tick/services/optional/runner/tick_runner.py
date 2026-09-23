@@ -43,7 +43,11 @@ from main.services_logs.ran_message_log import get_ring as get_log_ring
 from main.utils.env_loader import get_bool, get_float, get_int, get_str
 
 # P0b — RLC delay 計算模式:calib(現狀,wall 量測 + /30 擬合校正) | subtick(FIFO sim-time 解析模型)
-_RLC_DELAY_SUBTICK = (get_str("RLC_DELAY_MODEL", "calib") or "calib").strip().lower() == "subtick"
+# 2026-09-23:預設改為 subtick(真實 FIFO 佇列時間)。calib 那條是把量到的 wall 時間
+# 除以 30 去擬合 OAI 的數字 —— 壓出來的值好看但不是這個模擬器裡真正發生的延遲。
+# 現役路徑是 slot 引擎接管(SLOT_ENGINE_TAKEOVER=on),兩者都不會被用到;
+# 這裡改預設是為了「沒開 takeover 時也拿得到有物理依據的值」。
+_RLC_DELAY_SUBTICK = (get_str("RLC_DELAY_MODEL", "subtick") or "subtick").strip().lower() == "subtick"
 # 改動一 shadow:on 時在現役 calib 路徑「旁邊」並行跑 slot_loop(跨-tick state)、只 log 對照、不接管 KPM
 _SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False)
 # 反事實 res_op 完整修法參數(待校的現象學值):
@@ -83,7 +87,7 @@ def set_rlc_delay_model(mode: str) -> None:
     'subtick' = 誠實 FIFO sim-time 排隊延遲(壅塞時真實爬,CCO 觸發要);
     'calib'   = wall + ÷30 擬合對齊 OAI 低 delay(壅塞被壓平,normal 對照用)。"""
     global _RLC_DELAY_SUBTICK
-    _RLC_DELAY_SUBTICK = (str(mode or "calib").strip().lower() == "subtick")
+    _RLC_DELAY_SUBTICK = (str(mode or "subtick").strip().lower() == "subtick")
 
 
 def get_discard_timer_ms() -> int:

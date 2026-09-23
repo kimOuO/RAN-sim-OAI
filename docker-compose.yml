@@ -84,7 +84,11 @@ services:
       DJANGO_SECRET_KEY: change-me
       DJANGO_DEBUG: "True"
       DJANGO_ALLOWED_HOSTS: "*"
-      KPM_CALIB_ENABLE: "on"   # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
+      # 2026-09-23 改 off:on 會把 DRB.UEThpDl/Ul、PdcpSduVolume、RlcSduDelayDl、
+      # RRU.PrbTotDl/Ul 就地換成 kpm-calib 的 ML 模型輸出 —— xApp 看到的就不是這個
+      # 模擬器算出來的值。真實 RAN 的 KPM 來自 gNB 自己的計數器,不該再過一層模型。
+      # 只有要跟 OAI rfsim 做對照時才切回 on(kpm-calib 容器仍在,隨時可開)。
+      KPM_CALIB_ENABLE: "off"  # on=KPM 走 ML 校正(kpm-calib);off=原始 raw KPM
       # 第7題注入已改檔案熱開關 tmp/ho_force_fail.txt(2026-08-26)。
       # env 版曾殘留 nbr_c0 汙染 Q1 抽驗場(撞 cell 名)—— 勿再用 env 佈注入。
       MEAS_REPORT_MIN_RSRP_DBM: "-110" # 量測回報門檻(38.331 reportConfig);-110=幾乎不濾
@@ -187,7 +191,8 @@ services:
       # 但這是經驗映射不是物理常數,raw > 10% 後 ×10 必爆 100% clamp,xApp 看到的
       # RC PRB quota 效果完全失真(下 max=3% → KPM 仍報 100%)。
       # 預設改回 1.0(raw 不校正),docs/test_records/oai_kpm_calibration_2026-05-23.md
-      # 對照測試前再切回 10.0。
+      # 對照測試前再切回 10.0。2026-09-23:程式內建預設也一併從 10.0 改成 1.0,
+      # 避免任何沒帶這個 env 的 DU 把 PRB% 放大十倍(raw 10% → 報 100%)。
       PRB_OAI_CALIB: "1.0"
       # RLC tx buffer 上限。
       # 2026-05-23 P1.12 — 從 500K 拉到 10 MB。500K 對 3 Mbps × 500ms tick (187 KB/tick)
@@ -198,8 +203,11 @@ services:
       # P0b — RLC delay 計算模式:calib(現狀,wall+/30擬合) | subtick(FIFO sim-time 解析模型)。
       # 2026-06-01 B1 驗證發現:subtick 誠實報出 DT 真實 ~140KB 常駐 backlog → ~430ms delay,
       # 比 OAI 14ms 大,因 DT 注入 burst + tick 粒度排空。calib 的 /30 是把這壓成虛構 14ms。
-      # → subtick 單獨無法達 OAI(delay 是真實佇列非量測假象),default 維持 calib。
-      RLC_DELAY_MODEL: "calib"
+      # → subtick 單獨無法達 OAI(delay 是真實佇列非量測假象)。
+      # 2026-09-23:預設改 subtick —— 對不上 OAI 的是我們的注入方式與 tick 粒度,
+      # 用 /30 把它除到好看只是把問題藏起來。現役 delay 走 slot 引擎(下面的 TAKEOVER),
+      # 這個值只在沒開 takeover 時生效。要做 OAI 對照再切回 calib。
+      RLC_DELAY_MODEL: "subtick"
       # 改動一 shadow:slot_loop 跨-tick state 在 calib 旁並行跑、只 log [SLOT_SHADOW]、不接管 KPM。
       SLOT_ENGINE_SHADOW: "on"
       # slot 引擎正式接管 delay:scheduler 改操作點 MCS 算 PRB(+地板) + RLC delay KPM 走 slot 引擎,退掉 /30。
