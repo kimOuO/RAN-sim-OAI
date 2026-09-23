@@ -397,7 +397,15 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
             failed += 1
             # 2026-09-23(RIC 第三十輪):以前 REJECTED 的 detail 是空字串,xApp 只知道「沒成功」。
             # 失敗原因(如 stale PCI → CellNotAvailable)是補救方式的關鍵,要帶回 outcome。
-            c = str((ho or {}).get("failure_cause") or "unknown")
+            c = str((ho or {}).get("failure_cause") or "")
+            if not c:
+                # execute_f1_handover 對這兩種情況回 None(不改它的契約:其他呼叫端拿
+                # 真假值當「有沒有換成」在計數)。在這裡判回原因,否則 xApp 只看到 unknown。
+                # 2026-09-23 RIC 第三十四輪:run 46 的 PARTIAL 就是 UE 在執行瞬間已經換走了。
+                _u = UeContext.objects.filter(ue_id=uid).first()
+                c = ("UeNotFound" if _u is None else
+                     "UeAlreadyAtTarget" if _u.serving_cell == target_cell else
+                     "UeLeftSourceCell" if _u.serving_cell != serving else "unknown")
             causes[c] = causes.get(c, 0) + 1
 
     result = ("NO_MATCH" if not matched else
