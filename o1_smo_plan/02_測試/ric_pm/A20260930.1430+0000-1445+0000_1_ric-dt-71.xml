@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<measCollecFile xmlns="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec">
+  <fileHeader fileFormatVersion="32.435 V10.0" vendorName="MITLAB Near-RT RIC" dnPrefix="SubNetwork=RIC">
+    <fileSender localDn="ManagedElement=ric-dt-71" elementType="NearRTRIC"/>
+    <measCollec beginTime="2026-09-30T14:30:00+00:00"/>
+  </fileHeader>
+  <measData>
+    <managedElement localDn="ManagedElement=ric-dt-71" swVersion="osc-m-release"/>
+    <measInfo measInfoId="PM=1,PmGroup=E2Term">
+      <job jobId="1"/>
+      <granPeriod duration="PT900S" endTime="2026-09-30T14:45:00+00:00"/>
+      <repPeriod duration="PT900S"/>
+      <measType p="1">VS.E2T.SetupRequest.Msgs</measType>
+      <measType p="2">VS.E2T.SetupResponse.Msgs</measType>
+      <measType p="3">VS.E2T.SetupRequestFailure.Msgs</measType>
+      <measType p="4">VS.E2T.RICsubscription.Msgs</measType>
+      <measType p="5">VS.E2T.RICsubscriptionACK.Msgs</measType>
+      <measType p="6">VS.E2T.RICsubscriptionFailure.Msgs</measType>
+      <measType p="7">VS.E2T.RICindication.Msgs</measType>
+      <measType p="8">VS.E2T.RICindication.Bytes</measType>
+      <measType p="9">VS.E2T.RICcontrol.Msgs</measType>
+      <measType p="10">VS.E2T.RICcontrolACK.Msgs</measType>
+      <measType p="11">VS.E2T.RICcontrolFailure.Msgs</measType>
+      <measType p="12">VS.E2T.ErrorIndication.Msgs</measType>
+      <measType p="13">VS.E2T.SctpAbort.E2NodeInitiated</measType>
+      <measType p="14">VS.E2T.InvalidMessage.Msgs</measType>
+      <measValue measObjLdn="NearRTRICFunction=1,E2Term=alpha">
+        <r p="1">95</r>
+        <r p="2">94</r>
+        <r p="3">1</r>
+        <r p="4">493</r>
+        <r p="5">493</r>
+        <r p="6">0</r>
+        <r p="7">5664008</r>
+        <r p="8">7201763400</r>
+        <r p="9">119</r>
+        <r p="10">103</r>
+        <r p="11">16</r>
+        <r p="12">0</r>
+        <r p="13">94</r>
+        <r p="14">0</r>
+        <suspect>true</suspect>
+      </measValue>
+    </measInfo>
+    <measInfo measInfoId="PM=1,PmGroup=SubMgr">
+      <job jobId="1"/>
+      <granPeriod duration="PT900S" endTime="2026-09-30T14:45:00+00:00"/>
+      <repPeriod duration="PT900S"/>
+      <measType p="1">VS.SubMgr.ActiveSubscriptions</measType>
+      <measType p="2">VS.SubMgr.RestSubReqFromXapp</measType>
+      <measType p="3">VS.SubMgr.RestSubFailToXapp</measType>
+      <measValue measObjLdn="NearRTRICFunction=1,SubMgr=1">
+        <r p="1">3</r>
+        <r p="2">485</r>
+        <r p="3">0</r>
+        <suspect>true</suspect>
+      </measValue>
+    </measInfo>
+    <measInfo measInfoId="PM=1,PmGroup=RicPlatform">
+      <job jobId="1"/>
+      <granPeriod duration="PT900S" endTime="2026-09-30T14:45:00+00:00"/>
+      <repPeriod duration="PT900S"/>
+      <measType p="1">VS.E2Mgr.ConnectedNodes</measType>
+      <measType p="2">VS.A1.PolicyInstances</measType>
+      <measType p="3">VS.RIC.Alarms.Active</measType>
+      <measValue measObjLdn="NearRTRICFunction=1">
+        <r p="1">1</r>
+        <r p="2">0</r>
+        <r p="3">0</r>
+      </measValue>
+    </measInfo>
+  </measData>
+  <fileFooter>
+    <measCollec endTime="2026-09-30T14:45:00+00:00"/>
+  </fileFooter>
+</measCollecFile>

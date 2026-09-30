@@ -1,0 +1,301 @@
+{
+  "specversion": "1.0",
+  "id": "53a4c76f-fcd0-4d91-9bbb-0fb5ea60ac07",
+  "source": "ransim-dt:platform",
+  "type": "topology-inventory-ingestion.create",
+  "datacontenttype": "application/json",
+  "dataschema": "topology-inventory-ingestion:events:create:1.0.0",
+  "time": "2026-09-29T10:43:08Z",
+  "data": {
+    "entities": [
+      {
+        "o-ran-smo-teiv-oam:ManagedElement": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00",
+              "urn:dt:platform-cu"
+            ]
+          },
+          {
+            "id": "urn:3gpp:dn:ManagedElement=ric-dt-71",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=ric-dt-71",
+              "urn:dt:ric:10.3.0.71"
+            ]
+          },
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1",
+              "urn:dt:platform-du"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:OCUCPFunction": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0"
+            ],
+            "attributes": {
+              "gNBCUName": "gnb_208_095_000e00",
+              "gNBId": 3584,
+              "gNBIdLength": 22,
+              "pLMNId": {
+                "mcc": "208",
+                "mnc": "95"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:NearRTRICFunction": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ],
+            "attributes": {
+              "nearRtRicId": 699598,
+              "pLMNId": {
+                "mcc": "310",
+                "mnc": "411"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFunction": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1"
+            ],
+            "attributes": {
+              "gNBDUId": 1,
+              "gNBId": 3584,
+              "gNBIdLength": 22,
+              "dUpLMNId": {
+                "mcc": "208",
+                "mnc": "95"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:NRCellCU": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=0"
+            ],
+            "attributes": {
+              "cellLocalId": 0,
+              "nCI": 58720256,
+              "nRTAC": 40960,
+              "plmnId": {
+                "mcc": "208",
+                "mnc": "95"
+              }
+            }
+          },
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=1"
+            ],
+            "attributes": {
+              "cellLocalId": 1,
+              "nCI": 58720257,
+              "nRTAC": 40960,
+              "plmnId": {
+                "mcc": "208",
+                "mnc": "95"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:NRCellDU": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRCellDU=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRCellDU=0"
+            ],
+            "attributes": {
+              "cellLocalId": 0,
+              "nCI": 58720256,
+              "nRPCI": 1,
+              "nRTAC": 40960
+            }
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:NRSectorCarrier": [
+          {
+            "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRSectorCarrier=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRSectorCarrier=0"
+            ],
+            "attributes": {
+              "arfcnDL": 633333,
+              "arfcnUL": 633333,
+              "frequencyDL": 3500,
+              "frequencyUL": 3500,
+              "bSChannelBwDL": 40
+            }
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "o-ran-smo-teiv-rel-oam-ran:MANAGEDELEMENT_MANAGES_OCUCPFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e00_ManagedElement=gnb_208_095_000e00.OCUCPFunction=0",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-rel-oam-ran:MANAGEDELEMENT_MANAGES_NEARRTRICFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_NEARRTRICFUNCTION=ManagedElement=ric-dt-71_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:3gpp:dn:ManagedElement=ric-dt-71",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=ric-dt-71",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e00.OCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-rel-oam-ran:MANAGEDELEMENT_MANAGES_ODUFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_ODUFUNCTION=ManagedElement=gnb_208_095_000e00_du1_ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_F1CLINK_OCUCPFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e00.OCUCPFunction=0",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:OCUCPFUNCTION_PROVIDES_NRCELLCU": [
+          {
+            "id": "urn:oran:smo:teiv:OCUCPFUNCTION_PROVIDES_NRCELLCU=ManagedElement=gnb_208_095_000e00.OCUCPFunction=0_ManagedElement=gnb_208_095_000e00.OCUCPFunction=0.NRCellCU=0",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=0"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:OCUCPFUNCTION_PROVIDES_NRCELLCU=ManagedElement=gnb_208_095_000e00.OCUCPFunction=0_ManagedElement=gnb_208_095_000e00.OCUCPFunction=0.NRCellCU=1",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=1",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00,OCUCPFunction=0,NRCellCU=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_PROVIDES_NRCELLDU": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRCELLDU=ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1.NRCellDU=0",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRCellDU=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRCellDU=0"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_PROVIDES_NRSECTORCARRIER": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1.NRSectorCarrier=0",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRSectorCarrier=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRSectorCarrier=0"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:NRCELLDU_USES_NRSECTORCARRIER": [
+          {
+            "id": "urn:oran:smo:teiv:NRCELLDU_USES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1.NRCellDU=0_ManagedElement=gnb_208_095_000e00_du1.ODUFunction=1.NRSectorCarrier=0",
+            "aSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRCellDU=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRSectorCarrier=0",
+            "sourceIds": [
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRCellDU=0",
+              "urn:3gpp:dn:ManagedElement=gnb_208_095_000e00_du1,ODUFunction=1,NRSectorCarrier=0"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+--- /tmp/pd.before7	2026-09-29 23:38:55.836785223 +0800
++++ src/pm_data/pm_data.c	2026-09-29 23:38:55.844785011 +0800
+@@ -316,9 +316,16 @@
+     }
+     sprintf(end_time_full, "%04d-%02d-%02dT%02d:%02d:%02d+00:00", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+ 
++    /* DT patch 0007: 上游用「第一筆與最後一筆取樣的時間差 < 週期」判 suspect,1 s 輪詢的相位會讓完整週期
++       也被標成 true(例 15:00:01–15:14:59 = 898 s)。改成看視窗對齊:第一筆是否落在視窗起點附近、
++       最後一筆是否落在視窗終點附近(容忍 5 s)。 */
+     const char *suspect = "";
+-    if((data->end_time - data->start_time) < pm_data_feed_log_period) {
+-        suspect = "<suspect>true</suspect>";
++    {
++        time_t win_start = (data->start_time / pm_data_feed_log_period) * pm_data_feed_log_period;
++        time_t win_end = win_start + pm_data_feed_log_period;
++        if ((data->start_time - win_start) > 5 || (win_end - data->end_time) > 5) {
++            suspect = "<suspect>true</suspect>";
++        }
+     }
+ 
+     char log_period[16];

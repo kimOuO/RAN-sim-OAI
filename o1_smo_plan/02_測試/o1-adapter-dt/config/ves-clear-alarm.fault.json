@@ -1,0 +1,37 @@
+{
+    "event": {
+        "commonEventHeader": {
+            "domain": "fault",
+            "eventId": "ManagedElement=@node-id@_@alarm@_@notification-id@",
+            "eventName": "Fault_@vendor@-@model@_@alarm@",
+            "eventType": "@eventType@_Alarms",
+            "sequence": @seqId@,
+            "priority": "Normal",
+            "reportingEntityId": "",
+            "reportingEntityName": "@node-id@",
+            "sourceId": "@managed-element-id@",
+            "sourceName": "@node-id@",
+            "startEpochMicrosec": @timestampMicrosec@,
+            "lastEpochMicrosec": @timestampMicrosec@,
+            "nfNamingCode": "001",
+            "nfVendorName": "@vendor@",
+            "timeZoneOffset": "+00:00",
+            "version": "4.1",
+            "vesEventListenerVersion": "7.2.1"
+        },
+        "faultFields": {
+            "faultFieldsVersion": "4.0",
+            "alarmCondition": "@alarm@",
+            "alarmInterfaceA": "@object-instance@",
+            "eventSeverity": "NORMAL",
+            "eventSourceType": "@alarm-type@",
+            "specificProblem": "@alarm@",
+            "vfStatus": "Active",
+            "alarmAdditionalInformation": {
+                "objectInstance": "@object-instance@",
+                "notificationId": "@notification-id@",
+                "eventTime": "@timestampISO3milisec@"
+            }
+        }
+    }
+}

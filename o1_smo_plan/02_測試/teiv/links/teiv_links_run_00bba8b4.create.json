@@ -1,0 +1,107 @@
+{
+  "specversion": "1.0",
+  "id": "aa535988-29aa-417f-b288-c288404bd631",
+  "source": "ransim-dt:run-orchestrator",
+  "type": "topology-inventory-ingestion.create",
+  "datacontenttype": "application/json",
+  "dataschema": "topology-inventory-ingestion:events:create:1.0.0",
+  "time": "2026-09-30T07:05:20Z",
+  "data": {
+    "entities": [],
+    "relationships": [
+      {
+        "o-ran-smo-teiv-ran:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e30.GNBCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30,GNBCUCPFunction=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30,GNBCUCPFunction=0",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e31.GNBCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31,GNBCUCPFunction=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31,GNBCUCPFunction=0",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e32.GNBCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32,GNBCUCPFunction=0",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32,GNBCUCPFunction=0",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e30_du1.GNBDUFunction=1_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e31_du1.GNBDUFunction=1_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31_du1,GNBDUFunction=1",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31_du1,GNBDUFunction=1",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e32_du2.GNBDUFunction=2_ManagedElement=ric-dt-71.NearRTRICFunction=1",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32_du2,GNBDUFunction=2",
+            "bSide": "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32_du2,GNBDUFunction=2",
+              "urn:3gpp:dn:ManagedElement=ric-dt-71,NearRTRICFunction=1"
+            ]
+          }
+        ]
+      },
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_F1CLINK_OCUCPFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e30_du1.GNBDUFunction=1_ManagedElement=gnb_208_095_000e30.GNBCUCPFunction=0",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1",
+            "bSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30,GNBCUCPFunction=0",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1",
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e30,GNBCUCPFunction=0"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e31_du1.GNBDUFunction=1_ManagedElement=gnb_208_095_000e31.GNBCUCPFunction=0",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31_du1,GNBDUFunction=1",
+            "bSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31,GNBCUCPFunction=0",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31_du1,GNBDUFunction=1",
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e31,GNBCUCPFunction=0"
+            ]
+          },
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e32_du2.GNBDUFunction=2_ManagedElement=gnb_208_095_000e32.GNBCUCPFunction=0",
+            "aSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32_du2,GNBDUFunction=2",
+            "bSide": "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32,GNBCUCPFunction=0",
+            "sourceIds": [
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32_du2,GNBDUFunction=2",
+              "urn:oran:smo:teiv:ManagedElement=gnb_208_095_000e32,GNBCUCPFunction=0"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

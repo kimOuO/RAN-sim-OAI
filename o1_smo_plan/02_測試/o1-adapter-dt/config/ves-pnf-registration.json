@@ -1,0 +1,50 @@
+{
+    "event": {
+        "commonEventHeader": {
+            "domain": "@domain@",
+            "eventId": "ManagedElement=@node-id@_pnfRegistration",
+            "eventName": "@domain@_@eventType@",
+            "eventType": "@eventType@",
+            "sequence": @seqId@,
+            "priority": "@priority@",
+            "reportingEntityId": "",
+            "reportingEntityName": "ManagedElement=@node-id@",
+            "sourceId": "@managed-element-id@",
+            "sourceName": "@node-id@",
+            "startEpochMicrosec": @timestampMicrosec@,
+            "lastEpochMicrosec": @timestampMicrosec@,
+            "nfNamingCode": "001",
+            "nfVendorName": "@vendor@",
+            "timeZoneOffset": "+00:00",
+            "version": "4.1",
+            "vesEventListenerVersion": "7.2.1"
+        },
+        "pnfRegistrationFields": {
+            "pnfRegistrationFieldsVersion": "2.1",
+            "lastServiceDate": "2021-03-26",
+            "macAddress": "@macAddress@",
+            "manufactureDate": "2021-01-16",
+            "modelNumber": "@model@",
+            "oamV4IpAddress": "@oamIp@",
+            "oamV6IpAddress": "@oamIpV6@",
+            "serialNumber": "@vendor@-@unitType@-@oamIp@-@model@",
+            "softwareVersion": "2.3.5",
+            "unitFamily": "@vendor@-@unitType@",
+            "unitType": "@unitType@",
+            "vendorName": "@vendor@",
+            "additionalFields": {
+                "oamPort": "@port@",
+                "protocol": "SSH",
+                "username": "@username@",
+                "password": "@password@",
+                "reconnectOnChangedSchema": "false",
+                "sleep-factor": "1.5",
+                "tcpOnly": "false",
+                "connectionTimeout": "20000",
+                "maxConnectionAttempts": "100",
+                "betweenAttemptsTimeout": "2000",
+                "keepaliveDelay": "120"
+            }
+        }
+    }
+}

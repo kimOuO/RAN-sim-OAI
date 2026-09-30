@@ -1,0 +1,1 @@
+ce_specversion:::1.0,ce_id:::6291fe3a-fdb6-422e-bbb7-8bbddc0f1b1d,ce_source:::ransim-dt:run-orchestrator,ce_type:::topology-inventory-ingestion.create,content-type:::application/json,ce_time:::2026-09-29T11:26:57Z,ce_dataschema:::topology-inventory-ingestion:events:create:1.0.0

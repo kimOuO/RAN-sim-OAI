@@ -1,0 +1,46 @@
+# D1:DT telnet 假面 + 兩顆 o1-adapter。
+#  - facade 跑 host network,直連 CU 8101 / DU 8102,聽 9091(CU-CP 身分)/ 9092(DU 身分)。
+#  - adapter 走 bridge + 埠映射(netopeer2 固定聽 830、sshd 固定聽 22,不能跟主機搶),telnet 目標填主機 IP。
+#  - ME:CU-CP 身分 = gnb_208_095_000e00(多小區);DU 身分 = gnb_208_095_000e00_du1(頻寬/PCI/負載)。
+name: o1-d1
+services:
+  facade:
+    build: ./facade
+    image: o1-telnet-facade:dt
+    container_name: o1-d1-facade
+    network_mode: host
+    environment:
+      CU_URL: http://127.0.0.1:8101
+      DU_URL: http://127.0.0.1:8102
+      GNB_NAME: gnb_208_095_000e00
+      VENDOR: "MITLAB RANsim-DT"
+      DU_CELL: ""
+      CUCP_PORT: "9091"
+      DU_PORT: "9092"
+    restart: unless-stopped
+  adapter-cucp:
+    image: adapter-gnb:dt
+    container_name: o1-d1-adapter-cucp
+    depends_on: [facade]
+    ports: ["1830:830", "1222:22"]
+    volumes:
+      - ./ftp-cucp:/ftp
+      - ./config/config.cucp.json:/adapter/config/config.json
+      - ./config/ves-file-ready.json:/adapter/config/ves-file-ready.json
+      - ./config/pmData-measData.xml:/adapter/config/pmData-measData.xml
+      - ./config/ves-new-alarm.json:/adapter/config/ves-new-alarm.json
+      - ./config/ves-clear-alarm.json:/adapter/config/ves-clear-alarm.json
+    restart: unless-stopped
+  adapter-du:
+    image: adapter-gnb:dt
+    container_name: o1-d1-adapter-du
+    depends_on: [facade]
+    ports: ["1831:830", "1223:22"]
+    volumes:
+      - ./ftp-du:/ftp
+      - ./config/config.du.json:/adapter/config/config.json
+      - ./config/ves-file-ready.json:/adapter/config/ves-file-ready.json
+      - ./config/pmData-measData.xml:/adapter/config/pmData-measData.xml
+      - ./config/ves-new-alarm.json:/adapter/config/ves-new-alarm.json
+      - ./config/ves-clear-alarm.json:/adapter/config/ves-clear-alarm.json
+    restart: unless-stopped

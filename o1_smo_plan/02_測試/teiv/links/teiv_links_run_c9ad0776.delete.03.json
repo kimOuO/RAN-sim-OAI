@@ -1,0 +1,21 @@
+{
+  "specversion": "1.0",
+  "id": "395c02b3-d421-47aa-9fbe-9299e08373c8",
+  "source": "ransim-dt:run-orchestrator",
+  "type": "topology-inventory-ingestion.delete",
+  "datacontenttype": "application/json",
+  "dataschema": "topology-inventory-ingestion:events:delete:1.0.0",
+  "time": "2026-09-29T15:14:42Z",
+  "data": {
+    "entities": [],
+    "relationships": [
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_F1CLINK_OCUCPFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e10_du1.GNBDUFunction=1_ManagedElement=gnb_208_095_000e10.GNBCUCPFunction=0"
+          }
+        ]
+      }
+    ]
+  }
+}

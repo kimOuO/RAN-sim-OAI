@@ -1,0 +1,50 @@
+{
+    "log-level": 3,
+    "software-version": "dt-0.1",
+    "network": {
+        "host": "10.3.0.217",
+        "username": "netconf",
+        "password": "netconf!",
+        "netconf-port": 1830,
+        "sftp-port": 1222
+    },
+    "ves": {
+        "template": {
+            "new-alarm": "/adapter/config/ves-new-alarm.json",
+            "clear-alarm": "/adapter/config/ves-clear-alarm.json",
+            "pnf-registration": "/adapter/config/ves-pnf-registration.json",
+            "file-ready": "/adapter/config/ves-file-ready.json",
+            "heartbeat": "/adapter/config/ves-heartbeat.json",
+            "pm-data": "/adapter/config/pmData-measData.xml"
+        },
+        "pnf-registration": true,
+        "heartbeat-interval": 30,
+        "url": "http://10.3.0.204:30417/eventListener/v7",
+        "username": "sample1",
+        "password": "sample1",
+        "pm-data-interval": 900,
+        "file-expiry": 86400
+    },
+    "alarms": {
+        "internal-connection-lost-timeout": 3,
+        "load-downlink-exceeded-warning-threshold": 50,
+        "load-downlink-exceeded-warning-timeout": 15
+    },
+    "telnet": {
+        "host": "10.3.0.217",
+        "port": 9091
+    },
+    "info": {
+        "gnb-cu-id": 0,
+        "gnb-du-id": 1,
+        "cell-local-id": 0,
+        "node-id": "gnb_208_095_000e00",
+        "location-name": "DT RAN sim host 10.3.0.217 (D1 facade, live CU/DU data)",
+        "managed-by": "ManagementSystem=O-RAN-SC-ONAP-based-SMO",
+        "managed-element-type": "NodeB",
+        "model": "ransim-dt-cucp",
+        "unit-type": "CU-CP",
+        "granularityPeriod": 900,
+        "fileReportingPeriod": 900
+    }
+}

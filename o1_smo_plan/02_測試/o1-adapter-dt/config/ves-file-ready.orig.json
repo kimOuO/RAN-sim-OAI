@@ -1,0 +1,45 @@
+{
+    "event": {
+        "commonEventHeader": {
+            "domain": "@domain@",
+            "eventId": "ManagedElement=@node-id@_FileReady",
+            "eventName": "@domain@_@vendor@-@model@_@eventType@",
+            "eventType": "@eventType@",
+            "sequence": @seqId@,
+            "priority": "@priority@",
+            "reportingEntityId": "",
+            "reportingEntityName": "ManagedElement=@node-id@",
+            "sourceId": "@managed-element-id@",
+            "sourceName": "@node-id@",
+            "startEpochMicrosec": @timestampMicrosec@,
+            "lastEpochMicrosec": @timestampMicrosec@,
+            "nfNamingCode": "001",
+            "nfVendorName": "@vendor@",
+            "timeZoneOffset": "+00:00",
+            "version": "4.1",
+            "stndDefinedNamespace": "3GPP-PerformanceAssurance",
+            "vesEventListenerVersion": "7.2.1"
+        },
+        "stndDefinedFields": {
+            "schemaReference": "https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FileDataReportingMnS.yaml#components/schemas/NotifyFileReady",
+            "data": {
+                "href": "href1",
+                "notificationId": @notification-id@,
+                "notificationType": "notifyFileReady",
+                "eventTime": "@timestampISO3milisec@",
+                "systemDN": "ManagedElement=@node-id@",
+                "fileInfoList": [{
+                    "fileLocation": "sftp://@username@:@password@@@oamIp@:@port@@fileLocation@",
+                    "fileSize": @fileSize@,
+                    "fileReadyTime": "@timestampISO3milisec@",
+                    "fileExpirationTime": "@fileExpiry@",
+                    "fileCompression": "no",
+                    "fileFormat": "xml",
+                    "fileDataType": "Performance"
+                }],
+                "additionalText": "Have fun!"
+            },
+            "stndDefinedFieldsVersion": "1.0"
+        }
+    }
+}

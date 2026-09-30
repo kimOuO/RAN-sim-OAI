@@ -1,0 +1,39 @@
+--- /tmp/nd.before5	2026-09-29 16:55:38.750504252 +0800
++++ src/netconf/netconf_data.c	2026-09-29 16:55:38.758504037 +0800
+@@ -730,9 +730,19 @@
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[k_running], "%s/attributes/granularityPeriod", PERFMETRICJOBSGRP_XPATH);
+         k_running++;
+ 
+-        STRDUP_OR_FAIL(return 1, values_running[k_running], "DRB.MeanActiveUeDl");
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[k_running], "%s/attributes/performanceMetrics", PERFMETRICJOBSGRP_XPATH);
+-        k_running++;
++        /* DT patch 0005: seed all DU-supported metrics by default (names as in SupportedPerfMetricGroups).
++           Restarting the adapter rebuilds the running datastore, so CM edits by SMO do not survive a restart. */
++        {
++            static const char *dt_default_metrics[] = {
++                "DRB.MeanActiveUeDl", "DRB.MeanActiveUeUl", "DRB.MaxActiveUeDl", "DRB.MaxActiveUeUl",
++                "DRB.UEThpDl", "DRB.UEThpUl", "RRU.PrbTotDl",
++                "DRB.UeUnresVolDl", "DRB.UeUnresVolUl", "DRB.RlcPacketDropRateDl", 0 };
++            for (int m = 0; dt_default_metrics[m]; ++m) {
++                STRDUP_OR_FAIL(return 1, values_running[k_running], dt_default_metrics[m]);
++                ASPRINTF_OR_FAIL(return 1, &xpath_running[k_running], "%s/attributes/performanceMetrics", PERFMETRICJOBSGRP_XPATH);
++                k_running++;
++            }
++        }
+ 
+         ASPRINTF_OR_FAIL(return 1, &values_running[k_running], "%d", netconf_config->info.fileReportingPeriod);
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[k_running], "%s/attributes/fileReportingPeriod", PERFMETRICJOBSGRP_XPATH);
+--- /tmp/pd.before5	2026-09-29 16:55:38.751504225 +0800
++++ src/pm_data/pm_data.c	2026-09-29 16:55:38.759504010 +0800
+@@ -411,9 +411,9 @@
+             strcpy(performance_metric_values[i], ue_thp_dl_str);
+         } else if (strcmp(performanceMetricsNames[i], "DRB.UEThpUl")==0){
+             strcpy(performance_metric_values[i], ue_thp_ul_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolUl")==0){
++        } else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolUl")==0 || strcmp(performanceMetricsNames[i], "DRB.UeUnresVolUl")==0){  /* DT patch 0005: alias */
+             strcpy(performance_metric_values[i], ue_thp_unres_ul_str);
+-        }else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolDl")==0){
++        }else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolDl")==0 || strcmp(performanceMetricsNames[i], "DRB.UeUnresVolDl")==0){  /* DT patch 0005: alias */
+             strcpy(performance_metric_values[i], ue_thp_unres_dl_str);
+         } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpSduVolumeUl")==0){
+             strcpy(performance_metric_values[i], pdcp_sdu_volume_ul);

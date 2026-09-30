@@ -1,0 +1,36 @@
+{
+  "event": {
+    "commonEventHeader": {
+      "domain": "stndDefined",
+      "stndDefinedNamespace": "3GPP-Provisioning",
+      "eventName": "stndDefined_3GPP-Provisioning_NotifyMoiDeletion",
+      "eventId": "gnb_208_095_000e30_du1-moiDeletion-00bba8b4",
+      "sourceName": "gnb_208_095_000e30_du1",
+      "reportingEntityName": "ManagedElement=gnb_208_095_000e30_du1",
+      "nfVendorName": "MITLAB RANsim-DT",
+      "priority": "Normal",
+      "sequence": 0,
+      "startEpochMicrosec": 1790756972000000,
+      "lastEpochMicrosec": 1790756972000000,
+      "version": "4.1",
+      "vesEventListenerVersion": "7.2.1"
+    },
+    "stndDefinedFields": {
+      "stndDefinedFieldsVersion": "1.0",
+      "schemaReference": "https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_ProvMnS.yaml#components/schemas/NotifyMoiDeletion",
+      "data": {
+        "href": "ManagedElement=gnb_208_095_000e30_du1",
+        "notificationId": 1,
+        "notificationType": "notifyMOIDeletion",
+        "eventTime": "2026-09-30T08:29:32Z",
+        "systemDN": "ManagedElement=gnb_208_095_000e30_du1",
+        "sourceIndicator": "MANAGEMENT_OPERATION",
+        "additionalText": "run 00bba8b4 ended",
+        "attributeList": {
+          "runId": "00bba8b4",
+          "scenarioId": "corridor24_16_24"
+        }
+      }
+    }
+  }
+}

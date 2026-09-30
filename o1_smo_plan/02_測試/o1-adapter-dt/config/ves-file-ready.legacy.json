@@ -1,0 +1,39 @@
+{
+    "event": {
+        "commonEventHeader": {
+            "domain": "notification",
+            "eventId": "ManagedElement=@node-id@_FileReady_@notification-id@",
+            "eventName": "Noti_@vendor@-@model@_FileReady",
+            "eventType": "@eventType@",
+            "sequence": @seqId@,
+            "priority": "Normal",
+            "reportingEntityId": "",
+            "reportingEntityName": "@node-id@",
+            "sourceId": "@managed-element-id@",
+            "sourceName": "@node-id@",
+            "startEpochMicrosec": @timestampMicrosec@,
+            "lastEpochMicrosec": @timestampMicrosec@,
+            "nfNamingCode": "001",
+            "nfVendorName": "@vendor@",
+            "timeZoneOffset": "+00:00",
+            "version": "4.1",
+            "vesEventListenerVersion": "7.2.1"
+        },
+        "notificationFields": {
+            "notificationFieldsVersion": "2.0",
+            "changeType": "FileReady",
+            "changeIdentifier": "PM_MEAS_FILES",
+            "arrayOfNamedHashMap": [
+                {
+                    "name": "@fileLocation@",
+                    "hashMap": {
+                        "location": "sftp://@username@:@password@@@oamIp@:@port@/ftp/@fileLocation@",
+                        "compression": "",
+                        "fileFormatType": "org.3GPP.32.435#measCollec",
+                        "fileFormatVersion": "V10"
+                    }
+                }
+            ]
+        }
+    }
+}

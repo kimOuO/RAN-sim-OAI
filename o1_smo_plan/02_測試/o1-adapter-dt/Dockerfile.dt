@@ -1,0 +1,10 @@
+# DT 端在官方 adapter-gnb 之上的薄層:
+# 1) 開 YANG feature MeasurementsUnderManagedElement(官方沒開,gnb-adapter 寫 PerfMetricJob 會失敗)。
+# 2) 內建 DT 版模板(fileReady 舊式 notification、PM 32.435、告警 fault 網域)。
+# 3) dt-entrypoint:有 O1_NODE_ID 就由 env 生成 config.json(給 orchestrator 用);沒有就用掛進來的檔。
+FROM adapter-gnb:latest
+RUN sysrepoctl -c _3gpp-common-managed-element -e MeasurementsUnderManagedElement
+COPY config/ves-file-ready.json config/pmData-measData.xml config/ves-new-alarm.json config/ves-clear-alarm.json /adapter/config/
+COPY dt-entrypoint.sh /adapter/scripts/dt-entrypoint.sh
+RUN chmod +x /adapter/scripts/dt-entrypoint.sh
+ENTRYPOINT ["/adapter/scripts/dt-entrypoint.sh"]

@@ -1,0 +1,13 @@
+--- /tmp/claude-1000/-home-mitlab-XAPP-DT-o1-smo-plan/0a7ee35e-c092-4e4a-8ce7-44200c8129b6/scratchpad/nd.before8	2026-09-30 15:59:13.796151580 +0800
++++ o1-adapter/src/netconf/netconf_data.c	2026-09-30 15:59:13.807151275 +0800
+@@ -736,7 +736,9 @@
+             static const char *dt_default_metrics[] = {
+                 "DRB.MeanActiveUeDl", "DRB.MeanActiveUeUl", "DRB.MaxActiveUeDl", "DRB.MaxActiveUeUl",
+                 "DRB.UEThpDl", "DRB.UEThpUl", "RRU.PrbTotDl",
+-                "DRB.UeUnresVolDl", "DRB.UeUnresVolUl", "DRB.RlcPacketDropRateDl", 0 };
++                /* DT patch 0008 (2026-09-30): UeUnresVolDl/Ul and RlcPacketDropRateDl have no data source in the DT
++                   facade yet (always 0) -> not reported by default. Still selectable through PerfMetricJob CM. */
++                0 };
+             for (int m = 0; dt_default_metrics[m]; ++m) {
+                 STRDUP_OR_FAIL(return 1, values_running[k_running], dt_default_metrics[m]);
+                 ASPRINTF_OR_FAIL(return 1, &xpath_running[k_running], "%s/attributes/performanceMetrics", PERFMETRICJOBSGRP_XPATH);

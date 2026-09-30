@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<measCollecFile xmlns="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec">
+  <fileHeader fileFormatVersion="32.435 V10.0" vendorName="@vendor@" dnPrefix="SubNetwork=DT">
+    <fileSender localDn="ManagedElement=@node-id@" elementType="gNB"/>
+    <measCollec beginTime="@start-time@"/>
+  </fileHeader>
+  <measData>
+    <managedElement localDn="ManagedElement=@node-id@" swVersion="dt-0.1"/>
+    <measInfo measInfoId="PM=1,PmGroup=NRCellDU">
+      <job jobId="1"/>
+      <granPeriod duration="PT@log-period@S" endTime="@end-time@"/>
+      <repPeriod duration="PT@log-period@S"/>
+@metricNames@
+      <measValue measObjLdn="ManagedElement=@node-id@,GNBDUFunction=@du-id@,NRCellDU=@cell-id@">
+@metricValues@
+        @suspect@
+      </measValue>
+    </measInfo>
+  </measData>
+  <fileFooter>
+    <measCollec endTime="@end-time@"/>
+  </fileFooter>
+</measCollecFile>

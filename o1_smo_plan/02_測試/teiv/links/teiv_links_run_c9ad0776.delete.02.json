@@ -1,0 +1,21 @@
+{
+  "specversion": "1.0",
+  "id": "0dc63444-e46a-4ef6-8d18-e9fbdead052b",
+  "source": "ransim-dt:run-orchestrator",
+  "type": "topology-inventory-ingestion.delete",
+  "datacontenttype": "application/json",
+  "dataschema": "topology-inventory-ingestion:events:delete:1.0.0",
+  "time": "2026-09-29T15:14:42Z",
+  "data": {
+    "entities": [],
+    "relationships": [
+      {
+        "o-ran-smo-teiv-ran:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+          {
+            "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e10_du1.GNBDUFunction=1_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+# D0:本機驗 o1-adapter + 官方假 gNB(telnet)。VES 關閉(pnf-registration=false,url 指向黑洞),不會碰 SMO。
+name: o1-d0
+services:
+  oai-telnet-server:
+    image: oai-telnet-server:latest
+    container_name: o1-d0-telnet
+    environment:
+      - OAI_CURRENT_LOAD=60
+      - PYTHONUNBUFFERED=1
+  o1-adapter:
+    image: adapter-gnb:dt
+    container_name: o1-d0-adapter
+    depends_on: [oai-telnet-server]
+    ports:
+      - "1830:830"
+      - "1222:22"
+    volumes:
+      - ./ftp:/ftp
+      - ./config/config.json:/adapter/config/config.json

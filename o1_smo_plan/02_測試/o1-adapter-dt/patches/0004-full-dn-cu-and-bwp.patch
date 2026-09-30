@@ -1,0 +1,56 @@
+--- /tmp/netconf_data.c.before4	2026-09-29 16:41:08.943776093 +0800
++++ src/netconf/netconf_data.c	2026-09-29 16:41:08.957775722 +0800
+@@ -271,7 +271,7 @@
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBDUName", GNBDU_FUNCTION_XPATH);
+         (*k_run)++;
+ 
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='Downlink']", GNBDU_FUNCTION_XPATH);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Downlink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
+         BWP_DOWNLINK_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -303,7 +303,7 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/numberOfRBs", BWP_DOWNLINK_XPATH);
+             (*k_run)++;
+ 
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='Uplink']", GNBDU_FUNCTION_XPATH);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Uplink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
+         BWP_UPLINK_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -545,7 +545,7 @@
+ 
+         // intentionally left aligned to mark this is the "root leaf" of the
+         // following elements (like for NRCELLDU)
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcellcu:NRCellCU[id='ManagedElement=%s,NRCellCU=%d']", GNBCUCP_FUNCTION_XPATH, netconf_config->info.node_id, i);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcellcu:NRCellCU[id='ManagedElement=%s,GNBCUCPFunction=%d,NRCellCU=%d']", GNBCUCP_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_cu_id, i);  /* DT patch 0004: full DN */
+         NRCELLCU_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -563,7 +563,7 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/pLMNInfoList[mcc='%s'][mnc='%s'][sd='%s'][sst='%d']", NRCELLCU_XPATH, nrcellcu->mcc, nrcellcu->mnc, sdHex, nrcellcu->sst);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrfreqrelation:NRFreqRelation[id='ManagedElement=%s,NRFreqRelation=%d']", NRCELLCU_XPATH, netconf_config->info.node_id, i);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrfreqrelation:NRFreqRelation[id='ManagedElement=%s,GNBCUCPFunction=%d,NRCellCU=%d,NRFreqRelation=%d']", NRCELLCU_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_cu_id, i, i);  /* DT patch 0004: full DN */
+             NRFREQRELATION_XPATH = xpath_running[*k_run];
+             (*k_run)++;
+ 
+@@ -1008,7 +1008,7 @@
+         xpath_running[i] = 0;
+     }
+ 
+-    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-bwp:BWP[id='Downlink']", GNBDU_FUNCTION_XPATH);
++    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Downlink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
+     BWP_DOWNLINK_XPATH = xpath_running[k_running];
+     k_running++;
+ 
+@@ -1133,7 +1133,7 @@
+         xpath_running[i] = 0;
+     }
+ 
+-    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-bwp:BWP[id='Uplink']", GNBDU_FUNCTION_XPATH);
++    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Uplink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
+     BWP_UPLINK_XPATH = xpath_running[k_running];
+     k_running++;
+ 

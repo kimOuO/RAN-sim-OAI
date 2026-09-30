@@ -1,0 +1,497 @@
+--- -	2026-09-29 15:40:03.775396799 +0800
++++ ../o1-adapter/src/pm_data/pm_data.c	2026-09-29 15:40:03.765190444 +0800
+@@ -1,7 +1,487 @@
+-==================================
+-== Configure TLS Support ==
+-==================================
+-== Starting netopeer2-server ==
+-==================================
+-== Starting adapter ==
+-[1m[2026-09-29T07:40:04.128/log][main.c              : 218][0m main thread failed [135935902750592]
++/*
++ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
++ * Copyright: Fraunhofer Heinrich Hertz Institute
++ */
++
++#define _GNU_SOURCE
++
++#include "pm_data.h"
++#include "common/config.h"
++#include "common/log.h"
++#include "common/utils.h"
++#include "ves/ves.h"
++#include "netconf/netconf_data.h"
++#include "netconf/netconf_session.h"
++
++#include <string.h>
++#include <stdlib.h>
++#include <time.h>
++#include <sysrepo.h>
++
++#define PM_DATA_PATH            "/ftp"
++
++// pm data log rotate command; 1440 min = 24 h rotation
++#define PM_DATA_ROLL_COMMAND    "find "PM_DATA_PATH" -mindepth 1 -mmin +1440 -delete"
++
++static int pm_data_feed_period = 1;
++static int pm_data_feed_log_period = 15*60; // default 900 sec
++static int pm_data_accumulator_size = 1;
++
++static char *ves_template_pm_data = 0;
++
++static pm_data_info_t pm_data_info = {0};
++
++static pm_data_t *pm_data_accumulator = 0;
++static int pm_data_accumulator_len = 0;
++static time_t pm_data_start_time = 0;
++
++char **performanceMetricsNames;
++
++static const config_t *pm_data_config = 0;
++static int pm_data_notification_id = 1;
++
++typedef struct pm_write_data {
++    long int start_time;
++    long int end_time;
++    char *cell_local_id;
++    char *filename;
++    int meanActiveUe;
++    int maxActiveUe;
++    int loadAvg;
++    long int ue_thp_dl;
++    long int ue_thp_ul;
++    long int ue_thp_unres_dl;
++    long int ue_thp_unres_ul;
++    long int pdcp_sdu_volume_ul;
++    long int pdcp_sdu_volume_dl;
++    long int pdcp_pdu_volume_ul;
++    long int pdcp_pdu_volume_dl;
++    long int packetDropRateDl;
++    char **performanceMetricsNames;
++} pm_write_data_t;
++
++static int pm_data_write(pm_write_data_t *data);
++
++int pm_data_init(const config_t *config) {
++    pm_data_feed_log_period = config->ves.pm_data_interval;
++    pm_data_accumulator_size = pm_data_feed_log_period / pm_data_feed_period + 1;
++    performanceMetricsNames = malloc(MAXMETRICS * sizeof(*performanceMetricsNames));
++    for (int i = 0; i < MAXMETRICS; i++){
++        performanceMetricsNames[i] = NULL;
++    }
++    pm_data_accumulator = (pm_data_t *)malloc(sizeof(pm_data_t) * pm_data_accumulator_size);
++    if(pm_data_accumulator == 0) {
++        log_error("malloc failed");
++        goto failure;
++    }
++
++
++    pm_data_accumulator_len = 0;
++    pm_data_start_time = time(0);
++    if(pm_data_start_time == -1) {
++        log_error("time failed");
++        goto failure;
++    }
++
++    pm_data_config = config;
++    pm_data_notification_id = 1;
++
++    ves_template_pm_data = file_read_content(config->ves.template.pm_data);
++    if(ves_template_pm_data == 0) {
++        log_error("ves_template_pm_data failed");
++        goto failure;
++    }
++
++    return 0;
++
++failure:
++    free(performanceMetricsNames);
++    free(pm_data_accumulator);
++    pm_data_accumulator = 0;
++
++    free(ves_template_pm_data);
++    ves_template_pm_data = 0;
++    return 1;
++}
++
++int pm_data_set_info(const pm_data_info_t *info) {
++    if(info->vendor) {
++        free(pm_data_info.vendor);
++        pm_data_info.vendor = strdup(info->vendor);
++        if(pm_data_info.vendor == 0) {
++            log_error("strdup failed");
++            goto failure;
++        }
++    }
++
++    return 0;
++failure:
++    return 1;
++}
++
++int pm_data_free() {
++    free(performanceMetricsNames);
++    free(pm_data_accumulator);
++    pm_data_accumulator = 0;
++    free(ves_template_pm_data);
++    ves_template_pm_data = 0;
++    free(pm_data_info.vendor);
++    pm_data_info.vendor = 0;
++
++    pm_data_accumulator_len = 0;
++
++    return 0;
++}
++
++void pm_data_loop() {
++    time_t timestamp = time(0);
++    if(timestamp == -1) {
++        return;
++    }
++
++    if(!(pm_data_info.vendor)) {
++        return;
++    }
++
++    if((pm_data_accumulator_len) && ((timestamp / pm_data_feed_log_period) != (pm_data_start_time / pm_data_feed_log_period))) {
++        int rc;
++        char *filename = 0;
++        char *full_path = 0;
++
++        long int meanActiveUeAccum = 0;
++        int maxActiveUe = 0;
++        int loadAvgAccum = 0;
++        long int ue_thp_dl_accum = 0;
++        long int ue_thp_ul_accum = 0;
++        long int ue_thp_unres_dl_accum = 0;
++        long int ue_thp_unres_ul_accum = 0;
++
++        for(int i = 0; i < pm_data_accumulator_len; i++) {
++            meanActiveUeAccum += pm_data_accumulator[i].numUes;
++            if(pm_data_accumulator[i].numUes > maxActiveUe) {
++                maxActiveUe = pm_data_accumulator[i].numUes;
++            }
++            loadAvgAccum += pm_data_accumulator[i].load;
++
++            ue_thp_dl_accum += pm_data_accumulator[i].ue_thp_dl_sum;
++            ue_thp_ul_accum += pm_data_accumulator[i].ue_thp_ul_sum;
++            ue_thp_unres_dl_accum += pm_data_accumulator[i].ue_thp_unres_dl_sum;
++            ue_thp_unres_ul_accum += pm_data_accumulator[i].ue_thp_unres_ul_sum;
++        }
++        int meanActiveUe = meanActiveUeAccum / pm_data_accumulator_len;
++        int loadAvg = loadAvgAccum / pm_data_accumulator_len;
++        long int ue_thp_dl = ue_thp_dl_accum / pm_data_accumulator_len;
++        long int ue_thp_ul = ue_thp_ul_accum / pm_data_accumulator_len;
++        long int ue_thp_unres_dl = ue_thp_unres_dl_accum / pm_data_accumulator_len;
++        long int ue_thp_unres_ul = ue_thp_unres_ul_accum / pm_data_accumulator_len;
++        char *cell_local_id = pm_data_accumulator[0].cell_local_id;
++
++        struct tm *ptm = gmtime(&pm_data_start_time);
++        if(ptm == 0) {
++            log_error("gmtime error");
++            goto failure_loop;
++        }
++
++        struct tm start_ptm;
++        memcpy(&start_ptm, ptm, sizeof(struct tm));
++
++        ptm = gmtime(&timestamp);
++        if(ptm == 0) {
++            log_error("gmtime error");
++            goto failure_loop;
++        }
++
++        struct tm now_ptm;
++        memcpy(&now_ptm, ptm, sizeof(struct tm));
++
++        asprintf(&filename, "A%04d%02d%02d.%02d%02d+0000-%02d%02d+0000_1_%s.xml", start_ptm.tm_year + 1900, start_ptm.tm_mon + 1,
++                    start_ptm.tm_mday, start_ptm.tm_hour, start_ptm.tm_min, now_ptm.tm_hour, now_ptm.tm_min, pm_data_config->info.node_id);
++        if(filename == 0) {
++            log_error("asprintf error");
++            goto failure_loop;
++        }
++
++        asprintf(&full_path, "%s/%s", PM_DATA_PATH, filename);
++        if(full_path == 0) {
++            log_error("asprintf error");
++            goto failure_loop;
++        }
++
++        pm_write_data_t data = {
++            .start_time = pm_data_start_time,
++            .end_time = timestamp,
++            .cell_local_id = cell_local_id,
++            .filename = full_path,
++            .meanActiveUe = meanActiveUe,
++            .maxActiveUe = maxActiveUe,
++            .loadAvg = loadAvg,
++            .ue_thp_dl = ue_thp_dl,
++            .ue_thp_ul = ue_thp_ul,
++            .ue_thp_unres_dl = ue_thp_unres_dl,
++            .ue_thp_unres_ul = ue_thp_unres_ul,
++            .pdcp_sdu_volume_dl = pm_data_accumulator->pdcp_sdu_volume_dl,
++            .pdcp_sdu_volume_ul = pm_data_accumulator->pdcp_sdu_volume_ul,
++            .pdcp_pdu_volume_dl = pm_data_accumulator->pdcp_pdu_volume_dl,
++            .pdcp_pdu_volume_ul = pm_data_accumulator->pdcp_pdu_volume_ul,
++            .packetDropRateDl = pm_data_accumulator->packetDropRateDl,
++            .performanceMetricsNames = performanceMetricsNames,
++        };
++
++        rc = pm_data_write(&data);
++        if(rc != 0) {
++            log_error("pm_data_write error");
++            goto failure_loop;
++        }
++
++        // cleanup
++        pm_data_start_time = timestamp;
++        pm_data_accumulator_len = 0;
++        rc = system(PM_DATA_ROLL_COMMAND);
++        if(rc != 0) {
++            log_error("system error");
++            goto failure_loop;
++        }
++
++        // send ves message
++        ves_file_ready_t file_ready = {
++            .file_location = filename,   /* DT patch: bare filename; template prepends the SFTP dir (dfc uses it as S3 object name, no slashes allowed) */
++            .file_size = get_file_size(full_path),
++            .notification_id = pm_data_notification_id,
++        };
++
++        rc = ves_fileready_execute(&file_ready);
++        if(rc != 0) {
++            log_error("ves_fileready_execute error");
++            goto failure_loop;
++        }
++
++        pm_data_notification_id++;
++
++failure_loop:
++        free(full_path);
++        free(filename);
++    }
++}
++
++int pm_data_feed(const pm_data_t *pm_data) {
++    if(pm_data == 0) {
++        log_error("pm_data is null");
++        goto failure;
++    }
++
++    memcpy(&pm_data_accumulator[pm_data_accumulator_len], pm_data, sizeof(pm_data_t));
++    pm_data_accumulator_len++;
++    if(pm_data_accumulator_len >= pm_data_accumulator_size) {
++        pm_data_accumulator_len = 0;
++    }
++
++    return 0;
++
++failure:
++    return 1;
++}
++
++static int pm_data_write(pm_write_data_t *data) {
++    char *content = 0;
++    FILE *f = 0;
++
++    f = fopen(data->filename, "w");
++    if(f == 0) {
++        log_error("fopen failed");
++        goto failure;
++    }
++
++    content = strdup(ves_template_pm_data);
++    if(content == 0) {
++        log_error("strdup() failed");
++        goto failure;
++    }
++
++    char start_time_full[64];
++    char end_time_full[64];
++
++    time_t *timestamp = (time_t *)&(data->start_time);
++    struct tm *ptm = gmtime(timestamp);
++    if(ptm == 0) {
++        log_error("gmtime error");
++        goto failure;
++    }
++    sprintf(start_time_full, "%04d-%02d-%02dT%02d:%02d:%02d+00:00", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
++
++    timestamp = (time_t *)&(data->end_time);
++    ptm = gmtime(timestamp);
++    if(ptm == 0) {
++        log_error("gmtime error");
++        goto failure;
++    }
++    sprintf(end_time_full, "%04d-%02d-%02dT%02d:%02d:%02d+00:00", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
++
++    const char *suspect = "";
++    if((data->end_time - data->start_time) < pm_data_feed_log_period) {
++        suspect = "<suspect>true</suspect>";
++    }
++
++    char log_period[16];
++    sprintf(log_period, "%d", pm_data_feed_log_period);
++    content = str_replace_inplace(content, "@log-period@", log_period);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    content = str_replace_inplace(content, "@suspect@", suspect);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    content = str_replace_inplace(content, "@vendor@", pm_data_info.vendor);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    content = str_replace_inplace(content, "@node-id@", pm_data_config->info.node_id);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    content = str_replace_inplace(content, "@start-time@", start_time_full);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    content = str_replace_inplace(content, "@end-time@", end_time_full);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    char mean_active_ue_str[32];
++    char max_active_ue_str[32];
++    char load_avg_str[8];
++    char ue_thp_dl_str[10];
++    char ue_thp_ul_str[10];
++    char ue_thp_unres_dl_str[10];
++    char ue_thp_unres_ul_str[10];
++    char pdcp_sdu_volume_ul[32];
++    char pdcp_sdu_volume_dl[32];
++    char pdcp_pdu_volume_ul[32];
++    char pdcp_pdu_volume_dl[32];
++    char packetDropRateDl[32];
++
++    char performance_metric_values[MAXMETRICS][sizeof(long)];
++    for (int i = 0; i < MAXMETRICS; i++){
++        strcpy(performance_metric_values[i], "-1");
++    }
++
++
++    sprintf(mean_active_ue_str, "%d", data->meanActiveUe);
++    sprintf(max_active_ue_str, "%d", data->maxActiveUe);
++    sprintf(load_avg_str, "%d", data->loadAvg);
++    sprintf(ue_thp_dl_str, "%ld", data->ue_thp_dl);
++    sprintf(ue_thp_ul_str, "%ld", data->ue_thp_ul);
++    sprintf(ue_thp_unres_dl_str, "%ld", data->ue_thp_unres_dl);
++    sprintf(ue_thp_unres_ul_str, "%ld", data->ue_thp_unres_ul);
++    sprintf(pdcp_sdu_volume_ul, "%ld", data->pdcp_sdu_volume_ul);
++    sprintf(pdcp_sdu_volume_dl, "%ld", data->pdcp_sdu_volume_dl);
++    sprintf(pdcp_pdu_volume_ul, "%ld", data->pdcp_pdu_volume_ul);
++    sprintf(pdcp_pdu_volume_dl, "%ld", data->pdcp_pdu_volume_dl);
++    sprintf(packetDropRateDl, "%ld", data->packetDropRateDl);
++
++
++    char replacement[1024] = "";
++        char temp_buffer[128];
++    int i=0;
++    while(performanceMetricsNames[i] != NULL){
++
++        if(strcmp(performanceMetricsNames[i], "DRB.MeanActiveUeDl")==0){
++            strcpy(performance_metric_values[i], mean_active_ue_str);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.MaxActiveUeDl")==0){
++            strcpy(performance_metric_values[i], max_active_ue_str);
++        } else if(strcmp(performanceMetricsNames[i], "DRB.MeanActiveUeUl")==0){
++            strcpy(performance_metric_values[i], mean_active_ue_str);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.MaxActiveUeUl")==0){
++            strcpy(performance_metric_values[i], max_active_ue_str);
++        } else if (strcmp(performanceMetricsNames[i], "RRU.PrbTotDl")==0){
++            strcpy(performance_metric_values[i], load_avg_str);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.UEThpDl")==0){
++            strcpy(performance_metric_values[i], ue_thp_dl_str);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.UEThpUl")==0){
++            strcpy(performance_metric_values[i], ue_thp_ul_str);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolUl")==0){
++            strcpy(performance_metric_values[i], ue_thp_unres_ul_str);
++        }else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolDl")==0){
++            strcpy(performance_metric_values[i], ue_thp_unres_dl_str);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpSduVolumeUl")==0){
++            strcpy(performance_metric_values[i], pdcp_sdu_volume_ul);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpSduVolumeDl")==0){
++            strcpy(performance_metric_values[i], pdcp_sdu_volume_dl);
++        }else if (strcmp(performanceMetricsNames[i], "DRB.PdcpPduVolumeUl")==0){
++            strcpy(performance_metric_values[i], pdcp_pdu_volume_ul);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpPduVolumeDl")==0){
++            strcpy(performance_metric_values[i], pdcp_pdu_volume_dl);
++        } else if (strcmp(performanceMetricsNames[i], "DRB.RlcPacketDropRateDl")==0){
++            strcpy(performance_metric_values[i], packetDropRateDl);
++        }
++
++        if(performanceMetricsNames[i+1] != NULL) {
++            snprintf(temp_buffer, sizeof(temp_buffer),"			<measType p=\"%d\">%s</measType>\n", i+1, performanceMetricsNames[i]);
++        } else {
++            snprintf(temp_buffer, sizeof(temp_buffer),"			<measType p=\"%d\">%s</measType>", i+1, performanceMetricsNames[i]);
++        }
++        strcat(replacement, temp_buffer);
++        i++;
++    }
++
++
++    char gnb_du_id[16];
++    sprintf(gnb_du_id, "%d", pm_data_config->info.gnb_du_id);
++    content = str_replace_inplace(content, "@du-id@", gnb_du_id);
++    content = str_replace_inplace(content, "@metricNames@", replacement);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    char cell_local_id[16];
++    sprintf(cell_local_id, "%s", data->cell_local_id);
++    content = str_replace_inplace(content, "@cell-id@", cell_local_id);
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failure;
++    }
++
++    char replacement2[1024] = "";
++    for(int j=1; j<=i;j++){
++        if(j != i){
++            snprintf(temp_buffer, sizeof(temp_buffer),"				<r p=\"%d\">%s</r>\n", j, performance_metric_values[j-1]);
++        } else {
++            snprintf(temp_buffer, sizeof(temp_buffer),"				<r p=\"%d\">%s</r>", j, performance_metric_values[j-1]);
++        }
++        strcat(replacement2, temp_buffer);
++    }
++
++
++    content = str_replace_inplace(content, "@metricValues@", replacement2);
++
++    fprintf(f, "%s", content);
++    fclose(f);
++
++    free(content);
++    content = 0;
++
++    return 0;
++
++failure:
++    if(f) {
++        fclose(f);
++    }
++
++    free(content);
++    content = 0;
++
++    return 1;
++}

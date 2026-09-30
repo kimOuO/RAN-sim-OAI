@@ -1,0 +1,1 @@
+ce_specversion:::1.0,ce_id:::53a4c76f-fcd0-4d91-9bbb-0fb5ea60ac07,ce_source:::ransim-dt:platform,ce_type:::topology-inventory-ingestion.create,content-type:::application/json,ce_time:::2026-09-29T10:43:08Z,ce_dataschema:::topology-inventory-ingestion:events:create:1.0.0

@@ -1,0 +1,66 @@
+--- /tmp/netconf_data.c.before3	2026-09-29 16:24:51.064309548 +0800
++++ src/netconf/netconf_data.c	2026-09-29 16:24:51.073309305 +0800
+@@ -335,7 +335,7 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/numberOfRBs", BWP_UPLINK_XPATH);
+             (*k_run)++;
+ 
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDu=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDU=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
+         NRCELLDU_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -456,7 +456,7 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/aggressorSetRef", NRCELLDU_XPATH);
+             (*k_run)++;
+ 
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrsectorcarrier:NRSectorCarrier[id='ManagedElement=%s, GNBDUFunction=%d']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrsectorcarrier:NRSectorCarrier[id='ManagedElement=%s,GNBDUFunction=%d,NRSectorCarrier=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
+         NRSECTORCARRIER_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -480,23 +480,23 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/configuredMaxTxEIRP", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrsectcarr.arfcnDL);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.arfcnDL);  /* DT patch: nrsectcarr never filled */
+             //values_running[*k_run] = strdup("104");
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnDL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrsectcarr.arfcnUL);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.arfcnUL);  /* DT patch */
+             //values_running[*k_run] = strdup("104");
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnUL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+             //ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrsectcarr.bSChannelBwDL); //checkRS
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "60");
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.bSChannelBwDL);  /* DT patch: was "60" */
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwDL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+             //ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrsectcarr.bSChannelBwUL); //checkRS
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "60");
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.bSChannelBwUL);  /* DT patch: was "60" */
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwUL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+@@ -545,7 +545,7 @@
+ 
+         // intentionally left aligned to mark this is the "root leaf" of the
+         // following elements (like for NRCELLDU)
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcellcu:NRCellCU[id='ManagedElement=%s,NRCellCu=%d']", GNBCUCP_FUNCTION_XPATH, netconf_config->info.node_id, i);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcellcu:NRCellCU[id='ManagedElement=%s,NRCellCU=%d']", GNBCUCP_FUNCTION_XPATH, netconf_config->info.node_id, i);
+         NRCELLCU_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -1258,7 +1258,7 @@
+         xpath_running[i] = 0;
+     }
+ 
+-    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDu=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
++    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDU=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
+     NRCELLDU_XPATH = xpath_running[k_running];
+     k_running++;
+ 

@@ -1,0 +1,20 @@
+--- /tmp/nd.before6	2026-09-29 17:23:48.996572899 +0800
++++ src/netconf/netconf_data.c	2026-09-29 17:24:18.083811244 +0800
+@@ -259,7 +259,7 @@
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBId", GNBDU_FUNCTION_XPATH);
+         (*k_run)++;
+ 
+-        STRDUP_OR_FAIL(return 1, values_running[*k_run], "32");
++        STRDUP_OR_FAIL(return 1, values_running[*k_run], "22");  /* DT patch 0006: gNBIdLength = 22 bits, same as E2 */
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBIdLength", GNBDU_FUNCTION_XPATH);
+         (*k_run)++;
+ 
+@@ -522,7 +522,7 @@
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBId", GNBCUCP_FUNCTION_XPATH);
+         (*k_run)++;
+ 
+-	      STRDUP_OR_FAIL(return 1, values_running[*k_run], "32");
++	      STRDUP_OR_FAIL(return 1, values_running[*k_run], "22");  /* DT patch 0006: gNBIdLength = 22 bits, same as E2 */
+         ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBIdLength", GNBCUCP_FUNCTION_XPATH);
+         (*k_run)++;
+ 

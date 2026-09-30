@@ -1,0 +1,57 @@
+[1m[2026-09-30T08:34:19.401/log][netconf/netconf_data.c: 907][0m [oper] populating /_3gpp-common-managed-element:ManagedElement[id='ManagedElement=gnb_208_095_000e30_du1']/_3gpp-common-managed-element:AlarmList[id='ManagedElement=gnb_208_095_000e30_du1,AlarmList=1']/attributes/alarmRecords[alarmId='ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1,NRCellDU=0-loadDownlinkExceededWarning'] with (null).. 
+[1m[2026-09-30T08:34:19.401/log][netconf/netconf_data.c: 907][0m [oper] populating /_3gpp-common-managed-element:ManagedElement[id='ManagedElement=gnb_208_095_000e30_du1']/_3gpp-common-managed-element:AlarmList[id='ManagedElement=gnb_208_095_000e30_du1,AlarmList=1']/attributes/alarmRecords[alarmId='ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1,NRCellDU=0-loadDownlinkExceededWarning']/objectInstance with ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1,NRCellDU=0.. 
+[1m[2026-09-30T08:34:19.401/log][netconf/netconf_data.c: 907][0m [oper] populating /_3gpp-common-managed-element:ManagedElement[id='ManagedElement=gnb_208_095_000e30_du1']/_3gpp-common-managed-element:AlarmList[id='ManagedElement=gnb_208_095_000e30_du1,AlarmList=1']/attributes/alarmRecords[alarmId='ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1,NRCellDU=0-loadDownlinkExceededWarning']/notificationId with 0.. 
+[1m[2026-09-30T08:34:19.401/log][netconf/netconf_data.c: 907][0m [oper] populating /_3gpp-common-managed-element:ManagedElement[id='ManagedElement=gnb_208_095_000e30_du1']/_3gpp-common-managed-element:AlarmList[id='ManagedElement=gnb_208_095_000e30_du1,AlarmList=1']/attributes/alarmRecords[alarmId='ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1,NRCellDU=0-loadDownlinkExceededWarning']/alarmType with EQUIPMENT_ALARM.. 
+[1m[2026-09-30T08:34:19.401/log][netconf/netconf_data.c: 907][0m [oper] populating /_3gpp-common-managed-element:ManagedElement[id='ManagedElement=gnb_208_095_000e30_du1']/_3gpp-common-managed-element:AlarmList[id='ManagedElement=gnb_208_095_000e30_du1,AlarmList=1']/attributes/alarmRecords[alarmId='ManagedElement=gnb_208_095_000e30_du1,GNBDUFunction=1,NRCellDU=0-loadDownlinkExceededWarning']/probableCause with unset.. 
+POST-ing cURL to url="http://10.3.0.204:30417/eventListener/v7" with body="{
+    "event": {
+        "commonEventHeader": {
+            "domain": "pnfRegistration",
+            "eventId": "ManagedElement=gnb_208_095_000e30_du1_pnfRegistration",
+            "eventName": "pnfRegistration_OAI_pnfRegistration",
+            "eventType": "OAI_pnfRegistration",
+            "sequence": 0,
+            "priority": "Low",
+            "reportingEntityId": "",
+            "reportingEntityName": "ManagedElement=gnb_208_095_000e30_du1",
+            "sourceId": "3632",
+            "sourceName": "gnb_208_095_000e30_du1",
+            "startEpochMicrosec": 1790757259402929,
+            "lastEpochMicrosec": 1790757259402929,
+            "nfNamingCode": "001",
+            "nfVendorName": "MITLAB RANsim-DT",
+            "timeZoneOffset": "+00:00",
+            "version": "4.1",
+            "vesEventListenerVersion": "7.2.1"
+        },
+        "pnfRegistrationFields": {
+            "pnfRegistrationFieldsVersion": "2.1",
+            "lastServiceDate": "2021-03-26",
+            "macAddress": "00:00:00:00:00:00",
+            "manufactureDate": "2021-01-16",
+            "modelNumber": "ransim-dt-du",
+            "oamV4IpAddress": "10.3.0.217",
+            "serialNumber": "MITLAB RANsim-DT-DU-10.3.0.217-ransim-dt-du",
+            "softwareVersion": "2.3.5",
+            "unitFamily": "MITLAB RANsim-DT-DU",
+            "unitType": "DU",
+            "vendorName": "MITLAB RANsim-DT",
+            "additionalFields": {
+                "oamPort": "1927",
+                "protocol": "SSH",
+                "username": "netconf",
+                "password": "<redacted>",
+                "reconnectOnChangedSchema": "false",
+                "sleep-factor": "1.5",
+                "tcpOnly": "false",
+                "connectionTimeout": "20000",
+                "maxConnectionAttempts": "100",
+                "betweenAttemptsTimeout": "2000",
+                "keepaliveDelay": "120",
+                "scenarioId": "corridor24_16_24",
+                "runId": "00bba8b4",
+                "role": "DU",
+                "lifecycle": "ephemeral"
+            }
+        }
+    }

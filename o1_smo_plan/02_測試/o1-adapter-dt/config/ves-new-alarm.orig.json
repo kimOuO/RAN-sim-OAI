@@ -1,0 +1,46 @@
+{
+    "event": {
+        "commonEventHeader": {
+            "domain": "@domain@",
+            "eventId": "ManagedElement=@node-id@_@alarm@",
+            "eventName": "@domain@_@eventType@_Alarms_@alarm@",
+            "eventType": "@eventType@_Alarms",
+            "sequence": @seqId@,
+            "priority": "@priority@",
+            "reportingEntityId": "",
+            "reportingEntityName": "ManagedElement=@node-id@",
+            "sourceId": "@managed-element-id@",
+            "sourceName": "@node-id@",
+            "startEpochMicrosec": @timestampMicrosec@,
+            "lastEpochMicrosec": @timestampMicrosec@,
+            "nfNamingCode": "001",
+            "nfVendorName": "@vendor@",
+            "timeZoneOffset": "+00:00",
+            "version": "4.1",
+            "stndDefinedNamespace": "3GPP-FaultSupervision",
+            "vesEventListenerVersion": "7.2.1"
+        },
+        "stndDefinedFields": {
+            "schemaReference": "https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FaultMnS.yaml#components/schemas/NotifyNewAlarm",
+            "data": {
+                "href": "href1",
+                "notificationId": @notification-id@,
+                "notificationType": "notifyNewAlarm",
+                "eventTime": "@timestampISO3milisec@",
+                "systemDN": "ManagedElement=@node-id@",
+                "alarmId": "@object-instance@-@alarm@",
+                "alarmType": "@alarm-type@",
+                "probableCause": "@alarm@",
+                "specificProblem": "@alarm@",
+                "perceivedSeverity": "@severity@",
+                "backedUpStatus": true,
+                "trendIndication": "MORE_SEVERE",
+                "stateChangeDefinition": [{ "operational-state": "DISABLED" }],
+                "proposedRepairActions": "Add more units",
+                "additionalText": "Open Air Interface",
+                "rootCauseIndicator": false
+            },
+            "stndDefinedFieldsVersion": "1.0"
+        }
+    }
+}

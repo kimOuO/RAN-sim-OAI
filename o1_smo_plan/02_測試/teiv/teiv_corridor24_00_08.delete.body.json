@@ -1,0 +1,210 @@
+{
+  "entities": [
+    {
+      "o-ran-smo-teiv-oam:ManagedElement": [
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10_du1"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11_du1"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12_du2"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:OCUCPFunction": [
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10,OCUCPFunction=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11,OCUCPFunction=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12,OCUCPFunction=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:ODUFunction": [
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10_du1,ODUFunction=1"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11_du1,ODUFunction=1"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12_du2,ODUFunction=2"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:NRCellCU": [
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10,OCUCPFunction=0,NRCellCU=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11,OCUCPFunction=0,NRCellCU=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12,OCUCPFunction=0,NRCellCU=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:NRCellDU": [
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10_du1,ODUFunction=1,NRCellDU=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11_du1,ODUFunction=1,NRCellDU=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12_du2,ODUFunction=2,NRCellDU=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:NRSectorCarrier": [
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e10_du1,ODUFunction=1,NRSectorCarrier=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e11_du1,ODUFunction=1,NRSectorCarrier=0"
+        },
+        {
+          "id": "urn:3gpp:dn:ManagedElement=gnb_208_095_000e12_du2,ODUFunction=2,NRSectorCarrier=0"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "o-ran-smo-teiv-rel-oam-ran:MANAGEDELEMENT_MANAGES_OCUCPFUNCTION": [
+        {
+          "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e10_ManagedElement=gnb_208_095_000e10.OCUCPFunction=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e11_ManagedElement=gnb_208_095_000e11.OCUCPFunction=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e12_ManagedElement=gnb_208_095_000e12.OCUCPFunction=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-rel-oam-ran:MANAGEDELEMENT_MANAGES_ODUFUNCTION": [
+        {
+          "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_ODUFUNCTION=ManagedElement=gnb_208_095_000e10_du1_ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1"
+        },
+        {
+          "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_ODUFUNCTION=ManagedElement=gnb_208_095_000e11_du1_ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1"
+        },
+        {
+          "id": "urn:oran:smo:teiv:MANAGEDELEMENT_MANAGES_ODUFUNCTION=ManagedElement=gnb_208_095_000e12_du2_ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:ODUFUNCTION_F1CLINK_OCUCPFUNCTION": [
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e10.OCUCPFunction=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e11.OCUCPFunction=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_F1CLINK_OCUCPFUNCTION=ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2_ManagedElement=gnb_208_095_000e12.OCUCPFunction=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+        {
+          "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e10.OCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+        },
+        {
+          "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e11.OCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+        },
+        {
+          "id": "urn:oran:smo:teiv:OCUCPFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e12.OCUCPFunction=0_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION": [
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_E2LINK_NEARRTRICFUNCTION=ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2_ManagedElement=ric-dt-71.NearRTRICFunction=1"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:OCUCPFUNCTION_PROVIDES_NRCELLCU": [
+        {
+          "id": "urn:oran:smo:teiv:OCUCPFUNCTION_PROVIDES_NRCELLCU=ManagedElement=gnb_208_095_000e10.OCUCPFunction=0_ManagedElement=gnb_208_095_000e10.OCUCPFunction=0.NRCellCU=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:OCUCPFUNCTION_PROVIDES_NRCELLCU=ManagedElement=gnb_208_095_000e11.OCUCPFunction=0_ManagedElement=gnb_208_095_000e11.OCUCPFunction=0.NRCellCU=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:OCUCPFUNCTION_PROVIDES_NRCELLCU=ManagedElement=gnb_208_095_000e12.OCUCPFunction=0_ManagedElement=gnb_208_095_000e12.OCUCPFunction=0.NRCellCU=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:ODUFUNCTION_PROVIDES_NRCELLDU": [
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRCELLDU=ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1.NRCellDU=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRCELLDU=ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1.NRCellDU=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRCELLDU=ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2_ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2.NRCellDU=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:ODUFUNCTION_PROVIDES_NRSECTORCARRIER": [
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1.NRSectorCarrier=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1_ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1.NRSectorCarrier=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:ODUFUNCTION_PROVIDES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2_ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2.NRSectorCarrier=0"
+        }
+      ]
+    },
+    {
+      "o-ran-smo-teiv-ran:NRCELLDU_USES_NRSECTORCARRIER": [
+        {
+          "id": "urn:oran:smo:teiv:NRCELLDU_USES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1.NRCellDU=0_ManagedElement=gnb_208_095_000e10_du1.ODUFunction=1.NRSectorCarrier=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:NRCELLDU_USES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1.NRCellDU=0_ManagedElement=gnb_208_095_000e11_du1.ODUFunction=1.NRSectorCarrier=0"
+        },
+        {
+          "id": "urn:oran:smo:teiv:NRCELLDU_USES_NRSECTORCARRIER=ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2.NRCellDU=0_ManagedElement=gnb_208_095_000e12_du2.ODUFunction=2.NRSectorCarrier=0"
+        }
+      ]
+    }
+  ]
+}

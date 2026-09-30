@@ -1,0 +1,47 @@
+{
+  "event": {
+    "commonEventHeader": {
+      "domain": "stndDefined",
+      "stndDefinedNamespace": "3GPP-PerformanceAssurance",
+      "eventId": "ManagedElement=gnb_208_095_000e00_du1_FileReady_p1test",
+      "eventName": "stndDefined_3GPP-PerformanceAssurance_NotifyFileReady",
+      "eventType": "3GPP-PerformanceAssurance",
+      "sequence": 1,
+      "priority": "Normal",
+      "reportingEntityId": "",
+      "reportingEntityName": "gnb_208_095_000e00_du1",
+      "sourceId": "gnb_208_095_000e00_du1",
+      "sourceName": "gnb_208_095_000e00_du1",
+      "startEpochMicrosec": 1790684274260881,
+      "lastEpochMicrosec": 1790684274260881,
+      "nfNamingCode": "001",
+      "nfVendorName": "MITLAB RANsim-DT",
+      "timeZoneOffset": "+00:00",
+      "version": "4.1",
+      "vesEventListenerVersion": "7.2.1"
+    },
+    "stndDefinedFields": {
+      "stndDefinedFieldsVersion": "1.0",
+      "schemaReference": "https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FileDataReportingMnS.yaml#components/schemas/NotifyFileReady",
+      "data": {
+        "href": "/ManagedElement=gnb_208_095_000e00_du1",
+        "notificationId": 1,
+        "notificationType": "notifyFileReady",
+        "eventTime": "2026-09-29T12:17:54.260Z",
+        "systemDN": "ManagedElement=gnb_208_095_000e00_du1",
+        "fileInfoList": [
+          {
+            "fileLocation": "sftp://netconf:netconf!@10.3.0.217:1223/ftp/A20260929.1214+0000-1215+0000_1_gnb_208_095_000e00_du1.xml",
+            "fileSize": 1855,
+            "fileReadyTime": "2026-09-29T12:17:54.260Z",
+            "fileExpirationTime": "2026-09-30T12:17:54.000Z",
+            "fileCompression": "no",
+            "fileFormat": "XML",
+            "fileDataType": "Performance"
+          }
+        ],
+        "additionalText": "P1 parallel test (adapter still sends legacy notification)"
+      }
+    }
+  }
+}
