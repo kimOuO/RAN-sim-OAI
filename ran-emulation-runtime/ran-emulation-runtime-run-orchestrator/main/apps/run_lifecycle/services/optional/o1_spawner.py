@@ -116,6 +116,16 @@ def spawn(rid: str, scene_run_uuid: str, topo, instances: dict, scenario_id: str
         except Exception as exc:  # noqa: BLE001
             logger.exception("O1 start failed for %s: %s", it["name"], exc)
     _write_notice(rid, topo, started, "added")
+    try:
+        tag = next((it["env"].get("O1_RUN_ID") for it in started if it["env"].get("O1_RUN_ID")), "")
+        if tag:
+            _registry_append({"event": "start", "runId": tag, "rid": rid, "scene_run_uuid": scene_run_uuid,
+                              "scenarioId": scenario_id or "unknown",
+                              "mes": [{"gnb": g.name, "cucp": me_names(g)["cucp"], "du": me_names(g)["du"],
+                                       "netconf_cucp": ports_for(g)["cucp_netconf"], "netconf_du": ports_for(g)["du_netconf"]}
+                                      for g in topo.gnbs]})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("O1 run registry (start) failed: %s", exc)
     return started
 
 
@@ -135,6 +145,11 @@ def on_stop(rid: str, topo=None, scenario_id: str = "", final: bool = True) -> N
         _send_clears(topo)
     except Exception as exc:  # noqa: BLE001
         logger.warning("O1 stop clears failed: %s", exc)
+    try:
+        _registry_append({"event": "stop", "runId": run_tag, "rid": rid, "scenarioId": scenario_id or "unknown",
+                          "reason": "normal" if final else "auto_restart"})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("O1 run registry (stop) failed: %s", exc)
     if not final:   # 自動重啟:ME 幾分鐘後以同一個 run 回來,不算下線 → 不送 notifyMOIDeletion、不寫移除通知
         logger.info("O1 stop for run %s is an auto-restart: skip notifyMOIDeletion and removal notice", rid)
         return
@@ -162,6 +177,18 @@ def _adapter_env(rid: str, key: str) -> str:
 
 def scenario_of(rid: str) -> str:
     return _adapter_env(rid, "O1_SCENARIO_ID")
+
+
+def _registry_append(rec: dict) -> None:
+    """run 對照表(2026-10-01):每次啟動 / 停止各寫一行 JSON 到 PER_RUN_LOG_DIR/_o1_run_registry.jsonl,長期保存。
+    SMO 的 PM / 告警只帶 ME 名稱,而 ME 名稱會被不同 run、不同劇本重用;要以劇本為單位收資料,
+    得靠這份「runId ↔ 劇本 ↔ ME ↔ 起訖時間」的對照。查詢工具:o1_smo_plan/02_測試/run_registry/run_registry.py。"""
+    import json as _json
+    d = pathlib.Path(getattr(settings, "PER_RUN_LOG_DIR", "/data/run_logs"))
+    d.mkdir(parents=True, exist_ok=True)
+    rec = {"ts": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **rec}
+    with open(d / "_o1_run_registry.jsonl", "a", encoding="utf-8") as f:
+        f.write(_json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 def _stop_adapters(rid: str) -> None:
