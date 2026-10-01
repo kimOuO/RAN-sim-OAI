@@ -13,10 +13,7 @@
       <granPeriod duration="PT@log-period@S" endTime="@end-time@"/>
       <repPeriod duration="PT@log-period@S"/>
 @metricNames@
-      <measValue measObjLdn="GNBDUFunction=@du-id@,NRCellDU=@cell-id@">
-@metricValues@
-        @suspect@
-      </measValue>
+@measValues@
     </measInfo>
   </measData>
   <fileFooter>

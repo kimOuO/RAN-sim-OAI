@@ -1,0 +1,14 @@
+--- a/src/netconf/netconf_data.c
++++ b/src/netconf/netconf_data.c
+@@ DT patch 0011b (2026-10-01): NRSectorCarrier 的必要屬性 sectorEquipmentFunctionRef 原本寫在 per-cell 迴圈之外(只有最後一個 cell 拿到),
+@@ 兩個 cell 時 sysrepo 驗證失敗「Mandatory node sectorEquipmentFunctionRef instance does not exist」→ 整個 running datastore apply 失敗。
+@@ 修正:把這段搬進 netconf_data_emit_nrsectorcarrier(),每個 cell 的 NRSectorCarrier 都帶;update_du 的 for 迴圈補回結尾大括號。
+-    (in netconf_data_update_du, after the per-cell loop)
+-            //ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", oai->nrsectcarr.sectorEquipmentFunctionRef);
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "Tuf=Jy,H:u=|");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/sectorEquipmentFunctionRef", NRSECTORCARRIER_XPATH);
+-            (*k_run)++;
++    (in netconf_data_emit_nrsectorcarrier, before return 0)
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], "Tuf=Jy,H:u=|");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/sectorEquipmentFunctionRef", NRSECTORCARRIER_XPATH);
++            (*k_run)++;

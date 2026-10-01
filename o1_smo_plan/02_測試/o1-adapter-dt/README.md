@@ -35,4 +35,5 @@
 - 平台注意:per-run DU 停超過 120 s 會觸發 orchestrator 自動重啟整場 run(含 O1 容器)。
 - 2026-09-29 12:25Z:FM 模板改 stndDefined Rel-18(`TS28111_FaultNrm.yaml`,**不是** FaultNotifications);舊 fault 版另存 `*.fault.json`。PM 的 `ves-file-ready.std.json`(Rel-18 TS28532_FileDataReportingMnS)備好,P2 切換時 `cp` 成 `ves-file-ready.json` 並重建映像/recreate;回退用 `ves-file-ready.legacy.json`。
 - `patches/0007-pm-suspect-window-aligned.patch`(2026-09-29):上游以「首末取樣差 < 週期」判 suspect,1 s 輪詢相位會把完整週期誤標 true;改為視窗對齊(首筆距起點、末筆距終點 ≤5 s)。
+- `patches/0011-multi-cell-per-du.patch` + `0011b`(2026-10-01):NRCELLDU 可為陣列(每 DU 最多 8 cell),`NRCellDU=<cellLocalId>`、每 cell 一個 NRSectorCarrier、PM 每 cell 一個 measValue、負載告警每 cell 一筆、狀態逐 cell;facade `DU_PORTS="<port>:<gnb_du_id>:<url>,..."` 多 DU 身分;編排服務每 DU 一個 adapter。
 - 劇本分類(2026-10-01):`config/pmData-measData.xml` 的 `@dn-scn@` / `@run-label@`、`config/ves-new-alarm.json` 的 `@scn-id@` / `@run-id@` 由 `dt-entrypoint.sh` 依 `O1_SCENARIO_ID` / `O1_RUN_ID` 代入(無 `O1_LIFECYCLE` → 常駐,標 permanent);measObjLdn 改為相對 ME。

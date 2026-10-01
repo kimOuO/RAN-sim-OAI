@@ -33,9 +33,27 @@ CU_URL = os.environ.get("CU_URL", "http://127.0.0.1:8101").rstrip("/")
 DU_URL = os.environ.get("DU_URL", "http://127.0.0.1:8102").rstrip("/")
 GNB_NAME = os.environ.get("GNB_NAME", "gnb_208_095_000e00")   # = meid,也是 O1 ME 名
 VENDOR = os.environ.get("VENDOR", "MITLAB RANsim-DT")
-DU_CELL = os.environ.get("DU_CELL", "")          # DU 身分要呈現哪個 cell;空 = components 第一個
+DU_CELL = os.environ.get("DU_CELL", "")          # 舊:只呈現一個 cell;空 = 該 DU 的全部 cell(2026-10-01 多 cell 起)
 CUCP_PORT = int(os.environ.get("CUCP_PORT", "9091"))
 DU_PORT = int(os.environ.get("DU_PORT", "9092"))
+# 多 DU(2026-10-01):DU_PORTS="<telnet port>:<gnb_du_id>:<DU URL>,..."。沒給就退回單 DU(DU_PORT / DU_URL,gnb_du_id 取 CU components 第一個)。
+def _parse_du_ports() -> list[dict]:
+    raw = os.environ.get("DU_PORTS", "").strip()
+    out = []
+    if raw:
+        for item in raw.split(","):
+            port, du_id, url = item.split(":", 2)
+            out.append({"port": int(port), "du_id": int(du_id), "url": url.rstrip("/")})
+    else:
+        out.append({"port": DU_PORT, "du_id": None, "url": DU_URL})
+    return out
+DU_LIST = _parse_du_ports()
+def _du_by_role(role: str) -> dict:
+    """role 'du' 或 'du:<gnb_du_id>'。"""
+    if ":" in role:
+        want = int(role.split(":", 1)[1])
+        return next((d for d in DU_LIST if d["du_id"] == want), DU_LIST[0])
+    return DU_LIST[0]
 CACHE_SEC = float(os.environ.get("CACHE_SEC", "0.8"))   # adapter 每秒問一次,兩身分共用一次抓取
 HTTP_TIMEOUT = float(os.environ.get("HTTP_TIMEOUT", "4"))
 PROMPT = "softmodem_gnb> "
@@ -56,21 +74,36 @@ async def _post(client: httpx.AsyncClient, url: str) -> dict:
 async def fetch_all() -> dict:
     """一次抓 CU E2NodeId(身分 + cell 靜態)、DU cells(PRB)、FullKPM(動態)。"""
     async with httpx.AsyncClient() as c:
-        node, du_cells, kpm, cstate = await asyncio.gather(
+        res = await asyncio.gather(
             _post(c, f"{CU_URL}/api/v0.1/CU/E2/E2NodeId/read"),
-            _post(c, f"{DU_URL}/api/v0.1/DU/MAC/MacCellController/read"),
             _post(c, f"{CU_URL}/api/v0.1/CU/E2/E2FullReporter/read"),
             _post(c, f"{CU_URL}/api/v0.1/CU/E2/CellState/read"),   # 2026-10-01 H3:節能 / barred 狀態(舊 CU 無此端點 → 例外 → 空)
+            *[_post(c, f"{du['url']}/api/v0.1/DU/MAC/MacCellController/read") for du in DU_LIST],
             return_exceptions=True,
         )
+    node, kpm, cstate = res[0], res[1], res[2]
+    du_res = res[3:]
+    du_cells_all: list = []
+    du_down: dict = {}
+    for du, r in zip(DU_LIST, du_res):
+        key = du["du_id"] if du["du_id"] is not None else 0
+        du_down[key] = isinstance(r, Exception)
+        if isinstance(r, list):
+            for row in r:
+                row = dict(row)
+                row["_du_id"] = du["du_id"]
+                du_cells_all.append(row)
+        else:
+            log.warning("fetch du %s failed: %s", du["url"], r)
     out = {"node": node if isinstance(node, dict) else None,
-           "du_cells": du_cells if isinstance(du_cells, list) else [],
+           "du_cells": du_cells_all,
            "kpm": kpm if isinstance(kpm, dict) else None,
            "cstate": (cstate.get("cells") if isinstance(cstate, dict) else {}) or {},
-           # DU 不可達(HTTP 失敗)→ DU 身分的 telnet 埠拒絕服務,讓 adapter 觸發 internalConnectionLoss 告警
-           "du_down": isinstance(du_cells, Exception),
+           # DU 不可達(HTTP 失敗)→ 該 DU 身分的 telnet 埠拒絕服務,讓 adapter 觸發 internalConnectionLoss 告警
+           "du_down": du_down.get(0, False) if DU_LIST[0]["du_id"] is None else all(du_down.values()),
+           "du_down_by_id": du_down,
            "cu_down": isinstance(node, Exception)}
-    for k, v in (("node", node), ("du_cells", du_cells), ("kpm", kpm)):
+    for k, v in (("node", node), ("kpm", kpm)):
         if isinstance(v, Exception):
             log.warning("fetch %s failed: %s", k, v)
     return out
@@ -193,26 +226,23 @@ def build_cucp(d: dict) -> dict:
     }}
 
 
-def build_du(d: dict) -> dict:
-    node, du_cells, kpm = d["node"], d["du_cells"], d["kpm"]
-    cells = _cells(node)
-    cell = None
+def _du_cells_of(d: dict, du_id) -> list[dict]:
+    """這個 DU 身分要呈現的 cell:依 CU components 的 gnb_du_id 過濾;舊模式(du_id None)= 全部;DU_CELL 指定時只留那個。"""
+    cells = _cells(d["node"])
+    if du_id is not None:
+        cells = [c for c in cells if int(c.get("_gnb_du_id", 0)) == int(du_id)]
     if DU_CELL:
-        cell = next((c for c in cells if c.get("cell_id") == DU_CELL), None)
-    if cell is None and cells:
-        cell = cells[0]
-    cell = cell or {}
-    mcc, mnc = _plmn(node, cell)
-    du_row = next((r for r in du_cells if r.get("cell_id") == cell.get("cell_id")), {}) if cell else {}
+        cells = [c for c in cells if c.get("cell_id") == DU_CELL] or cells[:1]
+    return cells
+
+
+def _cell_dynamic(d: dict, cell: dict) -> tuple[list, list, int]:
+    """(ues, thp, load) 取自 FullKPM 的 e2[].cells[].ues[](2026-09-30 PM-V1 修正)。"""
+    kpm, du_cells = d["kpm"], d["du_cells"]
+    du_row = next((r for r in du_cells if r.get("cell_id") == cell.get("cell_id")), {})
     nrb = int(du_row.get("total_prb") or 106)
-    bw = int(round(_num(cell.get("bandwidth_mhz"), 40)))
-    arfcn = int(cell.get("arfcn") or 633333)
-    # ── 動態值(2026-09-30 PM-V1 修正)────────────────────────────────
-    # UE 清單、每 UE 吞吐與 PRB 取自 FullKPM 的 e2[].cells[].ues[](浮點 Mbps、rb_width),
-    # 不用 ue_status(吞吐被取整成整數 Mbps)也不用 pm 的 RRU.PrbTotDl(那是累計 PRB 個數,不是百分比)。
-    # load(%)= 該 cell 目前所有 UE 的 rb_width 總和 / 該 cell 總 PRB。
     ues, thp, rb_sum = [], [], 0
-    cell_pci = int(cell.get("pci", -1)) if cell else -1
+    cell_pci = int(cell.get("pci", -1))
     for g in (kpm or {}).get("e2", []) or []:
         for c in g.get("cells", []) or []:
             if int(c.get("pci", -2)) != cell_pci:
@@ -222,15 +252,64 @@ def build_du(d: dict) -> dict:
                 rnti = (int(uid) & 0xFFFF) if uid.isdigit() else (int(hashlib.md5(uid.encode()).hexdigest()[:4], 16) or 1)
                 ues.append(rnti)
                 thp.append({"rnti": rnti,
-                            "dl": round(_num(u.get("dl_throughput")) * 1000.0, 1),   # Mbps → kbit/s,實數(H6,TS 28.552 DRB.UEThp* 為 real)
+                            "dl": round(_num(u.get("dl_throughput")) * 1000.0, 1),   # Mbps → kbit/s(H6)
                             "ul": round(_num(u.get("ul_throughput")) * 1000.0, 1),
                             "unres_dl": 0, "unres_ul": 0})
                 rb_sum += int(_num(u.get("rb_width")))
     load = int(round(100.0 * rb_sum / nrb)) if nrb > 0 else 0
-    load = max(0, min(100, load))
-    _adm, _op, _cs = _cell_states(d, cell)
-    log.info("STAT du cell=%s pci=%s num_ues=%d load=%d sum_dl_kbps=%d sum_ul_kbps=%d",
-             cell.get("cell_id"), cell_pci, len(ues), load, sum(t["dl"] for t in thp), sum(t["ul"] for t in thp))
+    return ues, thp, max(0, min(100, load))
+
+
+def _nrcelldu_obj(d: dict, cell: dict, idx: int) -> dict:
+    node = d["node"]
+    du_row = next((r for r in d["du_cells"] if r.get("cell_id") == cell.get("cell_id")), {})
+    mcc, mnc = _plmn(node, cell)
+    bw = int(round(_num(cell.get("bandwidth_mhz"), 40)))
+    arfcn = int(cell.get("arfcn") or 633333)
+    adm, op, cs = _cell_states(d, cell)
+    return {
+        "nrcelldu3gpp:ssbFrequency": arfcn,
+        "nrcelldu3gpp:arfcnDL": arfcn,
+        "nrcelldu3gpp:bSChannelBwDL": bw,
+        "nrcelldu3gpp:arfcnUL": arfcn,
+        "nrcelldu3gpp:bSChannelBwUL": bw,
+        "nrcelldu3gpp:nRPCI": int(cell.get("pci", 0)),
+        "nrcelldu3gpp:nRTAC": int(cell.get("tac", 1)),
+        "nrcelldu3gpp:mcc": mcc,
+        "nrcelldu3gpp:mnc": mnc,
+        "nrcelldu3gpp:sd": 16777215,
+        "nrcelldu3gpp:sst": int((cell.get("s_nssai") or {}).get("sst", 1)),
+        "nrcelldu3gpp:cellLocalId": str(_local_cell_id(cell, idx)),  # adapter 要字串
+        "nrcelldu3gpp:ssbSubCarrierSpacing": 30,
+        "nrcelldu3gpp:ssbPeriodicity": 20,
+        "nrcelldu3gpp:ssbOffset": 0,
+        "nrcelldu3gpp:ssbDuration": 1,
+        "nrcelldu3gpp:administrativeState": adm,
+        "nrcelldu3gpp:operationalState": op,
+        "nrcelldu3gpp:cellState": cs,
+        "_total_prb": int(du_row.get("total_prb") or 106),
+    }
+
+
+def build_du(d: dict, du_id=None) -> dict:
+    """DU 身分:該 DU 的全部 cell(2026-10-01 多 cell):NRCELLDU 為陣列、O1-Operational.cells 逐 cell;
+    平面欄位(ues / load / ues-thp)維持 = 第一個 cell,給舊版 adapter 相容。"""
+    node = d["node"]
+    cells = _du_cells_of(d, du_id)
+    nrcelldu, ops = [], []
+    for i, cell in enumerate(cells):
+        obj = _nrcelldu_obj(d, cell, i)
+        ues, thp, load = _cell_dynamic(d, cell)
+        log.info("STAT du%s cell=%s pci=%s num_ues=%d load=%d sum_dl_kbps=%d sum_ul_kbps=%d",
+                 f"[{du_id}]" if du_id is not None else "", cell.get("cell_id"), cell.get("pci"), len(ues), load,
+                 int(sum(t["dl"] for t in thp)), int(sum(t["ul"] for t in thp)))
+        nrcelldu.append(obj)
+        ops.append({"cellLocalId": obj["nrcelldu3gpp:cellLocalId"], "num-ues": len(ues), "ues": ues, "load": load,
+                    "ues-thp": thp, "RlcPacketDropRateDl": 0})
+    nrb = nrcelldu[0]["_total_prb"] if nrcelldu else 106
+    for obj in nrcelldu:
+        obj.pop("_total_prb", None)
+    first = ops[0] if ops else {"num-ues": 0, "ues": [], "load": 0, "ues-thp": []}
     return {
         "o1-config": {
             "BWP": {
@@ -239,75 +318,71 @@ def build_du(d: dict) -> dict:
                 "ul": [{"bwp3gpp:isInitialBwp": True, "bwp3gpp:numberOfRBs": nrb,
                         "bwp3gpp:startRB": 0, "bwp3gpp:subCarrierSpacing": 30}],
             },
-            "NRCELLDU": {
-                "nrcelldu3gpp:ssbFrequency": arfcn,
-                "nrcelldu3gpp:arfcnDL": arfcn,
-                "nrcelldu3gpp:bSChannelBwDL": bw,
-                "nrcelldu3gpp:arfcnUL": arfcn,
-                "nrcelldu3gpp:bSChannelBwUL": bw,
-                "nrcelldu3gpp:nRPCI": int(cell.get("pci", 0)),
-                "nrcelldu3gpp:nRTAC": int(cell.get("tac", 1)),
-                "nrcelldu3gpp:mcc": mcc,
-                "nrcelldu3gpp:mnc": mnc,
-                "nrcelldu3gpp:sd": 16777215,
-                "nrcelldu3gpp:sst": int((cell.get("s_nssai") or {}).get("sst", 1)),
-                "nrcelldu3gpp:cellLocalId": str(_local_cell_id(cell, 0)),  # adapter 要字串
-                "nrcelldu3gpp:ssbSubCarrierSpacing": 30,
-                "nrcelldu3gpp:ssbPeriodicity": 20,
-                "nrcelldu3gpp:ssbOffset": 0,
-                "nrcelldu3gpp:ssbDuration": 1,
-                "nrcelldu3gpp:administrativeState": _adm,
-                "nrcelldu3gpp:operationalState": _op,
-                "nrcelldu3gpp:cellState": _cs,
-            },
-            "device": {"gnbId": _gnb_id_int(node),   # adapter 拿它填 GNBDUFunction.gNBId;gNBDUId 由 config gnb-du-id 決定
-                       "gnbName": GNB_NAME, "vendor": VENDOR},
+            "NRCELLDU": nrcelldu if len(nrcelldu) != 1 else nrcelldu[0],   # 單 cell 維持物件(舊 adapter 相容);多 cell 為陣列
+            "device": {"gnbId": _gnb_id_int(node), "gnbName": GNB_NAME, "vendor": VENDOR},
         },
         "O1-Operational": {
             "frame-type": "tdd",
             "band-number": 78,
-            "num-ues": len(ues),
-            "ues": ues,
-            "load": load,
-            "ues-thp": thp,
+            "num-ues": first["num-ues"],
+            "ues": first["ues"],
+            "load": first["load"],
+            "ues-thp": first["ues-thp"],
             "RlcPacketDropRateDl": 0,
+            "cells": ops,
         },
     }
 
 
 # ───────────────────────── 指令處理 ─────────────────────────
-async def _du_cell_toggle(enable: bool) -> str:
+async def _du_cell_toggle(enable: bool, role: str = "du") -> str:
+    """stop_modem / start_modem:對該 DU 身分的全部 cell 下 disable / enable。"""
     d = await get_data()
-    cells = _cells(d["node"])
-    cell = next((c for c in cells if c.get("cell_id") == DU_CELL), None) if DU_CELL else (cells[0] if cells else None)
-    if not cell:
+    du = _du_by_role(role)
+    cells = _du_cells_of(d, du["du_id"])
+    if not cells:
         return "FAILURE: no cell"
     ep = "enable" if enable else "disable"
+    oks = 0
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(f"{DU_URL}/api/v0.1/DU/MAC/MacCellController/{ep}",
-                             json={"cell_id": cell["cell_id"]}, timeout=HTTP_TIMEOUT)
-        log.info("%s cell %s -> %s %s", ep, cell["cell_id"], r.status_code, r.text[:120])
-        return "OK" if r.status_code < 300 else f"FAILURE: {r.status_code}"
+            for cell in cells:
+                r = await c.post(f"{du['url']}/api/v0.1/DU/MAC/MacCellController/{ep}",
+                                 json={"cell_id": cell["cell_id"]}, timeout=HTTP_TIMEOUT)
+                log.info("%s cell %s -> %s %s", ep, cell["cell_id"], r.status_code, r.text[:120])
+                oks += 1 if r.status_code < 300 else 0
+        return "OK" if oks == len(cells) else f"FAILURE: {oks}/{len(cells)}"
     except Exception as e:  # noqa: BLE001
         return f"FAILURE: {e}"
+
+
+def _is_du(role: str) -> bool:
+    return role == "du" or role.startswith("du:")
+
+
+def _down(d: dict, role: str) -> bool:
+    if role == "cucp":
+        return bool(d.get("cu_down"))
+    du = _du_by_role(role)
+    key = du["du_id"] if du["du_id"] is not None else 0
+    return bool((d.get("du_down_by_id") or {}).get(key, d.get("du_down")))
 
 
 async def handle(command: str, role: str) -> str:
     if command == "o1 stats":
         d = await get_data()
-        body = build_cucp(d) if role == "cucp" else build_du(d)
+        body = build_cucp(d) if role == "cucp" else build_du(d, _du_by_role(role)["du_id"])
         return json.dumps(body, indent=2) + "\nOK"
     if command == "o1 stop_modem":
         if not _state["modem_running"]:
             return "FAILURE"
         _state["modem_running"] = False
-        return await _du_cell_toggle(False) if role == "du" else "OK"
+        return await _du_cell_toggle(False, role) if _is_du(role) else "OK"
     if command == "o1 start_modem":
         if _state["modem_running"]:
             return "FAILURE"
         _state["modem_running"] = True
-        return await _du_cell_toggle(True) if role == "du" else "OK"
+        return await _du_cell_toggle(True, role) if _is_du(role) else "OK"
     if command.startswith("o1 bwconfig "):
         if _state["modem_running"]:
             return "FAILURE: modem still running"
@@ -327,7 +402,7 @@ def make_shell(role: str):
         peer = writer.get_extra_info("peername")
         log.info("[%s] connection from %s", role, peer)
         d = await get_data()
-        if (role == "du" and d.get("du_down")) or (role == "cucp" and d.get("cu_down")):
+        if _down(d, role):
             log.warning("[%s] backend unreachable, refusing telnet session (adapter will raise alarm)", role)
             writer.close()
             return
@@ -346,7 +421,7 @@ def make_shell(role: str):
                     buf = ""
                     if cmd:
                         d = await get_data()
-                        if (role == "du" and d.get("du_down")) or (role == "cucp" and d.get("cu_down")):
+                        if _down(d, role):
                             log.warning("[%s] backend went down, closing telnet session", role)
                             break
                         resp = await handle(cmd, role)
@@ -361,8 +436,11 @@ def make_shell(role: str):
     return shell
 
 
-_servers: dict[str, Any] = {"cucp": None, "du": None}
-_PORTS = {"cucp": CUCP_PORT, "du": DU_PORT}
+# 身分:cucp + 每個 DU 一個("du" 舊單 DU;"du:<gnb_du_id>" 多 DU)
+_PORTS: dict[str, int] = {"cucp": CUCP_PORT}
+for _du in DU_LIST:
+    _PORTS["du" if _du["du_id"] is None else f"du:{_du['du_id']}"] = _du["port"]
+_servers: dict[str, Any] = {r: None for r in _PORTS}
 
 
 async def _open(role: str):
@@ -389,7 +467,8 @@ async def watchdog():
     while True:
         try:
             d = await get_data()
-            for role, down in (("cucp", d.get("cu_down")), ("du", d.get("du_down"))):
+            for role in list(_PORTS):
+                down = _down(d, role)
                 if down:
                     await _close(role)
                 else:
@@ -400,8 +479,8 @@ async def watchdog():
 
 
 async def main():
-    log.info("facade up: CU-CP :%d  DU :%d  CU=%s DU=%s gnb=%s cell=%s",
-             CUCP_PORT, DU_PORT, CU_URL, DU_URL, GNB_NAME, DU_CELL or "<first>")
+    log.info("facade up: CU-CP :%d  DUs %s  CU=%s gnb=%s cell=%s",
+             CUCP_PORT, [(r, p) for r, p in _PORTS.items() if r != "cucp"], CU_URL, GNB_NAME, DU_CELL or "<all>")
     await watchdog()
 
 

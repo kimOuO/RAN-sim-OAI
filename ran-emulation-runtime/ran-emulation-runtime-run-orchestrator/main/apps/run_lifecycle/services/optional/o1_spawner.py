@@ -39,18 +39,31 @@ def _slot(g) -> int:
     return int(g.e2_port) - 8400
 
 
-def ports_for(g) -> dict:
+DU_PORT_STRIDE = 1024   # 多 DU(2026-10-01):第 k 個 DU 的埠 = 第 0 個 + 1024·k(slot 最大 255 → 2·255+1831+1024·3 < 6000,不與既有服務重疊)
+
+
+def ports_for(g, k: int = 0) -> dict:
     s = _slot(g)
     return {
-        "facade_cucp": 9000 + 2 * s, "facade_du": 9001 + 2 * s,
+        "facade_cucp": 9000 + 2 * s, "facade_du": 9001 + 2 * s + DU_PORT_STRIDE * k,
         "cucp_netconf": 1830 + 2 * s, "cucp_sftp": 1222 + 2 * s,
-        "du_netconf": 1831 + 2 * s, "du_sftp": 1223 + 2 * s,
+        "du_netconf": 1831 + 2 * s + DU_PORT_STRIDE * k, "du_sftp": 1223 + 2 * s + DU_PORT_STRIDE * k,
     }
 
 
+def du_list(g) -> list[dict]:
+    """gNB 內每個 DU 一個 O1 ME:[{k, index, gnb_du_id, me, cells:[local_cell_id...]}];沒有 DU 時給一個預設。"""
+    out = []
+    for k, d in enumerate(g.dus or []):
+        out.append({"k": k, "index": d.index, "gnb_du_id": int(d.gnb_du_id), "me": f"{g.meid}_du{int(d.gnb_du_id)}",
+                    "cells": [int(c.local_cell_id) for c in (d.cells or [])] or [0]})
+    return out or [{"k": 0, "index": None, "gnb_du_id": 1, "me": f"{g.meid}_du1", "cells": [0]}]
+
+
 def me_names(g) -> dict:
-    du_id = int(g.dus[0].gnb_du_id) if g.dus else 1
-    return {"cucp": g.meid, "du": f"{g.meid}_du{du_id}", "gnb_du_id": du_id}
+    """相容舊呼叫:cucp / du(第一個 DU)/ gnb_du_id;新增 dus(全部)。"""
+    dus = du_list(g)
+    return {"cucp": g.meid, "du": dus[0]["me"], "gnb_du_id": dus[0]["gnb_du_id"], "dus": dus}
 
 
 def _overrides() -> dict:
@@ -76,36 +89,49 @@ def plan(rid: str, topo, instances: dict, scenario_id: str = "") -> list[dict]:
     items: list[dict] = []
     for g in topo.gnbs:
         cu = instances.get(f"cu-{g.e2_index}") or {}
-        du_key = f"du-{g.dus[0].index}" if g.dus else None
-        du = instances.get(du_key) or {} if du_key else {}
-        cu_port, du_port = cu.get("host_port"), du.get("host_port")
-        if not cu_port or not du_port:
-            logger.warning("O1 skip gnb %s: cu_port=%s du_port=%s", g.name, cu_port, du_port)
+        cu_port = cu.get("host_port")
+        dus = []
+        for d in du_list(g):
+            inst = (instances.get(f"du-{d['index']}") or {}) if d["index"] is not None else {}
+            if inst.get("host_port"):
+                dus.append({**d, "host_port": inst["host_port"]})
+            else:
+                logger.warning("O1 skip DU %s of gnb %s: no host_port", d["me"], g.name)
+        if not cu_port or not dus:
+            logger.warning("O1 skip gnb %s: cu_port=%s dus=%d", g.name, cu_port, len(dus))
             continue
-        p, me = ports_for(g), me_names(g)
+        p0, me = ports_for(g), me_names(g)
         base_labels = {"ransim.gnb": g.name, "ransim.meid": g.meid}
+        # 多 DU(2026-10-01):一顆 facade 服務 CU-CP 加全部 DU 身分;DU_PORTS = "<telnet>:<gnb_du_id>:<DU URL>,..."
+        du_ports = ",".join(f"{ports_for(g, d['k'])['facade_du']}:{d['gnb_du_id']}:http://127.0.0.1:{d['host_port']}" for d in dus)
         items.append({
             "key": f"o1facade-{g.e2_index}", "role": ROLE_FACADE, "name": f"o1facade-{rid}-{g.e2_index}",
             "image": O1_FACADE_IMAGE, "host_net": True, "labels": base_labels,
-            "env": {"CU_URL": f"http://127.0.0.1:{cu_port}", "DU_URL": f"http://127.0.0.1:{du_port}",
+            "env": {"CU_URL": f"http://127.0.0.1:{cu_port}", "DU_URL": f"http://127.0.0.1:{dus[0]['host_port']}",
                     "GNB_NAME": g.meid, "VENDOR": "MITLAB RANsim-DT", "DU_CELL": "",
-                    "CUCP_PORT": str(p["facade_cucp"]), "DU_PORT": str(p["facade_du"])},
+                    "CUCP_PORT": str(p0["facade_cucp"]), "DU_PORT": str(p0["facade_du"]), "DU_PORTS": du_ports},
         })
-        for unit, key in (("CU-CP", "cucp"), ("DU", "du")):
-            items.append({
-                "key": f"o1adapter-{key}-{g.e2_index}", "role": ROLE_ADAPTER,
-                "name": f"o1adapter-{key}-{rid}-{g.e2_index}", "image": O1_ADAPTER_IMAGE, "host_net": False,
-                "labels": {**base_labels, "ransim.o1_me": me[key]},
-                "ports": {"830/tcp": p[f"{key}_netconf"], "22/tcp": p[f"{key}_sftp"]},
-                "env": {"O1_NODE_ID": me[key], "O1_UNIT_TYPE": unit, "O1_HOST": O1_HOST_IP,
-                        "O1_NETCONF_PORT": str(p[f"{key}_netconf"]), "O1_SFTP_PORT": str(p[f"{key}_sftp"]),
-                        "O1_TELNET_HOST": O1_HOST_IP, "O1_TELNET_PORT": str(p[f"facade_{key}"]),
-                        "O1_GNB_DU_ID": str(me["gnb_du_id"]), "O1_GNB_CU_ID": "0",
+
+        def _adapter(unit, key, name_suffix, me_name, ports, telnet_port, gnb_du_id, model):
+            return {
+                "key": f"o1adapter-{key}-{g.e2_index}{name_suffix}", "role": ROLE_ADAPTER,
+                "name": f"o1adapter-{key}-{rid}-{g.e2_index}{name_suffix}", "image": O1_ADAPTER_IMAGE, "host_net": False,
+                "labels": {**base_labels, "ransim.o1_me": me_name},
+                "ports": {"830/tcp": ports[0], "22/tcp": ports[1]},
+                "env": {"O1_NODE_ID": me_name, "O1_UNIT_TYPE": unit, "O1_HOST": O1_HOST_IP,
+                        "O1_NETCONF_PORT": str(ports[0]), "O1_SFTP_PORT": str(ports[1]),
+                        "O1_TELNET_HOST": O1_HOST_IP, "O1_TELNET_PORT": str(telnet_port),
+                        "O1_GNB_DU_ID": str(gnb_du_id), "O1_GNB_CU_ID": "0",
                         "O1_PM_INTERVAL": pm_interval, "O1_VES_URL": O1_VES_URL,
-                        "O1_MODEL": f"ransim-dt-{key}", "O1_LOCATION": f"DT run {rid} gnb {g.name}",
+                        "O1_MODEL": model, "O1_LOCATION": f"DT run {rid} gnb {g.name}",
                         # SMO 的 ME 生命週期自動化(2026-09-30):pnfRegistration additionalFields 帶劇本資訊
                         "O1_SCENARIO_ID": scenario_id or "unknown", "O1_RUN_ID": run_tag, "O1_LIFECYCLE": "ephemeral"},
-            })
+            }
+        items.append(_adapter("CU-CP", "cucp", "", me["cucp"], (p0["cucp_netconf"], p0["cucp_sftp"]), p0["facade_cucp"], dus[0]["gnb_du_id"], "ransim-dt-cucp"))
+        for d in dus:
+            pk = ports_for(g, d["k"])
+            items.append(_adapter("DU", "du", "" if d["k"] == 0 else f"-du{d['gnb_du_id']}", d["me"],
+                                  (pk["du_netconf"], pk["du_sftp"]), pk["facade_du"], d["gnb_du_id"], "ransim-dt-du"))
     return items
 
 
@@ -138,7 +164,9 @@ def spawn(rid: str, scene_run_uuid: str, topo, instances: dict, scenario_id: str
             _registry_append({"event": "start", "runId": tag, "rid": rid, "scene_run_uuid": scene_run_uuid,
                               "scenarioId": scenario_id or "unknown",
                               "mes": [{"gnb": g.name, "cucp": me_names(g)["cucp"], "du": me_names(g)["du"],
-                                       "netconf_cucp": ports_for(g)["cucp_netconf"], "netconf_du": ports_for(g)["du_netconf"]}
+                                       "netconf_cucp": ports_for(g)["cucp_netconf"], "netconf_du": ports_for(g)["du_netconf"],
+                                       "dus": [{"me": d["me"], "gnb_du_id": d["gnb_du_id"], "cells": d["cells"],
+                                                "netconf": ports_for(g, d["k"])["du_netconf"]} for d in du_list(g)]}
                                       for g in topo.gnbs]})
     except Exception as exc:  # noqa: BLE001
         logger.warning("O1 run registry (start) failed: %s", exc)
@@ -237,10 +265,12 @@ def _send_clears(topo) -> None:
     targets = []
     for g in topo.gnbs:
         n = me_names(g)
-        for me in (n["cucp"], n["du"]):
-            targets.append((me, f"ManagedElement={me}-internalConnectionLoss", "COMMUNICATIONS_ALARM", "internalConnectionLoss"))
-        targets.append((n["du"], f"ManagedElement={n['du']},GNBDUFunction={n['gnb_du_id']},NRCellDU=0-loadDownlinkExceededWarning",
-                        "EQUIPMENT_ALARM", "loadDownlinkExceededWarning"))
+        targets.append((n["cucp"], f"ManagedElement={n['cucp']}-internalConnectionLoss", "COMMUNICATIONS_ALARM", "COMMUNICATIONS_SUBSYSTEM_FAILURE"))
+        for d in n["dus"]:   # 多 DU、多 cell(2026-10-01):每個 DU ME 一筆連線告警、每個 cell 一筆負載告警(probableCause 同 H4)
+            targets.append((d["me"], f"ManagedElement={d['me']}-internalConnectionLoss", "COMMUNICATIONS_ALARM", "COMMUNICATIONS_SUBSYSTEM_FAILURE"))
+            for lc in d["cells"]:
+                targets.append((d["me"], f"ManagedElement={d['me']},GNBDUFunction={d['gnb_du_id']},NRCellDU={lc}-loadDownlinkExceededWarning",
+                                "QUALITY_OF_SERVICE_ALARM", "THRESHOLD_CROSSED"))
     for me, alarm_id, alarm_type, cause in targets:
         if True:
             now = int(_time.time() * 1e6)
@@ -278,9 +308,8 @@ def _send_moi_deletions(rid: str, topo, scenario_id: str = "") -> None:
     _time.sleep(1.0)   # 與 CLEAR 錯開,確保到達順序
     seq = int(_time.time()) % 100000
     for g in topo.gnbs:
-        for me in me_names(g).values():
-            if not isinstance(me, str):
-                continue
+        n = me_names(g)
+        for me in [n["cucp"]] + [d["me"] for d in n["dus"]]:
             now = int(_time.time() * 1e6)
             attrs = {"runId": rid}
             if scenario_id:
@@ -315,7 +344,9 @@ def _write_notice(rid: str, topo, started, kind: str) -> None:
              "| meid(E2 / A1 / O1 CU-CP ME) | O1 DU ME | NETCONF CU-CP | NETCONF DU | SFTP CU-CP | SFTP DU |", "|---|---|---|---|---|---|"]
     for g in topo.gnbs:
         p, me = ports_for(g), me_names(g)
-        lines.append(f"| `{me['cucp']}` | `{me['du']}` | {O1_HOST_IP}:{p['cucp_netconf']} | {O1_HOST_IP}:{p['du_netconf']} | {p['cucp_sftp']} | {p['du_sftp']} |")
+        for du in me["dus"]:   # 注意:不可用 d 當變數名,d 是上面的 Path
+            pk = ports_for(g, du["k"])
+            lines.append(f"| `{me['cucp']}` | `{du['me']}`(cells {du['cells']}) | {O1_HOST_IP}:{p['cucp_netconf']} | {O1_HOST_IP}:{pk['du_netconf']} | {p['cucp_sftp']} | {pk['du_sftp']} |")
     (d / f"notify_{kind}_{now.replace(':', '')}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     # 給 TEIV 產生器用:meid → gNB-DU id(O1 的 _du<N>)
     import json as _json

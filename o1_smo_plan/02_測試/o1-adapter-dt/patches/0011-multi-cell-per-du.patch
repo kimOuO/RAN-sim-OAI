@@ -1,0 +1,2126 @@
+--- a/src/oai/oai_data.h	2026-10-01 16:22:15.188861577 +0800
++++ b/src/oai/oai_data.h	2026-10-01 16:22:15.207860968 +0800
+@@ -79,6 +79,19 @@
+     uint32_t sst;
+ } oai_nrcelldu_data_t;
+ 
++/* DT patch 0011 (2026-10-01): multi-cell per DU */
++#define O1_MAX_CELLS 8
++typedef struct oai_cell_oper {
++    int valid;
++    int num_ues;
++    int load;
++    double thp_dl_sum;
++    double thp_ul_sum;
++    double thp_unres_dl_sum;
++    double thp_unres_ul_sum;
++    int packetDropRateDl;
++} oai_cell_oper_t;
++
+ typedef struct oai_nrfreqrel_data {
+     uint8_t tReselectionNRSfHigh;
+     uint32_t tReselectionNR;
+@@ -105,7 +118,10 @@
+ 
+ typedef struct oai_data {
+     oai_bwp_data_t bwp[2];
+-    oai_nrcelldu_data_t nrcelldu;
++    oai_nrcelldu_data_t nrcelldu;                       /* shallow alias of nrcelldu_list[0] (strings owned by the list) */
++    int num_nrcelldu;                                   /* DT patch 0011 */
++    oai_nrcelldu_data_t nrcelldu_list[O1_MAX_CELLS];
++    oai_cell_oper_t cell_oper[O1_MAX_CELLS];
+     oai_device_data_t device_data;
+     oai_additional_data_t additional_data;
+     int num_nrcellcu;
+--- a/src/oai/oai_data.c	2026-10-01 16:22:15.189861545 +0800
++++ b/src/oai/oai_data.c	2026-10-01 16:22:15.207860968 +0800
+@@ -121,6 +121,164 @@
+     return true;
+ }
+ 
++static bool parse_nrcelldu_one(cJSON *nrcelldu, oai_nrcelldu_data_t *cell) {
++    cJSON *object = 0;
++    if(nrcelldu == 0 || cell == 0) {
++        log_error("NRCELLDU: null");
++        return false;
++    }
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:ssbFrequency");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:ssbFrequency");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:ssbFrequency");
++            return false;
++        }
++        cell->ssbFrequency = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:arfcnDL");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:arfcnDL");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:arfcnDL");
++            return false;
++        }
++        cell->arfcnDL = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:bSChannelBwDL");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:bSChannelBwDL");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:bSChannelBwDL");
++            return false;
++        }
++        cell->bSChannelBwDL = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:arfcnUL");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:arfcnUL");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:arfcnUL");
++            return false;
++        }
++        cell->arfcnUL = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:bSChannelBwUL");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:bSChannelBwUL");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:bSChannelBwUL");
++            return false;
++        }
++        cell->bSChannelBwUL = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:nRPCI");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:nRPCI");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:nRPCI");
++            return false;
++        }
++        cell->nRPCI = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:nRTAC");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:nRTAC");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:nRTAC");
++            return false;
++        }
++        cell->nRTAC = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:mcc");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:mcc");
++            return false;
++        }
++        if(!cJSON_IsString(object)) {
++            log_error("failed type: nrcelldu3gpp:mcc");
++            return false;
++        }
++        cell->mcc = strdup(object->valuestring);
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:mnc");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:mnc");
++            return false;
++        }
++        if(!cJSON_IsString(object)) {
++            log_error("failed type: nrcelldu3gpp:mnc");
++            return false;
++        }
++        cell->mnc = strdup(object->valuestring);
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:cellLocalId");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:cellLocalId");
++            return false;
++        }
++        if(!cJSON_IsString(object)) {
++            log_error("failed type: nrcelldu3gpp:cellLocalId");
++            return false;
++        }
++        cell->cell_local_id = strdup(object->valuestring);
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:sd");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:sd");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:sd");
++            return false;
++        }
++        cell->sd = object->valueint;
++
++        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:sst");
++        if(object == 0) {
++            log_error("not found: nrcelldu3gpp:sst");
++            return false;
++        }
++        if(!cJSON_IsNumber(object)) {
++            log_error("failed type: nrcelldu3gpp:sst");
++            return false;
++        }
++        cell->sst = object->valueint;
++
++        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbSubCarrierSpacing", cell->ssbSubCarrierSpacing);
++        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbPeriodicity", cell->ssbPeriodicity);
++        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbOffset", cell->ssbOffset);
++        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbDuration", cell->ssbDuration);
++
++        /* DT patch 0009: optional state strings (default when the facade does not send them) */
++        {
++            const char *defs[3] = {"UNLOCKED", "ENABLED", "ACTIVE"};
++            const char *keys[3] = {"nrcelldu3gpp:administrativeState", "nrcelldu3gpp:operationalState", "nrcelldu3gpp:cellState"};
++            char **dst[3] = {&cell->administrativeState, &cell->operationalState, &cell->cellState};
++            for (int si = 0; si < 3; si++) {
++                cJSON *so = cJSON_GetObjectItem(nrcelldu, keys[si]);
++                free(*dst[si]);
++                *dst[si] = strdup((so && cJSON_IsString(so) && so->valuestring && so->valuestring[0]) ? so->valuestring : defs[si]);
++            }
++        }
++    return true;
++}
++
+ bool oai_data_parse_du_json(cJSON *o1, oai_data_t *data, cJSON *object, cJSON *cjson) {
+     cJSON *bwp = cJSON_GetObjectItem(o1, "BWP");
+         if(bwp == 0) {
+@@ -295,155 +453,32 @@
+             log_error("not found: NRCELLDU");
+             return false;
+         }
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:ssbFrequency");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:ssbFrequency");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:ssbFrequency");
+-            return false;
+-        }
+-        data->nrcelldu.ssbFrequency = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:arfcnDL");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:arfcnDL");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:arfcnDL");
+-            return false;
+-        }
+-        data->nrcelldu.arfcnDL = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:bSChannelBwDL");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:bSChannelBwDL");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:bSChannelBwDL");
+-            return false;
+-        }
+-        data->nrcelldu.bSChannelBwDL = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:arfcnUL");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:arfcnUL");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:arfcnUL");
+-            return false;
+-        }
+-        data->nrcelldu.arfcnUL = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:bSChannelBwUL");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:bSChannelBwUL");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:bSChannelBwUL");
+-            return false;
+-        }
+-        data->nrcelldu.bSChannelBwUL = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:nRPCI");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:nRPCI");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:nRPCI");
+-            return false;
+-        }
+-        data->nrcelldu.nRPCI = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:nRTAC");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:nRTAC");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:nRTAC");
+-            return false;
+-        }
+-        data->nrcelldu.nRTAC = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:mcc");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:mcc");
+-            return false;
+-        }
+-        if(!cJSON_IsString(object)) {
+-            log_error("failed type: nrcelldu3gpp:mcc");
+-            return false;
+-        }
+-        data->nrcelldu.mcc = strdup(object->valuestring);
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:mnc");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:mnc");
+-            return false;
+-        }
+-        if(!cJSON_IsString(object)) {
+-            log_error("failed type: nrcelldu3gpp:mnc");
+-            return false;
+-        }
+-        data->nrcelldu.mnc = strdup(object->valuestring);
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:cellLocalId");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:cellLocalId");
+-            return false;
+-        }
+-        if(!cJSON_IsString(object)) {
+-            log_error("failed type: nrcelldu3gpp:cellLocalId");
+-            return false;
+-        }
+-        data->nrcelldu.cell_local_id = strdup(object->valuestring);
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:sd");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:sd");
+-            return false;
+-        }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:sd");
+-            return false;
++        /* DT patch 0011: NRCELLDU is an object (one cell) or an array (multi-cell per DU) */
++        data->num_nrcelldu = 0;
++        if(cJSON_IsArray(nrcelldu)) {
++            int n = cJSON_GetArraySize(nrcelldu);
++            if(n > O1_MAX_CELLS) {
++                log_error("NRCELLDU: %d cells, only %d supported; truncating", n, O1_MAX_CELLS);
++                n = O1_MAX_CELLS;
++            }
++            for(int ci = 0; ci < n; ci++) {
++                if(!parse_nrcelldu_one(cJSON_GetArrayItem(nrcelldu, ci), &data->nrcelldu_list[ci])) {
++                    return false;
++                }
++            }
++            data->num_nrcelldu = n;
+         }
+-        data->nrcelldu.sd = object->valueint;
+-
+-        object = cJSON_GetObjectItem(nrcelldu, "nrcelldu3gpp:sst");
+-        if(object == 0) {
+-            log_error("not found: nrcelldu3gpp:sst");
+-            return false;
++        else {
++            if(!parse_nrcelldu_one(nrcelldu, &data->nrcelldu_list[0])) {
++                return false;
++            }
++            data->num_nrcelldu = 1;
+         }
+-        if(!cJSON_IsNumber(object)) {
+-            log_error("failed type: nrcelldu3gpp:sst");
++        if(data->num_nrcelldu == 0) {
++            log_error("NRCELLDU: empty list");
+             return false;
+         }
+-        data->nrcelldu.sst = object->valueint;
+-
+-        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbSubCarrierSpacing", data->nrcelldu.ssbSubCarrierSpacing);
+-        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbPeriodicity", data->nrcelldu.ssbPeriodicity);
+-        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbOffset", data->nrcelldu.ssbOffset);
+-        JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbDuration", data->nrcelldu.ssbDuration);
+-
+-        /* DT patch 0009: optional state strings (default when the facade does not send them) */
+-        {
+-            const char *defs[3] = {"UNLOCKED", "ENABLED", "ACTIVE"};
+-            const char *keys[3] = {"nrcelldu3gpp:administrativeState", "nrcelldu3gpp:operationalState", "nrcelldu3gpp:cellState"};
+-            char **dst[3] = {&data->nrcelldu.administrativeState, &data->nrcelldu.operationalState, &data->nrcelldu.cellState};
+-            for (int si = 0; si < 3; si++) {
+-                cJSON *so = cJSON_GetObjectItem(nrcelldu, keys[si]);
+-                free(*dst[si]);
+-                *dst[si] = strdup((so && cJSON_IsString(so) && so->valuestring && so->valuestring[0]) ? so->valuestring : defs[si]);
+-            }
+-        }
++        data->nrcelldu = data->nrcelldu_list[0];
+ 
+         cJSON *additional = cJSON_GetObjectItem(cjson, "O1-Operational");
+         if(additional == 0) {
+@@ -571,6 +606,61 @@
+         }
+         data->additional_data.packetDropRateDl = object->valueint;
+ 
++        /* DT patch 0011: per-cell operational data ("cells" array, aligned with NRCELLDU[]); cell 0 falls back to the flat fields */
++        {
++            for(int ci = 0; ci < O1_MAX_CELLS; ci++) {
++                memset(&data->cell_oper[ci], 0, sizeof(oai_cell_oper_t));
++            }
++            cJSON *cells = cJSON_GetObjectItem(additional, "cells");
++            if(cells && cJSON_IsArray(cells)) {
++                int n = cJSON_GetArraySize(cells);
++                for(int ci = 0; ci < n && ci < O1_MAX_CELLS; ci++) {
++                    cJSON *co = cJSON_GetArrayItem(cells, ci);
++                    if(co == 0) {
++                        continue;
++                    }
++                    oai_cell_oper_t *op = &data->cell_oper[ci];
++                    cJSON *v;
++                    v = cJSON_GetObjectItem(co, "num-ues");
++                    op->num_ues = (v && cJSON_IsNumber(v)) ? v->valueint : 0;
++                    v = cJSON_GetObjectItem(co, "load");
++                    op->load = (v && cJSON_IsNumber(v)) ? v->valueint : 0;
++                    v = cJSON_GetObjectItem(co, "RlcPacketDropRateDl");
++                    op->packetDropRateDl = (v && cJSON_IsNumber(v)) ? v->valueint : 0;
++                    cJSON *thp = cJSON_GetObjectItem(co, "ues-thp");
++                    if(thp && cJSON_IsArray(thp)) {
++                        int m = cJSON_GetArraySize(thp);
++                        for(int ui = 0; ui < m; ui++) {
++                            cJSON *u = cJSON_GetArrayItem(thp, ui);
++                            if(u == 0) {
++                                continue;
++                            }
++                            cJSON *dl = cJSON_GetObjectItem(u, "dl"), *ul = cJSON_GetObjectItem(u, "ul");
++                            cJSON *udl = cJSON_GetObjectItem(u, "unres_dl"), *uul = cJSON_GetObjectItem(u, "unres_ul");
++                            op->thp_dl_sum += (dl && cJSON_IsNumber(dl)) ? dl->valuedouble : 0;
++                            op->thp_ul_sum += (ul && cJSON_IsNumber(ul)) ? ul->valuedouble : 0;
++                            op->thp_unres_dl_sum += (udl && cJSON_IsNumber(udl)) ? udl->valuedouble : 0;
++                            op->thp_unres_ul_sum += (uul && cJSON_IsNumber(uul)) ? uul->valuedouble : 0;
++                        }
++                    }
++                    op->valid = 1;
++                }
++            }
++            if(!data->cell_oper[0].valid) {
++                oai_cell_oper_t *op = &data->cell_oper[0];
++                op->num_ues = data->additional_data.numUes;
++                op->load = data->additional_data.load;
++                op->packetDropRateDl = data->additional_data.packetDropRateDl;
++                for(int ui = 0; ui < data->additional_data.numUes; ui++) {
++                    op->thp_dl_sum += data->additional_data.ues_thp[ui].dl;
++                    op->thp_ul_sum += data->additional_data.ues_thp[ui].ul;
++                    op->thp_unres_dl_sum += data->additional_data.ues_thp_unres[ui].dl;
++                    op->thp_unres_ul_sum += data->additional_data.ues_thp_unres[ui].ul;
++                }
++                op->valid = 1;
++            }
++        }
++
+     return true;
+ }
+ 
+@@ -738,13 +828,17 @@
+ 
+ 
+ void oai_data_free(oai_data_t *data) {
+-    free(data->nrcelldu.mcc);
+-    data->nrcelldu.mcc = 0;
+-    free(data->nrcelldu.administrativeState); data->nrcelldu.administrativeState = 0;
+-    free(data->nrcelldu.operationalState); data->nrcelldu.operationalState = 0;
+-    free(data->nrcelldu.cellState); data->nrcelldu.cellState = 0;
+-    free(data->nrcelldu.mnc);
+-    data->nrcelldu.mnc = 0;
++    /* DT patch 0011: nrcelldu is a shallow alias of nrcelldu_list[0]; strings are owned by the list */
++    for(int ci = 0; ci < O1_MAX_CELLS; ci++) {
++        oai_nrcelldu_data_t *c = &data->nrcelldu_list[ci];
++        free(c->mcc); c->mcc = 0;
++        free(c->mnc); c->mnc = 0;
++        free(c->cell_local_id); c->cell_local_id = 0;
++        free(c->administrativeState); c->administrativeState = 0;
++        free(c->operationalState); c->operationalState = 0;
++        free(c->cellState); c->cellState = 0;
++    }
++    memset(&data->nrcelldu, 0, sizeof(data->nrcelldu));
+ 
+     free(data->device_data.gnbName);
+     data->device_data.gnbName = 0;
+--- a/src/oai/oai.c	2026-10-01 16:22:15.190861513 +0800
++++ b/src/oai/oai.c	2026-10-01 16:24:19.908882612 +0800
+@@ -42,6 +42,10 @@
+ }
+ 
+ int oai_free() {
++    for (int ci = 0; ci < O1_MAX_CELLS; ci++) {   /* DT patch 0011 */
++        oai_nrcelldu_data_t *b = &current_data.nrcelldu_list[ci];
++        free(b->cell_local_id); free(b->mcc); free(b->mnc); free(b->administrativeState); free(b->operationalState); free(b->cellState);
++    }
+     free(current_data.nrcelldu.mcc);
+     free(current_data.nrcelldu.mnc);
+     free(current_data.nrcelldu.administrativeState);
+@@ -172,6 +176,58 @@
+         free(current_data.nrcelldu.cellState); current_data.nrcelldu.cellState = strdup(data->nrcelldu.cellState ? data->nrcelldu.cellState : "ACTIVE");
+     }
+ 
++    if (NODE_HAS_DU(nt)) {
++        /* DT patch 0011: multi-cell per DU — list length change = full rebuild; per-cell change (ci>=1) = NRCellDU update */
++        if (data->num_nrcelldu != current_data.num_nrcelldu) {
++            update_type = UPDATE_FULL;
++        }
++        else {
++            for (int ci = 1; ci < data->num_nrcelldu; ci++) {
++                const oai_nrcelldu_data_t *a = &data->nrcelldu_list[ci], *b = &current_data.nrcelldu_list[ci];
++                #define _S(x) ((x) ? (x) : "")
++                if (a->nRPCI != b->nRPCI || a->arfcnDL != b->arfcnDL || a->arfcnUL != b->arfcnUL
++                    || a->bSChannelBwDL != b->bSChannelBwDL || a->bSChannelBwUL != b->bSChannelBwUL
++                    || a->nRTAC != b->nRTAC || a->sd != b->sd || a->sst != b->sst
++                    || a->ssbFrequency != b->ssbFrequency || a->ssbPeriodicity != b->ssbPeriodicity
++                    || strcmp(_S(a->cell_local_id), _S(b->cell_local_id)) || strcmp(_S(a->mcc), _S(b->mcc)) || strcmp(_S(a->mnc), _S(b->mnc))
++                    || strcmp(_S(a->administrativeState), _S(b->administrativeState))
++                    || strcmp(_S(a->operationalState), _S(b->operationalState))
++                    || strcmp(_S(a->cellState), _S(b->cellState))) {
++                    update_type |= UPDATE_NRCELLDU;
++                    break;
++                }
++                #undef _S
++            }
++        }
++        for (int ci = 0; ci < O1_MAX_CELLS; ci++) {
++            oai_nrcelldu_data_t *b = &current_data.nrcelldu_list[ci];
++            free(b->cell_local_id); free(b->mcc); free(b->mnc);
++            free(b->administrativeState); free(b->operationalState); free(b->cellState);
++            memset(b, 0, sizeof(*b));
++            if (ci < data->num_nrcelldu) {
++                const oai_nrcelldu_data_t *a = &data->nrcelldu_list[ci];
++                *b = *a;
++                b->cell_local_id = strdup(a->cell_local_id ? a->cell_local_id : "0");
++                b->mcc = strdup(a->mcc ? a->mcc : "");
++                b->mnc = strdup(a->mnc ? a->mnc : "");
++                b->administrativeState = strdup(a->administrativeState ? a->administrativeState : "UNLOCKED");
++                b->operationalState = strdup(a->operationalState ? a->operationalState : "ENABLED");
++                b->cellState = strdup(a->cellState ? a->cellState : "ACTIVE");
++            }
++        }
++        current_data.num_nrcelldu = data->num_nrcelldu;
++        /* alarms: one loadDownlinkExceededWarning per cell; object instances must exist before the AlarmList is (re)built */
++        {
++            const char *ids[O1_MAX_CELLS];
++            for (int ci = 0; ci < data->num_nrcelldu; ci++) {
++                ids[ci] = data->nrcelldu_list[ci].cell_local_id ? data->nrcelldu_list[ci].cell_local_id : "0";
++            }
++            if (alarms_set_du_cells(data->num_nrcelldu, ids)) {
++                update_type = UPDATE_FULL;
++            }
++        }
++    }
++
+     if (NODE_HAS_CUCP(nt)) {
+         bool needs_update = current_data.num_nrcellcu != data->num_nrcellcu;
+         if (!needs_update) {
+@@ -273,42 +329,34 @@
+         long int pdcpsduvolumedl = data->additional_data.PdcpSduVolumeDl;
+         long int pdcppduvolumeul = data->additional_data.PdcpPduVolumeUl;
+         long int pdcppduvolumedl = data->additional_data.PdcpPduVolumeDl;
+-        char *cell_local_id = data->nrcelldu.cell_local_id;
+-        double ue_thp_dl = 0;   /* DT patch 0010 */
+-        double ue_thp_ul = 0;
+-        double ue_thp_unres_dl = 0;
+-        double ue_thp_unres_ul = 0;
+-        for(int i = 0; i < data->additional_data.numUes; i++) {
+-            ue_thp_dl += data->additional_data.ues_thp[i].dl;
+-            ue_thp_ul += data->additional_data.ues_thp[i].ul;
+-            ue_thp_unres_dl += data->additional_data.ues_thp_unres[i].dl;
+-            ue_thp_unres_ul += data->additional_data.ues_thp_unres[i].ul;
+-        }
+-
+-        pm_data_t pm_data = {
+-            .numUes = data->additional_data.numUes,
+-            .load = data->additional_data.load,
+-            .cell_local_id = cell_local_id,
+-            .ue_thp_dl_sum = ue_thp_dl,
+-            .ue_thp_ul_sum = ue_thp_ul,
+-            .ue_thp_unres_dl_sum = ue_thp_unres_dl,
+-            .ue_thp_unres_ul_sum = ue_thp_unres_ul,
+-            .pdcp_sdu_volume_ul = pdcpsduvolumeul,
+-            .pdcp_sdu_volume_dl = pdcpsduvolumedl,
+-            .pdcp_pdu_volume_ul = pdcppduvolumeul,
+-            .pdcp_pdu_volume_dl = pdcppduvolumedl,
+-        };
+-
+-        rc = pm_data_feed(&pm_data);
+-        if(rc) {
+-            log_error("pm_data_feed failed");
+-            goto failure;
++        /* DT patch 0011: one PM sample and one load evaluation per cell */
++        alarms_data_t alarms_data = {0};
++        alarms_data.num_cells = data->num_nrcelldu;
++        for (int ci = 0; ci < data->num_nrcelldu; ci++) {
++            const oai_cell_oper_t *op = &data->cell_oper[ci];
++            pm_data_t pm_data = {
++                .cell_idx = ci,
++                .numUes = op->num_ues,
++                .load = op->load,
++                .cell_local_id = data->nrcelldu_list[ci].cell_local_id,
++                .ue_thp_dl_sum = op->thp_dl_sum,
++                .ue_thp_ul_sum = op->thp_ul_sum,
++                .ue_thp_unres_dl_sum = op->thp_unres_dl_sum,
++                .ue_thp_unres_ul_sum = op->thp_unres_ul_sum,
++                .pdcp_sdu_volume_ul = pdcpsduvolumeul,
++                .pdcp_sdu_volume_dl = pdcpsduvolumedl,
++                .pdcp_pdu_volume_ul = pdcppduvolumeul,
++                .pdcp_pdu_volume_dl = pdcppduvolumedl,
++                .packetDropRateDl = op->packetDropRateDl,
++            };
++            rc = pm_data_feed(&pm_data);
++            if(rc) {
++                log_error("pm_data_feed failed");
++                goto failure;
++            }
++            alarms_data.cell_load[ci] = op->load;
+         }
+-
+-        alarms_data_t alarms_data = {
+-            .load = data->additional_data.load,
+-        };
+-
++        alarms_data.load = data->cell_oper[0].load;
+         rc = alarms_data_feed(&alarms_data);
+         if(rc) {
+             log_error("alarms_data_feed failed");
+--- a/src/netconf/netconf_data.c	2026-10-01 16:22:15.191861481 +0800
++++ b/src/netconf/netconf_data.c	2026-10-01 16:25:12.673208229 +0800
+@@ -27,7 +27,10 @@
+ static const char *GNBDU_FUNCTION_XPATH = 0;
+ static const char *BWP_DOWNLINK_XPATH = 0;
+ static const char *BWP_UPLINK_XPATH = 0;
+-static const char *NRCELLDU_XPATH = 0;
++/* DT patch 0011: one NRCellDU per cell */
++static const char *NRCELLDU_XPATHS[8] = {0};
++static int NRCELLDU_COUNT = 0;
++#define NRCELLDU_XPATH (NRCELLDU_XPATHS[0])
+ static const char *NPNIDENTITYLIST_XPATH = 0;
+ static const char *ALARMLIST_XPATH = 0;
+ static const char **ALARM_XPATH = 0;
+@@ -65,7 +68,8 @@
+     GNBDU_FUNCTION_XPATH = 0;
+     BWP_DOWNLINK_XPATH = 0;
+     BWP_UPLINK_XPATH = 0;
+-    NRCELLDU_XPATH = 0;
++    for(int _ci = 0; _ci < 8; _ci++) { NRCELLDU_XPATHS[_ci] = 0; }
++    NRCELLDU_COUNT = 0;
+     NPNIDENTITYLIST_XPATH = 0;
+     ALARM_XPATH = 0;
+     ALARM_XPATH_OPER = 0;
+@@ -148,7 +152,8 @@
+     GNBDU_FUNCTION_XPATH = 0;
+     BWP_DOWNLINK_XPATH = 0;
+     BWP_UPLINK_XPATH = 0;
+-    NRCELLDU_XPATH = 0;
++    for(int _ci = 0; _ci < 8; _ci++) { NRCELLDU_XPATHS[_ci] = 0; }
++    NRCELLDU_COUNT = 0;
+     NPNIDENTITYLIST_XPATH = 0;
+     ALARMLIST_XPATH = 0;
+ 
+@@ -246,109 +251,24 @@
+     return 0;
+ }
+ 
+-static int netconf_data_update_du(int *k_run, const oai_data_t *oai) {
+-    ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-gnbdufunction:GNBDUFunction[id='ManagedElement=%s,GNBDUFunction=%d']", MANAGED_ELEMENT_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
+-    GNBDU_FUNCTION_XPATH = xpath_running[*k_run];
+-    (*k_run)++;
+-
+-        STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", GNBDU_FUNCTION_XPATH);
+-        (*k_run)++;
+-
+-        ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->device_data.gnbId);
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBId", GNBDU_FUNCTION_XPATH);
+-        (*k_run)++;
+-
+-        STRDUP_OR_FAIL(return 1, values_running[*k_run], "22");  /* DT patch 0006: gNBIdLength = 22 bits, same as E2 */
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBIdLength", GNBDU_FUNCTION_XPATH);
+-        (*k_run)++;
+-
+-        ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", netconf_config->info.gnb_du_id);
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBDUId", GNBDU_FUNCTION_XPATH);
+-        (*k_run)++;
+-
+-        ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s-DU-%d", oai->device_data.gnbName, netconf_config->info.gnb_du_id);
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBDUName", GNBDU_FUNCTION_XPATH);
+-        (*k_run)++;
+-
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Downlink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
+-        BWP_DOWNLINK_XPATH = xpath_running[*k_run];
+-        (*k_run)++;
+-
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[0].subCarrierSpacing);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/subCarrierSpacing", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", "DL");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bwpContext", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], (oai->bwp[0].isInitialBwp) ? "INITIAL" : "OTHER");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/isInitialBwp", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "NORMAL");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/cyclicPrefix", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[0].startRB);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/startRB", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[0].numberOfRBs);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/numberOfRBs", BWP_DOWNLINK_XPATH);
+-            (*k_run)++;
+-
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Uplink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
+-        BWP_UPLINK_XPATH = xpath_running[*k_run];
+-        (*k_run)++;
+-
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[1].subCarrierSpacing);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/subCarrierSpacing", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", "UL");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bwpContext", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], (oai->bwp[1].isInitialBwp) ? "INITIAL" : "OTHER");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/isInitialBwp", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], "NORMAL");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/cyclicPrefix", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[1].startRB);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/startRB", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[1].numberOfRBs);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/numberOfRBs", BWP_UPLINK_XPATH);
+-            (*k_run)++;
+-
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDU=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
+-        NRCELLDU_XPATH = xpath_running[*k_run];
++/* DT patch 0011: emit one NRCellDU (cell index ci) under the GNBDUFunction; shared by full update and per-cell update */
++static int netconf_data_emit_nrcelldu(int *k_run, const oai_data_t *oai, int ci) {
++    const oai_nrcelldu_data_t *cell = &oai->nrcelldu_list[ci];
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDU=%s']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id, cell->cell_local_id ? cell->cell_local_id : "0");
++        NRCELLDU_XPATHS[ci] = xpath_running[*k_run];
++        NRCELLDU_COUNT = ci + 1;
+         (*k_run)++;
+ 
+             STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", oai->nrcelldu.cell_local_id);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/cellLocalId", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", cell->cell_local_id);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/cellLocalId", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             char sdHex[9];
+-            sprintf(sdHex, "%06x", oai->nrcelldu.sd);
++            sprintf(sdHex, "%06x", cell->sd);
+ 
+             sdHex[8] = 0;
+             sdHex[7] = sdHex[5];
+@@ -358,14 +278,14 @@
+             sdHex[3] = sdHex[2];
+             sdHex[2] = ':';
+ 
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/pLMNInfoList[mcc='%s'][mnc='%s'][sd='%s'][sst='%d']", NRCELLDU_XPATH, oai->nrcelldu.mcc, oai->nrcelldu.mnc, sdHex, oai->nrcelldu.sst);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/pLMNInfoList[mcc='%s'][mnc='%s'][sd='%s'][sst='%d']", NRCELLDU_XPATHS[ci], cell->mcc, cell->mnc, sdHex, cell->sst);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nPNIdentityList[idx='%d']", NRCELLDU_XPATH, 0);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nPNIdentityList[idx='%d']", NRCELLDU_XPATHS[ci], 0);
+             NPNIDENTITYLIST_XPATH = xpath_running[*k_run];
+             (*k_run)++;
+ 
+-                ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/plmnid[mcc='%s'][mnc='%s']", NPNIDENTITYLIST_XPATH, oai->nrcelldu.mcc, oai->nrcelldu.mnc);
++                ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/plmnid[mcc='%s'][mnc='%s']", NPNIDENTITYLIST_XPATH, cell->mcc, cell->mnc);
+                 (*k_run)++;
+ 
+                 STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
+@@ -376,96 +296,101 @@
+                 ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/nIDList", NPNIDENTITYLIST_XPATH);
+                 (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.nRPCI);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRPCI", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->nRPCI);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRPCI", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.arfcnDL);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnDL", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->arfcnDL);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnDL", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.arfcnUL);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnUL", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->arfcnUL);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnUL", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.bSChannelBwDL);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwDL", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->bSChannelBwDL);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwDL", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.bSChannelBwUL);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwUL", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->bSChannelBwUL);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwUL", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             /* DT patch 0009 (2026-10-01): TS 28.541 nRTAC + administrativeState (running) */
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.nRTAC);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRTAC", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->nRTAC);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRTAC", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            STRDUP_OR_FAIL(return 1, values_running[*k_run], oai->nrcelldu.administrativeState ? oai->nrcelldu.administrativeState : "UNLOCKED");
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/administrativeState", NRCELLDU_XPATH);
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], cell->administrativeState ? cell->administrativeState : "UNLOCKED");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/administrativeState", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "2023-06-06T00:00:00Z");   //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringStartTime", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringStartTime", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "2023-06-06T00:00:00Z");   //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringStopTime", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringStopTime", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", 1);  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringWindowDuration", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringWindowDuration", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", 1);  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringWindowStartingOffset", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringWindowStartingOffset", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", 1);  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringWindowPeriodicity", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringWindowPeriodicity", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", 1);  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringOccasionInterval", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringOccasionInterval", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", 1);  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringOccasionStartingOffset", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringOccasionStartingOffset", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.ssbFrequency);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbFrequency", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->ssbFrequency);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbFrequency", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.ssbPeriodicity);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbPeriodicity", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->ssbPeriodicity);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbPeriodicity", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.ssbSubCarrierSpacing);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbSubCarrierSpacing", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->ssbSubCarrierSpacing);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbSubCarrierSpacing", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.ssbOffset);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbOffset", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->ssbOffset);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbOffset", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.ssbDuration);
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbDuration", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->ssbDuration);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/ssbDuration", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "Tuf=Jy,H:u=|");  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRSectorCarrierRef", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRSectorCarrierRef", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "Tuf=Jy,H:u=|");  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/victimSetRef", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/victimSetRef", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "Tuf=Jy,H:u=|");  //checkAL
+-            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/aggressorSetRef", NRCELLDU_XPATH);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/aggressorSetRef", NRCELLDU_XPATHS[ci]);
+             (*k_run)++;
+ 
+-        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrsectorcarrier:NRSectorCarrier[id='ManagedElement=%s,GNBDUFunction=%d,NRSectorCarrier=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
++    return 0;
++}
++
++static int netconf_data_emit_nrsectorcarrier(int *k_run, const oai_data_t *oai, int ci) {
++    const oai_nrcelldu_data_t *cell = &oai->nrcelldu_list[ci];
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-nrsectorcarrier:NRSectorCarrier[id='ManagedElement=%s,GNBDUFunction=%d,NRSectorCarrier=%d']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id, ci);
+         NRSECTORCARRIER_XPATH = xpath_running[*k_run];
+         (*k_run)++;
+ 
+@@ -489,25 +414,126 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/configuredMaxTxEIRP", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.arfcnDL);  /* DT patch: nrsectcarr never filled */
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->arfcnDL);  /* DT patch: nrsectcarr never filled */
+             //values_running[*k_run] = strdup("104");
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnDL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.arfcnUL);  /* DT patch */
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->arfcnUL);  /* DT patch */
+             //values_running[*k_run] = strdup("104");
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/arfcnUL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+             //ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrsectcarr.bSChannelBwDL); //checkRS
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.bSChannelBwDL);  /* DT patch: was "60" */
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->bSChannelBwDL);  /* DT patch: was "60" */
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwDL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
+ 
+             //ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrsectcarr.bSChannelBwUL); //checkRS
+-            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.bSChannelBwUL);  /* DT patch: was "60" */
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", cell->bSChannelBwUL);  /* DT patch: was "60" */
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwUL", NRSECTORCARRIER_XPATH);
+             (*k_run)++;
++    return 0;
++}
++
++static int netconf_data_update_du(int *k_run, const oai_data_t *oai) {
++    ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-gnbdufunction:GNBDUFunction[id='ManagedElement=%s,GNBDUFunction=%d']", MANAGED_ELEMENT_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
++    GNBDU_FUNCTION_XPATH = xpath_running[*k_run];
++    (*k_run)++;
++
++        STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", GNBDU_FUNCTION_XPATH);
++        (*k_run)++;
++
++        ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->device_data.gnbId);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBId", GNBDU_FUNCTION_XPATH);
++        (*k_run)++;
++
++        STRDUP_OR_FAIL(return 1, values_running[*k_run], "22");  /* DT patch 0006: gNBIdLength = 22 bits, same as E2 */
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBIdLength", GNBDU_FUNCTION_XPATH);
++        (*k_run)++;
++
++        ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", netconf_config->info.gnb_du_id);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBDUId", GNBDU_FUNCTION_XPATH);
++        (*k_run)++;
++
++        ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s-DU-%d", oai->device_data.gnbName, netconf_config->info.gnb_du_id);
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/gNBDUName", GNBDU_FUNCTION_XPATH);
++        (*k_run)++;
++
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Downlink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
++        BWP_DOWNLINK_XPATH = xpath_running[*k_run];
++        (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[0].subCarrierSpacing);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/subCarrierSpacing", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", "DL");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bwpContext", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], (oai->bwp[0].isInitialBwp) ? "INITIAL" : "OTHER");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/isInitialBwp", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], "NORMAL");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/cyclicPrefix", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[0].startRB);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/startRB", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[0].numberOfRBs);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/numberOfRBs", BWP_DOWNLINK_XPATH);
++            (*k_run)++;
++
++        ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/_3gpp-nr-nrm-bwp:BWP[id='ManagedElement=%s,GNBDUFunction=%d,BWP=Uplink']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);  /* DT patch 0004 */
++        BWP_UPLINK_XPATH = xpath_running[*k_run];
++        (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], "1");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/priorityLabel", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[1].subCarrierSpacing);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/subCarrierSpacing", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", "UL");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bwpContext", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], (oai->bwp[1].isInitialBwp) ? "INITIAL" : "OTHER");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/isInitialBwp", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], "NORMAL");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/cyclicPrefix", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[1].startRB);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/startRB", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->bwp[1].numberOfRBs);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/numberOfRBs", BWP_UPLINK_XPATH);
++            (*k_run)++;
++
++        /* DT patch 0011: one NRCellDU + NRSectorCarrier per cell */
++        for(int ci = 0; ci < oai->num_nrcelldu && ci < 8; ci++) {
++            if(netconf_data_emit_nrcelldu(k_run, oai, ci) != 0) {
++                return 1;
++            }
++            if(netconf_data_emit_nrsectorcarrier(k_run, oai, ci) != 0) {
++                return 1;
++            }
++        }
+ 
+             //ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%s", oai->nrsectcarr.sectorEquipmentFunctionRef);
+             STRDUP_OR_FAIL(return 1, values_running[*k_run], "Tuf=Jy,H:u=|");
+@@ -679,24 +705,29 @@
+ static int netconf_data_set_nrcelldu_oper(const oai_data_t *oai) {
+     int rc = 0;
+     char *xp = 0;
+-    if(NRCELLDU_XPATH == 0 || oai == 0) {
++    if(oai == 0) {
+         return 0;
+     }
+-    const char *vals[2] = {oai->nrcelldu.operationalState ? oai->nrcelldu.operationalState : "ENABLED",
+-                           oai->nrcelldu.cellState ? oai->nrcelldu.cellState : "ACTIVE"};
+-    const char *leaf[2] = {"operationalState", "cellState"};
+-    for(int i = 0; i < 2; i++) {
+-        if(asprintf(&xp, "%s/attributes/%s", NRCELLDU_XPATH, leaf[i]) < 0) {
+-            log_error("asprintf failed");
+-            return 1;
+-        }
+-        log("[oper] populating %s with %s.. ", xp, vals[i]);
+-        rc = sr_set_item_str(netconf_session_operational, xp, vals[i], 0, 0);
+-        free(xp);
+-        xp = 0;
+-        if(rc != SR_ERR_OK) {
+-            log_error("sr_set_item_str (nrcelldu oper) failed");
+-            return 1;
++    for(int ci = 0; ci < oai->num_nrcelldu && ci < NRCELLDU_COUNT; ci++) {   /* DT patch 0011: every cell */
++        if(NRCELLDU_XPATHS[ci] == 0) {
++            continue;
++        }
++        const oai_nrcelldu_data_t *cell = &oai->nrcelldu_list[ci];
++        const char *vals[2] = {cell->operationalState ? cell->operationalState : "ENABLED", cell->cellState ? cell->cellState : "ACTIVE"};
++        const char *leaf[2] = {"operationalState", "cellState"};
++        for(int i = 0; i < 2; i++) {
++            if(asprintf(&xp, "%s/attributes/%s", NRCELLDU_XPATHS[ci], leaf[i]) < 0) {
++                log_error("asprintf failed");
++                return 1;
++            }
++            log("[oper] populating %s with %s.. ", xp, vals[i]);
++            rc = sr_set_item_str(netconf_session_operational, xp, vals[i], 0, 0);
++            free(xp);
++            xp = 0;
++            if(rc != SR_ERR_OK) {
++                log_error("sr_set_item_str (nrcelldu oper) failed");
++                return 1;
++            }
+         }
+     }
+     rc = sr_apply_changes(netconf_session_operational, 0);
+@@ -747,7 +778,8 @@
+     GNBDU_FUNCTION_XPATH = 0;
+     BWP_DOWNLINK_XPATH = 0;
+     BWP_UPLINK_XPATH = 0;
+-    NRCELLDU_XPATH = 0;
++    for(int _ci = 0; _ci < 8; _ci++) { NRCELLDU_XPATHS[_ci] = 0; }
++    NRCELLDU_COUNT = 0;
+     NPNIDENTITYLIST_XPATH = 0;
+     ALARMLIST_XPATH = 0;
+     PERFMETRICJOBSGRP_XPATH = 0;
+@@ -994,7 +1026,8 @@
+     GNBDU_FUNCTION_XPATH = 0;
+     BWP_DOWNLINK_XPATH = 0;
+     BWP_UPLINK_XPATH = 0;
+-    NRCELLDU_XPATH = 0;
++    for(int _ci = 0; _ci < 8; _ci++) { NRCELLDU_XPATHS[_ci] = 0; }
++    NRCELLDU_COUNT = 0;
+     NPNIDENTITYLIST_XPATH = 0;
+     ALARMLIST_XPATH = 0;
+ 
+@@ -1260,230 +1293,95 @@
+ }
+ 
+ int netconf_data_update_nrcelldu(const oai_data_t *oai) {
++    /* DT patch 0011: per-cell update — rewrite each NRCellDU subtree in place (entries are contiguous per cell). */
+     int rc = 0;
+-
+-    rc = netconf_data_unregister_callbacks();
+-    if(rc != 0) {
+-        log_error("netconf_data_unregister_callbacks");
+-        goto failure;
+-    }
+-
+     if(oai == 0) {
+         log_error("oai is null");
+         goto failure;
+     }
+-
+-    if(NRCELLDU_XPATH == 0) {
+-        log_error("NRCELLDU_XPATH is null");
+-        goto failure;
+-    }
+-
+-    // find k
+-    int k_running = 0;
+-    while(k_running < MAX_XPATH_ENTRIES) {
+-        if(xpath_running[k_running] == NRCELLDU_XPATH) {
+-            break;
+-        }
+-        k_running++;
+-    }
+-
+-    if(k_running >= MAX_XPATH_ENTRIES) {
+-        log_error("NRCELLDU_XPATH not found among running xpaths");
+-        goto failure;
+-    }
+-
+-    int start_k_running = k_running;
+-    int stop_k_running = k_running;
+-    while((xpath_running[stop_k_running]) && (strstr(xpath_running[stop_k_running], NRCELLDU_XPATH) == xpath_running[stop_k_running])) {
+-        stop_k_running++;
+-    }
+-
+-    rc = sr_delete_item(netconf_session_running, NRCELLDU_XPATH, SR_EDIT_STRICT);
+-    if(rc != SR_ERR_OK) {
+-        log_error("sr_delete_item failure");
+-        goto failure;
+-    }
+-
+-    rc = sr_apply_changes(netconf_session_running, 0);
+-    if(rc != SR_ERR_OK) {
+-        log_error("sr_apply_changes failed");
++    rc = netconf_data_unregister_callbacks();
++    if(rc != 0) {
++        log_error("netconf_data_unregister_callbacks");
+         goto failure;
+     }
+-
+-    for (int i = start_k_running; i < stop_k_running; i++) {
+-        free(values_running[i]);
+-        free(xpath_running[i]);
+-        values_running[i] = 0;
+-        xpath_running[i] = 0;
+-    }
+-
+-    ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/_3gpp-nr-nrm-nrcelldu:NRCellDU[id='ManagedElement=%s,GNBDUFunction=%d,NRCellDU=0']", GNBDU_FUNCTION_XPATH, netconf_config->info.node_id, netconf_config->info.gnb_du_id);
+-    NRCELLDU_XPATH = xpath_running[k_running];
+-    k_running++;
+-
+-        STRDUP_OR_FAIL(goto failure, values_running[k_running], "1");
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/priorityLabel", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%s", oai->nrcelldu.cell_local_id);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/cellLocalId", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        char sdHex[9];
+-        sprintf(sdHex, "%06x", oai->nrcelldu.sd);
+-
+-        sdHex[8] = 0;
+-        sdHex[7] = sdHex[5];
+-        sdHex[6] = sdHex[4];
+-        sdHex[5] = ':';
+-        sdHex[4] = sdHex[3];
+-        sdHex[3] = sdHex[2];
+-        sdHex[2] = ':';
+-
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/pLMNInfoList[mcc='%s'][mnc='%s'][sd='%s'][sst='%d']", NRCELLDU_XPATH, oai->nrcelldu.mcc, oai->nrcelldu.mnc, sdHex, oai->nrcelldu.sst);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/nPNIdentityList[idx='%d']", NRCELLDU_XPATH, 0);
+-        NPNIDENTITYLIST_XPATH = xpath_running[k_running];
+-        k_running++;
+-
+-            ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/plmnid[mcc='%s'][mnc='%s']", NPNIDENTITYLIST_XPATH, oai->nrcelldu.mcc, oai->nrcelldu.mnc);
+-            k_running++;
+-
+-            STRDUP_OR_FAIL(goto failure, values_running[k_running], "1");
+-            ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/cAGIdList", NPNIDENTITYLIST_XPATH);
+-            k_running++;
+-
+-            STRDUP_OR_FAIL(goto failure, values_running[k_running], "1");
+-            ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/nIDList", NPNIDENTITYLIST_XPATH);
++    for(int ci = 0; ci < oai->num_nrcelldu && ci < NRCELLDU_COUNT; ci++) {
++        const char *cx = NRCELLDU_XPATHS[ci];
++        if(cx == 0) {
++            continue;
++        }
++        size_t cl = strlen(cx);
++        int k_running = 0;
++        while(k_running < MAX_XPATH_ENTRIES && xpath_running[k_running] != cx) {
+             k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.nRPCI);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/nRPCI", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.arfcnDL);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/arfcnDL", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.arfcnUL);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/arfcnUL", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.bSChannelBwDL);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/bSChannelBwDL", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.bSChannelBwUL);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/bSChannelBwUL", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        /* DT patch 0009 */
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.nRTAC);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/nRTAC", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        STRDUP_OR_FAIL(goto failure, values_running[k_running], oai->nrcelldu.administrativeState ? oai->nrcelldu.administrativeState : "UNLOCKED");
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/administrativeState", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "2023-06-06T00:00:00Z");   //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringStartTime", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "2023-06-06T00:00:00Z");   //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringStopTime", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", 1);  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringWindowDuration", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", 1);  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringWindowStartingOffset", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", 1);  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringWindowPeriodicity", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", 1);  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringOccasionInterval", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", 1);  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringOccasionStartingOffset", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.ssbFrequency);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/ssbFrequency", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.ssbPeriodicity);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/ssbPeriodicity", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.ssbSubCarrierSpacing);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/ssbSubCarrierSpacing", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.ssbOffset);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/ssbOffset", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.ssbDuration);
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/ssbDuration", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "Tuf=Jy,H:u=|");  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/nRSectorCarrierRef", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "Tuf=Jy,H:u=|");  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/victimSetRef", NRCELLDU_XPATH);
+-        k_running++;
+-
+-        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "Tuf=Jy,H:u=|");  //checkAL
+-        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/aggressorSetRef", NRCELLDU_XPATH);
+-        k_running++;
+-
+-    for (int i = start_k_running; i < stop_k_running; i++) {
+-        if(xpath_running[i]) {
+-            log("[runn] populating %s with %s.. ", xpath_running[i], values_running[i]);
+-            rc = sr_set_item_str(netconf_session_running, xpath_running[i], values_running[i], 0, 0);
+-            if(rc != SR_ERR_OK) {
+-                log_error("sr_set_item_str failed");
+-                goto failure;
++        }
++        if(k_running >= MAX_XPATH_ENTRIES) {
++            log_error("NRCELLDU xpath %d not found among running xpaths", ci);
++            goto failure;
++        }
++        int start_k = k_running, stop_k = k_running;
++        while(xpath_running[stop_k] && strncmp(xpath_running[stop_k], cx, cl) == 0 && (xpath_running[stop_k][cl] == 0 || xpath_running[stop_k][cl] == '/')) {
++            stop_k++;
++        }
++        char *cx_copy = strdup(cx);
++        rc = sr_delete_item(netconf_session_running, cx_copy, SR_EDIT_STRICT);
++        if(rc != SR_ERR_OK) {
++            log_error("sr_delete_item failure");
++            free(cx_copy);
++            goto failure;
++        }
++        rc = sr_apply_changes(netconf_session_running, 0);
++        free(cx_copy);
++        if(rc != SR_ERR_OK) {
++            log_error("sr_apply_changes failed");
++            goto failure;
++        }
++        for(int i = start_k; i < stop_k; i++) {
++            free(values_running[i]);
++            free(xpath_running[i]);
++            values_running[i] = 0;
++            xpath_running[i] = 0;
++        }
++        int k = start_k;
++        if(netconf_data_emit_nrcelldu(&k, oai, ci) != 0) {
++            log_error("emit nrcelldu %d failed", ci);
++            goto failure;
++        }
++        if(k != stop_k) {
++            log_error("NRCellDU %d entry count changed (%d -> %d); forcing full update", ci, stop_k - start_k, k - start_k);
++            goto failure;
++        }
++        for(int i = start_k; i < stop_k; i++) {
++            if(xpath_running[i]) {
++                log("[runn] populating %s with %s.. ", xpath_running[i], values_running[i]);
++                rc = sr_set_item_str(netconf_session_running, xpath_running[i], values_running[i], 0, 0);
++                if(rc != SR_ERR_OK) {
++                    log_error("sr_set_item_str failed");
++                    goto failure;
++                }
+             }
+         }
++        rc = sr_apply_changes(netconf_session_running, 0);
++        if(rc != SR_ERR_OK) {
++            log_error("sr_apply_changes failed");
++            goto failure;
++        }
+     }
+-
+-    rc = sr_apply_changes(netconf_session_running, 0);
+-    if(rc != SR_ERR_OK) {
+-        log_error("sr_apply_changes failed");
+-        goto failure;
+-    }
+-
+     if(netconf_data_set_nrcelldu_oper(oai) != 0) {   /* DT patch 0009 */
+         log_error("netconf_data_set_nrcelldu_oper failed");
+         goto failure;
+     }
+-
+     rc = netconf_data_register_callbacks();
+     if(rc != 0) {
+         log_error("netconf_data_register_callbacks");
+         goto failure;
+     }
+-
+     return 0;
+ 
+ failure:
+     rc = netconf_data_unregister_callbacks();
+     if(rc != 0) {
+         log_error("netconf_data_unregister_callbacks");
+-        goto failure;
+     }
+-
+     return 1;
+ }
+ 
+@@ -1509,7 +1407,7 @@
+     alarm_t **alarms = (alarm_t **)netconf_alarms;
+     int i = 0;
+     while(*alarms) {
+-        if(strcmp(alarm->alarm, (*alarms)->alarm) == 0) {
++        if(alarm == *alarms) {   /* DT patch 0011: several alarms share a name (one load alarm per cell) */
+             break;
+         }
+ 
+--- a/src/pm_data/pm_data.c	2026-10-01 16:22:15.192861449 +0800
++++ b/src/pm_data/pm_data.c	2026-10-01 16:28:37.230756364 +0800
+@@ -31,8 +31,9 @@
+ 
+ static pm_data_info_t pm_data_info = {0};
+ 
+-static pm_data_t *pm_data_accumulator = 0;
+-static int pm_data_accumulator_len = 0;
++/* DT patch 0011: one accumulator per cell */
++static pm_data_t *pm_data_accumulator[PM_MAX_CELLS] = {0};
++static int pm_data_accumulator_len[PM_MAX_CELLS] = {0};
+ static time_t pm_data_start_time = 0;
+ 
+ char **performanceMetricsNames;
+@@ -40,15 +41,12 @@
+ static const config_t *pm_data_config = 0;
+ static int pm_data_notification_id = 1;
+ 
+-typedef struct pm_write_data {
+-    long int start_time;
+-    long int end_time;
++typedef struct pm_cell_stats {   /* DT patch 0011 */
+     char *cell_local_id;
+-    char *filename;
+     int meanActiveUe;
+     int maxActiveUe;
+     int loadAvg;
+-    double ue_thp_dl;   /* DT patch 0010: real kbit/s */
++    double ue_thp_dl;
+     double ue_thp_ul;
+     double ue_thp_unres_dl;
+     double ue_thp_unres_ul;
+@@ -57,6 +55,14 @@
+     long int pdcp_pdu_volume_ul;
+     long int pdcp_pdu_volume_dl;
+     long int packetDropRateDl;
++} pm_cell_stats_t;
++
++typedef struct pm_write_data {
++    long int start_time;
++    long int end_time;
++    char *filename;
++    int num_cells;
++    pm_cell_stats_t cells[PM_MAX_CELLS];
+     char **performanceMetricsNames;
+ } pm_write_data_t;
+ 
+@@ -69,14 +75,14 @@
+     for (int i = 0; i < MAXMETRICS; i++){
+         performanceMetricsNames[i] = NULL;
+     }
+-    pm_data_accumulator = (pm_data_t *)malloc(sizeof(pm_data_t) * pm_data_accumulator_size);
+-    if(pm_data_accumulator == 0) {
+-        log_error("malloc failed");
+-        goto failure;
++    for(int ci = 0; ci < PM_MAX_CELLS; ci++) {
++        pm_data_accumulator[ci] = (pm_data_t *)malloc(sizeof(pm_data_t) * pm_data_accumulator_size);
++        if(pm_data_accumulator[ci] == 0) {
++            log_error("malloc failed");
++            goto failure;
++        }
++        pm_data_accumulator_len[ci] = 0;
+     }
+-
+-
+-    pm_data_accumulator_len = 0;
+     pm_data_start_time = time(0);
+     if(pm_data_start_time == -1) {
+         log_error("time failed");
+@@ -96,8 +102,7 @@
+ 
+ failure:
+     free(performanceMetricsNames);
+-    free(pm_data_accumulator);
+-    pm_data_accumulator = 0;
++    for(int ci = 0; ci < PM_MAX_CELLS; ci++) { free(pm_data_accumulator[ci]); pm_data_accumulator[ci] = 0; }
+ 
+     free(ves_template_pm_data);
+     ves_template_pm_data = 0;
+@@ -121,15 +126,12 @@
+ 
+ int pm_data_free() {
+     free(performanceMetricsNames);
+-    free(pm_data_accumulator);
+-    pm_data_accumulator = 0;
++    for(int ci = 0; ci < PM_MAX_CELLS; ci++) { free(pm_data_accumulator[ci]); pm_data_accumulator[ci] = 0; pm_data_accumulator_len[ci] = 0; }
+     free(ves_template_pm_data);
+     ves_template_pm_data = 0;
+     free(pm_data_info.vendor);
+     pm_data_info.vendor = 0;
+ 
+-    pm_data_accumulator_len = 0;
+-
+     return 0;
+ }
+ 
+@@ -143,45 +145,65 @@
+         return;
+     }
+ 
+-    if((pm_data_accumulator_len) && ((timestamp / pm_data_feed_log_period) != (pm_data_start_time / pm_data_feed_log_period))) {
+-        int rc;
++    int any = 0;
++    for(int ci = 0; ci < PM_MAX_CELLS; ci++) {
++        if(pm_data_accumulator_len[ci]) {
++            any = 1;
++        }
++    }
++
++    if(any && ((timestamp / pm_data_feed_log_period) != (pm_data_start_time / pm_data_feed_log_period))) {
+         char *filename = 0;
+         char *full_path = 0;
+ 
+-        long int meanActiveUeAccum = 0;
+-        int maxActiveUe = 0;
+-        int loadAvgAccum = 0;
+-        double ue_thp_dl_accum = 0;
+-        double ue_thp_ul_accum = 0;
+-        double ue_thp_unres_dl_accum = 0;
+-        double ue_thp_unres_ul_accum = 0;
+-
+-        for(int i = 0; i < pm_data_accumulator_len; i++) {
+-            meanActiveUeAccum += pm_data_accumulator[i].numUes;
+-            if(pm_data_accumulator[i].numUes > maxActiveUe) {
+-                maxActiveUe = pm_data_accumulator[i].numUes;
++        pm_write_data_t data = {0};
++        data.start_time = pm_data_start_time;
++        data.end_time = timestamp;
++        data.performanceMetricsNames = performanceMetricsNames;
++
++        /* DT patch 0011: aggregate each cell separately; cells are written in index order */
++        for(int ci = 0; ci < PM_MAX_CELLS; ci++) {
++            int len = pm_data_accumulator_len[ci];
++            if(len == 0) {
++                continue;
+             }
+-            loadAvgAccum += pm_data_accumulator[i].load;
+-
+-            ue_thp_dl_accum += pm_data_accumulator[i].ue_thp_dl_sum;
+-            ue_thp_ul_accum += pm_data_accumulator[i].ue_thp_ul_sum;
+-            ue_thp_unres_dl_accum += pm_data_accumulator[i].ue_thp_unres_dl_sum;
+-            ue_thp_unres_ul_accum += pm_data_accumulator[i].ue_thp_unres_ul_sum;
+-        }
+-        int meanActiveUe = meanActiveUeAccum / pm_data_accumulator_len;
+-        int loadAvg = loadAvgAccum / pm_data_accumulator_len;
+-        double ue_thp_dl = ue_thp_dl_accum / pm_data_accumulator_len;
+-        double ue_thp_ul = ue_thp_ul_accum / pm_data_accumulator_len;
+-        double ue_thp_unres_dl = ue_thp_unres_dl_accum / pm_data_accumulator_len;
+-        double ue_thp_unres_ul = ue_thp_unres_ul_accum / pm_data_accumulator_len;
+-        char *cell_local_id = pm_data_accumulator[0].cell_local_id;
++            pm_data_t *acc = pm_data_accumulator[ci];
++            long int meanActiveUeAccum = 0;
++            int maxActiveUe = 0;
++            int loadAvgAccum = 0;
++            double ue_thp_dl_accum = 0, ue_thp_ul_accum = 0, ue_thp_unres_dl_accum = 0, ue_thp_unres_ul_accum = 0;
++            for(int i = 0; i < len; i++) {
++                meanActiveUeAccum += acc[i].numUes;
++                if(acc[i].numUes > maxActiveUe) {
++                    maxActiveUe = acc[i].numUes;
++                }
++                loadAvgAccum += acc[i].load;
++                ue_thp_dl_accum += acc[i].ue_thp_dl_sum;
++                ue_thp_ul_accum += acc[i].ue_thp_ul_sum;
++                ue_thp_unres_dl_accum += acc[i].ue_thp_unres_dl_sum;
++                ue_thp_unres_ul_accum += acc[i].ue_thp_unres_ul_sum;
++            }
++            pm_cell_stats_t *cs = &data.cells[data.num_cells++];
++            cs->cell_local_id = acc[len - 1].cell_local_id;   /* points into the last sample; valid until the next feed */
++            cs->meanActiveUe = meanActiveUeAccum / len;
++            cs->maxActiveUe = maxActiveUe;
++            cs->loadAvg = loadAvgAccum / len;
++            cs->ue_thp_dl = ue_thp_dl_accum / len;
++            cs->ue_thp_ul = ue_thp_ul_accum / len;
++            cs->ue_thp_unres_dl = ue_thp_unres_dl_accum / len;
++            cs->ue_thp_unres_ul = ue_thp_unres_ul_accum / len;
++            cs->pdcp_sdu_volume_dl = acc[len - 1].pdcp_sdu_volume_dl;
++            cs->pdcp_sdu_volume_ul = acc[len - 1].pdcp_sdu_volume_ul;
++            cs->pdcp_pdu_volume_dl = acc[len - 1].pdcp_pdu_volume_dl;
++            cs->pdcp_pdu_volume_ul = acc[len - 1].pdcp_pdu_volume_ul;
++            cs->packetDropRateDl = acc[len - 1].packetDropRateDl;
++        }
+ 
+         struct tm *ptm = gmtime(&pm_data_start_time);
+         if(ptm == 0) {
+             log_error("gmtime error");
+             goto failure_loop;
+         }
+-
+         struct tm start_ptm;
+         memcpy(&start_ptm, ptm, sizeof(struct tm));
+ 
+@@ -190,10 +212,10 @@
+             log_error("gmtime error");
+             goto failure_loop;
+         }
+-
+         struct tm now_ptm;
+         memcpy(&now_ptm, ptm, sizeof(struct tm));
+ 
++        /* DT patch 0010: TS 32.432 file name A<date>.<start>-<end>_-<jobId>_<UniqueId> */
+         asprintf(&filename, "A%04d%02d%02d.%02d%02d+0000-%02d%02d+0000_-1_%s.xml", start_ptm.tm_year + 1900, start_ptm.tm_mon + 1,
+                     start_ptm.tm_mday, start_ptm.tm_hour, start_ptm.tm_min, now_ptm.tm_hour, now_ptm.tm_min, pm_data_config->info.node_id);
+         if(filename == 0) {
+@@ -206,28 +228,9 @@
+             log_error("asprintf error");
+             goto failure_loop;
+         }
++        data.filename = full_path;
+ 
+-        pm_write_data_t data = {
+-            .start_time = pm_data_start_time,
+-            .end_time = timestamp,
+-            .cell_local_id = cell_local_id,
+-            .filename = full_path,
+-            .meanActiveUe = meanActiveUe,
+-            .maxActiveUe = maxActiveUe,
+-            .loadAvg = loadAvg,
+-            .ue_thp_dl = ue_thp_dl,
+-            .ue_thp_ul = ue_thp_ul,
+-            .ue_thp_unres_dl = ue_thp_unres_dl,
+-            .ue_thp_unres_ul = ue_thp_unres_ul,
+-            .pdcp_sdu_volume_dl = pm_data_accumulator->pdcp_sdu_volume_dl,
+-            .pdcp_sdu_volume_ul = pm_data_accumulator->pdcp_sdu_volume_ul,
+-            .pdcp_pdu_volume_dl = pm_data_accumulator->pdcp_pdu_volume_dl,
+-            .pdcp_pdu_volume_ul = pm_data_accumulator->pdcp_pdu_volume_ul,
+-            .packetDropRateDl = pm_data_accumulator->packetDropRateDl,
+-            .performanceMetricsNames = performanceMetricsNames,
+-        };
+-
+-        rc = pm_data_write(&data);
++        int rc = pm_data_write(&data);
+         if(rc != 0) {
+             log_error("pm_data_write error");
+             goto failure_loop;
+@@ -235,7 +238,9 @@
+ 
+         // cleanup
+         pm_data_start_time = timestamp;
+-        pm_data_accumulator_len = 0;
++        for(int ci = 0; ci < PM_MAX_CELLS; ci++) {
++            pm_data_accumulator_len[ci] = 0;
++        }
+         rc = system(PM_DATA_ROLL_COMMAND);
+         if(rc != 0) {
+             log_error("system error");
+@@ -268,11 +273,16 @@
+         log_error("pm_data is null");
+         goto failure;
+     }
++    int ci = pm_data->cell_idx;
++    if(ci < 0 || ci >= PM_MAX_CELLS) {
++        log_error("pm_data cell_idx %d out of range", ci);
++        goto failure;
++    }
+ 
+-    memcpy(&pm_data_accumulator[pm_data_accumulator_len], pm_data, sizeof(pm_data_t));
+-    pm_data_accumulator_len++;
+-    if(pm_data_accumulator_len >= pm_data_accumulator_size) {
+-        pm_data_accumulator_len = 0;
++    memcpy(&pm_data_accumulator[ci][pm_data_accumulator_len[ci]], pm_data, sizeof(pm_data_t));
++    pm_data_accumulator_len[ci]++;
++    if(pm_data_accumulator_len[ci] >= pm_data_accumulator_size) {
++        pm_data_accumulator_len[ci] = 0;
+     }
+ 
+     return 0;
+@@ -281,8 +291,28 @@
+     return 1;
+ }
+ 
++/* DT patch 0011: one <measValue> per cell; value selection as before (names per TS 28.552). */
++static const char *pm_metric_value(const pm_cell_stats_t *cs, const char *name, char *buf, size_t bufsz) {
++    if(strcmp(name, "DRB.MeanActiveUeDl") == 0 || strcmp(name, "DRB.MeanActiveUeUl") == 0) snprintf(buf, bufsz, "%d", cs->meanActiveUe);
++    else if(strcmp(name, "DRB.MaxActiveUeDl") == 0 || strcmp(name, "DRB.MaxActiveUeUl") == 0) snprintf(buf, bufsz, "%d", cs->maxActiveUe);
++    else if(strcmp(name, "RRU.PrbTotDl") == 0) snprintf(buf, bufsz, "%d", cs->loadAvg);
++    /* DT patch 0010b: internal double, output rounded integer kbit/s (InfluxDB field type stays integer) */
++    else if(strcmp(name, "DRB.UEThpDl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_dl);
++    else if(strcmp(name, "DRB.UEThpUl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_ul);
++    else if(strcmp(name, "DRB.UEUnresVolUl") == 0 || strcmp(name, "DRB.UeUnresVolUl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_unres_ul);
++    else if(strcmp(name, "DRB.UEUnresVolDl") == 0 || strcmp(name, "DRB.UeUnresVolDl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_unres_dl);
++    else if(strcmp(name, "DRB.PdcpSduVolumeUl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_sdu_volume_ul);
++    else if(strcmp(name, "DRB.PdcpSduVolumeDl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_sdu_volume_dl);
++    else if(strcmp(name, "DRB.PdcpPduVolumeUl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_pdu_volume_ul);
++    else if(strcmp(name, "DRB.PdcpPduVolumeDl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_pdu_volume_dl);
++    else if(strcmp(name, "DRB.RlcPacketDropRateDl") == 0) snprintf(buf, bufsz, "%ld", cs->packetDropRateDl);
++    else snprintf(buf, bufsz, "-1");
++    return buf;
++}
++
+ static int pm_data_write(pm_write_data_t *data) {
+     char *content = 0;
++    char *meas_values = 0;
+     FILE *f = 0;
+ 
+     f = fopen(data->filename, "w");
+@@ -299,7 +329,6 @@
+ 
+     char start_time_full[64];
+     char end_time_full[64];
+-
+     time_t *timestamp = (time_t *)&(data->start_time);
+     struct tm *ptm = gmtime(timestamp);
+     if(ptm == 0) {
+@@ -307,7 +336,6 @@
+         goto failure;
+     }
+     sprintf(start_time_full, "%04d-%02d-%02dT%02d:%02d:%02d+00:00", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+-
+     timestamp = (time_t *)&(data->end_time);
+     ptm = gmtime(timestamp);
+     if(ptm == 0) {
+@@ -316,9 +344,7 @@
+     }
+     sprintf(end_time_full, "%04d-%02d-%02dT%02d:%02d:%02d+00:00", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+ 
+-    /* DT patch 0007: 上游用「第一筆與最後一筆取樣的時間差 < 週期」判 suspect,1 s 輪詢的相位會讓完整週期
+-       也被標成 true(例 15:00:01–15:14:59 = 898 s)。改成看視窗對齊:第一筆是否落在視窗起點附近、
+-       最後一筆是否落在視窗終點附近(容忍 5 s)。 */
++    /* DT patch 0007: window-aligned suspect flag (tolerance 5 s) */
+     const char *suspect = "";
+     {
+         time_t win_start = (data->start_time / pm_data_feed_log_period) * pm_data_feed_log_period;
+@@ -330,167 +356,70 @@
+ 
+     char log_period[16];
+     sprintf(log_period, "%d", pm_data_feed_log_period);
+-    content = str_replace_inplace(content, "@log-period@", log_period);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
+-    }
++    char gnb_du_id[16];
++    sprintf(gnb_du_id, "%d", pm_data_config->info.gnb_du_id);
+ 
+-    content = str_replace_inplace(content, "@suspect@", suspect);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
++    /* measType list */
++    char names[4096] = "";
++    char temp_buffer[256];
++    int nmetrics = 0;
++    while(performanceMetricsNames[nmetrics] != NULL && nmetrics < MAXMETRICS) {
++        snprintf(temp_buffer, sizeof(temp_buffer), "      <measType p=\"%d\">%s</measType>%s", nmetrics + 1, performanceMetricsNames[nmetrics],
++                 performanceMetricsNames[nmetrics + 1] != NULL ? "\n" : "");
++        strcat(names, temp_buffer);
++        nmetrics++;
+     }
+ 
+-    content = str_replace_inplace(content, "@vendor@", pm_data_info.vendor);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
++    /* one measValue block per cell */
++    size_t cap = 1024 + (size_t)data->num_cells * (256 + (size_t)nmetrics * 64);
++    meas_values = (char *)malloc(cap);
++    if(meas_values == 0) {
++        log_error("malloc failed");
+         goto failure;
+     }
+-
+-    content = str_replace_inplace(content, "@node-id@", pm_data_config->info.node_id);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
++    meas_values[0] = 0;
++    for(int ci = 0; ci < data->num_cells; ci++) {
++        const pm_cell_stats_t *cs = &data->cells[ci];
++        char vbuf[32];
++        size_t used = strlen(meas_values);
++        snprintf(meas_values + used, cap - used, "%s      <measValue measObjLdn=\"GNBDUFunction=%s,NRCellDU=%s\">\n", ci ? "\n" : "", gnb_du_id,
++                 cs->cell_local_id ? cs->cell_local_id : "0");
++        for(int m = 0; m < nmetrics; m++) {
++            used = strlen(meas_values);
++            snprintf(meas_values + used, cap - used, "        <r p=\"%d\">%s</r>\n", m + 1, pm_metric_value(cs, performanceMetricsNames[m], vbuf, sizeof(vbuf)));
++        }
++        used = strlen(meas_values);
++        snprintf(meas_values + used, cap - used, "        %s\n      </measValue>", suspect);
+     }
+ 
++    content = str_replace_inplace(content, "@log-period@", log_period);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
++    content = str_replace_inplace(content, "@vendor@", pm_data_info.vendor);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
++    content = str_replace_inplace(content, "@node-id@", pm_data_config->info.node_id);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+     content = str_replace_inplace(content, "@start-time@", start_time_full);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
+-    }
+-
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+     content = str_replace_inplace(content, "@end-time@", end_time_full);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
+-    }
+-
+-    char mean_active_ue_str[32];
+-    char max_active_ue_str[32];
+-    char load_avg_str[8];
+-    char ue_thp_dl_str[32];
+-    char ue_thp_ul_str[32];
+-    char ue_thp_unres_dl_str[32];
+-    char ue_thp_unres_ul_str[32];
+-    char pdcp_sdu_volume_ul[32];
+-    char pdcp_sdu_volume_dl[32];
+-    char pdcp_pdu_volume_ul[32];
+-    char pdcp_pdu_volume_dl[32];
+-    char packetDropRateDl[32];
+-
+-    char performance_metric_values[MAXMETRICS][32];   /* DT patch 0010: room for real values */
+-    for (int i = 0; i < MAXMETRICS; i++){
+-        strcpy(performance_metric_values[i], "-1");
+-    }
+-
+-
+-    sprintf(mean_active_ue_str, "%d", data->meanActiveUe);
+-    sprintf(max_active_ue_str, "%d", data->maxActiveUe);
+-    sprintf(load_avg_str, "%d", data->loadAvg);
+-    /* DT patch 0010b (2026-10-01, SMO 決定 (b)):內部以 double 計算,輸出四捨五入整數 kbit/s ——
+-       InfluxDB 同 shard 內 DRB.UEThp* 已是 integer,送小數會讓整筆點被拒(最長 7 天);整數是合法的 real 值。 */
+-    sprintf(ue_thp_dl_str, "%.0f", data->ue_thp_dl);
+-    sprintf(ue_thp_ul_str, "%.0f", data->ue_thp_ul);
+-    sprintf(ue_thp_unres_dl_str, "%.0f", data->ue_thp_unres_dl);
+-    sprintf(ue_thp_unres_ul_str, "%.0f", data->ue_thp_unres_ul);
+-    sprintf(pdcp_sdu_volume_ul, "%ld", data->pdcp_sdu_volume_ul);
+-    sprintf(pdcp_sdu_volume_dl, "%ld", data->pdcp_sdu_volume_dl);
+-    sprintf(pdcp_pdu_volume_ul, "%ld", data->pdcp_pdu_volume_ul);
+-    sprintf(pdcp_pdu_volume_dl, "%ld", data->pdcp_pdu_volume_dl);
+-    sprintf(packetDropRateDl, "%ld", data->packetDropRateDl);
+-
+-
+-    char replacement[1024] = "";
+-        char temp_buffer[128];
+-    int i=0;
+-    while(performanceMetricsNames[i] != NULL){
+-
+-        if(strcmp(performanceMetricsNames[i], "DRB.MeanActiveUeDl")==0){
+-            strcpy(performance_metric_values[i], mean_active_ue_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.MaxActiveUeDl")==0){
+-            strcpy(performance_metric_values[i], max_active_ue_str);
+-        } else if(strcmp(performanceMetricsNames[i], "DRB.MeanActiveUeUl")==0){
+-            strcpy(performance_metric_values[i], mean_active_ue_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.MaxActiveUeUl")==0){
+-            strcpy(performance_metric_values[i], max_active_ue_str);
+-        } else if (strcmp(performanceMetricsNames[i], "RRU.PrbTotDl")==0){
+-            strcpy(performance_metric_values[i], load_avg_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.UEThpDl")==0){
+-            strcpy(performance_metric_values[i], ue_thp_dl_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.UEThpUl")==0){
+-            strcpy(performance_metric_values[i], ue_thp_ul_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolUl")==0 || strcmp(performanceMetricsNames[i], "DRB.UeUnresVolUl")==0){  /* DT patch 0005: alias */
+-            strcpy(performance_metric_values[i], ue_thp_unres_ul_str);
+-        }else if (strcmp(performanceMetricsNames[i], "DRB.UEUnresVolDl")==0 || strcmp(performanceMetricsNames[i], "DRB.UeUnresVolDl")==0){  /* DT patch 0005: alias */
+-            strcpy(performance_metric_values[i], ue_thp_unres_dl_str);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpSduVolumeUl")==0){
+-            strcpy(performance_metric_values[i], pdcp_sdu_volume_ul);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpSduVolumeDl")==0){
+-            strcpy(performance_metric_values[i], pdcp_sdu_volume_dl);
+-        }else if (strcmp(performanceMetricsNames[i], "DRB.PdcpPduVolumeUl")==0){
+-            strcpy(performance_metric_values[i], pdcp_pdu_volume_ul);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.PdcpPduVolumeDl")==0){
+-            strcpy(performance_metric_values[i], pdcp_pdu_volume_dl);
+-        } else if (strcmp(performanceMetricsNames[i], "DRB.RlcPacketDropRateDl")==0){
+-            strcpy(performance_metric_values[i], packetDropRateDl);
+-        }
+-
+-        if(performanceMetricsNames[i+1] != NULL) {
+-            snprintf(temp_buffer, sizeof(temp_buffer),"			<measType p=\"%d\">%s</measType>\n", i+1, performanceMetricsNames[i]);
+-        } else {
+-            snprintf(temp_buffer, sizeof(temp_buffer),"			<measType p=\"%d\">%s</measType>", i+1, performanceMetricsNames[i]);
+-        }
+-        strcat(replacement, temp_buffer);
+-        i++;
+-    }
+-
+-
+-    char gnb_du_id[16];
+-    sprintf(gnb_du_id, "%d", pm_data_config->info.gnb_du_id);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+     content = str_replace_inplace(content, "@du-id@", gnb_du_id);
+-    content = str_replace_inplace(content, "@metricNames@", replacement);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
+-    }
+-
+-    char cell_local_id[16];
+-    sprintf(cell_local_id, "%s", data->cell_local_id);
+-    content = str_replace_inplace(content, "@cell-id@", cell_local_id);
+-    if(content == 0) {
+-        log_error("str_replace_inplace() failed");
+-        goto failure;
+-    }
+-
+-    char replacement2[1024] = "";
+-    for(int j=1; j<=i;j++){
+-        if(j != i){
+-            snprintf(temp_buffer, sizeof(temp_buffer),"				<r p=\"%d\">%s</r>\n", j, performance_metric_values[j-1]);
+-        } else {
+-            snprintf(temp_buffer, sizeof(temp_buffer),"				<r p=\"%d\">%s</r>", j, performance_metric_values[j-1]);
+-        }
+-        strcat(replacement2, temp_buffer);
+-    }
+-
+-
+-    content = str_replace_inplace(content, "@metricValues@", replacement2);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
++    content = str_replace_inplace(content, "@metricNames@", names);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
++    content = str_replace_inplace(content, "@measValues@", meas_values);
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+ 
+     fprintf(f, "%s", content);
+     fclose(f);
+-
++    free(meas_values);
+     free(content);
+-    content = 0;
+-
+     return 0;
+ 
+ failure:
+     if(f) {
+         fclose(f);
+     }
+-
++    free(meas_values);
+     free(content);
+-    content = 0;
+-
+     return 1;
+ }
+--- a/src/pm_data/pm_data.h	2026-10-01 16:22:15.193861417 +0800
++++ b/src/pm_data/pm_data.h	2026-10-01 16:24:20.043878322 +0800
+@@ -7,9 +7,11 @@
+ 
+ #include "common/config.h"
+ #define MAXMETRICS 20
++#define PM_MAX_CELLS 8   /* DT patch 0011: one measValue per cell */
+ extern char **performanceMetricsNames;
+ 
+ typedef struct pm_data {
++    int cell_idx;          /* DT patch 0011 */
+     char *cell_local_id;
+     int numUes;
+     int load;
+--- a/src/alarms/alarms.c	2026-10-01 16:22:15.194861384 +0800
++++ b/src/alarms/alarms.c	2026-10-01 16:24:19.989880038 +0800
+@@ -24,18 +24,19 @@
+     .timeout = 0,
+ };
+ 
+-static alarm_t alarm_load_downlink_exceeded_warning = {
+-    .alarm = "loadDownlinkExceededWarning",
+-    .severity = ALARM_SEVERITY_WARNING,
+-    .type = ALARM_TYPE_QUALITY_OF_SERVICE_ALARM,   /* DT patch 0010: load is a QoS condition, not equipment */
+-    .object_instance = 0,
+-    .state = ALARM_STATE_CLEARED,
+-    .timeout = 0,
++/* DT patch 0011: one loadDownlinkExceededWarning per cell (NRCellDU=<cellLocalId>); bound lazily by alarms_set_du_cells() */
++#define LOAD_ALARM_INIT { .alarm = "loadDownlinkExceededWarning", .severity = ALARM_SEVERITY_WARNING, \
++    .type = ALARM_TYPE_QUALITY_OF_SERVICE_ALARM, .object_instance = 0, .state = ALARM_STATE_CLEARED, .timeout = 0 }
++static alarm_t alarm_load[ALARMS_MAX_CELLS] = {
++    LOAD_ALARM_INIT, LOAD_ALARM_INIT, LOAD_ALARM_INIT, LOAD_ALARM_INIT,
++    LOAD_ALARM_INIT, LOAD_ALARM_INIT, LOAD_ALARM_INIT, LOAD_ALARM_INIT,
+ };
++static int alarm_load_count = 0;
+ 
+ static const alarm_t *alarms[] = {
+     &alarm_internal_connection_loss,
+-    &alarm_load_downlink_exceeded_warning,
++    &alarm_load[0], &alarm_load[1], &alarm_load[2], &alarm_load[3],
++    &alarm_load[4], &alarm_load[5], &alarm_load[6], &alarm_load[7],
+     0
+ };
+ 
+@@ -59,14 +60,7 @@
+         goto failed;
+     }
+ 
+-    if (NODE_HAS_DU(config->info.node_type)) {
+-        asprintf(&alarm_load_downlink_exceeded_warning.object_instance, "ManagedElement=%s,GNBDUFunction=%d,NRCellDU=0", alarms_config->info.node_id, alarms_config->info.gnb_du_id);
+-        if(alarm_load_downlink_exceeded_warning.object_instance == 0) {
+-            log_error("asprintf failed");
+-            goto failed;
+-        }
+-    }
+-
++    /* DT patch 0011: per-cell load alarm object instances are bound when the first telnet data arrives (alarms_set_du_cells) */
+     rc = netconf_data_alarms_init(alarms);
+     if(rc != 0) {
+         log_error("netconf_data_alarms_init() error");
+@@ -195,35 +189,75 @@
+     }
+ }
+ 
++static void alarm_load_eval(alarm_t *a, int load) {
++    if(load > alarms_config->alarms.load_downlink_exceeded_warning_threshold) {
++        if(a->state == ALARM_STATE_CLEARED) {
++            a->state = ALARM_STATE_RAISE;
++            a->timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
++        }
++        else if(a->state == ALARM_STATE_CLEAR) {
++            a->state = ALARM_STATE_RAISED;
++            a->timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
++        }
++    }
++    else {
++        if(a->state == ALARM_STATE_RAISED) {
++            a->state = ALARM_STATE_CLEAR;
++            a->timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
++        }
++        else if(a->state == ALARM_STATE_RAISE) {
++            a->state = ALARM_STATE_CLEARED;
++            a->timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
++        }
++    }
++}
++
++int alarms_set_du_cells(int n, const char *const *cell_local_ids) {
++    int changed = 0;
++    if(alarms_config == 0) {
++        return 0;
++    }
++    if(n > ALARMS_MAX_CELLS) {
++        n = ALARMS_MAX_CELLS;
++    }
++    for(int ci = 0; ci < ALARMS_MAX_CELLS; ci++) {
++        char *want = 0;
++        if(ci < n) {
++            asprintf(&want, "ManagedElement=%s,GNBDUFunction=%d,NRCellDU=%s", alarms_config->info.node_id, alarms_config->info.gnb_du_id,
++                     (cell_local_ids && cell_local_ids[ci]) ? cell_local_ids[ci] : "0");
++        }
++        const char *have = alarm_load[ci].object_instance;
++        if((want == 0) != (have == 0) || (want && have && strcmp(want, have) != 0)) {
++            changed = 1;
++            free(alarm_load[ci].object_instance);
++            alarm_load[ci].object_instance = want;
++            alarm_load[ci].state = ALARM_STATE_CLEARED;
++            alarm_load[ci].timeout = 0;
++        }
++        else {
++            free(want);
++        }
++    }
++    alarm_load_count = n;
++    return changed;
++}
++
+ int alarms_data_feed(const alarms_data_t *alarms_data) {
+     if(alarms_data == 0) {
+         log_error("alarms_data is null");
+         goto failed;
+     }
+-
+-    if(alarms_data->load > alarms_config->alarms.load_downlink_exceeded_warning_threshold) {
+-        if(alarm_load_downlink_exceeded_warning.state == ALARM_STATE_CLEARED) {
+-            alarm_load_downlink_exceeded_warning.state = ALARM_STATE_RAISE;
+-            alarm_load_downlink_exceeded_warning.timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
+-        }
+-        else if(alarm_load_downlink_exceeded_warning.state == ALARM_STATE_CLEAR) {
+-            alarm_load_downlink_exceeded_warning.state = ALARM_STATE_RAISED;
+-            alarm_load_downlink_exceeded_warning.timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
++    if(alarms_data->num_cells > 0) {
++        for(int ci = 0; ci < alarms_data->num_cells && ci < ALARMS_MAX_CELLS; ci++) {
++            if(alarm_load[ci].object_instance) {
++                alarm_load_eval(&alarm_load[ci], alarms_data->cell_load[ci]);
++            }
+         }
+     }
+-    else {
+-        if(alarm_load_downlink_exceeded_warning.state == ALARM_STATE_RAISED) {
+-            alarm_load_downlink_exceeded_warning.state = ALARM_STATE_CLEAR;
+-            alarm_load_downlink_exceeded_warning.timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
+-        }
+-        else if(alarm_load_downlink_exceeded_warning.state == ALARM_STATE_RAISE) {
+-            alarm_load_downlink_exceeded_warning.state = ALARM_STATE_CLEARED;
+-            alarm_load_downlink_exceeded_warning.timeout = alarms_config->alarms.load_downlink_exceeded_warning_timeout;
+-        }
++    else if(alarm_load[0].object_instance) {
++        alarm_load_eval(&alarm_load[0], alarms_data->load);
+     }
+-
+     return 0;
+-
+ failed:
+     return 1;
+ }
+--- a/src/alarms/alarms.h	2026-10-01 16:22:15.195861353 +0800
++++ b/src/alarms/alarms.h	2026-10-01 16:24:19.988880070 +0800
+@@ -49,11 +49,17 @@
+     int timeout;
+ } alarm_t;
+ 
++#define ALARMS_MAX_CELLS 8   /* DT patch 0011: one load alarm per NRCellDU */
+ typedef struct alarms_data {
+     int num_du;
+     int load;
++    int num_cells;
++    int cell_load[ALARMS_MAX_CELLS];
+ } alarms_data_t;
+ 
++/* DT patch 0011: (re)bind the per-cell load alarms to the DU's cells (NRCellDU=<cellLocalId>). Returns 1 if the set changed. */
++int alarms_set_du_cells(int n, const char *const *cell_local_ids);
++
+ int alarms_init(const config_t *config);
+ int alarms_free();
+ void alarms_loop();

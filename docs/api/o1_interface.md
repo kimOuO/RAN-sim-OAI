@@ -110,10 +110,10 @@ GET http://10.3.0.204:30267/rests/data/network-topology:network-topology/topolog
 
 ## 7. 已知限制
 - adapter 重啟重設 CM 改動(見 §2)。
-- NRCellCU 不帶 PCI/ARFCN(3GPP 放在 NRCellDU);多小區射頻參數目前只呈現 DU ME 的第一個 cell(`DU_CELL` 可指定)。
+- NRCellCU 不帶 PCI/ARFCN(3GPP 放在 NRCellDU)。
 - `bwconfig` 只記錄;TAC、admin/operational state 未映射。
 - 心跳 SMO 端目前無 consumer。
-- 每個 gNB 只上報第一個 DU、一個 cell;多 DU、多 cell 未支援。
+- 多 DU、多 cell(2026-10-01 起支援):每個 DU 一個 ME `<meid>_du<gNB-DU ID>`(第 k 個 DU 的 NETCONF / SFTP / telnet 埠 = 第 0 個 + 1024·k);每個 cell 一個 `NRCellDU=<cellLocalId>` 與 `NRSectorCarrier=<i>`;PM 檔每個 cell 一個 measValue;負載告警每個 cell 一筆。上限每 DU 8 個 cell。
 - SMO 端的資料沒有劇本層:PM、告警只帶 ME 名稱,而 ME 名稱會被不同 run 重用;按劇本收資料目前只能用「ME 名稱 + 時間區間」對應。
 - 通知通道是明文 HTTP、不認證(O1 規範要求 HTTP/TLS 雙向憑證);帶帳密的 `fileLocation` 以明文傳送。
 - 同時多個劇本未實測。

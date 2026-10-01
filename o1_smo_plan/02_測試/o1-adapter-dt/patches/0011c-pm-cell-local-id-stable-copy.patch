@@ -1,0 +1,11 @@
+--- a/src/pm_data/pm_data.c
++++ b/src/pm_data/pm_data.c
+@@ DT patch 0011c (2026-10-01): pm_data_feed() 收到的 cell_local_id 指向呼叫端的 oai_data_t,取樣後即釋放;
+@@ 多 cell 版在 roll 時讀最後一筆取樣的 cell_local_id → measObjLdn 出現亂碼(run H)。改為每 cell 保留一份穩定複本。
+     memcpy(&pm_data_accumulator[ci][pm_data_accumulator_len[ci]], pm_data, sizeof(pm_data_t));
++    {
++        static char cell_lc[PM_MAX_CELLS][16];
++        snprintf(cell_lc[ci], sizeof(cell_lc[ci]), "%s", pm_data->cell_local_id ? pm_data->cell_local_id : "0");
++        pm_data_accumulator[ci][pm_data_accumulator_len[ci]].cell_local_id = cell_lc[ci];
++    }
+     pm_data_accumulator_len[ci]++;
