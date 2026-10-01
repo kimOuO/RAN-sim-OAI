@@ -1,0 +1,62 @@
+{
+  "scope": {
+    "cellIdList": [
+      {
+        "plmnId": {
+          "mcc": "208",
+          "mnc": "95"
+        },
+        "cId": {
+          "ncI": 59506688
+        }
+      },
+      {
+        "plmnId": {
+          "mcc": "208",
+          "mnc": "95"
+        },
+        "cId": {
+          "ncI": 59523072
+        }
+      },
+      {
+        "plmnId": {
+          "mcc": "208",
+          "mnc": "95"
+        },
+        "cId": {
+          "ncI": 59539456
+        }
+      }
+    ]
+  },
+  "esObjectives": {
+    "esPercentage": 30
+  },
+  "esResources": [
+    {
+      "operationalCells": [
+        {
+          "plmnId": {
+            "mcc": "208",
+            "mnc": "95"
+          },
+          "cId": {
+            "ncI": 59506688
+          }
+        },
+        {
+          "plmnId": {
+            "mcc": "208",
+            "mnc": "95"
+          },
+          "cId": {
+            "ncI": 59523072
+          }
+        }
+      ],
+      "operationalPreference": "FORBID",
+      "dlPrbUsage": 30
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "scope": {
+    "cellId": {
+      "plmnId": {
+        "mcc": "208",
+        "mnc": "95"
+      },
+      "cId": {
+        "ncI": 59539456
+      }
+    }
+  },
+  "esObjectives": {
+    "esPercentage": 100
+  }
+}

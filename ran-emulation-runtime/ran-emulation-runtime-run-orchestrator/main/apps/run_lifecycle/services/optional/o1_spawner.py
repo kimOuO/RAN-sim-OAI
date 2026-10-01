@@ -53,8 +53,24 @@ def me_names(g) -> dict:
     return {"cucp": g.meid, "du": f"{g.meid}_du{du_id}", "gnb_du_id": du_id}
 
 
+def _overrides() -> dict:
+    """驗證用的暫時覆寫(2026-10-01):PER_RUN_LOG_DIR/_o1_overrides.json,例 {"pm_interval": 60}。
+    不用重啟編排服務、不動其他 run 的預設;檔案不存在就沒有覆寫。A1 閉環的驗證 run 要 60 秒 PM 週期時用。"""
+    import json as _json
+    p = pathlib.Path(getattr(settings, "PER_RUN_LOG_DIR", "/data/run_logs")) / "_o1_overrides.json"
+    try:
+        return _json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("O1 overrides unreadable: %s", exc)
+        return {}
+
+
 def plan(rid: str, topo, instances: dict, scenario_id: str = "") -> list[dict]:
     """依 run 的 topo 與已起的 CU/DU host port,列出要起的 O1 容器。"""
+    ov = _overrides()
+    pm_interval = str(int(ov.get("pm_interval") or O1_PM_INTERVAL))
+    if pm_interval != str(O1_PM_INTERVAL):
+        logger.info("O1 override: pm_interval=%s (default %s)", pm_interval, O1_PM_INTERVAL)
     # runId 每次執行唯一(SMO 2026-09-30 選 A):rid 跟著場景,同場景重啟會相同 → 加啟動時間。
     run_tag = f"{rid}-{_dt.datetime.now(_dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     items: list[dict] = []
@@ -85,7 +101,7 @@ def plan(rid: str, topo, instances: dict, scenario_id: str = "") -> list[dict]:
                         "O1_NETCONF_PORT": str(p[f"{key}_netconf"]), "O1_SFTP_PORT": str(p[f"{key}_sftp"]),
                         "O1_TELNET_HOST": O1_HOST_IP, "O1_TELNET_PORT": str(p[f"facade_{key}"]),
                         "O1_GNB_DU_ID": str(me["gnb_du_id"]), "O1_GNB_CU_ID": "0",
-                        "O1_PM_INTERVAL": O1_PM_INTERVAL, "O1_VES_URL": O1_VES_URL,
+                        "O1_PM_INTERVAL": pm_interval, "O1_VES_URL": O1_VES_URL,
                         "O1_MODEL": f"ransim-dt-{key}", "O1_LOCATION": f"DT run {rid} gnb {g.name}",
                         # SMO 的 ME 生命週期自動化(2026-09-30):pnfRegistration additionalFields 帶劇本資訊
                         "O1_SCENARIO_ID": scenario_id or "unknown", "O1_RUN_ID": run_tag, "O1_LIFECYCLE": "ephemeral"},

@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.o-ran.org/jsonschemas/a1td/oran_energysaving_4.0.0",
+  "description": "This module is for O-RAN standard Energy saving policy.\n  Copyright 2026 O-RAN ALLIANCE e.V.\n Licensed under the Standards Collaboration, Copyright License Version 1.0 (the \"License\");\n You may not use this file except in compliance with the License.\n You may obtain a copy of the License at https://www.o-ran.org/sccl",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "cellId": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/CellId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "cellId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cellIdList": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/CellIdList"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "cellIdList"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "taIList": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/TaIList"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "taIList"
+          ]
+        }
+      ]
+    },
+    "esObjectives": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "targetPeeEnergy": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "targetPeeEnergy"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "esPercentage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "esPercentage"
+          ]
+        }
+      ]
+    },
+    "esResources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EsResource"
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "scope",
+        "esObjectives"
+      ]
+    },
+    {
+      "required": [
+        "scope",
+        "esResources"
+      ]
+    }
+  ],
+  "$defs": {
+    "AvoidanceType": {
+      "type": "string",
+      "enum": [
+        "AVOID",
+        "FORBID"
+      ]
+    },
+    "ExtPowerResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "energySupplyModes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "List of energy supply modes for which the policy applies. Values are expected to align with 3GPP TS 28.310 (EnergySupplyMode)."
+        },
+        "energySourceTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "List of operator-configured energy source types for which the policy applies. In 3GPP TS 28.310, energySourceType is an operator-configured string and is not restricted to a closed list."
+        },
+        "preferRenewable": {
+          "type": "boolean",
+          "default": false
+        },
+        "cefMax": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "energySupplyModes"
+          ]
+        },
+        {
+          "required": [
+            "energySourceTypes"
+          ]
+        },
+        {
+          "required": [
+            "preferRenewable"
+          ]
+        },
+        {
+          "required": [
+            "cefMax"
+          ]
+        }
+      ]
+    },
+    "EsResource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationalCells": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/CellIdList"
+            },
+            "operationalPreference": {
+              "$ref": "#/$defs/AvoidanceType"
+            },
+            "dlPrbUsage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "ulPrbUsage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "externalPower": {
+              "$ref": "#/$defs/ExtPowerResource"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "operationalCells",
+            "operationalPreference"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "coverageCells": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/CellIdList"
+            },
+            "coveragePreference": {
+              "$ref": "#/$defs/AvoidanceType"
+            },
+            "dlPrbUsage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "ulPrbUsage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "externalPower": {
+              "$ref": "#/$defs/ExtPowerResource"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "coverageCells",
+            "coveragePreference"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operationalCells": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/CellIdList"
+            },
+            "operationalPreference": {
+              "$ref": "#/$defs/AvoidanceType"
+            },
+            "coverageCells": {
+              "$ref": "/jsonschemas/a1td/common_3.0.1#/$defs/CellIdList"
+            },
+            "coveragePreference": {
+              "$ref": "#/$defs/AvoidanceType"
+            },
+            "dlPrbUsage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "ulPrbUsage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "externalPower": {
+              "$ref": "#/$defs/ExtPowerResource"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "operationalCells",
+            "operationalPreference",
+            "coverageCells",
+            "coveragePreference"
+          ]
+        }
+      ]
+    }
+  }
+}
