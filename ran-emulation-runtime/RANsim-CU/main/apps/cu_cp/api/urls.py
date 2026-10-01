@@ -1,7 +1,7 @@
 """cu_cp routes — direct binding from Module/Component/Element to Actor.method."""
 from django.urls import path
 
-from main.apps.cu_cp.actors.e2_control_actor import E2ControlActor
+from main.apps.cu_cp.actors.e2_control_actor import E2CellStateActor, E2ControlActor
 from main.apps.cu_cp.actors.e2_full_reporter_actor import E2FullReporterActor
 from main.apps.cu_cp.actors.e2_kpm_reporter_actor import E2KpmReporterActor
 from main.apps.cu_cp.actors.e2_kpm_speed_actor import E2KpmSpeedActor
@@ -10,6 +10,8 @@ from main.apps.cu_cp.actors.anr_control_actor import AnrControlActor
 from main.apps.cu_cp.actors.anr_query_actor import AnrQueryActor
 from main.apps.cu_cp.actors.e2_subscription_actor import E2IndicationActor, E2SubscriptionActor
 from main.apps.cu_cp.actors.f1ap_router_actor import F1ApRouterActor
+from main.apps.cu_cp.actors.ngap_router_actor import NgapHandoverActor
+from main.apps.cu_cp.actors.xn_router_actor import XnRouterActor
 from main.apps.cu_cp.actors.telemetry_export_actor import TelemetryExportReader
 from main.apps.cu_cp.actors.log_actor import LogActor
 from main.apps.cu_cp.actors.handover_event_actor import HandoverEventActor
@@ -29,6 +31,15 @@ urlpatterns = [
     # NGAP
     path("NGAP/NgapRouter/initial_ue_message", NgapRouterActor.initial_ue_message, name="ngap_init_ue"),
     path("NGAP/NgapRouter/initial_context_setup", NgapRouterActor.initial_context_setup, name="ngap_init_ctx"),
+    path("NGAP/NgapRouter/handover_request", NgapHandoverActor.handover_request, name="ngap_handover_request"),
+    # 多 gNB P6:Xn(TS 38.423)—— 鄰居 gNB 的 CU 呼叫
+    path("Xn/XnRouter/xn_setup", XnRouterActor.xn_setup, name="xn_setup"),
+    path("Xn/XnRouter/handover_request", XnRouterActor.handover_request, name="xn_handover_request"),
+    path("Xn/XnRouter/sn_status_transfer", XnRouterActor.sn_status_transfer, name="xn_sn_status_transfer"),
+    path("Xn/XnRouter/ue_context_release", XnRouterActor.ue_context_release, name="xn_ue_context_release"),
+    path("Xn/XnRouter/rrc_reestablishment", XnRouterActor.rrc_reestablishment, name="xn_rrc_reestablishment"),
+    path("Xn/XnRouter/handover_report", XnRouterActor.handover_report, name="xn_handover_report"),
+    path("Xn/XnRouter/anr_reverse", XnRouterActor.anr_reverse, name="xn_anr_reverse"),
     path("NGAP/NgapRouter/downlink_nas_transport", NgapRouterActor.downlink_nas_transport, name="ngap_dl_nas"),
     # Session (Dashboard)
     path("Session/SessionController/list", SessionControllerActor.list, name="session_list"),
@@ -48,7 +59,8 @@ urlpatterns = [
     path("E2/Subscription/delete", E2SubscriptionActor.delete, name="e2_sub_delete"),  # ↔ OAI RIC Subscription Delete Request
     path("E2/Subscription/list",   E2SubscriptionActor.list,   name="e2_sub_list"),    # adapter 重啟恢復用
     path("E2/Indication/poll", E2IndicationActor.poll, name="e2_ind_poll"),            # ↔ OAI RIC Indication (polling 取代 SCTP push)
-    path("E2/Control/request", E2ControlActor.request, name="e2_ctrl_request"),        # ↔ OAI RIC Control Request
+    path("E2/Control/request", E2ControlActor.request, name="e2_ctrl_request"),
+    path("E2/CellState/read", E2CellStateActor.read, name="e2_cell_state_read"),            # O1 facade:NRCellDU admin/op/cell state(2026-10-01)        # ↔ OAI RIC Control Request
     path("E2/CellEsState/read", E2ControlActor.cell_es_state, name="e2_cell_es_state"), # cell energySavingState(給 CCC indication producer)
     path("E2/E2NodeId/read", E2NodeIdActor.read, name="e2_node_id_read"),              # ↔ globalE2node-ID for E2 adapter
     # ── ANR / E2 Node Information（E2SM-ANR M0：鄰區關係表觀測）─────────────

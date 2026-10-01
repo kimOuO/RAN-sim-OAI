@@ -1,0 +1,185 @@
+--- a/src/oai/oai_data.h	2026-10-01 14:39:07.163769155 +0800
++++ b/src/oai/oai_data.h	2026-10-01 14:39:07.180768697 +0800
+@@ -67,6 +67,11 @@
+     int ssbPeriodicity;
+     int ssbDuration;
+ 
++    /* DT patch 0009 (2026-10-01): TS 28.541 state attributes */
++    char* administrativeState;   /* LOCKED | UNLOCKED | SHUTTINGDOWN */
++    char* operationalState;      /* ENABLED | DISABLED (config false) */
++    char* cellState;             /* IDLE | INACTIVE | ACTIVE (config false) */
++
+     char* cell_local_id;
+     char* mcc;
+     char* mnc;
+--- a/src/oai/oai_data.c	2026-10-01 14:39:07.166769074 +0800
++++ b/src/oai/oai_data.c	2026-10-01 14:39:07.180768697 +0800
+@@ -433,6 +433,18 @@
+         JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbOffset", data->nrcelldu.ssbOffset);
+         JSON_GET_NUMBER(return false, nrcelldu, "nrcelldu3gpp:ssbDuration", data->nrcelldu.ssbDuration);
+ 
++        /* DT patch 0009: optional state strings (default when the facade does not send them) */
++        {
++            const char *defs[3] = {"UNLOCKED", "ENABLED", "ACTIVE"};
++            const char *keys[3] = {"nrcelldu3gpp:administrativeState", "nrcelldu3gpp:operationalState", "nrcelldu3gpp:cellState"};
++            char **dst[3] = {&data->nrcelldu.administrativeState, &data->nrcelldu.operationalState, &data->nrcelldu.cellState};
++            for (int si = 0; si < 3; si++) {
++                cJSON *so = cJSON_GetObjectItem(nrcelldu, keys[si]);
++                free(*dst[si]);
++                *dst[si] = strdup((so && cJSON_IsString(so) && so->valuestring && so->valuestring[0]) ? so->valuestring : defs[si]);
++            }
++        }
++
+         cJSON *additional = cJSON_GetObjectItem(cjson, "O1-Operational");
+         if(additional == 0) {
+             log_error("not found: O1-Operational");
+@@ -728,6 +740,9 @@
+ void oai_data_free(oai_data_t *data) {
+     free(data->nrcelldu.mcc);
+     data->nrcelldu.mcc = 0;
++    free(data->nrcelldu.administrativeState); data->nrcelldu.administrativeState = 0;
++    free(data->nrcelldu.operationalState); data->nrcelldu.operationalState = 0;
++    free(data->nrcelldu.cellState); data->nrcelldu.cellState = 0;
+     free(data->nrcelldu.mnc);
+     data->nrcelldu.mnc = 0;
+ 
+--- a/src/oai/oai.c	2026-10-01 14:39:07.167769047 +0800
++++ b/src/oai/oai.c	2026-10-01 14:39:07.180768697 +0800
+@@ -24,6 +24,9 @@
+     memset(&current_data, 0, sizeof(oai_data_t));
+     current_data.nrcelldu.mcc = strdup("");
+     current_data.nrcelldu.mnc = strdup("");
++    current_data.nrcelldu.administrativeState = strdup("");
++    current_data.nrcelldu.operationalState = strdup("");
++    current_data.nrcelldu.cellState = strdup("");
+ 
+     current_data.device_data.gnbName = strdup("");
+     current_data.device_data.vendor = strdup("");
+@@ -41,6 +44,9 @@
+ int oai_free() {
+     free(current_data.nrcelldu.mcc);
+     free(current_data.nrcelldu.mnc);
++    free(current_data.nrcelldu.administrativeState);
++    free(current_data.nrcelldu.operationalState);
++    free(current_data.nrcelldu.cellState);
+ 
+     free(current_data.device_data.gnbName);
+     free(current_data.device_data.vendor);
+@@ -135,6 +141,9 @@
+         || (data->nrcelldu.ssbPeriodicity != current_data.nrcelldu.ssbPeriodicity)
+         || (data->nrcelldu.ssbOffset != current_data.nrcelldu.ssbOffset)
+         || (data->nrcelldu.ssbDuration != current_data.nrcelldu.ssbDuration)
++        || strcmp(data->nrcelldu.administrativeState ? data->nrcelldu.administrativeState : "", current_data.nrcelldu.administrativeState ? current_data.nrcelldu.administrativeState : "")
++        || strcmp(data->nrcelldu.operationalState ? data->nrcelldu.operationalState : "", current_data.nrcelldu.operationalState ? current_data.nrcelldu.operationalState : "")
++        || strcmp(data->nrcelldu.cellState ? data->nrcelldu.cellState : "", current_data.nrcelldu.cellState ? current_data.nrcelldu.cellState : "")
+        )
+     ) {
+         //nrcelldu changed
+@@ -158,6 +167,9 @@
+         current_data.nrcelldu.ssbPeriodicity = data->nrcelldu.ssbPeriodicity;
+         current_data.nrcelldu.ssbOffset = data->nrcelldu.ssbOffset;
+         current_data.nrcelldu.ssbDuration = data->nrcelldu.ssbDuration;
++        free(current_data.nrcelldu.administrativeState); current_data.nrcelldu.administrativeState = strdup(data->nrcelldu.administrativeState ? data->nrcelldu.administrativeState : "UNLOCKED");
++        free(current_data.nrcelldu.operationalState); current_data.nrcelldu.operationalState = strdup(data->nrcelldu.operationalState ? data->nrcelldu.operationalState : "ENABLED");
++        free(current_data.nrcelldu.cellState); current_data.nrcelldu.cellState = strdup(data->nrcelldu.cellState ? data->nrcelldu.cellState : "ACTIVE");
+     }
+ 
+     if (NODE_HAS_CUCP(nt)) {
+--- a/src/netconf/netconf_data.c	2026-10-01 14:39:07.168769020 +0800
++++ b/src/netconf/netconf_data.c	2026-10-01 14:40:42.572202920 +0800
+@@ -396,6 +396,15 @@
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/bSChannelBwUL", NRCELLDU_XPATH);
+             (*k_run)++;
+ 
++            /* DT patch 0009 (2026-10-01): TS 28.541 nRTAC + administrativeState (running) */
++            ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "%d", oai->nrcelldu.nRTAC);
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/nRTAC", NRCELLDU_XPATH);
++            (*k_run)++;
++
++            STRDUP_OR_FAIL(return 1, values_running[*k_run], oai->nrcelldu.administrativeState ? oai->nrcelldu.administrativeState : "UNLOCKED");
++            ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/administrativeState", NRCELLDU_XPATH);
++            (*k_run)++;
++
+             ASPRINTF_OR_FAIL(return 1, &values_running[*k_run], "2023-06-06T00:00:00Z");   //checkAL
+             ASPRINTF_OR_FAIL(return 1, &xpath_running[*k_run], "%s/attributes/rimRSMonitoringStartTime", NRCELLDU_XPATH);
+             (*k_run)++;
+@@ -665,6 +674,39 @@
+     };
+ }
+ 
++
++/* DT patch 0009 (2026-10-01): NRCellDU operationalState / cellState are config false -> operational datastore. */
++static int netconf_data_set_nrcelldu_oper(const oai_data_t *oai) {
++    int rc = 0;
++    char *xp = 0;
++    if(NRCELLDU_XPATH == 0 || oai == 0) {
++        return 0;
++    }
++    const char *vals[2] = {oai->nrcelldu.operationalState ? oai->nrcelldu.operationalState : "ENABLED",
++                           oai->nrcelldu.cellState ? oai->nrcelldu.cellState : "ACTIVE"};
++    const char *leaf[2] = {"operationalState", "cellState"};
++    for(int i = 0; i < 2; i++) {
++        if(asprintf(&xp, "%s/attributes/%s", NRCELLDU_XPATH, leaf[i]) < 0) {
++            log_error("asprintf failed");
++            return 1;
++        }
++        log("[oper] populating %s with %s.. ", xp, vals[i]);
++        rc = sr_set_item_str(netconf_session_operational, xp, vals[i], 0, 0);
++        free(xp);
++        xp = 0;
++        if(rc != SR_ERR_OK) {
++            log_error("sr_set_item_str (nrcelldu oper) failed");
++            return 1;
++        }
++    }
++    rc = sr_apply_changes(netconf_session_operational, 0);
++    if(rc != SR_ERR_OK) {
++        log_error("sr_apply_changes (nrcelldu oper) failed");
++        return 1;
++    }
++    return 0;
++}
++
+ int netconf_data_update_full(const oai_data_t *oai, node_type_t nt) {
+     int rc = 0;
+ 
+@@ -920,6 +962,11 @@
+         }
+     }
+ 
++    if(NODE_HAS_DU(nt) && netconf_data_set_nrcelldu_oper(oai) != 0) {   /* DT patch 0009 */
++        log_error("netconf_data_set_nrcelldu_oper failed");
++        goto failure;
++    }
++
+     rc = netconf_data_register_callbacks();
+     if(rc != 0) {
+         log_error("netconf_data_register_callbacks");
+@@ -1331,6 +1378,15 @@
+         ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/bSChannelBwUL", NRCELLDU_XPATH);
+         k_running++;
+ 
++        /* DT patch 0009 */
++        ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "%d", oai->nrcelldu.nRTAC);
++        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/nRTAC", NRCELLDU_XPATH);
++        k_running++;
++
++        STRDUP_OR_FAIL(goto failure, values_running[k_running], oai->nrcelldu.administrativeState ? oai->nrcelldu.administrativeState : "UNLOCKED");
++        ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/administrativeState", NRCELLDU_XPATH);
++        k_running++;
++
+         ASPRINTF_OR_FAIL(goto failure, &values_running[k_running], "2023-06-06T00:00:00Z");   //checkAL
+         ASPRINTF_OR_FAIL(goto failure, &xpath_running[k_running], "%s/attributes/rimRSMonitoringStartTime", NRCELLDU_XPATH);
+         k_running++;
+@@ -1408,6 +1464,11 @@
+         goto failure;
+     }
+ 
++    if(netconf_data_set_nrcelldu_oper(oai) != 0) {   /* DT patch 0009 */
++        log_error("netconf_data_set_nrcelldu_oper failed");
++        goto failure;
++    }
++
+     rc = netconf_data_register_callbacks();
+     if(rc != 0) {
+         log_error("netconf_data_register_callbacks");

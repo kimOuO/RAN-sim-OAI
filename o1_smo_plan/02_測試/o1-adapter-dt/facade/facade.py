@@ -56,15 +56,17 @@ async def _post(client: httpx.AsyncClient, url: str) -> dict:
 async def fetch_all() -> dict:
     """一次抓 CU E2NodeId(身分 + cell 靜態)、DU cells(PRB)、FullKPM(動態)。"""
     async with httpx.AsyncClient() as c:
-        node, du_cells, kpm = await asyncio.gather(
+        node, du_cells, kpm, cstate = await asyncio.gather(
             _post(c, f"{CU_URL}/api/v0.1/CU/E2/E2NodeId/read"),
             _post(c, f"{DU_URL}/api/v0.1/DU/MAC/MacCellController/read"),
             _post(c, f"{CU_URL}/api/v0.1/CU/E2/E2FullReporter/read"),
+            _post(c, f"{CU_URL}/api/v0.1/CU/E2/CellState/read"),   # 2026-10-01 H3:節能 / barred 狀態(舊 CU 無此端點 → 例外 → 空)
             return_exceptions=True,
         )
     out = {"node": node if isinstance(node, dict) else None,
            "du_cells": du_cells if isinstance(du_cells, list) else [],
            "kpm": kpm if isinstance(kpm, dict) else None,
+           "cstate": (cstate.get("cells") if isinstance(cstate, dict) else {}) or {},
            # DU 不可達(HTTP 失敗)→ DU 身分的 telnet 埠拒絕服務,讓 adapter 觸發 internalConnectionLoss 告警
            "du_down": isinstance(du_cells, Exception),
            "cu_down": isinstance(node, Exception)}
@@ -82,6 +84,27 @@ async def get_data() -> dict:
             _cache["ts"] = now
         return _cache["data"]
 
+
+
+def _cell_states(d: dict, cell: dict) -> tuple[str, str, str]:
+    """TS 28.541 NRCellDU:administrativeState / operationalState / cellState(2026-10-01 H3)。
+    operationalState:DU 的 cell is_active → ENABLED,否則 DISABLED。
+    administrativeState:DU 關閉且不是節能流程(CCC es-on)→ LOCKED(硬開關 / barred / facade stop_modem);否則 UNLOCKED。
+      節能關閉是 RIC 依 policy 的動作,不是 OAM 的 LOCK,所以保持 UNLOCKED、以 operationalState=DISABLED 呈現。
+    cellState:ENABLED → ACTIVE;關閉 → INACTIVE;沒有 cell → IDLE。"""
+    cid = cell.get("cell_id")
+    du = next((x for x in d.get("du_cells", []) or [] if x.get("cell_id") == cid), None)
+    active = bool(du.get("is_active", True)) if du else bool(cell.get("is_active", True))
+    st = (d.get("cstate") or {}).get(cid, {})
+    es = st.get("es_state", "isNotEnergySaving") in ("toBeEnergySaving", "isEnergySaving")
+    barred = bool(st.get("is_barred", False))
+    if cid in _state["cell_disabled"] or barred or (not active and not es):
+        admin = "LOCKED"
+    else:
+        admin = "UNLOCKED"
+    op = "ENABLED" if active else "DISABLED"
+    cs = "ACTIVE" if active else "INACTIVE"
+    return admin, op, cs
 
 # ───────────────────────── 組 JSON ─────────────────────────
 def _plmn(node: dict | None, cell: dict | None) -> tuple[str, str]:
@@ -205,6 +228,7 @@ def build_du(d: dict) -> dict:
                 rb_sum += int(_num(u.get("rb_width")))
     load = int(round(100.0 * rb_sum / nrb)) if nrb > 0 else 0
     load = max(0, min(100, load))
+    _adm, _op, _cs = _cell_states(d, cell)
     log.info("STAT du cell=%s pci=%s num_ues=%d load=%d sum_dl_kbps=%d sum_ul_kbps=%d",
              cell.get("cell_id"), cell_pci, len(ues), load, sum(t["dl"] for t in thp), sum(t["ul"] for t in thp))
     return {
@@ -232,6 +256,9 @@ def build_du(d: dict) -> dict:
                 "nrcelldu3gpp:ssbPeriodicity": 20,
                 "nrcelldu3gpp:ssbOffset": 0,
                 "nrcelldu3gpp:ssbDuration": 1,
+                "nrcelldu3gpp:administrativeState": _adm,
+                "nrcelldu3gpp:operationalState": _op,
+                "nrcelldu3gpp:cellState": _cs,
             },
             "device": {"gnbId": _gnb_id_int(node),   # adapter 拿它填 GNBDUFunction.gNBId;gNBDUId 由 config gnb-du-id 決定
                        "gnbName": GNB_NAME, "vendor": VENDOR},

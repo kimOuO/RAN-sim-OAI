@@ -23,7 +23,7 @@
         "stndDefinedFields": {
             "schemaReference": "https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FileDataReportingMnS.yaml#components/schemas/NotifyFileReady",
             "data": {
-                "href": "/ManagedElement=@node-id@",
+                "href": "/ManagedElement=@node-id@/PerfMetricJob=ManagedElement=@node-id@",
                 "notificationId": @notification-id@,
                 "notificationType": "notifyFileReady",
                 "eventTime": "@timestampISO3milisec@",
@@ -33,9 +33,9 @@
                     "fileSize": @fileSize@,
                     "fileReadyTime": "@timestampISO3milisec@",
                     "fileExpirationTime": "@fileExpiry@",
-                    "fileCompression": "no",
-                    "fileFormat": "XML",
-                    "fileDataType": "Performance"
+                    "fileFormat": "32.435 V10.0",
+                    "fileDataType": "Performance",
+                    "jobId": "1"
                 }],
                 "additionalText": "MITLAB RANsim-DT PM file (TS 32.435 measCollecFile)"
             },

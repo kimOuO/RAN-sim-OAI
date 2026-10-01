@@ -142,6 +142,10 @@ class E2ControlActor:
 
         ric_req_id = body.get("ric_req_id") or {}
         ran_func_id = body.get("ran_function_id")
+        # RIC 對帳(C14):e2adapter 帶來的 RICrequestID 與閘道標籤;本請求觸發的換手事件會記下它。
+        # daphne 以 sync_to_async 執行同步 view,每個請求各自一份 context,不會串到別的請求。
+        from main.apps.cu_cp.services.common import ric_context
+        ric_context.set_request(body.get("ric_request"))
 
         # ── E2SM-CCC cell 開關:adapter 送 {sim_action:control_cell_onoff, cells:[{cell_id, action}]}──
         # 不走 RC 的 (style, action);逐 cell 套用既有 _handle_cell_on_off(硬開關)。
@@ -213,6 +217,8 @@ class E2ControlActor:
             cid = header.get("cell_id") or (resolve_target_cell(msg)[0] if msg.get("target_cgi") else None)
             if not cid:
                 return error_response("cell_id / target_cgi required for style=2 action=8 (beam control)", status=409)
+            if not CellConfig.objects.filter(cell_id=cid).exists():
+                return error_response(f"cell {cid} is not served by this E2 node", status=409)
             payload = {"cell_id": cid}
             for k in ("electrical_tilt_deg", "active_beam_ids", "max_layers",
                       "trx_active_ratio", "beam_taper", "beam_power_offsets_db"):
@@ -332,6 +338,12 @@ def _handle_qos_flow_mapping(
 # (Style 3, Action 1) Handover Control — 我們擴展
 # ────────────────────────────────────────────────────────────
 
+def _foreign_nci(cell_id: str) -> int | None:
+    from main.apps.cu_cp.services.business import xn
+    f = xn.foreign_cell(cell_id)
+    return f.nci if f is not None else None
+
+
 def _nr_arfcn(freq_ghz: float) -> int:
     """TS 38.104 §5.4.2.1:3–24.25 GHz 的 NR-ARFCN = 600000 + (F − 3000 MHz)/15 kHz;3 GHz 以下 = F/5 kHz。"""
     f_mhz = float(freq_ghz) * 1000.0
@@ -379,10 +391,14 @@ def _handle_handover_group(message: dict[str, Any], ric_req_id: dict[str, int]) 
         m = (MeasurementLog.objects.filter(ue_id=ue.ue_id, recorded_at__gte=win)
              .order_by("-id").first())
         for n in (getattr(m, "neighbor_cells_json", None) or []):
-            from main.apps.cu_cp.models.cell_config import CellConfig as _C
-            c = _C.objects.filter(cell_id=n.get("cell_id")).first()
-            if c is not None and int(c.pci) == int(tgt_pci) and (
-                    tgt_arfcn in (None, "") or _nr_arfcn(c.frequency_ghz) == int(tgt_arfcn)):
+            # 多 gNB:鄰區可能是別的 gNB 的 cell —— 本 gNB 查 CellConfig,鄰 gNB 查 Xn 外部鄰區表
+            # (以前只查本地 CellConfig,跨 gNB 的群組換手永遠匹配 0 個 UE)
+            from main.apps.cu_cp.actors.anr_control_actor import _cell_ident
+            ident = _cell_ident(n.get("cell_id") or "")
+            if ident is None:
+                continue
+            pci, arfcn, _ = ident
+            if int(pci) == int(tgt_pci) and (tgt_arfcn in (None, "") or int(arfcn) == int(tgt_arfcn)):
                 # 2026-09-17:以前 ARFCN 條件解出來卻沒用,帶了不存在的頻率照樣換手
                 matched.add(ue.ue_id)
                 break
@@ -467,6 +483,23 @@ def _handle_handover(
     if result.get("skipped"):
         logger.info("E2 Control [Handover] ue=%s already on target=%s, skip",
                     ue_id, target_cell)
+    if result.get("failed"):
+        # 2026-09-28(RIC 決定):換手沒成(Xn 準備逾時、目標不可用、RA 失敗…)以前仍回 HANDOVER_TRIGGERED,
+        # adapter 送 ACK,RIC 看不出沒換成。改回 409 + outcome → adapter 送 RICcontrolFailure,
+        # outcome(IE 32)帶 {"result": "HANDOVER_FAILED", "failureCause": …}。
+        cause = str(result.get("failure_cause") or "unknown")
+        outcome = {"result": "HANDOVER_FAILED", "failureCause": cause,
+                   "hoType": result.get("ho_type"), "targetCell": target_cell, "sourceCell": source_cell_pre}
+        logger.info("E2 Control [Handover] ue=%s %s → %s FAILED cause=%s ric_req=%s",
+                    ue_id, source_cell_pre, target_cell, cause, ric_req_id)
+        push_control_action(
+            control_style=3, control_action_id=1, action_label="HANDOVER",
+            ric_req_id=ric_req_id, ue_name=ue_id, cell_id=target_cell,
+            payload_json={"source_cell": source_cell_pre, "target_cell": target_cell,
+                          "ho_uuid": result.get("ho_uuid", ""), "failure_cause": cause},
+            outcome="HANDOVER_FAILED", error=cause, action_ts=TimestampService.now().isoformat(),
+        )
+        return error_response(f"handover failed: {cause}", {"control_outcome": outcome}, status=409)
 
     logger.info(
         "E2 Control [Handover] ue=%s (via %s) %s → %s (via %s) ric_req=%s",
@@ -497,11 +530,12 @@ def _handle_handover(
             "target_cell": target_cell,
             "target_resolved_from": cell_src,
             # P2.2: 用 target_cell 對應 CellConfig.nr_cellid (explicit) 編出真正 nr_cell_id;沒有就 hash
+            # 多 gNB:目標是鄰 gNB 的 cell 時本地沒有 CellConfig,NCI 取 Xn 外部鄰區表(否則會退回 hash、回錯值)
             "target_nr_cell_id": compute_nr_cell_id(
                 target_cell,
                 explicit=CellConfig.objects.filter(cell_id=target_cell)
                 .values_list("nr_cellid", flat=True)
-                .first(),
+                .first() or _foreign_nci(target_cell),
             ),
             "ngap_id": ue_pre.amf_ue_ngap_id,
             "f1ap_id": ue_pre.rrc_ue_id,
@@ -541,6 +575,9 @@ def _handle_slice_prb_quota(
             cell_id, _ = resolve_target_cell({"target_cgi": _tc})
             if not cell_id:
                 return error_response("target_cgi unresolved — check NR Cell Identity", status=409)
+    if cell_id and not CellConfig.objects.filter(cell_id=cell_id).exists():
+        # 多 gNB:NCI 解得出鄰 gNB 的 cell(Xn 外部鄰區表),但配額只能下在本 E2 node 自己的 cell
+        return error_response(f"cell {cell_id} is not served by this E2 node", status=409)
     if cell_id:
         targets = [cell_id]
     elif node:
@@ -762,7 +799,100 @@ def _pick_offload_target(es_cell_id: str) -> str | None:
     for cid in CellConfig.objects.exclude(cell_id=es_cell_id).values_list("cell_id", flat=True):
         if _CELL_ES_STATE.get(cid, "isNotEnergySaving") == "isNotEnergySaving":
             return cid
+    # 多 gNB:本 gNB 只有這一個 cell(如每站一 cell 的走廊)時,改趕到 Xn 鄰 gNB 的 cell(走 Xn 換手)。
+    # 先挑本 cell 已有鄰區關係、且 Xn 可用、沒被 blocklist 的;沒有關係再退回任一 Xn 已建立的鄰 cell。
+    from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+    from main.apps.cu_cp.models.xn import XnNeighbourCell
+    from main.apps.cu_cp.services.business import xn
+    cands = [f for f in XnNeighbourCell.objects.filter(is_active=True, is_barred=False).order_by("cell_id")
+             if xn.xn_available(f.gnb_id)]
+    related = {r.target_cgi for r in NrCellRelation.objects.filter(
+        source_cell_id=es_cell_id, xn_x2_established=True, xn_blocklist=False)}
+    for f in cands:
+        if f.cell_id in related:
+            return f.cell_id
+    blocked = set(NrCellRelation.objects.filter(source_cell_id=es_cell_id)
+                  .exclude(xn_x2_established=True, xn_blocklist=False).values_list("target_cgi", flat=True))
+    for f in cands:
+        if f.cell_id not in blocked:
+            return f.cell_id
     return None
+
+
+def _es_offload_round(cell_id: str, ric_req_id: dict):
+    """趕一輪:把 cell 上 CONNECTED 的 UE 換到 offload 目標。回 (target, offloaded, failed, remaining)。"""
+    target = _pick_offload_target(cell_id)
+    offloaded, failed = [], []
+    for ue in list(UeContext.objects.filter(serving_cell=cell_id, rrc_state="CONNECTED")):
+        if not target:
+            failed.append(ue.ue_id)
+            continue
+        try:
+            _r = _handle_handover(ue.ue_id, {"target_cell": target}, ric_req_id, ue_src="es")
+            if getattr(_r, "status_code", 200) >= 400:
+                failed.append(ue.ue_id)
+            else:
+                offloaded.append({"ue": ue.ue_id, "target": target})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ES offload HO failed ue=%s: %s", ue.ue_id, e)
+            failed.append(ue.ue_id)
+    remaining = UeContext.objects.filter(serving_cell=cell_id, rrc_state="CONNECTED").count()
+    return target, offloaded, failed, remaining
+
+
+def _es_finish(cell_id: str, n_offloaded: int) -> str:
+    DuClientBusinessService.post_cell_disable(cell_id)
+    _CELL_ES_STATE[cell_id] = "isEnergySaving"
+    logger.info("ES: cell %s cleared (%d UE offloaded) → isEnergySaving (disabled)", cell_id, n_offloaded)
+    return "isEnergySaving"
+
+
+_ES_RETRY: dict[str, Any] = {}
+
+
+def _es_start_retry(cell_id: str, ric_req_id: dict) -> None:
+    """toBeEnergySaving 還有 UE(換手失敗、或趕人當下有 UE 正在轉入):背景每 ES_RETRY_SEC 再趕一輪,
+    清空就關 cell 轉 isEnergySaving;期間收到 es-off 就停。超過 ES_RETRY_GIVE_UP_SEC 仍清不空則維持
+    toBeEnergySaving(cell 不收新 UE、既有 UE 照常服務),等 xApp 決定。"""
+    import threading
+    from main.utils.env_loader import get_float
+    t = _ES_RETRY.get(cell_id)
+    if t is not None and t.is_alive():
+        return
+    every, give_up = get_float("ES_RETRY_SEC", 1.0), get_float("ES_RETRY_GIVE_UP_SEC", 120.0)
+    from main.apps.cu_cp.services.common import ric_context
+    _ric = ric_context._current.get()   # 背景執行緒沒有請求的 context,手動帶過去(換手事件要記 RIC 對帳鍵)
+
+    def _run() -> None:
+        import time as _t
+        from django.db import close_old_connections
+        ric_context.set_request(_ric)
+        t0, total = _t.time(), 0
+        try:
+            while _t.time() - t0 < give_up:
+                _t.sleep(every)
+                close_old_connections()
+                if _CELL_ES_STATE.get(cell_id) != "toBeEnergySaving":
+                    return          # es-off 或已完成
+                _tg, off, _f, remaining = _es_offload_round(cell_id, ric_req_id)
+                total += len(off)
+                if remaining == 0:
+                    _es_finish(cell_id, total)
+                    push_control_action(
+                        control_style=2, control_action_id=7, action_label="CELL_ES_ENTER",
+                        ric_req_id=ric_req_id, cell_id=cell_id,
+                        payload_json={"energySavingState": "isEnergySaving", "offloadedLater": total},
+                        outcome="isEnergySaving", action_ts=TimestampService.now().isoformat())
+                    return
+            logger.warning("ES: cell %s %.0f s 內清不空 → 維持 toBeEnergySaving", cell_id, give_up)
+        except Exception:  # noqa: BLE001
+            logger.exception("ES retry for %s failed", cell_id)
+        finally:
+            close_old_connections()
+
+    th = threading.Thread(target=_run, name=f"es-retry-{cell_id}", daemon=True)
+    _ES_RETRY[cell_id] = th
+    th.start()
 
 
 def _cell_energy_saving(cell_id: str, action: str, ric_req_id: dict) -> dict:
@@ -779,33 +909,16 @@ def _cell_energy_saving(cell_id: str, action: str, ric_req_id: dict) -> dict:
         logger.info("ES: cell %s → isNotEnergySaving (enabled)", cell_id)
         return {"cell_id": cell_id, "energySavingState": "isNotEnergySaving"}
 
-    # disable → toBeEnergySaving:先趕人,清空才關
+    # disable → toBeEnergySaving:先不收新 UE(admission_blocked)、趕人,清空才關
     _CELL_ES_STATE[cell_id] = "toBeEnergySaving"
-    target = _pick_offload_target(cell_id)
-    ues = list(UeContext.objects.filter(serving_cell=cell_id, rrc_state="CONNECTED"))
-    offloaded, failed = [], []
-    for ue in ues:
-        if not target:
-            failed.append(ue.ue_id)
-            continue
-        try:
-            _handle_handover(ue.ue_id, {"target_cell": target}, ric_req_id, ue_src="es")
-            offloaded.append({"ue": ue.ue_id, "target": target})
-        except Exception as e:  # noqa: BLE001
-            logger.warning("ES offload HO failed ue=%s: %s", ue.ue_id, e)
-            failed.append(ue.ue_id)
-
-    remaining = UeContext.objects.filter(serving_cell=cell_id, rrc_state="CONNECTED").count()
+    target, offloaded, failed, remaining = _es_offload_round(cell_id, ric_req_id)
     if remaining == 0:
-        DuClientBusinessService.post_cell_disable(cell_id)
-        _CELL_ES_STATE[cell_id] = "isEnergySaving"
-        state = "isEnergySaving"
-        logger.info("ES: cell %s cleared (%d UE offloaded) → isEnergySaving (disabled)",
-                    cell_id, len(offloaded))
+        state = _es_finish(cell_id, len(offloaded))
     else:
         state = "toBeEnergySaving"
-        logger.info("ES: cell %s still has %d UE → stay toBeEnergySaving (not disabled yet)",
+        logger.info("ES: cell %s still has %d UE → stay toBeEnergySaving, 背景持續趕人",
                     cell_id, remaining)
+        _es_start_retry(cell_id, ric_req_id)
     push_control_action(
         control_style=2, control_action_id=7, action_label="CELL_ES_ENTER",
         ric_req_id=ric_req_id, cell_id=cell_id,
@@ -815,3 +928,18 @@ def _cell_energy_saving(cell_id: str, action: str, ric_req_id: dict) -> dict:
     )
     return {"cell_id": cell_id, "energySavingState": state,
             "offloaded": offloaded, "failed": failed, "remaining": remaining}
+
+class E2CellStateActor:
+    """O1 用(2026-10-01,規範符合度 H3):讀每個 cell 的節能狀態與 barred,給 o1 facade 映射
+    NRCellDU 的 administrativeState / operationalState / cellState(TS 28.541)。
+    回 {cells: {cell_id: {es_state, is_barred, is_active}}}。es_state 無紀錄 = isNotEnergySaving。"""
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST", "GET"])
+    def read(request: HttpRequest):
+        out = {}
+        for c in CellConfig.objects.all().only("cell_id", "is_barred", "is_active"):
+            out[c.cell_id] = {"es_state": _CELL_ES_STATE.get(c.cell_id, "isNotEnergySaving"),
+                              "is_barred": bool(c.is_barred), "is_active": bool(c.is_active)}
+        return success_response({"cells": out}, "ok")
