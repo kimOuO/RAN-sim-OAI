@@ -222,8 +222,8 @@ def build_du(d: dict) -> dict:
                 rnti = (int(uid) & 0xFFFF) if uid.isdigit() else (int(hashlib.md5(uid.encode()).hexdigest()[:4], 16) or 1)
                 ues.append(rnti)
                 thp.append({"rnti": rnti,
-                            "dl": int(round(_num(u.get("dl_throughput")) * 1000)),   # Mbps → kbit/s
-                            "ul": int(round(_num(u.get("ul_throughput")) * 1000)),
+                            "dl": round(_num(u.get("dl_throughput")) * 1000.0, 1),   # Mbps → kbit/s,實數(H6,TS 28.552 DRB.UEThp* 為 real)
+                            "ul": round(_num(u.get("ul_throughput")) * 1000.0, 1),
                             "unres_dl": 0, "unres_ul": 0})
                 rb_sum += int(_num(u.get("rb_width")))
     load = int(round(100.0 * rb_sum / nrb)) if nrb > 0 else 0

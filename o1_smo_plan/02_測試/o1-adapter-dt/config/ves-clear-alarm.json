@@ -30,7 +30,7 @@
                 "systemDN": "ManagedElement=@node-id@",
                 "alarmId": "@object-instance@-@alarm@",
                 "alarmType": "@alarm-type@",
-                "probableCause": "@alarm@",
+                "probableCause": "@probable-cause@",
                 "perceivedSeverity": "CLEARED",
                 "clearUserId": "@vendor@",
                 "clearSystemId": "@vendor@"

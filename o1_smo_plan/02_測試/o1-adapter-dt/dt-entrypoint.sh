@@ -49,6 +49,9 @@ JSON
   else DN_SCN=""; RUN_LABEL="permanent"; SCN_ID="permanent"; RUN_ID="permanent"; fi
   sed -i "s|@dn-scn@|${DN_SCN}|g; s|@run-label@|${RUN_LABEL}|g" /adapter/config/pmData-measData.xml
   sed -i "s|@scn-id@|${SCN_ID}|g; s|@run-id@|${RUN_ID}|g" /adapter/config/ves-new-alarm.json
+  # 規範符合度 H5(2026-10-01):pnfRegistration 的版本 / 日期 / 序號改 DT 真值(上游範本為寫死假值)。
+  # softwareVersion 與 PM 的 swVersion、config 的 software-version 一致;lastServiceDate = 本次啟動日;manufactureDate = DT O1 adapter 首次上線日。
+  sed -i "s|\"softwareVersion\": \"2.3.5\"|\"softwareVersion\": \"dt-0.1\"|; s|\"lastServiceDate\": \"2021-03-26\"|\"lastServiceDate\": \"$(date -u +%Y-%m-%d)\"|; s|\"manufactureDate\": \"2021-01-16\"|\"manufactureDate\": \"2026-09-29\"|; s|\"serialNumber\": \"@vendor@-@unitType@-@oamIp@-@model@\"|\"serialNumber\": \"@vendor@-@unitType@-${O1_NODE_ID}\"|" /adapter/config/ves-pnf-registration.json
   echo "[dt-entrypoint] config.json generated for ${O1_NODE_ID} (${O1_UNIT_TYPE}) netconf:${O1_NETCONF_PORT} sftp:${O1_SFTP_PORT} telnet:${O1_TELNET_HOST}:${O1_TELNET_PORT}"
 fi
 exec /adapter/adapter_entrypoint.sh "$@"

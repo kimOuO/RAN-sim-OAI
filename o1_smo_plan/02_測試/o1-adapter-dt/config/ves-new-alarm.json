@@ -30,7 +30,7 @@
                 "systemDN": "ManagedElement=@node-id@",
                 "alarmId": "@object-instance@-@alarm@",
                 "alarmType": "@alarm-type@",
-                "probableCause": "@alarm@",
+                "probableCause": "@probable-cause@",
                 "specificProblem": "@alarm@",
                 "perceivedSeverity": "@severity@",
                 "additionalInformation": {"scenarioId": "@scn-id@", "runId": "@run-id@"},

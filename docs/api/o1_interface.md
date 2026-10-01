@@ -27,6 +27,7 @@
 | `role` | `CU-CP` / `DU` | 節點角色 |
 | `lifecycle` | `ephemeral` | 可由 SMO 自動清理。**常駐節點(e00)不帶這四個欄位**,SMO 永不自動清理 |
 
+- pnfRegistration 其他欄位(2026-10-01 H5 起):`softwareVersion=dt-0.1`(與 PM swVersion 一致)、`lastServiceDate`=啟動日、`manufactureDate=2026-09-29`、`serialNumber=<vendor>-<unitType>-<me>`;此前為上游範本寫死值。
 - `heartbeat` 每 30 s,`heartbeatInterval=30`。
 - adapter 重建/重啟 → 送新 pnfRegistration,SDNC 自動重連;**running datastore 重建,SMO 經 CM 改的值回到預設**。
 
@@ -59,6 +60,8 @@ GET http://10.3.0.204:30267/rests/data/network-topology:network-topology/topolog
 其餘屬性寫入會被 adapter 忽略。
 
 ## 4. PM
+- **檔名(2026-10-01 H2 起)**:`A<YYYYMMDD>.<HHMM>+0000-<HHMM>+0000_-1_<me>.xml`(TS 32.432 5.1.2:`_-<jobId>` + `_<UniqueId>`,jobId=1);此前為 `…_1_<me>.xml`。
+- **`DRB.UEThpDl` / `DRB.UEThpUl`(2026-10-01 H6 起)**:實數、一位小數(kbit/s),對齊 28.552;此前為整數。
 - 檔案:TS 32.435 `measCollecFile` XML,900 s 一份,對齊 :00/:15/:30/:45;檔名 `A<yyyymmdd>.<hhmm>+0000-<hhmm>+0000_1_<me>.xml`;放在 ME 的 SFTP `/ftp/`(剛好一層目錄),保留 24 h。
 - 通知:VES `stndDefined`,`stndDefinedNamespace=3GPP-PerformanceAssurance`,`schemaReference=https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FileDataReportingMnS.yaml#components/schemas/NotifyFileReady`;`fileInfoList[0].fileLocation=sftp://netconf:<pw>@10.3.0.217:<sftp port>/ftp/<檔名>`。SMO 的 dfc 從這個 URL 取得帳密並來拉檔(認證方式選項 a,2026-09-30 mitlab 決定;通知通道加密列為後續工作)。
 - **劇本分類(2026-10-01 起,下個 run 生效)**:`fileSender localDn` 與 `managedElement localDn` = `SubNetwork=<scenarioId>,ManagedElement=<me>`(`dnPrefix` 仍為 `SubNetwork=DT`;TS 32.435 DN = dnPrefix + localDn,SubNetwork 可巢狀);`managedElement userLabel` = `runId=<runId>`;常駐節點不加 SubNetwork 層、userLabel = `permanent`。
@@ -86,6 +89,8 @@ GET http://10.3.0.204:30267/rests/data/network-topology:network-topology/topolog
 |---|---|---|---|---|
 | `internalConnectionLoss` | `ManagedElement=<me>-internalConnectionLoss` | adapter 與 DT 假面 telnet 斷線 3 s(DU / CU 的 HTTP 不可達時假面會主動關閉對應身分的 telnet) | MAJOR | 恢復連線,或 run 收工時由編排服務清 |
 | `loadDownlinkExceededWarning` | `ManagedElement=<me>,GNBDUFunction=<N>,NRCellDU=0-loadDownlinkExceededWarning` | DL 負載 > 50 % 持續 15 s | WARNING | 低於門檻,或 run 收工時由編排服務清 |
+
+`alarmType`:internalConnectionLoss = COMMUNICATIONS_ALARM、loadDownlinkExceededWarning = QUALITY_OF_SERVICE_ALARM(2026-10-01 H4 前為 EQUIPMENT_ALARM)。`probableCause`(2026-10-01 H4 起,28.111 Annex B):COMMUNICATIONS_SUBSYSTEM_FAILURE / THRESHOLD_CROSSED;`specificProblem` 仍為告警名稱。`notifyNewAlarm.additionalInformation` = {scenarioId, runId}。
 
 同一告警的 raise 與 clear 不可同毫秒。DT 的 RLF / 換手失敗 / PCI 混淆尚未映射為告警。
 

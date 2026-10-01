@@ -1,0 +1,240 @@
+--- a/src/pm_data/pm_data.c	2026-10-01 15:49:31.341888102 +0800
++++ b/src/pm_data/pm_data.c	2026-10-01 15:49:31.361887561 +0800
+@@ -48,10 +48,10 @@
+     int meanActiveUe;
+     int maxActiveUe;
+     int loadAvg;
+-    long int ue_thp_dl;
+-    long int ue_thp_ul;
+-    long int ue_thp_unres_dl;
+-    long int ue_thp_unres_ul;
++    double ue_thp_dl;   /* DT patch 0010: real kbit/s */
++    double ue_thp_ul;
++    double ue_thp_unres_dl;
++    double ue_thp_unres_ul;
+     long int pdcp_sdu_volume_ul;
+     long int pdcp_sdu_volume_dl;
+     long int pdcp_pdu_volume_ul;
+@@ -151,10 +151,10 @@
+         long int meanActiveUeAccum = 0;
+         int maxActiveUe = 0;
+         int loadAvgAccum = 0;
+-        long int ue_thp_dl_accum = 0;
+-        long int ue_thp_ul_accum = 0;
+-        long int ue_thp_unres_dl_accum = 0;
+-        long int ue_thp_unres_ul_accum = 0;
++        double ue_thp_dl_accum = 0;
++        double ue_thp_ul_accum = 0;
++        double ue_thp_unres_dl_accum = 0;
++        double ue_thp_unres_ul_accum = 0;
+ 
+         for(int i = 0; i < pm_data_accumulator_len; i++) {
+             meanActiveUeAccum += pm_data_accumulator[i].numUes;
+@@ -170,10 +170,10 @@
+         }
+         int meanActiveUe = meanActiveUeAccum / pm_data_accumulator_len;
+         int loadAvg = loadAvgAccum / pm_data_accumulator_len;
+-        long int ue_thp_dl = ue_thp_dl_accum / pm_data_accumulator_len;
+-        long int ue_thp_ul = ue_thp_ul_accum / pm_data_accumulator_len;
+-        long int ue_thp_unres_dl = ue_thp_unres_dl_accum / pm_data_accumulator_len;
+-        long int ue_thp_unres_ul = ue_thp_unres_ul_accum / pm_data_accumulator_len;
++        double ue_thp_dl = ue_thp_dl_accum / pm_data_accumulator_len;
++        double ue_thp_ul = ue_thp_ul_accum / pm_data_accumulator_len;
++        double ue_thp_unres_dl = ue_thp_unres_dl_accum / pm_data_accumulator_len;
++        double ue_thp_unres_ul = ue_thp_unres_ul_accum / pm_data_accumulator_len;
+         char *cell_local_id = pm_data_accumulator[0].cell_local_id;
+ 
+         struct tm *ptm = gmtime(&pm_data_start_time);
+@@ -194,7 +194,7 @@
+         struct tm now_ptm;
+         memcpy(&now_ptm, ptm, sizeof(struct tm));
+ 
+-        asprintf(&filename, "A%04d%02d%02d.%02d%02d+0000-%02d%02d+0000_1_%s.xml", start_ptm.tm_year + 1900, start_ptm.tm_mon + 1,
++        asprintf(&filename, "A%04d%02d%02d.%02d%02d+0000-%02d%02d+0000_-1_%s.xml", start_ptm.tm_year + 1900, start_ptm.tm_mon + 1,
+                     start_ptm.tm_mday, start_ptm.tm_hour, start_ptm.tm_min, now_ptm.tm_hour, now_ptm.tm_min, pm_data_config->info.node_id);
+         if(filename == 0) {
+             log_error("asprintf error");
+@@ -369,17 +369,17 @@
+     char mean_active_ue_str[32];
+     char max_active_ue_str[32];
+     char load_avg_str[8];
+-    char ue_thp_dl_str[10];
+-    char ue_thp_ul_str[10];
+-    char ue_thp_unres_dl_str[10];
+-    char ue_thp_unres_ul_str[10];
++    char ue_thp_dl_str[32];
++    char ue_thp_ul_str[32];
++    char ue_thp_unres_dl_str[32];
++    char ue_thp_unres_ul_str[32];
+     char pdcp_sdu_volume_ul[32];
+     char pdcp_sdu_volume_dl[32];
+     char pdcp_pdu_volume_ul[32];
+     char pdcp_pdu_volume_dl[32];
+     char packetDropRateDl[32];
+ 
+-    char performance_metric_values[MAXMETRICS][sizeof(long)];
++    char performance_metric_values[MAXMETRICS][32];   /* DT patch 0010: room for real values */
+     for (int i = 0; i < MAXMETRICS; i++){
+         strcpy(performance_metric_values[i], "-1");
+     }
+@@ -388,10 +388,10 @@
+     sprintf(mean_active_ue_str, "%d", data->meanActiveUe);
+     sprintf(max_active_ue_str, "%d", data->maxActiveUe);
+     sprintf(load_avg_str, "%d", data->loadAvg);
+-    sprintf(ue_thp_dl_str, "%ld", data->ue_thp_dl);
+-    sprintf(ue_thp_ul_str, "%ld", data->ue_thp_ul);
+-    sprintf(ue_thp_unres_dl_str, "%ld", data->ue_thp_unres_dl);
+-    sprintf(ue_thp_unres_ul_str, "%ld", data->ue_thp_unres_ul);
++    sprintf(ue_thp_dl_str, "%.1f", data->ue_thp_dl);
++    sprintf(ue_thp_ul_str, "%.1f", data->ue_thp_ul);
++    sprintf(ue_thp_unres_dl_str, "%.1f", data->ue_thp_unres_dl);
++    sprintf(ue_thp_unres_ul_str, "%.1f", data->ue_thp_unres_ul);
+     sprintf(pdcp_sdu_volume_ul, "%ld", data->pdcp_sdu_volume_ul);
+     sprintf(pdcp_sdu_volume_dl, "%ld", data->pdcp_sdu_volume_dl);
+     sprintf(pdcp_pdu_volume_ul, "%ld", data->pdcp_pdu_volume_ul);
+--- a/src/pm_data/pm_data.h	2026-10-01 15:49:31.342888075 +0800
++++ b/src/pm_data/pm_data.h	2026-10-01 15:49:31.361887561 +0800
+@@ -13,10 +13,10 @@
+     char *cell_local_id;
+     int numUes;
+     int load;
+-    long int ue_thp_dl_sum;
+-    long int ue_thp_ul_sum;
+-    long int ue_thp_unres_dl_sum;
+-    long int ue_thp_unres_ul_sum;
++    double ue_thp_dl_sum;   /* DT patch 0010: real kbit/s */
++    double ue_thp_ul_sum;
++    double ue_thp_unres_dl_sum;
++    double ue_thp_unres_ul_sum;
+     long int pdcp_sdu_volume_ul;
+     long int pdcp_sdu_volume_dl;
+     long int pdcp_pdu_volume_ul;
+--- a/src/oai/oai_data.h	2026-10-01 15:49:31.343888048 +0800
++++ b/src/oai/oai_data.h	2026-10-01 15:49:31.360887588 +0800
+@@ -21,8 +21,8 @@
+ 
+ typedef struct oai_ues_thp {
+     int rnti;
+-    int dl;
+-    int ul;
++    double dl;   /* DT patch 0010: kbit/s real (TS 28.552 DRB.UEThp* is real) */
++    double ul;
+ } oai_ues_thp_t;
+ 
+ typedef struct oai_additional_data {
+--- a/src/oai/oai_data.c	2026-10-01 15:49:31.344888021 +0800
++++ b/src/oai/oai_data.c	2026-10-01 15:49:31.360887588 +0800
+@@ -540,28 +540,28 @@
+                 log_error("failed type: dl");
+                 return false;
+             }
+-            data->additional_data.ues_thp[i].dl = objectItem->valueint;
++            data->additional_data.ues_thp[i].dl = objectItem->valuedouble;
+ 
+             objectItem = cJSON_GetObjectItem(thpUe, "ul");
+             if(!cJSON_IsNumber(objectItem)) {
+                 log_error("failed type: ul");
+                 return false;
+             }
+-            data->additional_data.ues_thp[i].ul = objectItem->valueint;
++            data->additional_data.ues_thp[i].ul = objectItem->valuedouble;
+ 
+             objectItem = cJSON_GetObjectItem(thpUe, "unres_ul");
+             if(!cJSON_IsNumber(objectItem)) {
+                 log_error("failed type: ul");
+                 return false;
+             }
+-            data->additional_data.ues_thp_unres[i].ul = objectItem->valueint;
++            data->additional_data.ues_thp_unres[i].ul = objectItem->valuedouble;
+ 
+             objectItem = cJSON_GetObjectItem(thpUe, "unres_dl");
+             if(!cJSON_IsNumber(objectItem)) {
+                 log_error("failed type: dl");
+                 return false;
+             }
+-            data->additional_data.ues_thp_unres[i].dl = objectItem->valueint;
++            data->additional_data.ues_thp_unres[i].dl = objectItem->valuedouble;
+         }
+ 
+         object = cJSON_GetObjectItem(additional, "RlcPacketDropRateDl");
+@@ -726,8 +726,8 @@
+     log("ADDITIONAL.UEs-THP[%d]: \n", data->additional_data.numUes);
+     for(int i = 0; i < data->additional_data.numUes; i++) {
+         log(" - rnti[%d]: %d\n", i, data->additional_data.ues_thp[i].rnti);
+-        log(" - dl[%d]: %d\n", i, data->additional_data.ues_thp[i].dl);
+-        log(" - ul[%d]: %d\n", i, data->additional_data.ues_thp[i].ul);
++        log(" - dl[%d]: %.1f\n", i, data->additional_data.ues_thp[i].dl);
++        log(" - ul[%d]: %.1f\n", i, data->additional_data.ues_thp[i].ul);
+         log(" - unres_dl[%d]: %d\n", i, data->additional_data.ues_thp_unres[i].dl);
+         log(" - unres_ul[%d]: %d\n", i, data->additional_data.ues_thp_unres[i].ul);
+     }
+--- a/src/oai/oai.c	2026-10-01 15:49:31.345887993 +0800
++++ b/src/oai/oai.c	2026-10-01 15:49:31.361887561 +0800
+@@ -274,10 +274,10 @@
+         long int pdcppduvolumeul = data->additional_data.PdcpPduVolumeUl;
+         long int pdcppduvolumedl = data->additional_data.PdcpPduVolumeDl;
+         char *cell_local_id = data->nrcelldu.cell_local_id;
+-        long int ue_thp_dl = 0;
+-        long int ue_thp_ul = 0;
+-        long int ue_thp_unres_dl = 0;
+-        long int ue_thp_unres_ul = 0;
++        double ue_thp_dl = 0;   /* DT patch 0010 */
++        double ue_thp_ul = 0;
++        double ue_thp_unres_dl = 0;
++        double ue_thp_unres_ul = 0;
+         for(int i = 0; i < data->additional_data.numUes; i++) {
+             ue_thp_dl += data->additional_data.ues_thp[i].dl;
+             ue_thp_ul += data->additional_data.ues_thp[i].ul;
+--- a/src/alarms/alarms.c	2026-10-01 15:49:31.346887967 +0800
++++ b/src/alarms/alarms.c	2026-10-01 15:49:31.361887561 +0800
+@@ -27,7 +27,7 @@
+ static alarm_t alarm_load_downlink_exceeded_warning = {
+     .alarm = "loadDownlinkExceededWarning",
+     .severity = ALARM_SEVERITY_WARNING,
+-    .type = ALARM_TYPE_EQUIPMENT_ALARM,
++    .type = ALARM_TYPE_QUALITY_OF_SERVICE_ALARM,   /* DT patch 0010: load is a QoS condition, not equipment */
+     .object_instance = 0,
+     .state = ALARM_STATE_CLEARED,
+     .timeout = 0,
+--- a/src/ves/ves.c	2026-10-01 15:49:31.347887939 +0800
++++ b/src/ves/ves.c	2026-10-01 15:49:31.361887561 +0800
+@@ -14,6 +14,13 @@
+ #include <stdio.h>
+ #include <string.h>
+ 
++/* DT patch 0010 (2026-10-01): TS 28.111 Annex B probable cause per alarm (X.733 names). */
++static const char *ves_probable_cause(const char *alarm) {
++    if(alarm && strcmp(alarm, "internalConnectionLoss") == 0) return "COMMUNICATIONS_SUBSYSTEM_FAILURE";
++    if(alarm && strcmp(alarm, "loadDownlinkExceededWarning") == 0) return "THRESHOLD_CROSSED";
++    return alarm ? alarm : "INDETERMINATE";
++}
++
+ static char *ves_template_new_alarm = 0;
+ static char *ves_template_clear_alarm = 0;
+ static char *ves_template_pnf_registration = 0;
+@@ -416,6 +423,12 @@
+         goto failed;
+     }
+ 
++    content = str_replace_inplace(content, "@probable-cause@", ves_probable_cause(data->alarm));   /* DT patch 0010 */
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failed;
++    }
++
+     content = str_replace_inplace(content, "@severity@", data->severity);
+     if(content == 0) {
+         log_error("str_replace_inplace() failed");
+@@ -486,6 +499,12 @@
+     if(content == 0) {
+         log_error("str_replace_inplace() failed");
+         goto failed;
++    }
++
++    content = str_replace_inplace(content, "@probable-cause@", ves_probable_cause(data->alarm));   /* DT patch 0010 */
++    if(content == 0) {
++        log_error("str_replace_inplace() failed");
++        goto failed;
+     }
+ 
+     content = str_replace_inplace(content, "@severity@", data->severity);
