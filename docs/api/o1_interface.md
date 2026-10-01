@@ -61,7 +61,7 @@ GET http://10.3.0.204:30267/rests/data/network-topology:network-topology/topolog
 
 ## 4. PM
 - **檔名(2026-10-01 H2 起)**:`A<YYYYMMDD>.<HHMM>+0000-<HHMM>+0000_-1_<me>.xml`(TS 32.432 5.1.2:`_-<jobId>` + `_<UniqueId>`,jobId=1);此前為 `…_1_<me>.xml`。
-- **`DRB.UEThpDl` / `DRB.UEThpUl`(2026-10-01 H6 起)**:實數、一位小數(kbit/s),對齊 28.552;此前為整數。
+- **`DRB.UEThpDl` / `DRB.UEThpUl`**:內部以實數計算、輸出四捨五入整數 kbit/s(2026-10-01 H6:SMO 決定 (b),因 InfluxDB 同 shard 已為 integer,送小數會整筆被拒;整數為合法 real 值;N5 pmlog 改 float 後再協調改送小數)。
 - 檔案:TS 32.435 `measCollecFile` XML,900 s 一份,對齊 :00/:15/:30/:45;檔名 `A<yyyymmdd>.<hhmm>+0000-<hhmm>+0000_1_<me>.xml`;放在 ME 的 SFTP `/ftp/`(剛好一層目錄),保留 24 h。
 - 通知:VES `stndDefined`,`stndDefinedNamespace=3GPP-PerformanceAssurance`,`schemaReference=https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FileDataReportingMnS.yaml#components/schemas/NotifyFileReady`;`fileInfoList[0].fileLocation=sftp://netconf:<pw>@10.3.0.217:<sftp port>/ftp/<檔名>`。SMO 的 dfc 從這個 URL 取得帳密並來拉檔(認證方式選項 a,2026-09-30 mitlab 決定;通知通道加密列為後續工作)。
 - **劇本分類(2026-10-01 起,下個 run 生效)**:`fileSender localDn` 與 `managedElement localDn` = `SubNetwork=<scenarioId>,ManagedElement=<me>`(`dnPrefix` 仍為 `SubNetwork=DT`;TS 32.435 DN = dnPrefix + localDn,SubNetwork 可巢狀);`managedElement userLabel` = `runId=<runId>`;常駐節點不加 SubNetwork 層、userLabel = `permanent`。

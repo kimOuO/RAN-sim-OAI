@@ -1,0 +1,11 @@
+--- a/src/pm_data/pm_data.c
++++ b/src/pm_data/pm_data.c
+@@ (DT patch 0010b, 2026-10-01: SMO 決定 (b) — InfluxDB 同 shard 內 DRB.UEThp* 已是 integer,送小數整筆點被拒;輸出改四捨五入整數)
+-    sprintf(ue_thp_dl_str, "%.1f", data->ue_thp_dl);
+-    sprintf(ue_thp_ul_str, "%.1f", data->ue_thp_ul);
+-    sprintf(ue_thp_unres_dl_str, "%.1f", data->ue_thp_unres_dl);
+-    sprintf(ue_thp_unres_ul_str, "%.1f", data->ue_thp_unres_ul);
++    sprintf(ue_thp_dl_str, "%.0f", data->ue_thp_dl);
++    sprintf(ue_thp_ul_str, "%.0f", data->ue_thp_ul);
++    sprintf(ue_thp_unres_dl_str, "%.0f", data->ue_thp_unres_dl);
++    sprintf(ue_thp_unres_ul_str, "%.0f", data->ue_thp_unres_ul);
