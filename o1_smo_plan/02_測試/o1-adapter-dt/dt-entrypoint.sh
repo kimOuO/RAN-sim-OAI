@@ -43,6 +43,12 @@ JSON
   if [ -n "${O1_LIFECYCLE}" ] && ! grep -q '"lifecycle"' /adapter/config/ves-pnf-registration.json; then
     sed -i "s|\"keepaliveDelay\": \"120\"|\"keepaliveDelay\": \"120\",\n                \"scenarioId\": \"${O1_SCENARIO_ID:-unknown}\",\n                \"runId\": \"${O1_RUN_ID:-unknown}\",\n                \"role\": \"${O1_UNIT_TYPE}\",\n                \"lifecycle\": \"${O1_LIFECYCLE}\"|" /adapter/config/ves-pnf-registration.json
   fi
+  # 劇本分類(2026-10-01,mitlab 決定「治本」):PM 的 DN 帶劇本、userLabel 帶 run;告警 additionalInformation 帶兩者。
+  # 常駐節點(無 O1_LIFECYCLE)不加 SubNetwork 層、標 permanent。SMO 入庫 _measurement = fileSender.localDn,measObjLdn。
+  if [ -n "${O1_LIFECYCLE}" ]; then DN_SCN="SubNetwork=${O1_SCENARIO_ID:-unknown},"; RUN_LABEL="runId=${O1_RUN_ID:-unknown}"; SCN_ID="${O1_SCENARIO_ID:-unknown}"; RUN_ID="${O1_RUN_ID:-unknown}";
+  else DN_SCN=""; RUN_LABEL="permanent"; SCN_ID="permanent"; RUN_ID="permanent"; fi
+  sed -i "s|@dn-scn@|${DN_SCN}|g; s|@run-label@|${RUN_LABEL}|g" /adapter/config/pmData-measData.xml
+  sed -i "s|@scn-id@|${SCN_ID}|g; s|@run-id@|${RUN_ID}|g" /adapter/config/ves-new-alarm.json
   echo "[dt-entrypoint] config.json generated for ${O1_NODE_ID} (${O1_UNIT_TYPE}) netconf:${O1_NETCONF_PORT} sftp:${O1_SFTP_PORT} telnet:${O1_TELNET_HOST}:${O1_TELNET_PORT}"
 fi
 exec /adapter/adapter_entrypoint.sh "$@"

@@ -33,6 +33,7 @@
                 "probableCause": "@alarm@",
                 "specificProblem": "@alarm@",
                 "perceivedSeverity": "@severity@",
+                "additionalInformation": {"scenarioId": "@scn-id@", "runId": "@run-id@"},
                 "additionalText": "MITLAB RANsim-DT O1 adapter",
                 "rootCauseIndicator": false
             },

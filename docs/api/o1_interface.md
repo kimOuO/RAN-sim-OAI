@@ -61,7 +61,8 @@ GET http://10.3.0.204:30267/rests/data/network-topology:network-topology/topolog
 ## 4. PM
 - 檔案:TS 32.435 `measCollecFile` XML,900 s 一份,對齊 :00/:15/:30/:45;檔名 `A<yyyymmdd>.<hhmm>+0000-<hhmm>+0000_1_<me>.xml`;放在 ME 的 SFTP `/ftp/`(剛好一層目錄),保留 24 h。
 - 通知:VES `stndDefined`,`stndDefinedNamespace=3GPP-PerformanceAssurance`,`schemaReference=https://forge.3gpp.org/rep/sa5/MnS/blob/Rel-18/OpenAPI/TS28532_FileDataReportingMnS.yaml#components/schemas/NotifyFileReady`;`fileInfoList[0].fileLocation=sftp://netconf:<pw>@10.3.0.217:<sftp port>/ftp/<檔名>`。SMO 的 dfc 從這個 URL 取得帳密並來拉檔(認證方式選項 a,2026-09-30 mitlab 決定;通知通道加密列為後續工作)。
-- `measObjLdn` = `ManagedElement=<me>,GNBDUFunction=<N>,NRCellDU=0`。注意:SMO 入庫時 `_measurement` = `<fileSender localDn>,<measObjLdn>`,所以 DT 的 gNB 在 InfluxDB 的名稱開頭會重複一段 `ManagedElement=<me>`。已上線入庫,SMO 不要求更改;要改需一併考慮歷史資料的名稱。
+- **劇本分類(2026-10-01 起,下個 run 生效)**:`fileSender localDn` 與 `managedElement localDn` = `SubNetwork=<scenarioId>,ManagedElement=<me>`(`dnPrefix` 仍為 `SubNetwork=DT`;TS 32.435 DN = dnPrefix + localDn,SubNetwork 可巢狀);`managedElement userLabel` = `runId=<runId>`;常駐節點不加 SubNetwork 層、userLabel = `permanent`。
+- `measObjLdn` = `GNBDUFunction=<N>,NRCellDU=0`(相對 ME,照 32.435 範例)。SMO 入庫 `_measurement` = `<fileSender localDn>,<measObjLdn>` → `SubNetwork=<scenarioId>,ManagedElement=<me>,GNBDUFunction=<N>,NRCellDU=0`;按劇本查用此前綴,按 run 查用 run 對照表。2026-10-01 以前的資料名稱為 `ManagedElement=<me>,ManagedElement=<me>,GNBDUFunction=<N>,NRCellDU=0`(ME 重複一次)。
 - 量測(DU ME,預設 7 個):
 
 | 名稱 | 意義 | 計算 |

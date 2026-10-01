@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<measCollecFile xmlns="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec">
+  <fileHeader fileFormatVersion="32.435 V10.0" vendorName="MITLAB RANsim-DT" dnPrefix="SubNetwork=DT">
+    <fileSender localDn="SubNetwork=corridor24_16_24,ManagedElement=gnb_208_095_000e32_du2" elementType="gNB"/>
+    <measCollec beginTime="2026-10-01T05:12:00+00:00"/>
+  </fileHeader>
+  <measData>
+    <managedElement localDn="SubNetwork=corridor24_16_24,ManagedElement=gnb_208_095_000e32_du2" userLabel="runId=00bba8b4-20261001T051106Z" swVersion="dt-0.1"/>
+    <measInfo measInfoId="PM=1,PmGroup=NRCellDU">
+      <job jobId="1"/>
+      <granPeriod duration="PT60S" endTime="2026-10-01T05:13:00+00:00"/>
+      <repPeriod duration="PT60S"/>
+			<measType p="1">DRB.MeanActiveUeDl</measType>
+			<measType p="2">DRB.MeanActiveUeUl</measType>
+			<measType p="3">DRB.MaxActiveUeDl</measType>
+			<measType p="4">DRB.MaxActiveUeUl</measType>
+			<measType p="5">DRB.UEThpDl</measType>
+			<measType p="6">DRB.UEThpUl</measType>
+			<measType p="7">RRU.PrbTotDl</measType>
+      <measValue measObjLdn="GNBDUFunction=2,NRCellDU=0">
+				<r p="1">0</r>
+				<r p="2">0</r>
+				<r p="3">1</r>
+				<r p="4">1</r>
+				<r p="5">116</r>
+				<r p="6">22</r>
+				<r p="7">3</r>
+        
+      </measValue>
+    </measInfo>
+  </measData>
+  <fileFooter>
+    <measCollec endTime="2026-10-01T05:13:00+00:00"/>
+  </fileFooter>
+</measCollecFile>
