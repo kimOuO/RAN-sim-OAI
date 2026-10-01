@@ -60,6 +60,7 @@ GET http://10.3.0.204:30267/rests/data/network-topology:network-topology/topolog
 其餘屬性寫入會被 adapter 忽略。
 
 ## 4. PM
+- **CU-CP ME 的 PM(2026-10-01 G9 起)**:每個 CU-CP ME 每週期一個檔,`measInfoId="PM=1,PmGroup=NRCellCU"`,每 cell 一個 `measObjLdn="GNBCUCPFunction=0,NRCellCU=<cellLocalId>"`;計數器(每週期增量,TS 28.552):`RRC.ReEstabAtt`、`RRC.ReEstabSuccWithUeContext`、`RRC.ReEstabSuccWithoutUeContext`、`DRB.RelActNbr.5QI9`;來源 CU 的 RlfEvent / DRB 釋放(自 run 起累計,adapter 取與前一週期末的差)。SMO 入庫名稱 `SubNetwork=<scn>,ManagedElement=<cu me>,GNBCUCPFunction=0,NRCellCU=<lc>`。
 - **檔名(2026-10-01 H2 起)**:`A<YYYYMMDD>.<HHMM>+0000-<HHMM>+0000_-1_<me>.xml`(TS 32.432 5.1.2:`_-<jobId>` + `_<UniqueId>`,jobId=1);此前為 `…_1_<me>.xml`。
 - **`DRB.UEThpDl` / `DRB.UEThpUl`**:內部以實數計算、輸出四捨五入整數 kbit/s(2026-10-01 H6:SMO 決定 (b),因 InfluxDB 同 shard 已為 integer,送小數會整筆被拒;整數為合法 real 值;N5 pmlog 改 float 後再協調改送小數)。
 - 檔案:TS 32.435 `measCollecFile` XML,900 s 一份,對齊 :00/:15/:30/:45;檔名 `A<yyyymmdd>.<hhmm>+0000-<hhmm>+0000_1_<me>.xml`;放在 ME 的 SFTP `/ftp/`(剛好一層目錄),保留 24 h。

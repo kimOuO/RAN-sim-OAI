@@ -8,7 +8,7 @@
   </fileHeader>
   <measData>
     <managedElement localDn="@dn-scn@ManagedElement=@node-id@" userLabel="@run-label@" swVersion="dt-0.1"/>
-    <measInfo measInfoId="PM=1,PmGroup=NRCellDU">
+    <measInfo measInfoId="PM=1,PmGroup=@pm-group@">
       <job jobId="1"/>
       <granPeriod duration="PT@log-period@S" endTime="@end-time@"/>
       <repPeriod duration="PT@log-period@S"/>

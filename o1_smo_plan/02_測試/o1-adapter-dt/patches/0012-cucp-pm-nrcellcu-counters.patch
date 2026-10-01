@@ -1,0 +1,218 @@
+--- a/src/oai/oai_data.h	2026-10-01 17:21:41.657110784 +0800
++++ b/src/oai/oai_data.h	2026-10-01 17:21:41.674110319 +0800
+@@ -114,6 +114,11 @@
+     char *mnc;
+     uint32_t sst;
+     uint32_t sd;
++    /* DT patch 0012 (G9, 2026-10-01): cumulative counters from the facade (TS 28.552 NRCellCU) */
++    long cc_reestab_att;
++    long cc_reestab_with;
++    long cc_reestab_without;
++    long cc_rel_act_nbr;
+ }oai_nrcellcu_data_t;
+ 
+ typedef struct oai_data {
+--- a/src/oai/oai_data.c	2026-10-01 17:21:41.660110702 +0800
++++ b/src/oai/oai_data.c	2026-10-01 17:23:05.447833761 +0800
+@@ -65,6 +65,16 @@
+         JSON_GET_STRING(return false, cell, "nrcellcu3gpp:mnc", data->nrcellcu[i].mnc);
+         JSON_GET_NUMBER(return false, cell, "nrcellcu3gpp:sst", data->nrcellcu[i].sst);
+         JSON_GET_NUMBER(return false, cell, "nrcellcu3gpp:sd", data->nrcellcu[i].sd);
++        {   /* DT patch 0012: optional "counters" (cumulative) */
++            cJSON *cnt = cJSON_GetObjectItem(cell, "counters");
++            cJSON *v;
++            #define _CC(key, field) v = cnt ? cJSON_GetObjectItem(cnt, key) : 0; data->nrcellcu[i].field = (v && cJSON_IsNumber(v)) ? (long)v->valuedouble : 0;
++            _CC("RRC.ReEstabAtt", cc_reestab_att)
++            _CC("RRC.ReEstabSuccWithUeContext", cc_reestab_with)
++            _CC("RRC.ReEstabSuccWithoutUeContext", cc_reestab_without)
++            _CC("DRB.RelActNbr.5QI9", cc_rel_act_nbr)
++            #undef _CC
++        }
+     }
+ 
+     return true;
+--- a/src/oai/oai.c	2026-10-01 17:21:41.661110675 +0800
++++ b/src/oai/oai.c	2026-10-01 17:23:05.448833734 +0800
+@@ -12,6 +12,7 @@
+ #include "pm_data/pm_data.h"
+ #include "ves/ves.h"
+ #include <string.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <stdint.h>
+ #include <assert.h>
+@@ -396,7 +397,25 @@
+         }
+     }
+     if (NODE_HAS_CUCP(nt)) {
+-        /* TODO */
++        /* DT patch 0012 (G9): one PM sample per NRCellCU with cumulative counters; pm_data takes the per-period delta */
++        for (int i = 0; i < data->num_nrcellcu && i < PM_MAX_CELLS; i++) {
++            char lc[16];
++            snprintf(lc, sizeof(lc), "%d", data->nrcellcu[i].cellLocalId);
++            pm_data_t pm_data = {
++                .cell_idx = i,
++                .is_cucp = 1,
++                .cell_local_id = lc,
++                .cc_reestab_att = data->nrcellcu[i].cc_reestab_att,
++                .cc_reestab_with = data->nrcellcu[i].cc_reestab_with,
++                .cc_reestab_without = data->nrcellcu[i].cc_reestab_without,
++                .cc_rel_act_nbr = data->nrcellcu[i].cc_rel_act_nbr,
++            };
++            rc = pm_data_feed(&pm_data);
++            if(rc) {
++                log_error("pm_data_feed (cucp) failed");
++                goto failure;
++            }
++        }
+       /*
+         alarms_data_t alarms_data = {
+            .num_du = data->additional_data.num_dus,
+--- a/src/pm_data/pm_data.h	2026-10-01 17:21:41.662110647 +0800
++++ b/src/pm_data/pm_data.h	2026-10-01 17:23:05.448833734 +0800
+@@ -12,6 +12,11 @@
+ 
+ typedef struct pm_data {
+     int cell_idx;          /* DT patch 0011 */
++    int is_cucp;           /* DT patch 0012: NRCellCU sample (counters are cumulative, reported as per-period delta) */
++    long cc_reestab_att;
++    long cc_reestab_with;
++    long cc_reestab_without;
++    long cc_rel_act_nbr;
+     char *cell_local_id;
+     int numUes;
+     int load;
+--- a/src/pm_data/pm_data.c	2026-10-01 17:21:41.663110620 +0800
++++ b/src/pm_data/pm_data.c	2026-10-01 17:23:05.448833734 +0800
+@@ -43,6 +43,11 @@
+ 
+ typedef struct pm_cell_stats {   /* DT patch 0011 */
+     char *cell_local_id;
++    int is_cucp;                 /* DT patch 0012 */
++    long cc_reestab_att;
++    long cc_reestab_with;
++    long cc_reestab_without;
++    long cc_rel_act_nbr;
+     int meanActiveUe;
+     int maxActiveUe;
+     int loadAvg;
+@@ -197,6 +202,32 @@
+             cs->pdcp_pdu_volume_dl = acc[len - 1].pdcp_pdu_volume_dl;
+             cs->pdcp_pdu_volume_ul = acc[len - 1].pdcp_pdu_volume_ul;
+             cs->packetDropRateDl = acc[len - 1].packetDropRateDl;
++            /* DT patch 0012: cumulative counters -> per-period delta against the last sample of the previous period */
++            {
++                static long prev_att[PM_MAX_CELLS], prev_with[PM_MAX_CELLS], prev_without[PM_MAX_CELLS], prev_rel[PM_MAX_CELLS];
++                static int prev_valid[PM_MAX_CELLS];
++                const pm_data_t *last = &acc[len - 1];
++                cs->is_cucp = last->is_cucp;
++                if(last->is_cucp) {
++                    if(prev_valid[ci]) {
++                        #define _D(cur, prev) ((cur) >= (prev) ? (cur) - (prev) : (cur))
++                        cs->cc_reestab_att = _D(last->cc_reestab_att, prev_att[ci]);
++                        cs->cc_reestab_with = _D(last->cc_reestab_with, prev_with[ci]);
++                        cs->cc_reestab_without = _D(last->cc_reestab_without, prev_without[ci]);
++                        cs->cc_rel_act_nbr = _D(last->cc_rel_act_nbr, prev_rel[ci]);
++                        #undef _D
++                    }
++                    else {
++                        cs->cc_reestab_att = last->cc_reestab_att - acc[0].cc_reestab_att;
++                        cs->cc_reestab_with = last->cc_reestab_with - acc[0].cc_reestab_with;
++                        cs->cc_reestab_without = last->cc_reestab_without - acc[0].cc_reestab_without;
++                        cs->cc_rel_act_nbr = last->cc_rel_act_nbr - acc[0].cc_rel_act_nbr;
++                    }
++                    prev_att[ci] = last->cc_reestab_att; prev_with[ci] = last->cc_reestab_with;
++                    prev_without[ci] = last->cc_reestab_without; prev_rel[ci] = last->cc_rel_act_nbr;
++                    prev_valid[ci] = 1;
++                }
++            }
+         }
+ 
+         struct tm *ptm = gmtime(&pm_data_start_time);
+@@ -313,6 +344,11 @@
+     else if(strcmp(name, "DRB.PdcpPduVolumeUl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_pdu_volume_ul);
+     else if(strcmp(name, "DRB.PdcpPduVolumeDl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_pdu_volume_dl);
+     else if(strcmp(name, "DRB.RlcPacketDropRateDl") == 0) snprintf(buf, bufsz, "%ld", cs->packetDropRateDl);
++    /* DT patch 0012 (G9): NRCellCU counters, per-period */
++    else if(strcmp(name, "RRC.ReEstabAtt") == 0) snprintf(buf, bufsz, "%ld", cs->cc_reestab_att);
++    else if(strcmp(name, "RRC.ReEstabSuccWithUeContext") == 0) snprintf(buf, bufsz, "%ld", cs->cc_reestab_with);
++    else if(strcmp(name, "RRC.ReEstabSuccWithoutUeContext") == 0) snprintf(buf, bufsz, "%ld", cs->cc_reestab_without);
++    else if(strcmp(name, "DRB.RelActNbr.5QI9") == 0) snprintf(buf, bufsz, "%ld", cs->cc_rel_act_nbr);
+     else snprintf(buf, bufsz, "-1");
+     return buf;
+ }
+@@ -389,8 +425,14 @@
+         const pm_cell_stats_t *cs = &data->cells[ci];
+         char vbuf[32];
+         size_t used = strlen(meas_values);
+-        snprintf(meas_values + used, cap - used, "%s      <measValue measObjLdn=\"GNBDUFunction=%s,NRCellDU=%s\">\n", ci ? "\n" : "", gnb_du_id,
+-                 cs->cell_local_id ? cs->cell_local_id : "0");
++        if(cs->is_cucp) {   /* DT patch 0012: NRCellCU under GNBCUCPFunction */
++            snprintf(meas_values + used, cap - used, "%s      <measValue measObjLdn=\"GNBCUCPFunction=%d,NRCellCU=%s\">\n", ci ? "\n" : "",
++                     pm_data_config->info.gnb_cu_id, cs->cell_local_id ? cs->cell_local_id : "0");
++        }
++        else {
++            snprintf(meas_values + used, cap - used, "%s      <measValue measObjLdn=\"GNBDUFunction=%s,NRCellDU=%s\">\n", ci ? "\n" : "", gnb_du_id,
++                     cs->cell_local_id ? cs->cell_local_id : "0");
++        }
+         for(int m = 0; m < nmetrics; m++) {
+             used = strlen(meas_values);
+             snprintf(meas_values + used, cap - used, "        <r p=\"%d\">%s</r>\n", m + 1, pm_metric_value(cs, performanceMetricsNames[m], vbuf, sizeof(vbuf)));
+@@ -410,6 +452,8 @@
+     content = str_replace_inplace(content, "@end-time@", end_time_full);
+     if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+     content = str_replace_inplace(content, "@du-id@", gnb_du_id);
++    content = str_replace_inplace(content, "@pm-group@", (data->num_cells && data->cells[0].is_cucp) ? "NRCellCU" : "NRCellDU");   /* DT patch 0012 */
++    if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+     if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+     content = str_replace_inplace(content, "@metricNames@", names);
+     if(content == 0) { log_error("str_replace_inplace() failed"); goto failure; }
+--- a/src/netconf/netconf_data.c	2026-10-01 17:21:41.664110592 +0800
++++ b/src/netconf/netconf_data.c	2026-10-01 17:23:05.448833734 +0800
+@@ -231,6 +231,17 @@
+     return 0;
+ }
+ 
++/* DT patch 0012 (G9): SupportedPerfMetricGroups for the CU-CP ME */
++static int netconf_data_update_perf_cucp(int *k_op) {
++    static const char *names[] = {"RRC.ReEstabAtt", "RRC.ReEstabSuccWithUeContext", "RRC.ReEstabSuccWithoutUeContext", "DRB.RelActNbr.5QI9", 0};
++    for (int m = 0; names[m]; ++m) {
++        STRDUP_OR_FAIL(return 1, values_operational[*k_op], names[m]);
++        ASPRINTF_OR_FAIL(return 1, &xpath_operational[*k_op], "%s/attributes/SupportedPerfMetricGroups/performanceMetrics", MANAGED_ELEMENT_XPATH_OPER);
++        (*k_op)++;
++    }
++    return 0;
++}
++
+ static int netconf_data_update_perf_cuup(int *k_op) {
+     STRDUP_OR_FAIL(return 1, values_operational[*k_op], "DRB.PdcpSduVolumeUl");
+     ASPRINTF_OR_FAIL(return 1, &xpath_operational[*k_op], "%s/attributes/SupportedPerfMetricGroups/performanceMetrics", MANAGED_ELEMENT_XPATH_OPER);
+@@ -807,12 +818,16 @@
+         /* DT patch 0005: seed all DU-supported metrics by default (names as in SupportedPerfMetricGroups).
+            Restarting the adapter rebuilds the running datastore, so CM edits by SMO do not survive a restart. */
+         {
+-            static const char *dt_default_metrics[] = {
++            static const char *dt_default_metrics_du[] = {
+                 "DRB.MeanActiveUeDl", "DRB.MeanActiveUeUl", "DRB.MaxActiveUeDl", "DRB.MaxActiveUeUl",
+                 "DRB.UEThpDl", "DRB.UEThpUl", "RRU.PrbTotDl",
+                 /* DT patch 0008 (2026-09-30): UeUnresVolDl/Ul and RlcPacketDropRateDl have no data source in the DT
+                    facade yet (always 0) -> not reported by default. Still selectable through PerfMetricJob CM. */
+                 0 };
++            /* DT patch 0012 (G9, 2026-10-01): CU-CP ME reports NRCellCU re-establishment / abnormal release counters (TS 28.552). */
++            static const char *dt_default_metrics_cucp[] = {
++                "RRC.ReEstabAtt", "RRC.ReEstabSuccWithUeContext", "RRC.ReEstabSuccWithoutUeContext", "DRB.RelActNbr.5QI9", 0 };
++            const char **dt_default_metrics = (NODE_HAS_CUCP(nt) && !NODE_HAS_DU(nt)) ? dt_default_metrics_cucp : dt_default_metrics_du;
+             for (int m = 0; dt_default_metrics[m]; ++m) {
+                 STRDUP_OR_FAIL(return 1, values_running[k_running], dt_default_metrics[m]);
+                 ASPRINTF_OR_FAIL(return 1, &xpath_running[k_running], "%s/attributes/performanceMetrics", PERFMETRICJOBSGRP_XPATH);
+@@ -864,6 +879,10 @@
+                 goto failure;
+             }
+ 
++            if (NODE_HAS_CUCP(nt) && !NODE_HAS_DU(nt) && netconf_data_update_perf_cucp(&k_operational) != 0) {   /* DT patch 0012 */
++                log_error("netconf_data_update_perf_cucp() failed");
++                goto failure;
++            }
+             if (NODE_HAS_CUUP(nt) && netconf_data_update_perf_cuup(&k_operational) != 0) {
+                 log_error("netconf_data_update_perf_cuup() failed"); \
+                 goto failure;

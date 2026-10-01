@@ -210,14 +210,29 @@ def build_cucp(d: dict) -> dict:
     cells = _cells(node)
     mcc, mnc = _plmn(node, cells[0] if cells else None)
     nrcellcu = []
+    kpm = d.get("kpm")
     for i, c in enumerate(cells):
         cmcc, cmnc = _plmn(None, c) if c.get("served_plmn") else (mcc, mnc)
+        # G9(2026-10-01):NRCellCU 的 RRC 重建 / 異常釋放計數器(TS 28.552 5.1.1.17 / 5.1.1.10.x),
+        # 來源 FullKPM 的 cu_* 欄位(自 run 起累計;adapter 每週期取差分)。
+        rec = _pm_for(kpm, c.get("cell_id", "")) if kpm else {}
+        def _i(k):
+            try:
+                return int(float(rec.get(k, 0) or 0))
+            except (TypeError, ValueError):
+                return 0
         nrcellcu.append({
             "nrcellcu3gpp:cellLocalId": _local_cell_id(c, i),
             "nrcellcu3gpp:mcc": cmcc,
             "nrcellcu3gpp:mnc": cmnc,
             "nrcellcu3gpp:sst": int((c.get("s_nssai") or {}).get("sst", 1)),
             "nrcellcu3gpp:sd": 16777215,
+            "counters": {
+                "RRC.ReEstabAtt": _i("cu_RRC.ReEstabAtt"),
+                "RRC.ReEstabSuccWithUeContext": _i("cu_RRC.ReEstabSuccWithUeContext.sum"),
+                "RRC.ReEstabSuccWithoutUeContext": _i("cu_RRC.ReEstabSuccWithoutUeContext.sum"),
+                "DRB.RelActNbr.5QI9": _i("cu_DRB.RelActNbr.5QI9"),
+            },
         })
     return {"o1-config": {
         "NRFREQREL": {"nrfreqrel3gpp:pMax": 23},
