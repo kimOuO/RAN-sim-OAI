@@ -475,11 +475,20 @@ def _handle_handover(
         ue_id=ue_id, target_cell=target_cell, trigger="E2_RIC_CONTROL",
     )
     if result is None:
-        return error_response(
-            f"handover failed: target_cell={target_cell!r} not in CellConfig "
-            f"or UE state issue (ue={ue_id})",
-            status=400,
-        )
+        # 2026-10-13(C8 / C11):以前回 400 且無 IE 32,RIC 只收到 control-message-invalid、
+        # 看不出原因。改成與其他換手失敗一致:409 + outcome,adapter 送 RICcontrolFailure 帶 IE 32。
+        from main.apps.cu_cp.models.cell_config import CellConfig as _CellConfig
+        if source_cell_pre and source_cell_pre == target_cell:
+            cause = "UeAlreadyAtTarget"
+        elif not _CellConfig.objects.filter(cell_id=target_cell).exists():
+            cause = "TargetCellNotFound"
+        else:
+            cause = "UeStateInvalid"
+        outcome = {"result": "HANDOVER_FAILED", "failureCause": cause, "hoType": None,
+                   "targetCell": target_cell, "sourceCell": source_cell_pre}
+        logger.info("E2 Control [Handover] ue=%s %s → %s REJECTED cause=%s ric_req=%s",
+                    ue_id, source_cell_pre, target_cell, cause, ric_req_id)
+        return error_response(f"handover failed: {cause}", {"control_outcome": outcome}, status=409)
     if result.get("skipped"):
         logger.info("E2 Control [Handover] ue=%s already on target=%s, skip",
                     ue_id, target_cell)

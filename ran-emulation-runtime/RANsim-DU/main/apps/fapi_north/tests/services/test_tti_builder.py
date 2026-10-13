@@ -20,10 +20,13 @@ def test_build_dl_tti_assigns_consecutive_prb():
     assert msg.pdus[1].prb_count == 20
 
 
-def test_skip_zero_prb():
-    msg = build_dl_tti(sfn=1, slot=2, rb_alloc={"ue1": 0, "ue2": 5}, mcs_map={"ue2": 9})
-    assert len(msg.pdus) == 1
-    assert msg.pdus[0].ue_id == "ue2"
+def test_zero_prb_kept_as_measurement_only_pdu():
+    """0 PRB 的 UE 仍送 PDU(measurement-only,對齊 OAI CSI-RS 與 PDSCH 解耦),
+    讓沒流量的 UE 也觸發 RU 算通道量測;不佔 PRB,後面的 UE 從 0 開始。負值才跳過。"""
+    msg = build_dl_tti(sfn=1, slot=2, rb_alloc={"ue1": 0, "ue2": 5, "ue3": -1}, mcs_map={"ue2": 9})
+    assert [p.ue_id for p in msg.pdus] == ["ue1", "ue2"]
+    assert msg.pdus[0].prb_count == 0
+    assert msg.pdus[1].prb_start == 0 and msg.pdus[1].prb_count == 5
 
 
 def test_build_ul_tti_basic():

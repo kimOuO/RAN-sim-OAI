@@ -371,3 +371,36 @@ def test_full_kpm_conn_mean_is_per_report_period(gnb_a):
         out = FullKpmReporter.collect()
     rec = {x["cell_id"]: x for g in out["pm"].values() for x in g}[A0]
     assert rec["cu_RRC.ConnMax"] == "0" and rec["cu_RRC.ConnMean"] == "0"
+
+
+def test_rc_handover_to_own_cell_returns_409_already_at_target(gnb_a):
+    """C8(2026-10-13):目標就是 UE 目前的 cell → 409 + failureCause=UeAlreadyAtTarget(以前 400、無 IE 32)。"""
+    from main.apps.cu_cp.actors.e2_control_actor import _handle_handover
+    _attach(gnb_a)
+    r = _handle_handover("u1", {"target_cell": A0}, {})
+    assert r.status_code == 409
+    co = json.loads(r.content)["errors"]["control_outcome"]
+    assert co["result"] == "HANDOVER_FAILED" and co["failureCause"] == "UeAlreadyAtTarget"
+    assert co["sourceCell"] == A0 and co["targetCell"] == A0
+
+
+def test_rc_handover_to_unknown_cell_returns_409_target_not_found(gnb_a):
+    """C11(2026-10-13):目標 cell 不在本 CU、也不是 Xn 鄰居 → 409 + failureCause=TargetCellNotFound。"""
+    from main.apps.cu_cp.actors.e2_control_actor import _handle_handover
+    _attach(gnb_a)
+    r = _handle_handover("u1", {"target_cell": "e99:phantom"}, {})
+    assert r.status_code == 409
+    co = json.loads(r.content)["errors"]["control_outcome"]
+    assert co["failureCause"] == "TargetCellNotFound"
+
+
+def test_handover_failure_carries_ho_type(gnb_a, monkeypatch):
+    """C16(2026-10-13):換手失敗的 IE 32 也要帶 hoType(以前為 null)。a0(DU1)→ a1(DU2)強制失敗 → inter-DU。"""
+    from main.apps.cu_cp.actors.e2_control_actor import _handle_handover
+    _attach(gnb_a)
+    monkeypatch.setenv("HO_FORCE_FAIL_TARGET", A1)
+    with patch("main.apps.cu_cp.services.business.du_client_operations.DuClientBusinessService._post", return_value=DU_OK):
+        r = _handle_handover("u1", {"target_cell": A1}, {})
+    assert r.status_code == 409
+    co = json.loads(r.content)["errors"]["control_outcome"]
+    assert co["failureCause"] == "RandomAccessProblem" and co["hoType"] == "inter-DU"

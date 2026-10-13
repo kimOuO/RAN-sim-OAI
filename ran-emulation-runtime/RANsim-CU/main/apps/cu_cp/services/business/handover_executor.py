@@ -165,8 +165,12 @@ def execute_f1_handover(
         logger.warning("F1 Handover FAILED [%s]: UE %s %s → %s cause=%s",
                        trigger, ue_id, source_cell, target_cell, fail_cause)
         # 失敗不改 serving_cell(UE 留原 cell,後續可能觸發 RLF)
+        # 2026-10-13(C16):失敗路徑也帶 ho_type,RIC 的 IE 32 不再是 null
+        from main.apps.cu_cp.services.business.du_client_operations import du_of_cell, du_of_ue
+        _s, _t = du_of_ue(ue_id), du_of_cell(target_cell)
         return {"ho_uuid": ho_uuid, "ue_id": ue_id, "source_cell": source_cell,
-                "target_cell": target_cell, "failed": True, "failure_cause": fail_cause}
+                "target_cell": target_cell, "failed": True, "failure_cause": fail_cause,
+                "ho_type": "inter-DU" if (_s is not None and _t is not None and _s != _t) else "intra-DU"}
 
     # ── F1 執行(TS 38.401 §8.2.1):同 DU 用 UE Context Modification 換 cell;
     #    同 gNB 跨 DU 先在目標 DU 建 UE context(帶 SpCell 與 DRB),成功後釋放來源 DU 的 context。
