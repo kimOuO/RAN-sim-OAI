@@ -54,4 +54,36 @@ JSON
   sed -i "s|\"softwareVersion\": \"2.3.5\"|\"softwareVersion\": \"dt-0.1\"|; s|\"lastServiceDate\": \"2021-03-26\"|\"lastServiceDate\": \"$(date -u +%Y-%m-%d)\"|; s|\"manufactureDate\": \"2021-01-16\"|\"manufactureDate\": \"2026-09-29\"|; s|\"serialNumber\": \"@vendor@-@unitType@-@oamIp@-@model@\"|\"serialNumber\": \"@vendor@-@unitType@-${O1_NODE_ID}\"|" /adapter/config/ves-pnf-registration.json
   echo "[dt-entrypoint] config.json generated for ${O1_NODE_ID} (${O1_UNIT_TYPE}) netconf:${O1_NETCONF_PORT} sftp:${O1_SFTP_PORT} telnet:${O1_TELNET_HOST}:${O1_TELNET_PORT}"
 fi
-exec /adapter/adapter_entrypoint.sh "$@"
+# 以下取代上游 adapter_entrypoint.sh(步驟相同),差在 netopeer2-server 的啟動方式(2026-10-10 A6):
+# 上游以背景常駐(daemonize)啟動,錯誤只寫 syslog —— 容器內沒有 syslog,e62 兩顆 adapter 的 netopeer2
+# 開場後消失卻毫無紀錄,NETCONF 從此不通。改為:前景執行、輸出進 docker logs、結束就記下結束碼並重啟;
+# 並等 830 埠開始接受連線後才啟動 gnb-adapter(上游是不等就接著起,兩者同時初始化 sysrepo)。
+export TERM=xterm-256color
+echo "=================================="
+echo "== Configure TLS Support =="
+sysrepocfg --edit=/adapter/tls/tls_keystore.xml --format=xml --datastore=startup --module=ietf-keystore
+sysrepocfg --edit=/adapter/tls/tls_truststore.xml --format=xml --datastore=startup --module=ietf-truststore
+sysrepocfg --edit=/adapter/tls/tls_listen.xml --format=xml --datastore=startup --module=ietf-netconf-server
+sysrepocfg --copy-from=startup --datastore=running
+
+nc_listening() { awk '$4=="0A"{print $2}' /proc/net/tcp | grep -q ':033E$'; }   # 0x033E = 830
+echo "=================================="
+echo "== Starting netopeer2-server (supervised) =="
+set +e
+(
+  n=0
+  while true; do
+    netopeer2-server -d -v1 -t 60 2>&1 | sed -u 's/^/[netopeer2] /'
+    rc=${PIPESTATUS[0]}; n=$((n + 1))
+    echo "[dt-entrypoint] $(date -u +%FT%TZ) netopeer2-server exited rc=${rc}; restart #${n} in 2 s"
+    sleep 2
+  done
+) &
+for _ in $(seq 1 60); do nc_listening && break; sleep 1; done
+if nc_listening; then echo "[dt-entrypoint] netopeer2 listening on 830"
+else echo "[dt-entrypoint] WARN netopeer2 not listening on 830 after 60 s; starting adapter anyway"; fi
+
+echo "=================================="
+echo "== Starting adapter =="
+cd /adapter
+exec ./gnb-adapter

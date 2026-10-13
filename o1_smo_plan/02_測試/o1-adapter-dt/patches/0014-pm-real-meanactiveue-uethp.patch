@@ -1,0 +1,37 @@
+--- a/src/pm_data/pm_data.c	2026-10-13 14:12:45.267451741 +0800
++++ b/src/pm_data/pm_data.c	2026-10-13 14:12:45.278451446 +0800
+@@ -48,7 +48,7 @@
+     long cc_reestab_with;
+     long cc_reestab_without;
+     long cc_rel_act_nbr;
+-    int meanActiveUe;
++    double meanActiveUe;         /* DT patch 0014: real (TS 28.552), was integer division */
+     int maxActiveUe;
+     int loadAvg;
+     double ue_thp_dl;
+@@ -190,7 +190,7 @@
+             }
+             pm_cell_stats_t *cs = &data.cells[data.num_cells++];
+             cs->cell_local_id = acc[len - 1].cell_local_id;   /* points into the last sample; valid until the next feed */
+-            cs->meanActiveUe = meanActiveUeAccum / len;
++            cs->meanActiveUe = (double)meanActiveUeAccum / len;
+             cs->maxActiveUe = maxActiveUe;
+             cs->loadAvg = loadAvgAccum / len;
+             cs->ue_thp_dl = ue_thp_dl_accum / len;
+@@ -331,12 +331,12 @@
+ 
+ /* DT patch 0011: one <measValue> per cell; value selection as before (names per TS 28.552). */
+ static const char *pm_metric_value(const pm_cell_stats_t *cs, const char *name, char *buf, size_t bufsz) {
+-    if(strcmp(name, "DRB.MeanActiveUeDl") == 0 || strcmp(name, "DRB.MeanActiveUeUl") == 0) snprintf(buf, bufsz, "%d", cs->meanActiveUe);
++    if(strcmp(name, "DRB.MeanActiveUeDl") == 0 || strcmp(name, "DRB.MeanActiveUeUl") == 0) snprintf(buf, bufsz, "%.1f", cs->meanActiveUe);
+     else if(strcmp(name, "DRB.MaxActiveUeDl") == 0 || strcmp(name, "DRB.MaxActiveUeUl") == 0) snprintf(buf, bufsz, "%d", cs->maxActiveUe);
+     else if(strcmp(name, "RRU.PrbTotDl") == 0) snprintf(buf, bufsz, "%d", cs->loadAvg);
+-    /* DT patch 0010b: internal double, output rounded integer kbit/s (InfluxDB field type stays integer) */
+-    else if(strcmp(name, "DRB.UEThpDl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_dl);
+-    else if(strcmp(name, "DRB.UEThpUl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_ul);
++    /* DT patch 0014: real with one decimal (TS 28.552 real); needs SMO pmlog float bucket (M7) — was 0010b rounded integer */
++    else if(strcmp(name, "DRB.UEThpDl") == 0) snprintf(buf, bufsz, "%.1f", cs->ue_thp_dl);
++    else if(strcmp(name, "DRB.UEThpUl") == 0) snprintf(buf, bufsz, "%.1f", cs->ue_thp_ul);
+     else if(strcmp(name, "DRB.UEUnresVolUl") == 0 || strcmp(name, "DRB.UeUnresVolUl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_unres_ul);
+     else if(strcmp(name, "DRB.UEUnresVolDl") == 0 || strcmp(name, "DRB.UeUnresVolDl") == 0) snprintf(buf, bufsz, "%.0f", cs->ue_thp_unres_dl);
+     else if(strcmp(name, "DRB.PdcpSduVolumeUl") == 0) snprintf(buf, bufsz, "%ld", cs->pdcp_sdu_volume_ul);

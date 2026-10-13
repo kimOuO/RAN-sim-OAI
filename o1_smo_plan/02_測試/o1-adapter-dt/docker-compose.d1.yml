@@ -23,24 +23,50 @@ services:
     container_name: o1-d1-adapter-cucp
     depends_on: [facade]
     ports: ["1830:830", "1222:22"]
+    # 2026-10-13:改由 env 產生 config.json、使用映像內建範本(不再掛主機範本 —— 範本含劇本佔位字,
+    # 只有 env 模式的 entrypoint 會替換;掛進來的話佔位字會原樣送出,而 sed 也會改到主機檔)。
+    # 不設 O1_LIFECYCLE → 常駐節點:PM 不加 SubNetwork、標 permanent,SMO 永不自動清理。
+    environment:
+      O1_NODE_ID: gnb_208_095_000e00
+      O1_UNIT_TYPE: CU-CP
+      O1_HOST: 10.3.0.217
+      O1_NETCONF_PORT: "1830"
+      O1_SFTP_PORT: "1222"
+      O1_TELNET_HOST: 10.3.0.217
+      O1_TELNET_PORT: "9091"
+      O1_GNB_DU_ID: "1"
+      O1_GNB_CU_ID: "0"
+      O1_PM_INTERVAL: "900"
+      O1_HEARTBEAT: "30"
+      O1_VES_URL: http://10.3.0.204:30417/eventListener/v7
+      O1_MODEL: ransim-dt-cucp
+      O1_LOCATION: "DT RAN sim host 10.3.0.217 (D1 facade, live CU/DU data)"
     volumes:
       - ./ftp-cucp:/ftp
-      - ./config/config.cucp.json:/adapter/config/config.json
-      - ./config/ves-file-ready.json:/adapter/config/ves-file-ready.json
-      - ./config/pmData-measData.xml:/adapter/config/pmData-measData.xml
-      - ./config/ves-new-alarm.json:/adapter/config/ves-new-alarm.json
-      - ./config/ves-clear-alarm.json:/adapter/config/ves-clear-alarm.json
     restart: unless-stopped
   adapter-du:
     image: adapter-gnb:dt
     container_name: o1-d1-adapter-du
     depends_on: [facade]
     ports: ["1831:830", "1223:22"]
+    # 2026-10-13:改由 env 產生 config.json、使用映像內建範本(不再掛主機範本 —— 範本含劇本佔位字,
+    # 只有 env 模式的 entrypoint 會替換;掛進來的話佔位字會原樣送出,而 sed 也會改到主機檔)。
+    # 不設 O1_LIFECYCLE → 常駐節點:PM 不加 SubNetwork、標 permanent,SMO 永不自動清理。
+    environment:
+      O1_NODE_ID: gnb_208_095_000e00_du1
+      O1_UNIT_TYPE: DU
+      O1_HOST: 10.3.0.217
+      O1_NETCONF_PORT: "1831"
+      O1_SFTP_PORT: "1223"
+      O1_TELNET_HOST: 10.3.0.217
+      O1_TELNET_PORT: "9092"
+      O1_GNB_DU_ID: "1"
+      O1_GNB_CU_ID: "0"
+      O1_PM_INTERVAL: "900"
+      O1_HEARTBEAT: "30"
+      O1_VES_URL: http://10.3.0.204:30417/eventListener/v7
+      O1_MODEL: ransim-dt-du
+      O1_LOCATION: "DT RAN sim host 10.3.0.217 (D1 facade, live CU/DU data)"
     volumes:
       - ./ftp-du:/ftp
-      - ./config/config.du.json:/adapter/config/config.json
-      - ./config/ves-file-ready.json:/adapter/config/ves-file-ready.json
-      - ./config/pmData-measData.xml:/adapter/config/pmData-measData.xml
-      - ./config/ves-new-alarm.json:/adapter/config/ves-new-alarm.json
-      - ./config/ves-clear-alarm.json:/adapter/config/ves-clear-alarm.json
     restart: unless-stopped

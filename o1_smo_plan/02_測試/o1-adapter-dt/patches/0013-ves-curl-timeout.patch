@@ -1,0 +1,21 @@
+--- a/src/ves/ves_internal.c	2026-10-10 19:29:31.156854654 +0800
++++ b/src/ves/ves_internal.c	2026-10-10 19:29:31.157854623 +0800
+@@ -188,13 +188,16 @@
+         goto failed;
+     }
+ 
+-    res = curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 1L);     //seconds timeout for a connection
++    /* DT patch 0013 (2026-10-10 A6): 1 s -> 2 s / 4 s. 17 adapters posting fileReady at the same PM boundary
++       hit the 1 s limit although the collector had no error. Upper bound stays < 5 s because this call runs in
++       the PM sampling loop (patch 0007 marks a window suspect when its first sample is > 5 s late). */
++    res = curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2L);     //seconds timeout for a connection
+     if(res != CURLE_OK) {
+         log_error("curl_easy_setopt() error");
+         goto failed;
+     }
+ 
+-    res = curl_easy_setopt(curl, CURLOPT_TIMEOUT, 1L);            //seconds timeout for an operation
++    res = curl_easy_setopt(curl, CURLOPT_TIMEOUT, 4L);            //seconds timeout for an operation
+     if(res != CURLE_OK) {
+         log_error("curl_easy_setopt() error");
+         goto failed;

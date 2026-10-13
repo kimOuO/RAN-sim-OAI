@@ -1,0 +1,60 @@
+diff -ru a/src/pm_data/pm_data.c b/src/pm_data/pm_data.c
+--- a/src/pm_data/pm_data.c	2026-10-13 18:38:08.728491666 +0800
++++ b/src/pm_data/pm_data.c	2026-10-13 18:38:08.751491032 +0800
+@@ -283,6 +283,9 @@
+             .file_location = filename,   /* DT patch: bare filename; template prepends the SFTP dir (dfc uses it as S3 object name, no slashes allowed) */
+             .file_size = get_file_size(full_path),
+             .notification_id = pm_data_notification_id,
++            /* DT patch 0015: aligned PM window (same alignment as patch 0007) */
++            .period_start_us = (long long)((data.start_time / pm_data_feed_log_period) * pm_data_feed_log_period) * 1000000LL,
++            .period_end_us = (long long)((data.start_time / pm_data_feed_log_period + 1) * pm_data_feed_log_period) * 1000000LL,
+         };
+ 
+         rc = ves_fileready_execute(&file_ready);
+diff -ru a/src/ves/ves.c b/src/ves/ves.c
+--- a/src/ves/ves.c	2026-10-13 18:38:08.727491694 +0800
++++ b/src/ves/ves.c	2026-10-13 18:38:08.749491087 +0800
+@@ -320,6 +320,25 @@
+         goto failed;
+     }
+ 
++    /* DT patch 0015: commonEventHeader start/lastEpochMicrosec = the PM window, not the send instant.
++       The send can land ~1 s after the window end, so SMO queries by whole minute fell into the next second. */
++    {
++        char ps[32], pe[32];
++        unsigned long long now_us = (unsigned long long)get_microseconds_since_epoch();
++        sprintf(ps, "%llu", data->period_start_us > 0 ? (unsigned long long)data->period_start_us : now_us);
++        sprintf(pe, "%llu", data->period_end_us > 0 ? (unsigned long long)data->period_end_us : now_us);
++        content = str_replace_inplace(content, "@periodStartMicrosec@", ps);
++        if(content == 0) {
++            log_error("str_replace_inplace() failed");
++            goto failed;
++        }
++        content = str_replace_inplace(content, "@periodEndMicrosec@", pe);
++        if(content == 0) {
++            log_error("str_replace_inplace() failed");
++            goto failed;
++        }
++    }
++
+     content = str_replace_inplace(content, "@fileExpiry@", fileExpiry);
+     if(content == 0) {
+         log_error("str_replace_inplace() failed");
+diff -ru a/src/ves/ves.h b/src/ves/ves.h
+--- a/src/ves/ves.h	2026-10-13 18:38:08.727491694 +0800
++++ b/src/ves/ves.h	2026-10-13 18:38:08.749491087 +0800
+@@ -22,6 +22,8 @@
+     char *file_location;
+     int file_size;
+     int notification_id;
++    long long period_start_us;  /* DT patch 0015: PM window start (aligned), epoch µs; 0 = use send time */
++    long long period_end_us;    /* DT patch 0015: PM window end   (aligned), epoch µs */
+ } ves_file_ready_t;
+ 
+ typedef struct ves_alarm {
+14,15c14,15
+<             "startEpochMicrosec": @timestampMicrosec@,
+<             "lastEpochMicrosec": @timestampMicrosec@,
+---
+>             "startEpochMicrosec": @periodStartMicrosec@,
+>             "lastEpochMicrosec": @periodEndMicrosec@,
