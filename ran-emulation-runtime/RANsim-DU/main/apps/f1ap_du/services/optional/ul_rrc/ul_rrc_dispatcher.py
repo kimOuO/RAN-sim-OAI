@@ -38,12 +38,19 @@ class UlRrcDispatcher:
         raise TypeError(f"rrc_msg must be bytes or str, got {type(rrc_msg).__name__}")
 
     @staticmethod
-    def dispatch(ue_id: str, rrc_msg: bytes | str, *, timeout: float = 3.0) -> bool:
-        """送 UL RRC PDU 給 CU,回傳 CU 是否回 200。"""
+    def dispatch(ue_id: str, rrc_msg: bytes | str, *, timeout: float = 3.0,
+                 is_initial: bool = False, cell_id: str = "") -> bool:
+        """送 UL RRC PDU 給 CU,回傳 CU 是否回 200。
+
+        is_initial=True(RA Msg3 的 CCCH 訊息)時帶上 UE 接入的 cell 與本 DU 的 gNB-DU ID,
+        = TS 38.473 Initial UL RRC Message Transfer 的 NR CGI / gNB-DU ID,CU 靠它知道 UE 在哪個 DU。
+        """
         if not ue_id:
             raise ValueError("ue_id is required")
+        from main.apps.f1ap_du.services.common import du_identity
         rrc_b64 = UlRrcDispatcher.to_b64(rrc_msg)
-        msg = UlRrcMessageTransfer(ue_id=ue_id, rrc_msg_b64=rrc_b64)
+        msg = UlRrcMessageTransfer(ue_id=ue_id, rrc_msg_b64=rrc_b64, is_initial=bool(is_initial),
+                                   cell_id=cell_id or "", gnb_du_id=du_identity.gnb_du_id())
         ok = CuClientBusinessService.post_ul_rrc_message(encode_ul_rrc(msg), timeout=timeout)
         logger.info("UL RRC dispatch ue=%s b64_len=%d ok=%s", ue_id, len(rrc_b64), ok)
         return ok

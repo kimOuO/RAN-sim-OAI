@@ -26,6 +26,12 @@ _DEFAULT_WINDOW_MIN = 10.0
 
 # ── P0-2:HO 速率 / 成功比 ─────────────────────────────────────────
 
+
+def _std(cell_id: str) -> dict:
+    """cell 的 nci / ncgiStd(RIC 選項 A)。"""
+    from main.apps.cu_cp.services.business.xn import std_ids
+    return std_ids(cell_id)
+
 def _rate_and_ratio(events: list[HandoverEvent], window_min: float,
                     cum_override: dict[str, int] | None = None) -> dict[str, Any]:
     """由事件清單(新→舊排序)算 att rate(窗口內)+ succ ratio(最近 N 筆)。
@@ -256,6 +262,10 @@ def _meas_aggregate(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
                                if d.get("by_source") else None),
             "bySourceCell": {k: round(v / max(window_min, 1e-9), 2)
                              for k, v in sorted(d.get("by_source", {}).items())},
+            # RIC 選項 A:這個 PCI 唯一對到一顆 cell 時附上它的標準識別(對到多顆 = PCI 混淆,不附)
+            **({"reportedNci": _std(cell_ids[0])["nci"], "reportedNcgiStd": _std(cell_ids[0])["ncgiStd"],
+                "reportedCellNcgi": cell_ids[0]}
+               if len(cell_ids) == 1 else {}),
         })
     return {
         "windowMin": window_min,
@@ -284,7 +294,9 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
                     continue
             except Exception:
                 pass
-        ncgi = f"{int(c.nr_cellid):015x}" if c.nr_cellid else c.cell_id
+        # 2026-09-27:一律回 cell 名稱(與 ran_func 6 的 ncgi 同一套,RIC 決定 A)。以前有 nr_cellid 就回
+        # 15 位 hex —— 舊場景沒有 nr_cellid 所以一直是名稱;多 gNB 起才變成 hex,xApp 拿去 anr-add 解不出來。
+        ncgi = c.cell_id
         matches.append(ncgi)
         # nr_cellid 欄位未種時退回平台 hash NCI(與 E2 換手 resolve_target_cell
         # 的 to_platform_cell_id 同一對照,群組換手拿了就能用)
@@ -294,6 +306,17 @@ def cgi_resolve(pci: int, arfcn: int | None = None, attempts: int = 3) -> dict[s
             from main.apps.cu_cp.services.common.cell_id_map import to_nr_cellid
             nci_by_ncgi[ncgi] = to_nr_cellid(c.cell_id)
         plmns.append(c.served_plmn or "")
+    # 多 gNB:鄰 gNB 的 cell(Xn Setup 交換來的 served cells)。真實 UE 的 ReportCGI 讀的是空中的 SIB1,
+    # 不分是不是本 gNB 的 cell;只查本地會讓鄰 gNB 的 PCI 一律 FAIL。
+    from main.apps.cu_cp.models.xn import XnNeighbourCell
+    for f in XnNeighbourCell.objects.filter(pci=int(pci)).order_by("cell_id"):
+        if arfcn is not None and int(f.arfcn) != int(arfcn):
+            continue
+        if f.cell_id in nci_by_ncgi:
+            continue
+        matches.append(f.cell_id)
+        nci_by_ncgi[f.cell_id] = int(f.nci) if f.nci is not None else None
+        plmns.append(f.plmn or "")
 
     if not matches:
         results = {"FAIL": attempts}
@@ -392,6 +415,7 @@ def rlf_kpm(window_min: float = _DEFAULT_WINDOW_MIN) -> dict[str, Any]:
         },
         "reestablishmentInboundByPreviousPci": [
             {"cellNcgi": cell,
+             **_std(cell),
              # v10 加 previousArfcn:只有 PCI 無法消歧(限制 L2),
              # 而 (pci, arfcn) 才是解析 CGI 的配對鍵。
              "byPreviousPci": [{"previousPhysicalCellId": pci,

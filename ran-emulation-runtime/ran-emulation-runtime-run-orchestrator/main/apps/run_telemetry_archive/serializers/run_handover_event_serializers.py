@@ -13,4 +13,4 @@ class RunHandoverEventWriteSerializer(serializers.ModelSerializer):
 class RunHandoverEventReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = RunHandoverEvent
-        fields = ['id', 'run_handover_event_uuid', 'run_seq', 'ric_run', 'f_scene_run_uuid', 'at_sim_ms', 'ue_id', 'source_cell', 'target_cell', 'outcome', 'detail', 'run_handover_event_created_at', 'run_handover_event_updated_at']
+        fields = ['id', 'run_handover_event_uuid', 'run_seq', 'ric_run', 'f_scene_run_uuid', 'at_sim_ms', 'ue_id', 'source_cell', 'target_cell', 'outcome', 'detail', 'node_id', 'meid', 'run_handover_event_created_at', 'run_handover_event_updated_at']

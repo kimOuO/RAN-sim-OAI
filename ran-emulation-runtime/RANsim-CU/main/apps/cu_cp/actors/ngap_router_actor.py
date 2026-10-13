@@ -79,20 +79,20 @@ class NgapRouterActor:
         initial_cell = ue.serving_cell or ""
         if not initial_cell:
             # TS 38.304:出生安置 fallback 也不得選 barred cell(DB 旗標 OR fixture 檔)。
-            from main.apps.cu_cp.services.common.fixture_state import is_cell_barred
+            from main.apps.cu_cp.services.common.fixture_state import admission_blocked
             for cell in CellConfig.objects.filter(is_active=True).order_by("cell_id"):
-                if not is_cell_barred(cell.cell_id, bool(cell.is_barred)):
+                if not admission_blocked(cell.cell_id, bool(cell.is_barred)):
                     initial_cell = cell.cell_id
                     break
 
-        SqlDbBusinessService.update_entity(
-            UeContext, "ue_id", ue.ue_id,
-            {
-                "amf_ue_ngap_id": amf_ue_ngap_id,
-                "serving_cell": initial_cell,
-                "updated_at": TimestampService.now(),
-            },
-        )
+        now = TimestampService.now()
+        UeContext.objects.filter(ue_id=ue.ue_id).update(amf_ue_ngap_id=amf_ue_ngap_id, updated_at=now)
+        # 2026-09-27:服務 cell 只在「還沒有」時才補(條件式更新)。AMF 的回應是非同步的,
+        # 期間 UE 可能已經由 Initial UL RRC 或換手設好 cell;以前無條件寫回自己一開始讀到的值,
+        # 把 UE 搬回「第一個 active cell」,CU 與 DU 從此認知不同。
+        if initial_cell:
+            UeContext.objects.filter(ue_id=ue.ue_id, serving_cell="").update(serving_cell=initial_cell, updated_at=now)
+        initial_cell = UeContext.objects.filter(ue_id=ue.ue_id).values_list("serving_cell", flat=True).first() or initial_cell
 
         # Build DRB list (one DRB per PDU session, mirroring OAI restriction).
         drbs = []
@@ -154,3 +154,41 @@ class NgapRouterActor:
             F1apHandler.build_dl_rrc_message_transfer(ue.ue_id, rrc_b64),
         )
         return success_response({"ue_id": ue.ue_id, "downstream": downstream}, "NAS forwarded")
+
+
+class NgapHandoverActor:
+    """NG 換手的目標側(多 gNB P6;TS 38.413 §8.4.2 Handover Resource Allocation)。
+
+    AMF 收到來源 gNB 的 Handover Required 後送這裡。目標允入、配 RAN UE NGAP ID、目標 DU 建 context,
+    回 Handover Request Acknowledge;UE 到達後由本 gNB 送 Handover Notify(背景)。
+    """
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def handover_request(request: HttpRequest):
+        import threading
+        from main.apps.cu_cp.services.business.ue_admission import AdmissionRejected, admit_incoming_ue, complete_arrival
+        try:
+            b = json.loads(request.body or b"{}")
+            out = admit_incoming_ue(ue_id=str(b["ue_id"]), target_cell=str(b["target_cell_id"]),
+                                    amf_ue_ngap_id=b.get("amf_ue_ngap_id"),
+                                    traffic_profile=(b.get("ue_state") or {}).get("traffic_profile"),
+                                    source_gnb_id=b.get("source_gnb_id"), source_cell=str(b.get("source_cell_id") or ""),
+                                    ho_uuid="", via="NG")
+        except AdmissionRejected as exc:
+            return error_response(exc.cause, exc.detail, status=409)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            return error_response("invalid Handover Request", str(exc), status=400)
+
+        def _notify(ue_id: str) -> None:
+            # 不等:以前等 0.2 s 牆鐘讓 Command 先回來源,但 10× 下那是 2 秒劇本時間 ——
+            # UE 在目標的下一次 A3 會比 Notify 先到 AMF,被判「UE 不在本 gNB」(實測 3 次準備失敗)。
+            from django.db import close_old_connections
+            close_old_connections()
+            try:
+                complete_arrival(ue_id, "NG")
+            finally:
+                close_old_connections()
+        threading.Thread(target=_notify, args=(str(b["ue_id"]),), daemon=True, name="ng-ho-notify").start()
+        return success_response(out, "Handover Request Acknowledge")

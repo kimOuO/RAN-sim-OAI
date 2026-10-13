@@ -39,11 +39,18 @@ class _NeighborMeasSerializer(serializers.Serializer):
 class F1SetupWriteSerializer(serializers.Serializer):
     gnb_du_id = serializers.IntegerField(min_value=0)
     served_cells = _CellConfigSerializer(many=True)
+    # 多 gNB:DU 的 F1 端點與名稱(舊 DU 不帶 → 退回 env HTTP_DU_HOST)
+    du_endpoint = serializers.CharField(required=False, allow_blank=True, default="")
+    du_name = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class UlRrcMessageWriteSerializer(serializers.Serializer):
     ue_id = serializers.CharField(max_length=64)
     rrc_msg_b64 = serializers.CharField()
+    # Initial UL RRC Message Transfer(TS 38.473 §8.4.1):UE 接入的 cell 與所在 DU
+    is_initial = serializers.BooleanField(required=False, default=False)
+    cell_id = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+    gnb_du_id = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class MeasurementReportWriteSerializer(serializers.Serializer):
@@ -82,5 +89,6 @@ class MeasurementReportWriteSerializer(serializers.Serializer):
 class DuRegistryReadSerializer(serializers.Serializer):
     gnb_du_id = serializers.IntegerField()
     name = serializers.CharField()
+    endpoint = serializers.CharField(required=False)
     served_cells_json = serializers.JSONField()
     registered_at = serializers.DateTimeField()

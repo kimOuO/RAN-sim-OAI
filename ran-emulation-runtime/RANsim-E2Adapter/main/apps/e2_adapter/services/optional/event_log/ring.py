@@ -138,17 +138,22 @@ def record_pdu_dispatch(proc_code: int, type_name: str, size: int) -> None:
 
 def record_control_req_recv(style: int, action: int, sim_action: str, ueid: dict,
                             *, ran_func: int = 3, inst_id: int | None = None,
-                            params: dict | None = None) -> None:
+                            params: dict | None = None, requestor_id: int | None = None,
+                            ric_label: str | None = None) -> None:
     """xApp 下發的控制命令進來了。
 
     ran_func / inst_id / params 是 2026-08-20 補的:Dashboard /e2 的「下發命令」面板
     要能顯示「誰下了什麼」並和 RIC 端的 instId 直接對帳。adapter 是 RC / ANR / CCC
     三種控制的唯一咽喉點,所以這裡是唯一能一次看完所有下發命令的地方。
     """
+    # 多 gNB(C14):RIC 對帳鍵。requestor_id / inst_id = E2AP RICrequestID;
+    # ric_label = RICcallProcessID 以 UTF-8 解出的字串(RIC 閘道注入的 <sid>|<node>|g<gen>|<label>,
+    # rc-probe 0.0.19 起放在這個 IE;沒帶就是 None)。
     _append_control(
         "control_req_recv", style=style, action=action,
         sim_action=sim_action, ueid=ueid,
         ran_func=ran_func, inst_id=inst_id, params=params or {},
+        requestor_id=requestor_id, ric_label=ric_label,
     )
 
 
@@ -173,3 +178,14 @@ def record_control_failure(reason: str, style: int = 0, action: int = 0, *,
     原本那則請求的列;以前沒帶,請求列永遠 pending、失敗自成一列(I-7 對不上)。"""
     _append_control("control_failure", reason=reason, style=style, action=action,
                     ran_func=ran_func, inst_id=inst_id)
+
+
+def label_of_call_process_id(raw: bytes | None) -> str | None:
+    """RICcallProcessID(OCTET STRING)→ RIC 標籤字串;不是可印字元的 UTF-8 就回 None(不猜)。"""
+    if not raw:
+        return None
+    try:
+        txt = bytes(raw).decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return txt if txt.isprintable() else None

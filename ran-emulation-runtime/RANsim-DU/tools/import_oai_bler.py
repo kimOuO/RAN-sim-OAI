@@ -19,14 +19,14 @@
 輸入格式: SNR;MCS;TBS;rate;err0;trials0;err1;trials1;...
     err0/trials0 = 首傳(initial transmission)的錯誤數/試驗數 → 首傳 BLER。
     後續 errN/trialsN 是第 N 次 HARQ 重傳,本模型的 link adaptation 操作點
-    只需要首傳 BLER(對齊 OAI target_dl_bler)。
+    只需要首傳 BLER(OAI get_mcs_from_bler 亦以「重傳數 / 首傳數」即首傳錯誤率做外迴路)。
 
-輸出格式: mcs,sinr_db,bler  —— ldpc_abstract._load_curve() 直接吃。
+輸出格式: mcs,sinr_db,bler  —— link_adaptation/bler_curve.py 直接吃。
 
 用法:
     python3 tools/import_oai_bler.py \
         --src /home/mitlab/openairinterface5g/openair1/SIMULATION/NR_PHY/BLER_SIMULATIONS/AWGN/AWGN_results \
-        --out main/apps/phy_high/data/bler_curve.csv
+        --out main/apps/mac/services/optional/link_adaptation/data/bler_curve.csv
 """
 from __future__ import annotations
 

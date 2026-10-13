@@ -8,11 +8,10 @@
 | 模組 | 路徑 | 功能 | 對應 OAI |
 |---|---|---|---|
 | `tick` | `main/apps/tick` | slot 時鐘、sim/wall 解耦、PM window、RLC delay 模型、measurement_report 觸發 | gNB_scheduler 迴圈 |
-| `mac` | `main/apps/mac` | PF 排程(2-pass/retx-aware)、HARQ、CQI→MCS、PRB quota、PM 聚合 | NR_MAC_gNB scheduler |
+| `mac` | `main/apps/mac` | PF 排程(2-pass/retx-aware)、HARQ、鏈路適應(BLER 外迴路選 MCS、OAI AWGN BLER 曲線、CQI 表)、PRB quota、PM 聚合 | NR_MAC_gNB scheduler |
 | `rlc` | `main/apps/rlc` | AM/UM/TM entity、SDU→PDU 分段、retx、BO、SDU delay、discardTimer | nr_rlc_entity.c |
-| `phy_high` | `main/apps/phy_high` | MCS→調變階數、layer mapping、BLER 查表、TBS/吞吐 | LAYER1/NR_TRANSPORT |
 | `f1ap_du` | `main/apps/f1ap_du` | F1Setup、UE context CRUD、DL/UL RRC 轉送、measurement_report 匯集 | f1ap_du_task.c |
-| `fapi_north` | `main/apps/fapi_north` | DL/UL TTI 組裝、CQI→MCS/CRC→HARQ 回饋、in-process SINR(讀 cache) | nFAPI DL/UL TTI |
+| `fapi_north` | `main/apps/fapi_north` | DL/UL TTI 組裝、CQI indication(SINR/rank/PMI/beam)與 CRC→HARQ 回饋、in-process SINR(讀 cache) | nFAPI DL/UL TTI |
 
 ## API(全部 POST,前綴 `/api/v0.1/DU/`)
 
@@ -46,10 +45,9 @@
 | `RLC/RlcDataController/read_buffer_status` | 讀 RLC buffer(BO) |
 | `RLC/RlcDataController/report_ul_traffic` | 回報上行流量 |
 
-### PHY / F1AP / FAPI
+### F1AP / FAPI
 | 端點 | 說明 |
 |---|---|
-| `PHY/PhyHighController/compute_modulation_throughput`·`estimate_bler` | 吞吐/BLER 估計 |
 | `F1AP/F1ApRouter/ue_context_setup`·`ue_context_modification`·`ue_context_release` | UE context |
 | `F1AP/F1ApRouter/dl_rrc_message`·`ul_rrc_message`·`f1_setup_response` | RRC 轉送 / F1 setup |
 | `F1AP/F1SessionController/read` | F1 session 狀態 |

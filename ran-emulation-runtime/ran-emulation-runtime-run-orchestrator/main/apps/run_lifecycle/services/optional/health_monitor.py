@@ -98,7 +98,7 @@ def _dump_stacks(name: str) -> None:
 def _auto_restart(run_uuid: str, reason: str) -> None:
     """經自家 API stop → start(重用完整收尾/啟動流程:RIC 解除登記、容器重建、UE 重新起場)。"""
     base = f"http://127.0.0.1:8000/api/v0.1/Run_orchestrator/Run_lifecycle/LaunchController"
-    body = json.dumps({"scene_run_uuid": run_uuid}).encode()
+    body = json.dumps({"scene_run_uuid": run_uuid, "reason": "auto_restart"}).encode()   # reason:O1 收工據此不送 notifyMOIDeletion
     for action in ("stop", "start"):
         try:
             req = urllib.request.Request(f"{base}/{action}", data=body, headers={"content-type": "application/json"})
@@ -153,7 +153,7 @@ def _auto_stop(run_uuid: str, reason: str) -> None:
             logger.warning("auto-stop %s → HTTP %s(%s)", run_uuid, resp.status, reason)
         # 跑完 ≠ 被人停掉。stop 已經寫了 stopped,這裡覆蓋成 done ——
         # 外部 Agent 的 I-4 靠這個分辨「可以去取資料」與「中途失敗要重跑」。
-        platform_clients.update_scene_run(run_uuid, status="done",
+        platform_clients.update_scene_run(run_uuid, status="idle", last_result="done",
                                           notes=f"auto-stop {platform_clients.now_iso()}: {reason[:200]}")
     except Exception as exc:  # noqa: BLE001
         logger.error("auto-stop %s failed: %s", run_uuid, exc)
@@ -172,22 +172,34 @@ class HealthMonitor(threading.Thread):
     def stop(self) -> None:
         self._stop_evt.set()
 
+    def _role(self, key: str) -> str:
+        return (self.instances.get(key) or {}).get("role") or key.split("-")[0]
+
+    # 不能叫 _name:threading.Thread 自己有 self._name(執行緒名稱字串),會蓋掉方法
+    def _cname(self, key: str) -> str:
+        return (self.instances.get(key) or {}).get("name") or container_spawner.names_for(self.run_uuid).get(key, key)
+
+    def _first(self, role: str) -> str | None:
+        keys = sorted(k for k in self.instances if self._role(k) == role)
+        return keys[0] if keys else None
+
     def run(self) -> None:
-        names = container_spawner.names_for(self.run_uuid)
+        # instances = {實例鍵: {role, name, host_port, run_instance_uuid}};多 gNB 後同一角色可能多個實例
         while not self._stop_evt.is_set():
             try:
                 st = container_spawner.container_status(self.run_uuid)
                 # 劇本跑完就自動停 run(以前 UE 走完後容器一直開著佔資源,要人工停)
                 if getattr(settings, "PER_RUN_AUTO_STOP_ON_FINISH", True) and st.get("ue") == "running":
-                    fin = scenario_finished(names["ue"])
+                    fin = scenario_finished(self._cname("ue"))
                     if fin:
                         reason = f"劇本跑完 {fin.get('elapsed_sim_sec')} / {fin.get('duration_sec')} s"
                         logger.warning("run %s: %s → auto-stop", self.run_uuid, reason)
                         threading.Thread(target=_auto_stop, args=(self.run_uuid, reason), name=f"auto-stop-{self.run_uuid[-8:]}", daemon=True).start()
                         return
-                if st.get("du") == "running" and time.time() - self._last_progress_at >= PROGRESS_WRITE_SEC:
+                _du0 = self._first("du")
+                if _du0 and st.get(_du0) == "running" and time.time() - self._last_progress_at >= PROGRESS_WRITE_SEC:
                     self._last_progress_at = time.time()
-                    p = scene_progress_sec(names["du"])
+                    p = scene_progress_sec(self._cname(_du0))   # 鎖步時鐘下每個 DU 的劇本時鐘相同
                     if p is not None:
                         try:
                             platform_clients.update_scene_run(self.run_uuid, progress_sec=round(p, 1))
@@ -195,28 +207,29 @@ class HealthMonitor(threading.Thread):
                             logger.info("progress 回寫失敗 %s", self.run_uuid)
                 if time.time() - self._last_mem_check >= MEM_CHECK_SEC:
                     self._last_mem_check = time.time()
-                    self._mem_detail = {r: memory_issue(names[r]) for r in self.instances if st.get(r) == "running"}
+                    self._mem_detail = {k: memory_issue(self._cname(k)) for k in self.instances if st.get(k) == "running"}
                     low = host_memory_low()
                     if low:
                         logger.warning("run %s: %s(不重啟 run,請查主機上其他服務)", self.run_uuid, low)
                 unhealthy: list[str] = []
-                for role, inst in self.instances.items():
+                for key, inst in self.instances.items():
+                    role = self._role(key)
                     alive = False; detail = ""
-                    if st.get(role) == "running":
+                    if st.get(key) == "running":
                         try:
-                            req = urllib.request.Request(container_spawner.health_url(role, names[role], inst.get("host_port")), data=b"{}", headers={"content-type": "application/json"})
+                            req = urllib.request.Request(container_spawner.health_url(role, self._cname(key), inst.get("host_port")), data=b"{}", headers={"content-type": "application/json"})
                             with urllib.request.urlopen(req, timeout=3) as resp:
                                 alive = resp.status < 500
                                 body = json.loads(resp.read().decode() or "{}") if alive else {}
-                            detail = dependency_issue(role, (body or {}).get("data") or {}) or self._mem_detail.get(role, "")
+                            detail = dependency_issue(role, (body or {}).get("data") or {}) or self._mem_detail.get(key, "")
                         except Exception:  # noqa: BLE001
                             alive = False
                     else:
-                        detail = f"container {st.get(role, 'absent')}"
-                    status = ("degraded" if detail else "running") if alive else ("starting" if st.get(role) == "running" else st.get(role, "absent"))
+                        detail = f"container {st.get(key, 'absent')}"
+                    status = ("degraded" if detail else "running") if alive else ("starting" if st.get(key) == "running" else st.get(key, "absent"))
                     platform_clients.update_run_instance(inst["run_instance_uuid"], status=status, health_detail=detail, **({"last_heartbeat": platform_clients.now_iso()} if alive else {}))
                     if status != "running" and not (status == "degraded" and is_external(detail)):
-                        unhealthy.append(f"{role}:{status}{(' ' + detail) if detail else ''}")
+                        unhealthy.append(f"{key}:{status}{(' ' + detail) if detail else ''}")
                 # 自動復原(2026-09-15 06:30 CU 卡死 55 分鐘無人處理):連續不健康超過 PER_RUN_AUTO_RESTART_SEC 就重啟整個 run;
                 # 剛 spawn 的 starting 期不算(啟動 60 s 內不判);兩次重啟間隔至少 PER_RUN_AUTO_RESTART_COOLDOWN_SEC。
                 now = time.time()
@@ -237,9 +250,9 @@ class HealthMonitor(threading.Thread):
                         logger.error("run %s unhealthy for %.0fs (%s) → auto-restart", self.run_uuid, now - self._unhealthy_since, reason)
                         self._last_restart_at = now; self._unhealthy_since = None
                         _restart_history.setdefault(self.run_uuid, []).append(now)
-                        for role in ("cu", "du"):
-                            if any(u.startswith(f"{role}:") for u in unhealthy):
-                                _dump_stacks(names[role])
+                        for key in self.instances:
+                            if self._role(key) in ("cu", "du") and any(u.startswith(f"{key}:") for u in unhealthy):
+                                _dump_stacks(self._cname(key))
                         threading.Thread(target=_auto_restart, args=(self.run_uuid, reason), name=f"auto-restart-{self.run_uuid[-8:]}", daemon=True).start()
                         return   # 這條監控由 start 重新建立
                 else:

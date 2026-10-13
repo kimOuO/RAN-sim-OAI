@@ -65,7 +65,8 @@ def _object_id(row: dict, detail: dict) -> str | None:
     src, tgt = p.get("source"), p.get("target")
     if src and tgt:
         return f"{src}>{tgt}"          # 鄰區關係:來源>目標
-    for v in (detail.get("object_id"), tgt, src, p.get("cell_id"), p.get("ncgi")):
+    # CCC 的 params 是 {cell, op}(E2Adapter 控制稽核),其他控制用 cell_id / ncgi
+    for v in (detail.get("object_id"), tgt, src, p.get("cell_id"), p.get("cell"), p.get("ncgi")):
         if v:
             return str(v)
     t = str(row.get("target") or "")
@@ -97,5 +98,14 @@ def to_change(row: dict) -> dict:
         "action": row.get("action_type"),
         "outcome": row.get("outcome"),
         "reason": detail.get("reason"),
+        # 多 gNB(C14):變更發生在哪個 gNB / E2 node;RIC 控制帶閘道注入的標籤 <sid>|<node>|g<gen>|<label>
+        "node_id": row.get("node_id") or None,
+        "meid": row.get("meid") or None,
+        "ric_triggered": source.startswith("ric/"),
+        # 歸檔的 detail 是 E2Adapter ControlAudit 的列(camelCase:instId / requestorId / ricLabel)
+        "ric_label": detail.get("ricLabel") or detail.get("ric_label") or None,
+        # RIC 的 E2AP RICrequestID(對帳鍵;ricInstanceID 在 rc-probe 重啟後會重來,要連同時間一起比)
+        "ric_instance_id": detail.get("instId", detail.get("inst_id")),
+        "ric_requestor_id": detail.get("requestorId", detail.get("requestor_id")),
         "unavailable_fields": unavailable,
     }

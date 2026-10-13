@@ -37,7 +37,8 @@
       "REESTAB_MIN_RSRP_DBM": "-120",
       "SERVED_TAC": "0xa000",
       "SST": "1",
-      "ANR_AUTO_ADD": "0"
+      "ANR_AUTO_ADD": "0",
+      "PYTHONPATH": "/opt/ran-sim-protocol"
     },
     "volumes": [
       {
@@ -79,16 +80,16 @@
       "HTTP_RU_HOST": "{ru}",
       "HTTP_RU_PORT": "8000",
       "LOG_DIR": "/app/logs",
-      "NR_EESM_ENABLED": "off",
+      "NR_EESM_ENABLED": "on",
       "NR_MIMO_LAYERS_ENABLED": "on",
-      "NR_TBS_SPEC_MODE": "off",
+      "NR_TBS_SPEC_MODE": "on",
       "PLMN_MCC": "208",
       "PLMN_MNC": "95",
       "PM_WINDOW_SEC": "1.0",
       "PRB_OAI_CALIB": "1.0",
+      "PYTHONPATH": "/opt/ran-sim-protocol",
       "RLC_DELAY_MODEL": "subtick",
       "RLC_TX_MAXSIZE_BYTES": "10000000",
-      "SIM_BLER_CURVE_PATH": "/app/main/apps/phy_high/data/bler_curve.csv",
       "SIM_TICK_MS": "50",
       "SLOT_DISCARD_TIMER_MS": "300",
       "SLOT_ENGINE_SHADOW": "on",
@@ -97,7 +98,8 @@
       "SLOT_OP_PRB_FLOOR": "2",
       "SLOT_PIPELINE_SLOTS_MAX": "2",
       "SLOT_PIPELINE_SLOTS_MIN": "2",
-      "UL_ACK_MODEL": "delayed_ack"
+      "UL_ACK_MODEL": "delayed_ack",
+      "SIM_CLOCK": "external"
     },
     "volumes": [
       {
@@ -135,6 +137,7 @@
       "HTTP_PHYSICS_HOST": "physics",
       "HTTP_PHYSICS_PORT": "8000",
       "LOG_DIR": "/app/logs",
+      "PYTHONPATH": "/opt/ran-sim-protocol",
       "RU_CACHE_DIR": "/data/channel_cache",
       "RU_CHANNEL_CACHE_TTL_SEC": "0.5",
       "RU_CHANNEL_MODE": "live",
@@ -166,7 +169,18 @@
       }
     ],
     "extra_hosts": null,
-    "command": null
+    "command": [
+      "gunicorn",
+      "main.wsgi:application",
+      "-b",
+      "0.0.0.0:8000",
+      "--workers",
+      "1",
+      "--threads",
+      "8",
+      "--timeout",
+      "60"
+    ]
   },
   "ue": {
     "image": "ransim-ue:platform",
@@ -188,13 +202,20 @@
       "TRAFFIC_BURST_BYTES": "131072",
       "UE_LIST_POLL_PERIOD_SEC": "5",
       "UE_MEASUREMENT_PERIOD_MS": "40",
-      "UE_TRAJECTORY_PERIOD_MS": "100"
+      "UE_TRAJECTORY_PERIOD_MS": "100",
+      "SIM_CLOCK": "external",
+      "PYTHONPATH": "/opt/ran-sim-protocol"
     },
     "volumes": [
       {
         "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-UE",
         "target": "/app",
         "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+        "target": "/opt/ran-sim-protocol",
+        "ro": true
       }
     ],
     "extra_hosts": [
@@ -222,13 +243,19 @@
       "SIM_CU_URL": "http://127.0.0.1:{cu_port}",
       "E2_SETUP_RESPONSE_TIMEOUT_SEC": "600",
       "SCTP_BACKOFF_INITIAL_SEC": "20",
-      "SCTP_BACKOFF_AFTER_SUCCESS_SEC": "20"
+      "SCTP_BACKOFF_AFTER_SUCCESS_SEC": "20",
+      "PYTHONPATH": "/opt/ran-sim-protocol"
     },
     "volumes": [
       {
         "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-E2Adapter",
         "target": "/app",
         "ro": false
+      },
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/ran-emulation-runtime-interface-protocol",
+        "target": "/opt/ran-sim-protocol",
+        "ro": true
       }
     ],
     "extra_hosts": null,
@@ -285,5 +312,27 @@
     ],
     "command": null,
     "gpu": true
+  },
+  "amf": {
+    "image": "ransim-du:platform",
+    "env": {
+      "AMF_NAME": "ransim-amf",
+      "DJANGO_ALLOWED_HOSTS": "*",
+      "DJANGO_DEBUG": "False",
+      "DJANGO_SECRET_KEY": "change-me",
+      "PLMN_MCC": "208",
+      "PLMN_MNC": "95",
+      "NGAP_TIMEOUT_SEC": "5",
+      "SKIP_AUTO_MIGRATE": "1"
+    },
+    "volumes": [
+      {
+        "source": "/home/mitlab/XAPP_DT/ran-emulation-runtime/RANsim-AMF",
+        "target": "/app",
+        "ro": false
+      }
+    ],
+    "extra_hosts": null,
+    "command": null
   }
 }

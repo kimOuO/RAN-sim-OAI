@@ -25,8 +25,12 @@ _TABLES = {
                                      "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id", "window_seq", "scene_sim_ms", "rsrq_db", "cqi")),
     "cell": (CellMeasurementLog, ("id", "cell_id", "prb_pct_dl", "prb_pct_ul", "tick_count", "window_seconds", "window_seq", "connected_ues", "scene_sim_ms", "recorded_at")),
     "handover": (HandoverEvent, ("id", "ue_id", "source_cell", "target_cell", "trigger", "status", "started_at", "completed_at",
-                                 "failure_cause", "mro_class", "scene_sim_ms")),
-    "rlf": (RlfEvent, ("id", "ue_id", "source_cell", "source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_cell", "reestab_pci", "scene_sim_ms")),
+                                 "failure_cause", "mro_class", "scene_sim_ms",
+                                 # 多 gNB(C14):換手種類、UE 的 AMF UE NGAP ID、兩端 ncgi
+                                 "ho_type", "amf_ue_ngap_id", "source_ncgi", "target_ncgi",
+                                 "ric_instance_id", "ric_label")),
+    "rlf": (RlfEvent, ("id", "ue_id", "source_cell", "source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_cell", "reestab_pci", "scene_sim_ms",
+                       "outcome")),
     # 自主(非 RIC 觸發)的組態變更 —— Agent 介面 I-7 要用它跟 RIC 下來的控制分開
     "son": (SonActionLog, ("id", "object_type", "object_id", "action", "attribute", "before", "after",
                            "function", "reason", "recorded_at")),

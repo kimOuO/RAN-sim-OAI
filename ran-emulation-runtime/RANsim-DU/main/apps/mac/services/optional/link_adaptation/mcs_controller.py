@@ -1,60 +1,63 @@
-"""MCS Controller — OAI `get_mcs_from_bler()` 等價,BLER 閉環 AMC。
+"""下行外迴路鏈路適應 —— OAI ``get_mcs_from_bler()`` 的等價實作。
 
-OAI 邏輯 (gNB_scheduler_primitives.c):
-  - 50ms 滾動窗 BLER
-  - BLER > upper (0.15) → MCS -= 1
-  - BLER < lower (0.05) → MCS += 1
+OAI 原始碼(openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c)
+-----------------------------------------------------------------
+* ``init_bler_stats``:新 UE 的 MCS = ``dl_min_mcs``,平滑 BLER = (lower + upper) / 2
+* ``get_mcs_from_bler``:每 ``BLER_UPDATE_FRAME`` = 10 個 frame(100 ms)更新一次
+      bler_window = 本期重傳數 / 本期首傳數
+      bler = BLER_FILTER × bler + (1 − BLER_FILTER) × bler_window,BLER_FILTER = 0.9
+      bler < lower 且 mcs < max → mcs + 1;bler > upper → mcs − 1;下限 min_mcs
+* 門檻預設(openair2/GNB_APP/MACRLC_nr_paramdef.h):
+      dl_bler_target_upper = 0.15、dl_bler_target_lower = 0.05、
+      dl_min_mcs = 0、dl_max_mcs = 28
 
-我們無真 LDPC,用 3GPP AWGN BLER 曲線估:
-  BLER ≈ Q((SINR - SINR_req[MCS]) / σ)
+本模擬與 OAI 的差異
+------------------
+* **bler_window 用期望值**:本模擬沒有逐 TB 的 HARQ 解碼結果,改用 OAI AWGN 曲線上
+  「目前 MCS、目前 SINR」的首傳 BLER(``bler_curve.bler``)。
+* **不做「無排程就降 MCS」**:OAI 在一期內首傳 ≤ 3 次時也會降一階,閒置 UE 的 MCS
+  會一路掉到下限。本模擬不跟,因為閒置 UE 的 MCS 仍會出現在 KPM 裡,掉到 0 會誤導分析。
+* **時間用模擬時間**:呼叫端傳入 sim-time(ms)。一個 tick(預設 500 ms)內補跑應有
+  的更新次數,所以倍速不影響收斂速度。2026-09-26 之前用牆鐘,且每 tick 被呼叫兩次、
+  每次都可能動一階,10 倍速下收斂比 1 倍速慢 10 倍。
+
+2026-09-26 之前 BLER 用一張無出處的 erfc 公式估算(``_MCS_SINR_REQUIRED_DB``),
+中高階 MCS 比 OAI 曲線悲觀約 10 dB,導致回報的 MCS 與吞吐量系統性偏低;已移除。
 """
 from __future__ import annotations
 
-from main.utils.env_loader import get_float
+from dataclasses import dataclass
 
-import math
-from dataclasses import dataclass, field
-
+from main.apps.mac.services.optional.link_adaptation import bler_curve
+from main.utils.env_loader import get_float, get_int
 from main.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-
-# 3GPP AWGN 各 MCS 的 10% BLER SINR 門檻 (dB)。
-_MCS_SINR_REQUIRED_DB = [
-    -7.0, -5.0, -3.0, -1.0,  1.0,  3.0,  5.0,  7.0,
-     9.0, 11.0, 13.0, 14.5, 16.0, 17.5, 19.0, 20.0,
-    20.8, 21.5, 22.2, 22.9, 23.6, 24.3, 25.0, 25.7,
-    26.5, 27.2, 28.0, 28.8,
-]
-
-SIGMA_DB = 1.5
-# 2026-09-19:目標 BLER 可由 registry DU 模板設(經編排器注入);下限取目標的 1/3(OAI 0.15/0.05 之比)
-BLER_UPPER = get_float("TARGET_BLER", 0.15)
-BLER_LOWER = BLER_UPPER / 3.0
-WINDOW_MS = 50
-INITIAL_MCS = 9
-MAX_MCS = 27
-
-
-def estimate_bler(sinr_db: float, mcs: int) -> float:
-    if mcs < 0 or mcs >= len(_MCS_SINR_REQUIRED_DB):
-        return 1.0
-    margin = sinr_db - _MCS_SINR_REQUIRED_DB[mcs]
-    q = 0.5 * math.erfc(margin / (SIGMA_DB * math.sqrt(2)))
-    return max(0.0, min(1.0, q))
+BLER_UPDATE_MS = 100          # OAI BLER_UPDATE_FRAME = 10 frame × 10 ms
+BLER_FILTER = 0.9             # OAI BLER_FILTER
+# 門檻:registry DU 模板的 target_bler 經編排器注入為 TARGET_BLER,語意是「目標值」(中心)。
+# 上下門檻取中心的 1.5 倍與 0.5 倍 —— 即 OAI 預設 0.15 / 0.05 相對其中點 0.1 的比例,
+# 所以 target_bler = 0.1(registry「OAI 對齊」模板)時門檻恰為 OAI 預設。
+# 2026-09-26 前把 TARGET_BLER 當上門檻、下門檻取其 1/3,該模板實際跑的是 0.1 / 0.033。
+# 需要不對稱門檻時可直接設 TARGET_BLER_UPPER / TARGET_BLER_LOWER。
+_TARGET = get_float("TARGET_BLER", 0.1)
+BLER_UPPER = get_float("TARGET_BLER_UPPER", 1.5 * _TARGET)
+BLER_LOWER = get_float("TARGET_BLER_LOWER", 0.5 * _TARGET)
+MIN_MCS = get_int("DL_MIN_MCS", 0)
+MAX_MCS = min(bler_curve.MAX_MCS, get_int("DL_MAX_MCS", 28))
+_MAX_CATCHUP = 100            # 單次呼叫最多補跑的更新期數(防長時間停頓後一次跑太久)
 
 
 @dataclass
 class _UeMcsState:
-    mcs: int = INITIAL_MCS
-    bler_window: list[tuple[int, float]] = field(default_factory=list)
-    rounds: list[float] = field(default_factory=lambda: [0.0] * 8)
-    errors: float = 0.0
+    mcs: int = MIN_MCS
+    bler: float = (BLER_LOWER + BLER_UPPER) / 2.0
+    last_update_ms: float | None = None
 
 
 class MCSController:
-    """All-UE closed-loop AMC controller (singleton)。"""
+    """所有 UE 的外迴路鏈路適應(singleton)。"""
 
     def __init__(self) -> None:
         self.ue_state: dict[str, _UeMcsState] = {}
@@ -62,38 +65,44 @@ class MCSController:
     def reset(self) -> None:
         self.ue_state.clear()
 
-    def update(self, ue_id: str, sinr_db: float, tick_ms_now: int) -> tuple[int, float]:
-        st = self.ue_state.setdefault(ue_id, _UeMcsState())
+    def remove(self, ue_id: str) -> None:
+        self.ue_state.pop(ue_id, None)
 
-        bler = estimate_bler(sinr_db, st.mcs)
-        st.bler_window.append((tick_ms_now, bler))
-        st.bler_window = [(t, b) for t, b in st.bler_window if tick_ms_now - t <= WINDOW_MS]
-        smoothed_bler = sum(b for _, b in st.bler_window) / max(len(st.bler_window), 1)
-
-        if smoothed_bler > BLER_UPPER and st.mcs > 0:
-            st.mcs -= 1
-        elif smoothed_bler < BLER_LOWER and st.mcs < MAX_MCS:
-            margin = sinr_db - _MCS_SINR_REQUIRED_DB[min(st.mcs + 1, MAX_MCS)]
-            if margin > -2.0:
+    def update(self, ue_id: str, sinr_db: float, now_sim_ms: float) -> tuple[int, float]:
+        """推進到 now_sim_ms,回 (MCS, 平滑 BLER)。同一時間點重複呼叫不會重複更新。"""
+        st = self.ue_state.get(ue_id)
+        if st is None:
+            st = self.ue_state[ue_id] = _UeMcsState(last_update_ms=float(now_sim_ms))
+            return st.mcs, st.bler
+        elapsed = float(now_sim_ms) - float(st.last_update_ms or 0.0)
+        if elapsed < 0:                      # 時鐘重設(場次重啟)→ 重新起算,不倒退
+            st.last_update_ms = float(now_sim_ms)
+            return st.mcs, st.bler
+        n = int(elapsed // BLER_UPDATE_MS)
+        if n <= 0:
+            return st.mcs, st.bler
+        st.last_update_ms = float(st.last_update_ms) + n * BLER_UPDATE_MS
+        for _ in range(min(n, _MAX_CATCHUP)):
+            window = bler_curve.bler(st.mcs, sinr_db)
+            st.bler = BLER_FILTER * st.bler + (1.0 - BLER_FILTER) * window
+            if st.bler < BLER_LOWER and st.mcs < MAX_MCS:
                 st.mcs += 1
-
-        b = bler
-        one_minus_b = 1 - b
-        st.rounds[0] += one_minus_b
-        st.rounds[1] += one_minus_b * b
-        st.rounds[2] += one_minus_b * b * b
-        st.rounds[3] += one_minus_b * b * b * b
-        st.errors += b ** 4
-
-        return st.mcs, smoothed_bler
+            elif st.bler > BLER_UPPER:
+                st.mcs -= 1
+            st.mcs = max(MIN_MCS, min(MAX_MCS, st.mcs))
+        return st.mcs, st.bler
 
     def get_mcs(self, ue_id: str) -> int:
         st = self.ue_state.get(ue_id)
-        return st.mcs if st else INITIAL_MCS
+        return st.mcs if st else MIN_MCS
+
+    def get_bler(self, ue_id: str) -> float:
+        st = self.ue_state.get(ue_id)
+        return st.bler if st else (BLER_LOWER + BLER_UPPER) / 2.0
 
     def snapshot(self) -> dict[str, dict]:
         return {
-            uid: {"mcs": st.mcs, "rounds": list(st.rounds), "errors": st.errors}
+            uid: {"mcs": st.mcs, "bler": st.bler}
             for uid, st in self.ue_state.items()
         }
 

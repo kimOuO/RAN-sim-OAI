@@ -29,6 +29,9 @@ def observe_neighbors(serving_cell: str, neighbor_cell_ids: list[str]) -> int:
     """量測報告裡的鄰區:沒有關係的就補一筆。回傳新增筆數(0 = 沒事發生)。"""
     if not serving_cell or not neighbor_cell_ids:
         return 0
+    # 只為本 gNB 的 cell 建鄰區關係(NRT 屬於 cell 所在的 gNB)
+    if not CellConfig.objects.filter(cell_id=serving_cell).exists():
+        return 0
     targets = {c for c in neighbor_cell_ids if c and c != serving_cell}
     if not targets:
         return 0
@@ -44,20 +47,25 @@ def observe_neighbors(serving_cell: str, neighbor_cell_ids: list[str]) -> int:
     used = NrCellRelation.objects.filter(source_cell_id=serving_cell).count()
     now = TimestampService.now()
     rows = {c.cell_id: c for c in CellConfig.objects.filter(cell_id__in=missing)}
+    from main.apps.cu_cp.actors.anr_control_actor import _cell_ident
+    from main.apps.cu_cp.services.business import xn
     added = 0
     for cgi in missing:
         if used + added >= cap:
             logger.warning("自主 ANR:%s 的 NRT 已達上限 %d,略過 %s", serving_cell, cap, cgi)
             break
-        tgt = rows.get(cgi)
-        if tgt is None:      # 量測報告帶了我們不認識的 cell —— 沒有 CGI 可解析,跳過
-            logger.warning("自主 ANR:量測回報了未知 cell %s(不在 CellConfig),不建立關係", cgi)
+        # 多 gNB:目標可以是本 gNB 或 Xn 鄰居 gNB 的 cell(Xn Setup 交換過 served cells 才認得)
+        ident = _cell_ident(cgi)
+        if ident is None:    # 量測報告帶了我們不認識的 cell —— 沒有 CGI 可解析,跳過
+            logger.warning("自主 ANR:量測回報了未知 cell %s(不在本 gNB,也不在 Xn 鄰居),不建立關係", cgi)
             continue
+        tgt = rows.get(cgi)
+        plmn = tgt.served_plmn if tgt is not None else (getattr(xn.foreign_cell(cgi), "plmn", "") or "")
         _, created = NrCellRelation.objects.get_or_create(
             source_cell_id=serving_cell, target_cgi=cgi,
             defaults={
-                "target_pci": tgt.pci, "target_arfcn": 0,
-                "target_rat": "NR", "target_plmn": tgt.served_plmn,
+                "target_pci": ident[0], "target_arfcn": ident[1],
+                "target_rat": "NR", "target_plmn": plmn,
                 "is_ho_allowed": True, "is_remove_allowed": True, "is_xn_allowed": True,
                 # 自主學到的關係尚未經過 Xn 建立,與 seed_from_cells 的同 gNB 關係不同
                 "xn_x2_established": False, "ho_validated": False, "version": 1,

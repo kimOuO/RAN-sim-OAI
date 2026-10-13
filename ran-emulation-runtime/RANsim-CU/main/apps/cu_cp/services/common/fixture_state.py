@@ -55,3 +55,14 @@ def clear_fixture_barred() -> None:
 def is_cell_barred(cell_id: str, db_flag: bool) -> bool:
     """統一判準:DB 旗標 OR fixture 宣告。所有 barred 閘一律經此。"""
     return bool(db_flag) or cell_id in fixture_barred()
+
+
+def admission_blocked(cell_id: str, db_flag: bool) -> bool:
+    """接入閘(出生安置 / 換手目標 / 重建落點 / 鄰 gNB 轉入):barred,或正在進入節能(toBeEnergySaving)。
+
+    節能兩階段是「先不收新 UE、再趕走既有 UE、清空才關」—— 以前 toBeEnergySaving 期間 cell 照收,
+    RIC run 5 的 es-on 當下就有 UE 重建進來,cell 永遠關不掉。只用在接入判斷;對外觀測的 barred 欄位不變。"""
+    if is_cell_barred(cell_id, db_flag):
+        return True
+    from main.apps.cu_cp.actors.e2_control_actor import get_cell_es_state
+    return get_cell_es_state(cell_id) != "isNotEnergySaving"

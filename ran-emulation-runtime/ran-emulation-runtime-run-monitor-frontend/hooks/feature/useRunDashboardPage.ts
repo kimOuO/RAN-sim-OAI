@@ -27,9 +27,13 @@ export function useRunDashboardPage(runUuid: string) {
   // 共用的舊 DU/UE/E2Adapter,把別的場景的 cell 當成這個 run 的顯示出來(實際踩到:
   // 555 的 run 收工後 DU cell 表列出走廊的 src/nbr)。不在執行中就不要退回,
   // 讓面板直接說「沒有即時資料」而不是給錯的。
-  const duInst = (instances.data ?? []).find((i) => i.role === 'du');
+  // 多 gNB:DU / e2adapter 可能有好幾個。DU 由 RU 鎖步時鐘驅動,tick 與倍速各 DU 相同,取第一個即可;
+  // cell 清單與 E2 連線則要每個都問。
+  const duInsts = (instances.data ?? []).filter((i) => i.role === 'du');
+  const e2Insts = (instances.data ?? []).filter((i) => i.role === 'e2adapter');
+  const duInst = duInsts[0];
   const ueInst = (instances.data ?? []).find((i) => i.role === 'ue');
-  const e2Inst = (instances.data ?? []).find((i) => i.role === 'e2adapter');
+  const e2Inst = e2Insts[0];
   // run 不在執行中 → 即時狀態沒有意義:per-run 容器已移除,registry 裡的 host_port
   // 只是紀錄,打過去不是失敗就是打到別人。共用模式下停掉的 run 同理。
   const runtimeGone = !live;
@@ -40,8 +44,13 @@ export function useRunDashboardPage(runUuid: string) {
   const tick = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof getDuTick>>>() : getDuTick(duBase)), [duBase, runtimeGone]);
   const e2 = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof getE2AdapterStatus>>>() : getE2AdapterStatus(e2Base)), [e2Base, runtimeGone]);
   const ueDrv = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof getUeDriverStatus>>>() : getUeDriverStatus(ueBase)), [ueBase, runtimeGone]);
-  const duCells = useAsync(() => (runtimeGone ? skip<Awaited<ReturnType<typeof listDuCells>>>() : listDuCells(duBase)), [duBase, runtimeGone]);
-  const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); ueDrv.refetch(); instances.refetch(); }, [run, samples, hos, ctrls, tick, e2, ueDrv, instances]);
+  const duBases = duInsts.length ? duInsts.map((i) => runtimeBase(i, DU_API, 'DU')) : [duBase];
+  const duCells = useAsync(async () => (runtimeGone ? null
+    : (await Promise.all(duBases.map((b) => listDuCells(b).catch(() => null)))).flatMap((x) => x ?? [])), [duBases.join(','), runtimeGone]);
+  const e2Nodes = useAsync(async () => (runtimeGone || !e2Insts.length ? null
+    : Promise.all(e2Insts.map(async (i) => ({ inst: i, status: await getE2AdapterStatus(runtimeBase(i, E2ADAPTER_API, 'E2Adapter')).catch(() => null) })))),
+    [e2Insts.map((i) => i.host_port).join(','), runtimeGone]);
+  const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); e2Nodes.refetch(); duCells.refetch(); ueDrv.refetch(); instances.refetch(); }, [run, samples, hos, ctrls, tick, e2, e2Nodes, duCells, ueDrv, instances]);
   usePolling(refetchAll, POLL_MS, live);
   usePolling(ric.refetch, 30000, live);   // 閘道查詢慢,30 s 一次
 
@@ -93,6 +102,6 @@ export function useRunDashboardPage(runUuid: string) {
     run: run.data, sceneName: (() => { const sc = (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid); return sc?.legacy_scenario_id || sc?.name || ''; })(), status: run.status, error: run.error,
     all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
     handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], commandImpact, launches: launches.data ?? [],
-    duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, instances: instances.data ?? [], ric: ric.data ?? null, beamCells: beamUsage(view), perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,
+    duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, e2Nodes: e2Nodes.data ?? [], instances: instances.data ?? [], ric: ric.data ?? null, beamCells: beamUsage(view), perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,
   };
 }

@@ -26,10 +26,10 @@ logger = get_logger(__name__)
 ROLES = ("cu", "du", "ru", "ue", "e2adapter")   # e2adapter 走 host network(SCTP 綁 host IP),每 run 一條 association → RIC 看到一個 E2 node
 _TEMPLATE = Path(__file__).with_name("per_run_template.json")
 PER_RUN_LOG_TAIL = int(getattr(settings, "PER_RUN_LOG_TAIL", 200000))   # 每個容器留最後這麼多行
-HEALTH_PATH = {"cu": "/api/v0.1/CU/E2/E2NodeId/read", "du": "/api/v0.1/DU/Tick/TickController/read", "ru": "/api/v0.1/RU/State/RuStateReader/read", "ue": "/api/v0.1/UE/Status/read", "e2adapter": "/api/v0.1/E2Adapter/Status/AdapterStatusReader/read"}
+HEALTH_PATH = {"amf": "/api/v0.1/AMF/Status/read", "cu": "/api/v0.1/CU/E2/E2NodeId/read", "du": "/api/v0.1/DU/Tick/TickController/read", "ru": "/api/v0.1/RU/State/RuStateReader/read", "ue": "/api/v0.1/UE/Status/read", "e2adapter": "/api/v0.1/E2Adapter/Status/AdapterStatusReader/read"}
 # 2026-09-16 記憶體事故後:每個 per-run 容器都要有上限,洩漏時只 OOM 掉那一顆(restart policy 會拉回來),
 # 不會把整台 VM 拖進 swap 卡死。memswap 設同值 = 不准用 swap。可用 RUN_MEM_LIMIT_<ROLE> 覆寫(docker 格式,如 1g)。
-MEM_LIMIT_DEFAULT = {"cu": "1g", "du": "1g", "ru": "2g", "ue": "512m", "e2adapter": "512m"}
+MEM_LIMIT_DEFAULT = {"amf": "512m", "cu": "1g", "du": "1g", "ru": "2g", "ue": "512m", "e2adapter": "512m"}
 
 
 def mem_limit_for(role: str) -> str:
@@ -51,8 +51,25 @@ def rid_of(scene_run_uuid: str) -> str:
 
 
 def names_for(scene_run_uuid: str) -> dict[str, str]:
+    """{實例鍵: 容器名}。多 gNB 後同一角色可能有多個實例(cu-0、cu-1…);
+    為了還沒改成多實例的呼叫端,另外保留 cu / du / e2adapter 別名指向序號最小的那個。
+    容器還沒起(或已收掉)時退回舊的固定命名。"""
     rid = rid_of(scene_run_uuid)
-    return {r: f"{r}-{rid}" for r in ROLES}
+    out: dict[str, str] = {}
+    try:
+        for c in run_containers(scene_run_uuid):
+            key = c.labels.get("ransim.instance")
+            if key:
+                out[key] = c.name
+    except Exception:  # noqa: BLE001 — docker 不通就用固定命名
+        pass
+    for role in ("cu", "du", "e2adapter"):
+        if role not in out:
+            keys = sorted((k for k in out if k.startswith(f"{role}-")), key=lambda k: int(k.split("-")[1]))
+            out[role] = out[keys[0]] if keys else f"{role}-{rid}"
+    for role in ("ru", "ue", "amf"):
+        out.setdefault(role, f"{role}-{rid}")
+    return out
 
 
 def _load_template() -> dict[str, Any]:
@@ -160,8 +177,12 @@ def du_env_from_template(tpl_cfg: dict | None, override: dict | None = None) -> 
         env["SIM_SCHEDULER"] = _SCHEDULER_ENV.get(str(cfg["scheduler"]).lower(), "PF")
     if cfg.get("numerology") is not None:   # 每個 frame 的 slot 數 = 10×2^μ
         env["SIM_SLOTS_PER_FRAME"] = str(10 * 2 ** int(cfg["numerology"]))
-    if cfg.get("tdd_pattern"):              # 例 "DDDDDDDSUU" → UL 佔比(S 算半個)
+    if cfg.get("tdd_pattern"):              # 例 "DDDDDDDSUU"
         pat = str(cfg["tdd_pattern"]).upper()
+        # 規範模式(NR_TBS_SPEC_MODE=on):DU nr_resources 依樣式逐 slot 算 DL/UL 權重,
+        # special slot 依 OAI band78 的 6 DL / 4 UL 符號計。
+        env["TDD_PATTERN"] = pat
+        # 舊模式才用的 UL 佔比近似(S 算半個)
         n = len(pat) or 1
         ul = (pat.count("U") + 0.5 * pat.count("S")) / n
         env["TDD_UL_SLOT_RATIO"] = f"{ul:.3f}"
@@ -225,6 +246,169 @@ def spawn(scene_run_uuid: str, mode: str, gnb_id_hex: str | None = None, slot: i
     return out
 
 
+# ── 多 gNB(2026-09-27,計畫 4.7):以「實例」管理容器 ────────────────────────────────
+# 一場 = amf×1(P5)+ cu×gNB 數 + e2adapter×gNB 數 + du×DU 數 + ru×1 + ue×1。
+# 實例鍵(instance key)= 角色 + 序號:cu-<e2_index>、du-<全場 DU 序號>、e2adapter-<e2_index>,
+# 單一實例的角色直接用角色名(ru、ue、amf)。主機名來自拓樸(ran_sim_protocol.run_topology)。
+def _topo_names(rid: str):
+    from ran_sim_protocol.run_topology import default_names
+    return default_names(rid)
+
+
+def plan_instances(scene_run_uuid: str, topo, *, no_ric: bool = False, with_amf: bool = False,
+                   du_envs: dict[str, dict[str, str]] | None = None,
+                   cu_envs: dict[str, dict[str, str]] | None = None) -> list[dict[str, Any]]:
+    """拓樸 → 要起的實例清單(依啟動順序:amf → cu → du → ru → ue;e2adapter 另一批)。
+
+    du_envs:DU 名稱 → registry DU 模板換算出的 env;cu_envs:gNB 名稱 → run knob 等 CU env。
+    """
+    rid = rid_of(scene_run_uuid)
+    first_du = topo.dus()[0] if topo.dus() else None
+    first_gnb = topo.gnbs[0] if topo.gnbs else None
+    nm = _topo_names(rid)
+    items: list[dict[str, Any]] = []
+    if with_amf:
+        items.append({"key": "amf", "role": "amf", "name": nm("amf"), "db": None, "gnb": "", "du": "",
+                      "subst": {}, "env": {}})
+    for g in topo.gnbs:
+        du0 = g.dus[0].host if g.dus else (first_du.host if first_du else "")
+        items.append({"key": f"cu-{g.e2_index}", "role": "cu", "name": g.cu_host, "db": f"cu_{rid}_{g.e2_index}",
+                      "gnb": g.name, "du": "",
+                      "subst": {"du": du0, "ue": nm("ue"), "db_cu": f"cu_{rid}_{g.e2_index}"},
+                      "env": {"GNB_NAME": g.name, "GNB_ID_HEX": g.gnb_id_hex, "GNB_ID_LENGTH": "22", "CU_SELF_URL": g.cu_url,
+                              "PLMN_MCC": g.mcc, "PLMN_MNC": g.mnc, "CELL_ID_TAG": g.cell_tag,
+                              **({"HTTP_AMF_HOST": nm("amf"), "HTTP_AMF_PORT": "8000"} if with_amf else {}),
+                              **((cu_envs or {}).get(g.name) or {})}})
+    for g in topo.gnbs:
+        for d in g.dus:
+            items.append({"key": f"du-{d.index}", "role": "du", "name": d.host, "db": f"du_{rid}_{d.index}",
+                          "gnb": g.name, "du": d.name,
+                          "subst": {"cu": g.cu_host, "ru": nm("ru"), "db_du": f"du_{rid}_{d.index}"},
+                          "env": {"GNB_NAME": g.name, "DU_NAME": d.name, "SIM_GNB_DU_ID": str(d.gnb_du_id),
+                                  "DU_SELF_URL": d.url, "CELL_ID_TAG": g.cell_tag,
+                                  "PLMN_MCC": g.mcc, "PLMN_MNC": g.mnc,
+                                  **((du_envs or {}).get(d.name) or {})}})
+    items.append({"key": "ru", "role": "ru", "name": nm("ru"), "db": f"ru_{rid}", "gnb": "", "du": "",
+                  "subst": {"du": first_du.host if first_du else "", "db_ru": f"ru_{rid}"}, "env": {}})
+    items.append({"key": "ue", "role": "ue", "name": nm("ue"), "db": None, "gnb": "", "du": "",
+                  "subst": {"cu": first_gnb.cu_host if first_gnb else "", "du": first_du.host if first_du else "",
+                            "ru": nm("ru")}, "env": {}})
+    if not no_ric:
+        for g in topo.gnbs:
+            items.append({"key": f"e2adapter-{g.e2_index}", "role": "e2adapter", "name": nm("e2adapter", g.e2_index),
+                          "db": None, "gnb": g.name, "du": "", "e2_port": g.e2_port, "cu_key": f"cu-{g.e2_index}",
+                          "subst": {"e2_port": str(g.e2_port)}, "env": {"GNB_NAME": g.name}})
+    return items
+
+
+def create_instance_databases(names: list[str]) -> list[str]:
+    conn = _pg_admin()
+    try:
+        with conn.cursor() as cur:
+            for n in names:
+                cur.execute("SELECT 1 FROM pg_database WHERE datname=%s", (n,))
+                if not cur.fetchone():
+                    cur.execute(f'CREATE DATABASE "{n}" OWNER "{settings.DATABASES["default"]["USER"]}"')
+    finally:
+        conn.close()
+    return names
+
+
+def drop_run_databases(rid: str) -> list[str]:
+    """刪掉這場的所有 per-instance DB(cu_<rid>、cu_<rid>_<g>、du_<rid>_<i>、ru_<rid>…)。"""
+    dropped = []
+    conn = _pg_admin()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT datname FROM pg_database WHERE datname ~ %s", (rf"^(cu|du|ru|amf)_{re.escape(rid)}(_[0-9]+)?$",))
+            for (n,) in cur.fetchall():
+                cur.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid<>pg_backend_pid()", (n,))
+                cur.execute(f'DROP DATABASE IF EXISTS "{n}"')
+                dropped.append(n)
+    finally:
+        conn.close()
+    return dropped
+
+
+def spawn_instances(scene_run_uuid: str, mode: str, items: list[dict[str, Any]], topo,
+                    cu_host_ports: dict[str, int] | None = None) -> dict[str, dict]:
+    """起一批實例;回傳 {key: {name, role, container_id, host_port, gnb, du}}。同名舊容器先移除。"""
+    rid = rid_of(scene_run_uuid); tpl = _load_template()
+    client = docker.from_env()
+    topo_json = topo.to_json()
+    dbs = [it["db"] for it in items if it.get("db")]
+    if dbs:
+        create_instance_databases(dbs)
+    out: dict[str, dict] = {}
+    for it in items:
+        role = it["role"]; spec = tpl[role]
+        subst = {"cu": "", "du": "", "ru": "", "ue": "", "db_cu": "", "db_du": "", "db_ru": "", "cu_port": "0", "e2_port": "0",
+                 **it.get("subst", {})}
+        if role == "e2adapter":
+            subst["cu_port"] = str((cu_host_ports or {}).get(it["cu_key"]) or 0)
+        env = {k: v.format(**subst) if "{" in v else v for k, v in spec["env"].items()}
+        env["SCENE_RUN_UUID"] = scene_run_uuid
+        env["RUN_TOPOLOGY"] = topo_json
+        env.update(it.get("env") or {})
+        if role == "ru":
+            env["RU_CHANNEL_MODE"] = mode
+        if role in ("du", "ru"):
+            env["CHANNEL_MODE_FILE"] = f"/data/channel_cache/.mode.{rid}"   # per-run 交接檔,不共用 .mode
+        vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in spec["volumes"]}
+        name = it["name"]
+        for c in client.containers.list(all=True, filters={"name": f"^{name}$"}):
+            c.remove(force=True)
+        host_net = spec.get("network_mode") == "host"
+        labels = {"ransim.scene_run_uuid": scene_run_uuid, "ransim.role": role, "ransim.instance": it["key"],
+                  "ransim.gnb": it.get("gnb") or "", "ransim.du": it.get("du") or ""}
+        for attempt in range(PORT_RETRIES):
+            net_kw = {"network_mode": "host"} if host_net else {"network": settings.PER_RUN_NETWORK, "ports": {"8000/tcp": _free_host_port()}, "hostname": name}
+            try:
+                c = client.containers.run(spec["image"], name=name, detach=True, environment=env, volumes=vols, **net_kw,
+                                          mem_limit=mem_limit_for(role), memswap_limit=mem_limit_for(role),
+                                          restart_policy={"Name": "unless-stopped"}, cap_add=["SYS_PTRACE"],
+                                          extra_hosts={h.split("=")[0]: h.split("=")[1] for h in (spec.get("extra_hosts") or [])} or None,
+                                          command=spec.get("command"), labels=labels)
+                break
+            except docker.errors.APIError as exc:
+                if host_net or attempt == PORT_RETRIES - 1 or not _port_conflict(exc):
+                    raise
+                logger.warning("spawn %s: host port 衝突,換 port 重試(%d/%d):%s", name, attempt + 1, PORT_RETRIES, exc)
+                for c in client.containers.list(all=True, filters={"name": f"^{name}$"}):
+                    c.remove(force=True)
+        c.reload()
+        port = int(subst["e2_port"]) if host_net else int(c.attrs["NetworkSettings"]["Ports"]["8000/tcp"][0]["HostPort"])
+        out[it["key"]] = {"name": name, "role": role, "container_id": c.id[:12], "host_port": port,
+                          "gnb": it.get("gnb") or "", "du": it.get("du") or ""}
+        logger.info("spawned %s [%s] (%s) host_port=%d", name, it["key"], c.id[:12], port)
+    return out
+
+
+def run_containers(scene_run_uuid: str) -> list:
+    return docker.from_env().containers.list(all=True, filters={"label": f"ransim.scene_run_uuid={scene_run_uuid}"})
+
+
+def instance_status(scene_run_uuid: str) -> dict[str, str]:
+    """{instance key: docker 狀態}(依 label 找,不靠固定名稱)。"""
+    out = {}
+    for c in run_containers(scene_run_uuid):
+        key = c.labels.get("ransim.instance") or c.labels.get("ransim.role") or c.name
+        if c.labels.get("ransim.role") == "precompute":
+            continue
+        out[key] = c.status
+    return out
+
+
+def topology_of(scene_run_uuid: str):
+    """從這場任一容器的 env 讀回拓樸(orchestrator 重啟後接回用;不另存 registry)。"""
+    from ran_sim_protocol.run_topology import RunTopology
+    for c in run_containers(scene_run_uuid):
+        env = dict(e.split("=", 1) for e in (c.attrs.get("Config") or {}).get("Env") or [] if "=" in e)
+        if env.get("RUN_TOPOLOGY"):
+            return RunTopology.from_json(env["RUN_TOPOLOGY"])
+    return None
+
+
 def wait_healthy(instances: dict[str, dict], timeout_sec: float = 300.0) -> dict[str, bool]:
     """等每個容器的 HTTP 起來(entrypoint 會先 migrate,CU/DU 約 20–60 s)。instances = {role: {name, host_port}}"""
     ok = {r: False for r in instances}; t0 = time.time()
@@ -243,12 +427,28 @@ def wait_healthy(instances: dict[str, dict], timeout_sec: float = 300.0) -> dict
     return ok
 
 
+def wait_healthy_instances(instances: dict[str, dict], timeout_sec: float = 300.0) -> dict[str, bool]:
+    """等每個實例的 HTTP 起來。instances = {key: {role, name, host_port}}。"""
+    ok = {k: False for k in instances}; t0 = time.time()
+    while time.time() - t0 < timeout_sec and not all(ok.values()):
+        for k, inst in instances.items():
+            if ok[k]:
+                continue
+            try:
+                req = urllib.request.Request(health_url(inst["role"], inst["name"], inst.get("host_port")), data=b"{}",
+                                             headers={"content-type": "application/json"})
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    ok[k] = resp.status < 500
+            except Exception:  # noqa: BLE001
+                pass
+        if not all(ok.values()):
+            time.sleep(2)
+    return ok
+
+
 def container_status(scene_run_uuid: str) -> dict[str, str]:
-    client = docker.from_env(); names = names_for(scene_run_uuid); st = {}
-    for r, n in names.items():
-        lst = client.containers.list(all=True, filters={"name": f"^{n}$"})
-        st[r] = lst[0].status if lst else "absent"
-    return st
+    """{實例鍵: docker 狀態};舊的單一角色容器(沒有 ransim.instance label)以角色名為鍵。"""
+    return instance_status(scene_run_uuid)
 
 
 def _dump_logs(c, role: str, scene_run_uuid: str) -> None:
@@ -264,19 +464,22 @@ def _dump_logs(c, role: str, scene_run_uuid: str) -> None:
 
 
 def teardown(scene_run_uuid: str, drop_db: bool = True) -> dict[str, str]:
-    client = docker.from_env(); names = names_for(scene_run_uuid); res = {}
-    for r, n in names.items():
-        for c in client.containers.list(all=True, filters={"name": f"^{n}$"}):
-            _dump_logs(c, r, scene_run_uuid)
-            try:
-                c.stop(timeout=10)
-            except Exception:  # noqa: BLE001
-                pass
-            c.remove(force=True); res[r] = "removed"
-        res.setdefault(r, "absent")
+    """收掉這場所有容器(依 label,不論幾個 gNB / DU),log 先落地,再刪全部 per-instance DB。"""
+    res: dict[str, str] = {}
+    for c in run_containers(scene_run_uuid):
+        role = c.labels.get("ransim.role") or ""
+        if role == "precompute":
+            continue
+        key = c.labels.get("ransim.instance") or role or c.name
+        _dump_logs(c, key, scene_run_uuid)
+        try:
+            c.stop(timeout=10)
+        except Exception:  # noqa: BLE001
+            pass
+        c.remove(force=True); res[key] = "removed"
     if drop_db:
         try:
-            drop_databases(rid_of(scene_run_uuid)); res["db"] = "dropped"
+            res["db"] = f"dropped {len(drop_run_databases(rid_of(scene_run_uuid)))}"
         except Exception as exc:  # noqa: BLE001
             logger.warning("drop db failed %s: %s", scene_run_uuid, exc); res["db"] = f"error: {exc}"
     return res

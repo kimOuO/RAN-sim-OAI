@@ -51,6 +51,9 @@ class CellScenarioRow:
     # 以前這個欄位在載入時被丟掉,結果場景標了停用、DU 照樣開起來 ——
     # 備用 cell 從頭就在服務,cell_addition 變成空動作。
     is_active: bool = True
+    # 多 gNB(2026-09-27):3GPP NCI = gNB ID(22 bit)‖ 本地 cell ID(14 bit),由拓樸給。
+    # None = 舊路徑(沒有拓樸),下游 CU 退回舊算法。
+    nr_cellid: int | None = None
 
 
 @dataclass
@@ -84,6 +87,8 @@ class GnbScenarioRow:
     color: tuple[float, float, float] = (0.2, 0.8, 0.4)
     target_height_m: float | None = None
     cells: list[CellScenarioRow] = None  # type: ignore[assignment]
+    # 多 gNB(計畫 D5):本 gNB 自己的 A3(a3_enabled/offset/hys/ttt;值 None = 未指定)
+    a3: dict | None = None
 
     def __post_init__(self):
         if self.cells is None:
@@ -383,9 +388,13 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     gnb 層級 frequency/bandwidth/power = 第一個 cell、a3 None = 未指定)。
     scenario_id 取 scene.legacy_scenario_id(RU cache npz 檔名靠它)。
     """
-    # run 唯一 cell 標籤(見 ran_sim_protocol.cell_tag):orchestrator 設 CELL_ID_TAG=e01 之類;沒設就不加(舊共用模式)
+    # cell 標籤(見 ran_sim_protocol.cell_tag):
+    #   有拓樸(per-run 多 gNB)→ 每個 gNB 各自的前綴(gNB ID 低 12 bit,例 e31:src),NCI 也取自拓樸;
+    #   否則沿用 CELL_ID_TAG(舊的「一場一個前綴」),再沒有就不加(共用模式)。
     _run_tag = os.getenv("CELL_ID_TAG", "").strip()
     from main.apps.ue_lifecycle.services.cell_tag import tag_cell as _tag_cell
+    from main.apps.ue_lifecycle.services.ran_endpoints import topology as _topology
+    _topo = _topology()
     if not REGISTRY_URL:
         raise RuntimeError("REGISTRY_URL not set; cannot fetch scene_run from registry")
     r = requests.post(
@@ -415,6 +424,10 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     for g in t.get("gnbs") or []:
         cells: list[CellScenarioRow] = []
         f0 = bw0 = p0 = None
+        _tg = _topo.gnb(str(g["name"])) if _topo is not None else None
+        if _topo is not None and _tg is None:
+            raise RuntimeError(f"gNB {g['name']} 不在本場拓樸裡(RUN_TOPOLOGY 與 registry 不一致)")
+        _gtag = _tg.cell_tag if _tg is not None else _run_tag
         for du in g.get("dus") or []:
             for c in du.get("cells") or []:
                 f = c.get("center_frequency_ghz"); bw = c.get("bandwidth_mhz"); pw = c.get("power_dbm")
@@ -428,8 +441,11 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
                         tx_antenna = ap
                     elif ap != tx_antenna:
                         logger.warning("[scene_run %s] cell %s 的天線 preset 與第一個 cell 不同;Sionna 陣列是 scene-global,沿用第一個", scene_run_uuid, c.get("name"))
+                _cid = _tag_cell(_gtag, str(c["name"]))
+                _tc = _topo.cell(_cid) if _topo is not None else None
                 cells.append(CellScenarioRow(
-                    cell_id=_tag_cell(_run_tag, str(c["name"])), pci=int(c.get("pci") or 0), azimuth_deg=float(c.get("azimuth_deg") or 0.0),
+                    cell_id=_cid, pci=int(c.get("pci") or 0), azimuth_deg=float(c.get("azimuth_deg") or 0.0),
+                    nr_cellid=(_tc.nci if _tc is not None else None),
                     position=(float(pos[0]), float(pos[1]), float(pos[2])) if pos else None,
                     frequency_ghz=(float(f) if (f is not None and f != f0) else None),
                     bandwidth_mhz=(float(bw) if (bw is not None and bw != bw0) else None),
@@ -443,6 +459,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
             power_dbm=float(p0 if p0 is not None else 23.0), active=bool(g.get("is_active", True)),
             color=tuple(g.get("color") or [0.2, 0.8, 0.4]),  # type: ignore[arg-type]
             target_height_m=None, cells=cells,
+            a3={k: g.get(k) for k in ("a3_enabled", "a3_offset_db", "a3_hys_db", "a3_ttt_ms")},
         ))
         if not a3:
             a3 = {k: g.get(k) for k in ("a3_enabled", "a3_offset_db", "a3_hys_db", "a3_ttt_ms")}
@@ -463,7 +480,17 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     # default_serving_cell 必須是樹裡真的有的 cell;舊劇本常寫 "<gnb>_c0" 但 cell 叫 "<gnb>",
     # 掛到不存在的 cell 會在 CU 生出幽靈 serving cell(2026-09-13 P4-1 發現)。不在樹裡就退回第一個 cell。
     cell_names = [c.cell_id for g in gnbs for c in g.cells]
-    default_serving = _tag_cell(_run_tag, str(knobs.get("default_serving_cell") or ""))
+
+    def _tag_any(name: str) -> str:
+        """劇本/knob 裡的 cell 名(不帶前綴)→ 全場唯一的 cell_id。多 gNB 時依名稱找它屬於哪個 gNB。"""
+        if not name or ":" in name:
+            return name
+        if _topo is not None:
+            hit = next((c.cell_id for c in _topo.cells() if c.name == name), None)
+            return hit or name
+        return _tag_cell(_run_tag, name)
+
+    default_serving = _tag_any(str(knobs.get("default_serving_cell") or ""))
     if default_serving not in cell_names:
         fallback = cell_names[0] if cell_names else "gnb1_cell0"
         if default_serving:
@@ -481,7 +508,7 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
         tx_antenna=tx_antenna, ue_antenna=ue_antenna,
         geometry_source=(scene.get("geometry_source") or None),
         has_anr_fixture=bool(knobs.get("anr_fixture")),
-        cell_quotas=[{"cell_id": _tag_cell(_run_tag, str(q["cell_id"])), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
+        cell_quotas=[{"cell_id": _tag_any(str(q["cell_id"])), "max_prb": int(q.get("max_prb", 100)), "min_prb": int(q.get("min_prb", 0))}
                      for q in (knobs.get("cell_quotas") or []) if q.get("cell_id")],
         inter_freq=bool(knobs.get("inter_freq", False)),
         discard_timer_ms=int(knobs.get("discard_timer_ms", 300)),

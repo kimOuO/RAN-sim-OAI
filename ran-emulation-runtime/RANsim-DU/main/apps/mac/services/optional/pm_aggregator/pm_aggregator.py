@@ -13,6 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from main.apps.mac.services.optional.link_adaptation.bler_curve import HARQ_MAX_ROUNDS, harq_round_probs
 from main.apps.mac.services.optional.link_adaptation.cqi_table import sinr_to_cqi
 from main.utils.logger import get_logger
 
@@ -186,10 +187,11 @@ class _GnbAccumulator:
         self.prb_used_ul = 0
         self.pdcp_bytes_dl: dict[int, int] = defaultdict(int)
         self.pdcp_bytes_ul: dict[int, int] = defaultdict(int)
-        self.harq_rounds_dl = [0] * 8
-        self.harq_errors_dl = 0
-        self.harq_rounds_ul = [0] * 8
-        self.harq_errors_ul = 0
+        # 期望值累加(浮點),輸出時四捨五入。見 accumulate_ue 的 HARQ 段。
+        self.harq_rounds_dl = [0.0] * HARQ_MAX_ROUNDS
+        self.harq_errors_dl = 0.0
+        self.harq_rounds_ul = [0.0] * HARQ_MAX_ROUNDS
+        self.harq_errors_ul = 0.0
         self.last_sinr_x10_sum = 0
         self.num_sinr_meas = 0
         self.last_rsrp_sum = 0
@@ -345,33 +347,31 @@ class PmAggregatorService:
             acc.mcs_dl_bins[mcs_dl] += 1
         if 0 <= mcs_ul < MCS_BINS:
             acc.mcs_ul_bins[mcs_ul] += 1
-        cqi = sinr_to_cqi(sinr_db)
+        # CQI:優先用 RU(代表 UE 端)回報的值;沒有才由 SINR 依同一張共用表換算。
+        # 兩者同源(ran_sim_protocol.nr_link_tables),2026-09-26 前兩端各用一張不同的表。
+        cqi = int(cqi) if cqi is not None else sinr_to_cqi(sinr_db)
         if 0 <= cqi < CQI_BINS:
             acc.cqi_bins[cqi] += 1
         acc.prb_used_dl += prb_dl
         acc.prb_used_ul += prb_ul
         acc.pdcp_bytes_dl[qos_5qi] += dl_bytes
         acc.pdcp_bytes_ul[qos_5qi] += ul_bytes
-        # HARQ 輪次(依 SINR 分箱近似:≥12 dB 首傳成功、≥6 第二輪、≥0 第三輪、<0 最終失敗)。
-        # 2026-09-22:上行本來是照抄下行的分箱 —— 拿下行 SINR 判上行成敗沒有物理意義,
-        # 實測 rounds_ul 與 rounds_dl 一模一樣。上行有自己的 SINR(RU 的 _compute_ul_sinr_db),
-        # 改用它;舊 RU 不帶 ul_sinr_db 時不累加(寧可沒有,也不要抄下行的假值)。
-        def _harq_bin(v: float, rounds: list[int]) -> bool:
-            """回 True = 有成功的輪次;False = 最終失敗。"""
-            if v >= 12:
-                rounds[0] += 1
-            elif v >= 6:
-                rounds[1] += 1
-            elif v >= 0:
-                rounds[2] += 1
-            else:
-                return False
-            return True
+        # HARQ 輪次:以本 UE 本 tick 的 MCS 與 SINR,在 OAI AWGN 曲線上算出一個傳輸區塊
+        # 「第 k 輪才成功」與「最終失敗」的機率,期望值累加(每個樣本視為一個 TB)。
+        # 重傳以 Chase combining 建模(bler_curve.harq_round_probs)。
+        # 2026-09-26 前是固定 SINR 分箱(≥12 dB 一律首傳成功),與 MCS 無關;但鏈路適應會把
+        # 首傳 BLER 維持在 10% 附近,所以分箱結果與實際 HARQ 行為對不上。
+        def _harq_acc(mcs: int, v: float, rounds: list[float]) -> float:
+            reach, fail = harq_round_probs(int(mcs), float(v), len(rounds))
+            for k in range(len(rounds)):
+                nxt = reach[k + 1] if k + 1 < len(reach) else fail
+                rounds[k] += reach[k] - nxt
+            return fail
 
-        if not _harq_bin(sinr_db, acc.harq_rounds_dl):
-            acc.harq_errors_dl += 1
-        if ul_sinr_db is not None and not _harq_bin(float(ul_sinr_db), acc.harq_rounds_ul):
-            acc.harq_errors_ul += 1
+        acc.harq_errors_dl += _harq_acc(mcs_dl, sinr_db, acc.harq_rounds_dl)
+        # 上行用自己的 SINR(RU 的 _compute_ul_sinr_db);舊 RU 不帶時不累加(寧可沒有,也不要抄下行)。
+        if ul_sinr_db is not None:
+            acc.harq_errors_ul += _harq_acc(mcs_ul, float(ul_sinr_db), acc.harq_rounds_ul)
         acc.last_sinr_x10_sum += int(sinr_db * 10)
         acc.num_sinr_meas += 1
         acc.last_rsrp_sum += int(rsrp_dbm)
@@ -460,10 +460,10 @@ class PmAggregatorService:
                 "prb_used_ul": acc.prb_used_ul,
                 "pdcp_bytes_dl": dict(acc.pdcp_bytes_dl),
                 "pdcp_bytes_ul": dict(acc.pdcp_bytes_ul),
-                "harq_rounds_dl": acc.harq_rounds_dl,
-                "harq_errors_dl": acc.harq_errors_dl,
-                "harq_rounds_ul": acc.harq_rounds_ul,
-                "harq_errors_ul": acc.harq_errors_ul,
+                "harq_rounds_dl": [int(round(x)) for x in acc.harq_rounds_dl],
+                "harq_errors_dl": int(round(acc.harq_errors_dl)),
+                "harq_rounds_ul": [int(round(x)) for x in acc.harq_rounds_ul],
+                "harq_errors_ul": int(round(acc.harq_errors_ul)),
                 # cell 可用率的兩個分量(TS 28.552 cellAvailablePer)。
                 # cell 名與 gnb 累加器同名時才對得上;對不上就留 None,CU 端不輸出。
                 **(lambda cw: {"avail_ticks_cum": cw.avail_ticks_cum,

@@ -22,19 +22,19 @@ from main.utils.response import error_response, success_response
 
 logger = get_logger(__name__)
 
-# 我方 status → 規格的三值。draft/ready/pending 都還沒跑,對方看到的是 running 之前的狀態,
-# 這裡一律回 running 會誤導,所以多給一個 pending(規格沒定義,但比謊報好)。
-_STATUS_MAP = {
-    "running": "running",
-    "starting": "running",
-    "precomputing": "running",
-    "done": "done",
-    "stopped": "failed",      # 人為中止:對方不該當成正常完成去取資料
-    "failed": "failed",
-    "draft": "pending",
-    "ready": "pending",
-    "pending": "pending",
-}
+# 我方狀態 → 規格的值。2026-09-28 起場次狀態只有 idle / precomputing / running,
+# 上一次怎麼結束另存 last_result(done / stopped / failed)。對外照舊:
+#   running → running;precomputing / 沒跑過 → pending(規格沒定義,但比謊報好);
+#   跑完 → done;人為中止 → failed(對方不該當成正常完成去取資料);失敗 → failed。
+_RESULT_MAP = {"done": "done", "stopped": "failed", "failed": "failed"}
+
+
+def _external_status(raw: str, last_result: str) -> str:
+    if raw == "running":
+        return "running"
+    if raw == "idle":
+        return _RESULT_MAP.get(last_result, "pending")
+    return "pending"
 
 
 def _body(request) -> dict:
@@ -104,14 +104,16 @@ class RunReader:
         # notes 是累積的自由文字,上一輪的訊息會留著。只有本輪真的失敗才拿它當 error,
         # 否則會把「上次跑完」的註記當成這次的失敗原因回給對方(實測踩過)。
         notes = str(row.get("notes") or "")
-        mapped = _STATUS_MAP.get(raw, "running")
-        err = notes if (mapped == "failed" and raw == "failed" and notes) else None
-        if mapped == "failed" and raw == "stopped":
+        last = str(row.get("last_result") or "")
+        mapped = _external_status(raw, last)
+        err = notes if (mapped == "failed" and last == "failed" and notes) else None
+        if mapped == "failed" and last == "stopped":
             err = "run 由人為或外部中止(非跑完);資料可能不完整"
         return success_response({
             "run_id": run_id,
-            "status": _STATUS_MAP.get(raw, "running"),
-            "native_status": raw,          # 我方原始值,除錯用
+            "status": mapped,
+            "native_status": raw,          # 我方原始值,除錯用(idle / precomputing / running)
+            "last_result": last or None,   # 上一次怎麼結束(done / stopped / failed)
             "progress_s": row.get("progress_sec"),
             "duration_s": agent_dur if agent_dur is not None else row.get("duration_sec"),
             "started_at": row.get("started_at"),
@@ -156,7 +158,7 @@ class RunReader:
 
         rows = list(qs.order_by("at_sim_ms", "id").values(
             "at_sim_ms", "source", "action_type", "target", "outcome", "detail",
-            "run_control_event_created_at"))
+            "run_control_event_created_at", "node_id", "meid"))
         for r in rows:
             if r.get("run_control_event_created_at") is not None:
                 r["run_control_event_created_at"] = r["run_control_event_created_at"].isoformat()
@@ -225,6 +227,15 @@ class RunReader:
                             pci_of_cell[str(c.get("name") or "")] = int(c["pci"])
         except Exception:  # noqa: BLE001 — 查不到就讓 gnb_id 留空,不擋整支
             logger.info("gNB 歸屬回查失敗:%s", run_id)
+        # cell 名 → 標準 ncgi 字串(與 I-2 同規則;需要這場的 E2 區塊)。查不到就留空,欄位回 None
+        ncgi_of_cell: dict[str, str] = {}
+        try:
+            block = ((platform_clients.read_scene_run(run_id) or {}).get("data") or {}).get("e2_block")
+            if tree and block:
+                from main.apps.agent_api.services.optional.e2_identity import cells_by_name, field_e2_identities
+                ncgi_of_cell = {k: v["ncgi"] for k, v in cells_by_name(field_e2_identities(tree, int(block))).items()}
+        except Exception:  # noqa: BLE001
+            logger.info("ncgi 回查失敗:%s", run_id)
 
         def _seq_filter(qs):
             """同一個 scene_run 重跑過的話舊資料還在,只給最後一輪。"""
@@ -243,8 +254,8 @@ class RunReader:
                    run_events.RLF, run_events.RRC_REESTAB_REQ}:
             q = _seq_filter(RunHandoverEvent.objects.filter(f_scene_run_uuid=run_id))
             rows = list(q.order_by("at_sim_ms", "id").values(
-                "at_sim_ms", "ue_id", "source_cell", "target_cell", "outcome", "detail"))
-            out += run_events.handover_events(rows, gnb_of_cell, _strip, pci_of_cell)
+                "at_sim_ms", "ue_id", "source_cell", "target_cell", "outcome", "detail", "node_id", "meid"))
+            out += run_events.handover_events(rows, gnb_of_cell, _strip, pci_of_cell, ncgi_of_cell)
         if want & {run_events.CGI_RESOLUTION}:
             q = _seq_filter(RunControlEvent.objects.filter(f_scene_run_uuid=run_id))
             rows = list(q.order_by("at_sim_ms", "id").values(

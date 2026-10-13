@@ -65,6 +65,10 @@ class ControlAuditActor:
                     "ranFunc": e.get("ran_func"),
                     "ranFuncName": _RAN_FUNC_NAME.get(e.get("ran_func"), "?"),
                     "instId": e.get("inst_id"),
+                    # RIC 對帳鍵(多 gNB C14):E2AP RICrequestID 的 requestor 與 RICcallProcessID 標籤。
+                    # 以前 ring 有記、這裡沒輸出 → 歸檔 / I-7 的 ric_label、ric_requestor_id 一直是空的。
+                    "requestorId": e.get("requestor_id"),
+                    "ricLabel": e.get("ric_label"),
                     "style": e.get("style"), "action": e.get("action"),
                     "command": e.get("sim_action", ""),
                     "params": e.get("params") or {},

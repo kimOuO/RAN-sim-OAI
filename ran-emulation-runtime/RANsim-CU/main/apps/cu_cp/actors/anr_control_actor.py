@@ -79,49 +79,78 @@ def _schedule_xn_setup(source: str, target_cgi: str) -> None:
     t.daemon = True
     t.start()
 
-def _establish_xn_reverse(source: str, target_cgi: str, now) -> None:
-    """gNB 側 Xn 建立 → 反向鄰區關係自動成立(TS 38.300 §15.3.3.2 步驟 4c + TS 38.423)。
-
-    卷面紅線:xApp **禁止替對端寫反向關係**,反向由 Xn 交換產生。因此正向 ADD 落地後,
-    由 sim 代表 gNB 自行建立反向關係並標 xnX2Established —— 否則 UE 換進新 cell 後
-    無關係可換回,會滯留到 RLF(第4題乾淨驗測實測到的殘留 RLF 即此因)。
-
-    由 `_schedule_xn_setup()` 延遲呼叫(XnAP Setup 非瞬時)。
-    env `ANR_XN_AUTO_REVERSE`=off 可停用(保留舊行為)。
-    """
-    from main.utils.env_loader import get_bool
-    if not get_bool("ANR_XN_AUTO_REVERSE", default=True):
-        return
+def resolve_cell_ref(ref: str) -> str:
+    """xApp 帶來的目標識別 → 平台 cell_id。接受 cell_id 本身,或 D2 格式的 ncgi 字串
+    (<PLMN 6 位>-<NCI 9 位十六進位>);ncgi 依 NCI 查本 gNB 的 cell 或 Xn 鄰居的 cell。查不到原樣回。"""
+    if not ref:
+        return ref
+    try:
+        from ran_sim_protocol.e2_identity import parse_ncgi
+    except ImportError:
+        return ref
+    parsed = parse_ncgi(ref)
+    if parsed is None:
+        return ref
     from main.apps.cu_cp.models.cell_config import CellConfig
-    # 反向來源必須是本 sim 註冊過的 cell(跨域對端無法代建)
-    peer = CellConfig.objects.filter(cell_id=target_cgi).first()
-    src_cell = CellConfig.objects.filter(cell_id=source).first()
-    if peer is None or src_cell is None:
-        return
+    from main.apps.cu_cp.services.business import xn
+    local = CellConfig.objects.filter(nr_cellid=parsed[1]).values_list("cell_id", flat=True).first()
+    if local:
+        return local
+    f = xn.foreign_cell_by_nci(parsed[1])
+    return f.cell_id if f is not None else ref
+
+
+def _cell_ident(cell_id: str):
+    """(pci, arfcn, 是否本 gNB)。本 gNB 查 CellConfig,鄰 gNB 查 Xn 外部鄰區表;都沒有回 None。"""
+    from main.apps.cu_cp.models.cell_config import CellConfig
+    from main.apps.cu_cp.services.business import xn
+    from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
+    c = CellConfig.objects.filter(cell_id=cell_id).first()
+    if c is not None:
+        return c.pci or 0, nr_arfcn_from_ghz(c.frequency_ghz), True
+    f = xn.foreign_cell(cell_id)
+    if f is not None:
+        return f.pci, f.arfcn, False
+    return None
+
+
+def establish_reverse_local(local_cell: str, peer_cell: str) -> bool:
+    """在本 gNB 建反向關係 local_cell → peer_cell(peer_cell 可以是本 gNB 或鄰 gNB 的 cell)。
+
+    gNB 側 Xn 建立 → 反向鄰區關係自動成立(TS 38.300 §15.3.3.2 步驟 4c + TS 38.423)。
+    卷面紅線:xApp **禁止替對端寫反向關係**,反向由 Xn 交換產生。回傳是否新建。
+    """
+    from main.utils.env_loader import get_bool as _gbx
+    from main.apps.cu_cp.models.cell_config import CellConfig
+    if not _gbx("ANR_XN_AUTO_REVERSE", default=True):
+        return False
+    if not CellConfig.objects.filter(cell_id=local_cell).exists():
+        return False
+    ident = _cell_ident(peer_cell)
+    if ident is None:
+        return False
     # ANR_XN_REVERSE=off:劇本可暫停 gNB Xn 反向自建(Q5 owned 唯一性保護 ——
     # 對方 missing 的 ADD 本身不破 owned,是本反向 +2s 補出 mid→west 才破;
     # 2026-08-28 Q5 二輪實錄,B4 fail-closed 靠考點先落袋才沒事)。預設開。
-    from main.utils.env_loader import get_bool as _gbx
     if not _gbx("ANR_XN_REVERSE", default=True):
-        logger.info("Xn reverse suppressed by scenario (ANR_XN_REVERSE=off): %s→%s",
-                    target_cgi, source)
-        return
+        logger.info("Xn reverse suppressed by scenario (ANR_XN_REVERSE=off): %s→%s", local_cell, peer_cell)
+        return False
     # 容量檢查:gNB 自建的反向關係同樣受 NRT 上限約束,否則會把對端推爆上限
     # (第9題重驗實測:n62 因反向關係變成 9/8)。超限就不建 —— 真實 gNB 也建不了。
     from main.utils.env_loader import get_int as _gi2
     _cap2 = _gi2("ANR_NRT_CAPACITY", 32)
-    if (not NrCellRelation.objects.filter(source_cell_id=target_cgi, target_cgi=source).exists()
-            and NrCellRelation.objects.filter(source_cell_id=target_cgi).count() >= _cap2):
+    if (not NrCellRelation.objects.filter(source_cell_id=local_cell, target_cgi=peer_cell).exists()
+            and NrCellRelation.objects.filter(source_cell_id=local_cell).count() >= _cap2):
         logger.warning("Xn reverse skipped: %s NRT capacity reached (%d/%d)",
-                       target_cgi, NrCellRelation.objects.filter(source_cell_id=target_cgi).count(), _cap2)
-        _record_change("ADD_REJECTED", target_cgi, source, "NRT_CAPACITY_REACHED", by="gnb-xn")
-        return
-    from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz
+                       local_cell, NrCellRelation.objects.filter(source_cell_id=local_cell).count(), _cap2)
+        _record_change("ADD_REJECTED", local_cell, peer_cell, "NRT_CAPACITY_REACHED", by="gnb-xn")
+        return False
+    now = TimestampService.now()
+    pci, arfcn, _ = ident
     rev, rev_created = NrCellRelation.objects.get_or_create(
-        source_cell_id=target_cgi, target_cgi=source,
+        source_cell_id=local_cell, target_cgi=peer_cell,
         defaults={
-            "target_pci": src_cell.pci or 0,
-            "target_arfcn": nr_arfcn_from_ghz(src_cell.frequency_ghz),
+            "target_pci": pci, "target_arfcn": arfcn,
             "target_rat": "NR", "target_plmn": "",
             "is_ho_allowed": True, "is_remove_allowed": True, "is_xn_allowed": True,
             "xn_x2_established": True, "ho_validated": False, "version": 1,
@@ -129,19 +158,55 @@ def _establish_xn_reverse(source: str, target_cgi: str, now) -> None:
             "created_at": now, "updated_at": now,
         },
     )
+    if rev_created:
+        logger.info("Xn established → reverse relation auto-created: %s → %s (gNB step 4c)", local_cell, peer_cell)
+        _record_change("ADD", local_cell, peer_cell, "xn-reverse(step4c)", by="gnb-xn")
+    return rev_created
+
+
+def _establish_xn_reverse(source: str, target_cgi: str, now) -> None:
+    """正向 ADD 落地後(延遲)做的事:正向標 xnX2Established、反向關係由「目標 cell 所屬的 gNB」建。
+
+    目標是本 gNB 的 cell → 本地直接建反向(與改版前相同);
+    目標是鄰 gNB 的 cell → 經 Xn 請對端 CU 自己建(本端不代寫對端的 NRT)。
+    由 `_schedule_xn_setup()` 延遲呼叫(XnAP Setup 非瞬時)。env `ANR_XN_AUTO_REVERSE`=off 可停用。
+    """
+    from main.utils.env_loader import get_bool
+    if not get_bool("ANR_XN_AUTO_REVERSE", default=True):
+        return
+    from main.apps.cu_cp.models.cell_config import CellConfig
+    from main.apps.cu_cp.services.business import xn
+    if not CellConfig.objects.filter(cell_id=source).exists():
+        return
+    f = xn.foreign_cell(target_cgi)
+    if f is not None:
+        if not xn.xn_available(f.gnb_id):
+            logger.info("Xn to gNB 0x%06x not established — %s → %s 維持 xnX2Established=false", f.gnb_id, source, target_cgi)
+            return
+        try:
+            xn._post(xn.peer_url_for_gnb(f.gnb_id), "anr_reverse", {"source_cell": source, "target_cell": target_cgi})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Xn anr_reverse → gNB 0x%06x failed: %s", f.gnb_id, exc)
+            return
+    elif CellConfig.objects.filter(cell_id=target_cgi).exists():
+        establish_reverse_local(target_cgi, source)
+    else:
+        return
     # 正向也標記 Xn 已建立
     NrCellRelation.objects.filter(source_cell_id=source, target_cgi=target_cgi).update(
         xn_x2_established=True, updated_at=now)
-    if rev_created:
-        logger.info("Xn established → reverse relation auto-created: %s → %s (gNB step 4c)",
-                    target_cgi, source)
-        _record_change("ADD", target_cgi, source, "xn-reverse(step4c)", by="gnb-xn")
+
 
 def apply_son_trigger(req: dict) -> dict:
     """套用單筆 SON 觸發請求 → NrCellRelation。回傳 outcome dict。"""
     now = TimestampService.now()
     rtype = req.get("requestType")
     source = req.get("sourceCellId")
+    # 目標可以是 cell_id 或 ncgi 字串(D2 格式),一律換成平台 cell_id
+    if req.get("targetCgi"):
+        req = {**req, "targetCgi": resolve_cell_ref(str(req["targetCgi"]))}
+    if (req.get("target") or {}).get("cgi"):
+        req = {**req, "target": {**req["target"], "cgi": resolve_cell_ref(str(req["target"]["cgi"]))}}
     # 2026-09-23:source cell 一定要是這顆 gNB 的 cell。以前不驗,RIC 自測用掃錯的假名
     # (gnbDT_c0>gnbDT_c1)下 anr-add 也被回 ADDED —— 對不存在的 cell 建了關係,還回成功。
     from main.apps.cu_cp.models.cell_config import CellConfig as _CC
@@ -151,22 +216,22 @@ def apply_son_trigger(req: dict) -> dict:
                         "NOT_FOUND", None, "source cell 不在本 gNB")
     if rtype == "ADD":
         _tcgi = (req.get("target") or {}).get("cgi")
-        if _tcgi and not _CC.objects.filter(cell_id=_tcgi).exists():
+        # 目標可在本 gNB,或是 Xn 鄰居 gNB 的 cell(C11 跨 gNB ANR)
+        if _tcgi and _cell_ident(_tcgi) is None:
             logger.warning("ANR ADD rejected: target %s 不存在", _tcgi)
-            return _outcome("ADD", source, _tcgi, "NOT_FOUND", None, "target cell 不在本 gNB(跨 gNB 目標請帶 nr_cellid)")
+            return _outcome("ADD", source, _tcgi, "NOT_FOUND", None, "target cell 不在本 gNB,也不在 Xn 鄰居的 served cells")
 
     if rtype == "ADD":
         tgt = dict(req.get("target") or {})
         # 2026-09-23:xApp / Agent 的 ADD 常只帶 cgi。以前 pci/arfcn 缺就寫 0,
         # 但 E2 上鄰區改以 (pci, arfcn) 查 NRT 解 ncgi,寫 0 的關係永遠解不出來 ——
         # 等於「加了關係卻沒效」。目標是本 gNB 的 cell 時直接用它的設定補齊。
-        _tcfg = _CC.objects.filter(cell_id=tgt.get("cgi")).first() if tgt.get("cgi") else None
-        if _tcfg is not None:
-            from main.apps.cu_cp.services.business.anr_seeder import nr_arfcn_from_ghz as _arf
+        _tid = _cell_ident(tgt.get("cgi")) if tgt.get("cgi") else None
+        if _tid is not None:
             if tgt.get("pci") is None:
-                tgt["pci"] = _tcfg.pci or 0
+                tgt["pci"] = _tid[0]
             if tgt.get("arfcn") is None:
-                tgt["arfcn"] = _arf(_tcfg.frequency_ghz)
+                tgt["arfcn"] = _tid[1]
         cgi = tgt.get("cgi")
         # 卷面前置檢查:ANR 自動建立功能之部署組態。停用時 gNB 不得自動寫入 NRT,
         # xApp 只能通報管理面(SMO_NOTIFY)。停用 != 禁止改 NRT(REMOVE/FLAG 不受此限)。

@@ -77,6 +77,14 @@ class UeTrafficGen:
         self.injected_bytes = 0        # 累計注入 byte 數
         self.last_resync_at_ms = 0     # AL3 — 上次因 no_entity 觸發 re-sync 的時間
         self.pending_bytes = 0         # bursty 投遞調變:累積未放出的 byte(湊滿 burst_bytes 才放)
+        self.last_inject_scene_ms: int | None = None   # 上次注入時的劇本時鐘(有劇本時鐘時用它算注入量)
+
+    def debug_state(self) -> dict[str, Any]:
+        """狀態快照(UE/Status/read 用):排查「某 UE 整場沒流量」這類問題。"""
+        return {"pattern": self.profile.get("pattern"), "injected_bytes": self.injected_bytes,
+                "pending_bytes": self.pending_bytes, "last_inject_scene_ms": self.last_inject_scene_ms,
+                "last_inject_at_ms": self.last_inject_at_ms, "last_result": getattr(self, "last_result", None),
+                "last_skip": getattr(self, "last_skip", None)}
 
     # 向後相容: monitor 用 injected_sdu_count 名稱
     @property
@@ -90,6 +98,7 @@ class UeTrafficGen:
             now = _now_ms()
             self.last_inject_at_ms = now
             self.profile_installed_at_ms = now
+            self.last_inject_scene_ms = None
             logger.info("UE[%s] traffic profile updated: %s", self.ue_id, self.profile)
 
     def _effective_sim_speed_x(self) -> float:
@@ -103,7 +112,14 @@ class UeTrafficGen:
         achieved = sim_speed.get_achieved_speed()
         return achieved if achieved > 0.1 else configured
 
-    def _current_rate_mbps(self, now_ms: int) -> float:
+    def _elapsed_sim_sec(self, now_ms: int, scene_ms: int | None) -> float:
+        """流量排程的查表時間。排程的 t 是劇本時間(開場 = 0),有劇本時鐘就直接用它;
+        沒有才退回舊算法(profile 安裝後的牆鐘 × 達成倍速)。"""
+        if scene_ms is not None:
+            return scene_ms / 1000.0
+        return (now_ms - self.profile_installed_at_ms) / 1000.0 * self._effective_sim_speed_x()
+
+    def _current_rate_mbps(self, now_ms: int, scene_ms: int | None = None) -> float:
         """Resolve effective rate_mbps for this tick based on pattern.
 
         cbr        → profile.rate_mbps
@@ -117,8 +133,7 @@ class UeTrafficGen:
             schedule = self.profile.get("schedule") or []
             if not schedule:
                 return 0.0
-            sim_speed_x = self._effective_sim_speed_x()  # P1 — 用實際達成,非設定值
-            elapsed_sim_sec = (now_ms - self.profile_installed_at_ms) / 1000.0 * sim_speed_x
+            elapsed_sim_sec = self._elapsed_sim_sec(now_ms, scene_ms)
             if elapsed_sim_sec < float(schedule[0][0]):
                 return 0.0
             kbps = 0.0
@@ -132,7 +147,7 @@ class UeTrafficGen:
             return kbps / 1000.0
         return 0.0
 
-    def _current_ul_rate_mbps(self, now_ms: int) -> float:
+    def _current_ul_rate_mbps(self, now_ms: int, scene_ms: int | None = None) -> float:
         """最小可用 UL:讀 piecewise schedule 第 3 欄 ul_kbps([t, dl_kbps, ul_kbps])。
         沒第 3 欄 → 0(向後相容只給 DL 的舊劇本)。cbr 用 profile['ul_rate_mbps']。"""
         pattern = self.profile.get("pattern")
@@ -142,8 +157,7 @@ class UeTrafficGen:
             schedule = self.profile.get("schedule") or []
             if not schedule:
                 return 0.0
-            sim_speed_x = self._effective_sim_speed_x()
-            elapsed_sim_sec = (now_ms - self.profile_installed_at_ms) / 1000.0 * sim_speed_x
+            elapsed_sim_sec = self._elapsed_sim_sec(now_ms, scene_ms)
             if elapsed_sim_sec < float(schedule[0][0]):
                 return 0.0
             kbps = 0.0
@@ -161,14 +175,25 @@ class UeTrafficGen:
         """每 manager tick 呼一次. 回傳本 tick inject 的 byte 數 (0 = idle / 還沒到時間)."""
         if not self.profile or self.profile.get("pattern") not in ("cbr", "piecewise"):
             return 0
-        rate_mbps = self._current_rate_mbps(_now_ms())
+        now = _now_ms()
+        scene = sim_speed.scene_now_ms()
+        rate_mbps = self._current_rate_mbps(now, scene)
         if rate_mbps <= 0:
+            # 排程這段是 0:劇本時鐘照樣往前記,之後恢復流量時不會把靜默期補灌進去
+            if scene is not None:
+                self.last_inject_scene_ms = scene
+            self.last_skip = "rate0"
             return 0
         bearer_id = int(self.profile.get("bearer_id", 1))
 
-        now = _now_ms()
         if self.last_inject_at_ms == 0:
             # 第一次 tick — 標記起點, 下次 tick 才注
+            self.last_inject_at_ms = now
+            self.last_inject_scene_ms = scene
+            return 0
+        if scene is not None and (self.last_inject_scene_ms is None or scene < self.last_inject_scene_ms):
+            # 劇本時鐘第一次讀到 / 歸零(新的一場)→ 從這裡起算
+            self.last_inject_scene_ms = scene
             self.last_inject_at_ms = now
             return 0
 
@@ -188,11 +213,21 @@ class UeTrafficGen:
         # PRB% / avg throughput 偏低、RLC delay 偏高。乘 sim_speed_x 還原 sim-time 等效量。
         # P1 (2026-06-01): 用「實際達成」倍速而非設定值 — 設定 10 但 DU 只跑 6.7 時,
         # 用設定值會多灌 1.49× 造成 buffer/delay/throughput 失真。見 sim_speed.py。
-        sim_speed_x = self._effective_sim_speed_x()
-        elapsed_sim_ms = elapsed_ms * sim_speed_x
+        if scene is not None:
+            # 2026-09-27:注入量 = 速率 × 這段劇本時間(與 DU 排空用的是同一個時鐘),
+            # 跑多快都注一樣多。上限 10 s 劇本時間:注入連續失敗時不一次灌爆。
+            # 注意 0 是合法的劇本時刻(開場),不能用 `or` 判斷有沒有值
+            base = scene if self.last_inject_scene_ms is None else int(self.last_inject_scene_ms)
+            elapsed_sim_ms = min(10_000, scene - base)
+            if elapsed_sim_ms <= 0:
+                self.last_skip = "no_scene_advance"
+                return 0
+        else:
+            sim_speed_x = self._effective_sim_speed_x()
+            elapsed_sim_ms = elapsed_ms * sim_speed_x
 
         # 最小可用 UL:同窗算 UL 需求 bytes 推給 DU(DU 用 UL 時隙容量 drain → 真 ThpUl/PrbUl/VolUL)
-        ul_rate_mbps = self._current_ul_rate_mbps(now)
+        ul_rate_mbps = self._current_ul_rate_mbps(now, scene)
         if ul_rate_mbps > 0:
             ul_bytes = int(ul_rate_mbps * 1e6 * elapsed_sim_ms / 1000 / 8)
             if ul_bytes > 0:
@@ -220,6 +255,7 @@ class UeTrafficGen:
         if burst_bytes > 0:
             self.pending_bytes += bytes_to_inject
             self.last_inject_at_ms = now   # 每 tick 推進時鐘;byte 暫存 pending,不靠 elapsed 累積
+            self.last_inject_scene_ms = scene
             if self.pending_bytes < burst_bytes:
                 return 0                   # 還沒湊滿一個 burst → 這 tick idle(注 0)
             bytes_to_inject = self.pending_bytes   # 放出整桶 = 一個 burst
@@ -254,10 +290,12 @@ class UeTrafficGen:
             )
         else:
             result = du_client.inject_sdu(self.ue_id, bytes_to_inject, bearer_id=bearer_id)
+        self.last_result = result
         if result == "ok":
             self.injected_call_count += 1
             self.injected_bytes += bytes_to_inject
             self.last_inject_at_ms = now
+            self.last_inject_scene_ms = scene
             return bytes_to_inject
 
         # AL3 — DU 回 "RLC entity not found" (常見於 DU restart 後): 觸發 CU

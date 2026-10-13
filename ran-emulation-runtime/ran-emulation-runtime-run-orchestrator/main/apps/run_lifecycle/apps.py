@@ -28,12 +28,35 @@ class RunLifecycleConfig(AppConfig):
                 from main.apps.run_telemetry_archive.services.optional import cu_archiver
                 from main.utils.logger import get_logger
                 log = get_logger(__name__)
+                _sync_statuses(log)
                 for r in platform_clients.list_running_runs():
                     run = r["scene_run_uuid"]
-                    insts = {i["role"]: {"name": container_spawner.names_for(run)[i["role"]], "host_port": i.get("host_port"), "run_instance_uuid": i["run_instance_uuid"], "container_id": i.get("container_id")} for i in platform_clients.list_run_instances(run) if i["role"] in container_spawner.ROLES}
-                    cu_host = insts["cu"]["name"] if settings.PER_RUN_ENABLED and "cu" in insts else None
-                    e2_port = insts["e2adapter"]["host_port"] if settings.PER_RUN_ENABLED and "e2adapter" in insts else None
-                    cu_archiver.start_archiver(run, int(r.get("sim_dt_ms") or 500), cu_host=cu_host, e2_port=e2_port, new_run=False)
+                    # 多 gNB:實例鍵(cu-0、du-1、e2adapter-0…)取自容器 label;registry 的 run_instance 以 container_id 對回
+                    ri_by_cid = {(i.get("container_id") or "")[:12]: i for i in platform_clients.list_run_instances(run)}
+                    insts = {}
+                    for c in container_spawner.run_containers(run):
+                        role = c.labels.get("ransim.role") or ""
+                        if role not in container_spawner.ROLES + ("amf",):
+                            continue
+                        key = c.labels.get("ransim.instance") or role
+                        ri = ri_by_cid.get(c.id[:12]) or {}
+                        insts[key] = {"role": role, "name": c.name, "host_port": ri.get("host_port"),
+                                      "run_instance_uuid": ri.get("run_instance_uuid"), "container_id": c.id[:12],
+                                      "gnb": c.labels.get("ransim.gnb") or "", "du": c.labels.get("ransim.du") or ""}
+                    cu_keys = sorted(k for k, v in insts.items() if v["role"] == "cu")
+                    e2_keys = sorted(k for k, v in insts.items() if v["role"] == "e2adapter")
+                    cu_host = insts[cu_keys[0]]["name"] if settings.PER_RUN_ENABLED and cu_keys else None
+                    e2_port = insts[e2_keys[0]]["host_port"] if settings.PER_RUN_ENABLED and e2_keys else None
+                    topo = container_spawner.topology_of(run) if settings.PER_RUN_ENABLED else None
+                    if topo is not None:
+                        meids = {n.get("node_id"): n.get("meid") for n in (r.get("e2_nodes") or []) if isinstance(n, dict)}
+                        arch_nodes = [{"node_id": g.name, "meid": meids.get(g.name) or "", "cu_host": g.cu_host,
+                                       "e2_port": (insts.get(f"e2adapter-{g.e2_index}") or {}).get("host_port")} for g in topo.gnbs]
+                        du0 = next((v["name"] for k, v in sorted(insts.items()) if v["role"] == "du"), None)
+                        cu_archiver.start_archiver(run, int(r.get("sim_dt_ms") or 500), new_run=False, nodes=arch_nodes,
+                                                   ue_host=(insts.get("ue") or {}).get("name"), du_host=du0)
+                    else:
+                        cu_archiver.start_archiver(run, int(r.get("sim_dt_ms") or 500), cu_host=cu_host, e2_port=e2_port, new_run=False)
                     if settings.PER_RUN_ENABLED and insts:
                         health_monitor.start_monitor(run, insts)
                     # 2026-09-22:外部 Agent 經 I-3 注入的事件也要接回 ——
@@ -60,3 +83,28 @@ class RunLifecycleConfig(AppConfig):
         except Exception:  # noqa: BLE001
             import logging
             logging.getLogger(__name__).exception("physics watchdog start failed")
+
+
+def _sync_statuses(log) -> None:
+    """場次狀態只有 idle / precomputing / running(2026-09-28)。orchestrator 起來時校正一次:
+    - running 但容器已不在(orchestrator 當掉、主機重開)→ idle,last_result=failed
+    - precomputing 但 precompute 容器已不在 → idle
+    - 有預算快取檔、cache_path 卻是空的(舊劇本匯入)→ 補上 cache_path,前端「已預算」標籤才準"""
+    from main.apps.run_lifecycle.services.optional import channel_cache, container_spawner, platform_clients
+    try:
+        for r in platform_clients.list_runs_by_status("running"):
+            if not container_spawner.run_containers(r["scene_run_uuid"]):
+                platform_clients.update_scene_run(r["scene_run_uuid"], status="idle", last_result="failed",
+                                                  notes="orchestrator 重啟時容器已不在")
+                log.warning("run %s 標記 running 但容器不在 → idle / failed", r["scene_run_uuid"])
+        for r in platform_clients.list_runs_by_status("precomputing"):
+            if (container_spawner.precompute_status(r["scene_run_uuid"]) or {}).get("state") in (None, "absent", "exited", "dead"):
+                platform_clients.update_scene_run(r["scene_run_uuid"], status="idle")
+        scenes = {s.get("scene_uuid"): s for s in (platform_clients.list_scenes() or {}).get("data") or []}
+        for r in platform_clients.list_scene_runs().get("data") or []:
+            sc = scenes.get(r.get("f_scene_uuid")) or {}
+            if not r.get("cache_path") and channel_cache.available(sc):
+                platform_clients.update_scene_run(r["scene_run_uuid"], cache_path=channel_cache.cache_path_for(sc))
+                log.info("run %s 補上 cache_path(場景 %s 已有預算檔)", r["scene_run_uuid"], sc.get("name"))
+    except Exception:  # noqa: BLE001 — 校正失敗不擋啟動
+        log.exception("sync scene_run statuses failed")

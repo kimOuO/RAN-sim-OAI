@@ -74,7 +74,11 @@ class SubNotFoundError(RuntimeError):
     """sim CU 不認得這個 subscription_id（被 sim 重啟後 wipe 過，producer 該停）。"""
 
 
+_last_err = threading.local()
+
+
 def _post_sim(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    _last_err.body = None
     base = get_str("SIM_CU_URL", "")
     if not base:
         _state.mark_error("SIM_CU_URL env var unset")
@@ -98,6 +102,7 @@ def _post_sim(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         body = resp.json()
         if not body.get("success"):
             logger.warning("sim %s non-success: %s", path, body.get("message"))
+            _last_err.body = body
             return None
         _state.mark_success()
         return body.get("data") or {}
@@ -167,6 +172,12 @@ def call_control_request(payload: dict[str, Any]) -> dict[str, Any] | None:
       {action: "prb_quota", min_prb, max_prb, dedicated_prb, ...}
     """
     return _post_sim("/api/v0.1/CU/E2/Control/request", payload)
+
+
+def last_error_body() -> dict[str, Any] | None:
+    """本執行緒上一次 sim 呼叫被 CU 拒絕時的 body(成功或沒有時回 None)。
+    RC 3-1 換手沒成 CU 回 409 + errors.control_outcome,adapter 要拿它填 RICcontrolFailure 的 IE 32。"""
+    return getattr(_last_err, "body", None)
 
 
 def call_anr_control(payload: dict[str, Any]) -> dict[str, Any] | None:

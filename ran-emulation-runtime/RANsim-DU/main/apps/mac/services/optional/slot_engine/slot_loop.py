@@ -26,41 +26,25 @@ import random
 from dataclasses import dataclass, field
 
 from main.apps.mac.services.optional.link_adaptation import eesm, nr_resources
-from main.apps.mac.services.optional.link_adaptation.mcs_table import _SINR_TO_MCS
-from main.apps.mac.services.optional.slot_engine.bler_table import bler
+from main.apps.mac.services.optional.link_adaptation.bler_curve import bler, op_point_mcs
+from ran_sim_protocol.nr_link_tables import spectral_efficiency
 
 
 SLOT_MS = 0.5  # band78 μ=1 → 0.5ms/slot
 
-# mcs → spectral efficiency (bps/RE):由 mcs_table 的 (threshold, mcs, bps_re) 建,缺的 MCS 線性插值
-_MCS_EFF_PTS = sorted((m, e) for _, m, e in _SINR_TO_MCS)
-
 
 def _eff_for_mcs(mcs: int) -> float:
-    pts = _MCS_EFF_PTS
-    if mcs <= pts[0][0]:
-        return pts[0][1]
-    if mcs >= pts[-1][0]:
-        return pts[-1][1]
-    for i in range(len(pts) - 1):
-        m0, e0 = pts[i]
-        m1, e1 = pts[i + 1]
-        if m0 <= mcs <= m1:
-            return e0 + (e1 - e0) * (mcs - m0) / (m1 - m0)
-    return pts[-1][1]
+    """MCS 的頻譜效率 Q_m × R —— TS 38.214 MCS 表 1(與 OAI Table_51311 相同)。
+
+    2026-09-26 前由一張無出處的 SINR→(MCS, bps) 表內插而來,MCS 28 被給到 7.41 bit/RE,
+    超過 64QAM 表的上限 5.55。
+    """
+    return spectral_efficiency(mcs)
 
 
 def _mcs_at_op_point(sinr_db: float, target_bler: float) -> int:
-    """挑「首傳 BLER ≤ target(OAI target_dl_bler,預設 0.1)」裡最高的可行 MCS。
-
-    用 bler() 本身判斷 → 選 MCS 與評估 BLER 同一條曲線、同一個 ~10% 操作點,自洽。
-    這就是 OAI link adaptation:把 MCS 停在 ~10% 首傳失敗率以最大化吞吐(非寫死重傳率)。
-    """
-    chosen = 0
-    for m in range(28):
-        if bler(m, sinr_db) <= target_bler:
-            chosen = m
-    return chosen
+    """首傳 BLER ≤ target 的最高 MCS(OAI AWGN 曲線)。見 bler_curve.op_point_mcs。"""
+    return op_point_mcs(sinr_db, target_bler)
 
 
 @dataclass
@@ -83,7 +67,7 @@ class SlotParams:
     harq_rtt_slots: int = 4    # HARQ retx 間隔(NACK→retx)
     fading_std_db: float = 2.0 # per-slot fast-fading 標準差
     re_per_prb_slot: int = 144 # 12 subcarrier × 12 symbol
-    target_bler: float = 0.1   # link adaptation 目標首傳 BLER(對齊 OAI target_dl_bler)
+    target_bler: float = 0.1   # 操作點首傳 BLER:TS 38.214 §5.2.2.1 CQI 定義的 0.1(OAI 外迴路上下門檻 0.05/0.15 之間)
     sched_period_slots: int = 1  # 改動二 cadence:此 UE 每幾 slot 才有一次排程機會(1=每 DL slot,>1=稀疏)
     # 佇列位元組上限(對齊 RLC_TX_MAXSIZE_BYTES,am_entity 同值);0 = 不設限(舊行為,會無限長大)
     max_buffer_bytes: int = field(default_factory=lambda: int(os.environ.get("RLC_TX_MAXSIZE_BYTES", "10000000") or 10000000))

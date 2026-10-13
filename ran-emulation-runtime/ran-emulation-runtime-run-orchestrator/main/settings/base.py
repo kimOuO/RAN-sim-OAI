@@ -42,6 +42,8 @@ PER_RUN_ENABLED = get_bool("PER_RUN_ENABLED", False)
 PER_RUN_NETWORK = get_str("PER_RUN_NETWORK", "ransim-net")
 PER_RUN_PG_ADMIN_DB = get_str("PER_RUN_PG_ADMIN_DB", "ransim_root")
 PER_RUN_HEALTH_SEC = get_int("PER_RUN_HEALTH_SEC", 5)
+# 多 gNB P5:全場共用的 AMF 容器(amf-<rid>)。AMF 還沒做好前關閉,CU 用內建的 mock AMF。
+PER_RUN_AMF_ENABLED = get_bool("PER_RUN_AMF_ENABLED", False)
 # 自動復原(2026-09-15):任一角色連續不健康超過 AUTO_RESTART_SEC 秒 → 先 dump CU/DU 堆疊再 stop/start 整個 run;0 = 關閉。兩次重啟至少隔 COOLDOWN 秒。
 PER_RUN_AUTO_RESTART_SEC = get_int("PER_RUN_AUTO_RESTART_SEC", 120)
 PER_RUN_AUTO_STOP_ON_FINISH = get_bool("PER_RUN_AUTO_STOP_ON_FINISH", True)   # UE 劇本跑完(模擬時間 ≥ duration_sec)自動停 run

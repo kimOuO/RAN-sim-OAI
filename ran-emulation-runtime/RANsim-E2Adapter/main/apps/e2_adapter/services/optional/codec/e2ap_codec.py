@@ -144,6 +144,27 @@ def _pack_plmn_bcd(plmn_str: str) -> bytes:
     return b"\x00\x00\x00"
 
 
+# E2 Setup 時 CU 給的 cell → NCI(3GPP:gNB ID ‖ 本地 cell ID)。之後逐 cell 的 KPM indication
+# 要用同一個值,不能再對名稱做 SHA-1(2026-09-27 前 senderName 的 NCI 一律是 hash,與 E2 Setup 不一致)。
+_NCI_SEEN: dict[str, int] = {}
+
+
+def nci_for_cell(cell_id: str) -> int:
+    """cell → NCI:場次拓樸(RUN_TOPOLOGY)> E2 Setup 時 CU 給的值 > 舊的 SHA-1(沒有真值的共用模式)。"""
+    try:
+        from ran_sim_protocol.run_topology import RunTopology
+        topo = RunTopology.from_env()
+    except Exception:  # noqa: BLE001 — 沒掛 protocol 套件
+        topo = None
+    if topo is not None:
+        c = topo.cell(cell_id)
+        if c is not None:
+            return c.nci
+    if cell_id in _NCI_SEEN:
+        return _NCI_SEEN[cell_id]
+    return _hash_nr_cell_id(cell_id)
+
+
 def _hash_nr_cell_id(cell_id: str, explicit: int | None = None) -> int:
     """36-bit NR Cell Identity, explicit-first then SHA-1 fallback.
 
@@ -160,6 +181,8 @@ def _hash_nr_cell_id(cell_id: str, explicit: int | None = None) -> int:
     """
     mask = (1 << 36) - 1
     if explicit is not None:
+        if cell_id:
+            _NCI_SEEN[cell_id] = int(explicit) & mask
         return int(explicit) & mask
     import hashlib
     h = hashlib.sha1((cell_id or "").encode("utf-8")).digest()

@@ -32,6 +32,7 @@
   → 每 10 個 slot:7 個全 DL + 1 個 special(14 symbol 中 6 個 DL)+ 2 個全 UL。
   special slot **不是**整格 DL,故以 6/14 加權,而非布林遮罩的 1.0。
       有效 DL 比例 = (7 + 6/14) / 10 = 0.742857
+  樣式可由 TDD_PATTERN 改(registry DU 模板的 tdd_pattern),上式為預設樣式的值。
 
 已知簡化
 --------
@@ -43,7 +44,7 @@
 """
 from __future__ import annotations
 
-from main.utils.env_loader import get_bool, get_int
+from main.utils.env_loader import get_bool, get_float, get_int, get_str
 
 # ── 38.214 §5.1.3.2 / §4.4.4.1 ────────────────────────────────────────────
 N_SC_PER_RB = 12                      # N_sc^RB
@@ -52,10 +53,26 @@ N_DMRS_PER_PRB = get_int("NR_N_DMRS_PRB", 12)      # N_DMRS^PRB
 N_OH_PER_PRB = get_int("NR_N_OH_PRB", 0)           # N_oh^PRB(xOverhead,預設 0)
 RE_CAP_PER_PRB = 156                  # min(156, N'_RE) 的上限
 
-# ── TDD(OAI band78 DDDDDDDSUU)────────────────────────────────────────────
-# 每 slot 的 DL 容量權重。special slot = 6/14 個符號可用於 DL。
-TDD_DL_WEIGHTS: tuple[float, ...] = (1.0,) * 7 + (6.0 / 14.0,) + (0.0, 0.0)
-TDD_UL_WEIGHTS: tuple[float, ...] = (0.0,) * 7 + (4.0 / 14.0,) + (1.0, 1.0)
+# ── TDD ───────────────────────────────────────────────────────────────────
+# 樣式由 registry DU 模板的 tdd_pattern 經編排器注入 TDD_PATTERN(預設 OAI band78
+# DDDDDDDSUU)。D = 全 DL、U = 全 UL、S = special slot,其 DL / UL 符號數預設取 OAI
+# band78 設定的 nrofDownlinkSymbols = 6、nrofUplinkSymbols = 4(14 符號中)。
+# 2026-09-26 前樣式寫死,模板改 tdd_pattern 只影響舊模式的上行比例。
+TDD_PATTERN = get_str("TDD_PATTERN", "DDDDDDDSUU").strip().upper()
+SPECIAL_DL_SYMB = get_int("NR_SPECIAL_DL_SYMB", 6)
+SPECIAL_UL_SYMB = get_int("NR_SPECIAL_UL_SYMB", 4)
+
+
+def _tdd_weights(pattern: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    if not pattern or set(pattern) - set("DSU"):
+        raise ValueError(f"TDD_PATTERN 只能由 D / S / U 組成:{pattern!r}")
+    dl = {"D": 1.0, "U": 0.0, "S": SPECIAL_DL_SYMB / 14.0}
+    ul = {"D": 0.0, "U": 1.0, "S": SPECIAL_UL_SYMB / 14.0}
+    return tuple(dl[c] for c in pattern), tuple(ul[c] for c in pattern)
+
+
+# 每 slot 的 DL / UL 容量權重
+TDD_DL_WEIGHTS, TDD_UL_WEIGHTS = _tdd_weights(TDD_PATTERN)
 
 SLOTS_PER_SEC = get_int("NR_SLOTS_PER_SEC", 2000)  # μ=1(30 kHz SCS)→ 0.5ms/slot
 
@@ -73,6 +90,7 @@ MIMO_LAYERS_ENABLED = get_bool("NR_MIMO_LAYERS_ENABLED", False)
 LEGACY_RE_PER_PRB_SLOT = 144          # 12 × 12,未扣 DMRS/overhead
 LEGACY_OVERHEAD = 0.80                # PDCCH/DMRS/SSB 的整體折扣(擬合值,無規範出處)
 LEGACY_TDD_DL_RATIO = 0.72
+LEGACY_TDD_UL_RATIO = get_float("TDD_UL_SLOT_RATIO", 0.22)   # 舊的手動保守值(擬合,無出處)
 
 
 def n_re_per_prb_slot() -> int:
@@ -88,6 +106,13 @@ def tdd_dl_ratio() -> float:
     if not TBS_SPEC_MODE:
         return LEGACY_TDD_DL_RATIO
     return sum(TDD_DL_WEIGHTS) / len(TDD_DL_WEIGHTS)
+
+
+def tdd_ul_ratio() -> float:
+    """有效上行 slot 比例:(2 個全 UL + special 的 4/14)/ 10 = 0.228571(spec 模式)。"""
+    if not TBS_SPEC_MODE:
+        return LEGACY_TDD_UL_RATIO
+    return sum(TDD_UL_WEIGHTS) / len(TDD_UL_WEIGHTS)
 
 
 def dl_slot_weight(abs_slot: int) -> float:
@@ -134,6 +159,8 @@ def describe() -> dict:
         "mimo_layers": MIMO_LAYERS_ENABLED,
         "n_re_per_prb_slot": n_re_per_prb_slot(),
         "tdd_dl_ratio": round(tdd_dl_ratio(), 6),
+        "tdd_ul_ratio": round(tdd_ul_ratio(), 6),
+        "tdd_pattern": TDD_PATTERN,
         "slots_per_sec": SLOTS_PER_SEC,
         "n_symb_pdsch": N_SYMB_PDSCH,
         "n_dmrs_per_prb": N_DMRS_PER_PRB,

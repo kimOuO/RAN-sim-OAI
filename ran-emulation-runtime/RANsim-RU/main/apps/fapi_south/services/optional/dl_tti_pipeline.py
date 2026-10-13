@@ -360,13 +360,32 @@ def _build_cell_to_tx_map() -> dict[str, str]:
     (= '${gnb_name}#${pci}'), 不再是 gnb_name. RU 端用 sim cell 的 pci field
     構造對應 tx_name 來 lookup, 拿到 cell-level path_gain (不被 max 聚合).
     """
+    # 2026-09-27:cached 模式以「快取實際有的 tx 名」為準(與 DU channel_cache_du.cell_id_to_tx 同規則):
+    # cell 名(剝掉 gNB 前綴)本身、或 "<cell 名>#..." 在快取裡就用它。以前一律 "<gNB 名>#<PCI>",
+    # 場景預算後若改了 cell 所屬的 gNB(例:把三個 cell 收到同一個 gNB 下分兩個 DU),
+    # tx 名就對不上快取,那些 cell 在 RU 這邊整個消失(沒有鄰區量測、服務 cell 退回 argmax)。
+    cache_names: list[str] = []
+    try:
+        from main.apps.fapi_south.services.optional.channel_cache_loader import get_channel_cache, is_cached_mode
+        if is_cached_mode():
+            cc = get_channel_cache()
+            cache_names = list(getattr(cc, "cell_names", []) or []) if cc is not None else []
+    except Exception:  # noqa: BLE001
+        cache_names = []
+    try:
+        from ran_sim_protocol.cell_tag import strip_tag
+    except ImportError:  # 舊 protocol 套件
+        def strip_tag(x):  # type: ignore[no-redef]
+            return x.split(":", 1)[1] if ":" in x else x
     try:
         from main.apps.antenna.models.cell import Cell
         out: dict[str, str] = {}
         for c in Cell.objects.all():
             if c.gnb_id is None or c.pci is None:
                 continue
-            out[c.name] = f"{c.gnb_id}#{int(c.pci)}"
+            base = strip_tag(c.name)
+            hit = base if base in cache_names else next((n for n in cache_names if n.split("#", 1)[0] == base), None)
+            out[c.name] = hit or f"{c.gnb_id}#{int(c.pci)}"
         return out
     except Exception:
         return {}

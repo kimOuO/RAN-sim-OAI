@@ -24,6 +24,16 @@ logger = get_logger(__name__)
 
 
 
+
+def _std(cell_id: str) -> dict:
+    from main.apps.cu_cp.services.business.xn import std_ids
+    return std_ids(cell_id)
+
+
+def _target_std(cell_id: str) -> dict:
+    d = _std(cell_id)
+    return {"targetNci": d["nci"], "targetNcgiStd": d["ncgiStd"]}
+
 def _anr_intra_enabled() -> bool:
     """ANR 自動建立功能之部署組態(卷面前置檢查用)。false 時 gNB 不自動寫 NRT。"""
     from main.utils.env_loader import get_bool
@@ -63,6 +73,8 @@ def _relation_to_ie(r: NrCellRelation) -> dict:
         "targetPhysicalCellId": r.target_pci,
         "targetArfcn": r.target_arfcn,
         "targetRadioAccessTechnology": r.target_rat,
+        # RIC 選項 A(2026-09-27):目標的標準識別,3-1 / 2-8 的 target_nci 可直接取用
+        **_target_std(r.target_cgi),
         # 卷面延伸(管理面視圖)
         "isHoAllowed": r.is_ho_allowed,
         "isRemoveAllowed": r.is_remove_allowed,
@@ -110,6 +122,7 @@ class AnrQueryActor:
         serving = [
             {
                 "ncgi": c.cell_id,
+                **_std(c.cell_id),
                 "physicalCellId": c.pci,
                 "arfcn": nr_arfcn_from_ghz(c.frequency_ghz),
                 "radioAccessTechnology": "NR",
@@ -208,7 +221,7 @@ class AnrQueryActor:
         cells_qs = CellConfig.objects.filter(is_active=True)
         if cell_id:
             cells_qs = cells_qs.filter(cell_id=cell_id)
-        serving = [{"ncgi": c.cell_id, "physicalCellId": c.pci,
+        serving = [{"ncgi": c.cell_id, **_std(c.cell_id), "physicalCellId": c.pci,
                     "arfcn": nr_arfcn_from_ghz(c.frequency_ghz),
                     "radioAccessTechnology": "NR"} for c in cells_qs]
         rel_qs = NrCellRelation.objects.all()

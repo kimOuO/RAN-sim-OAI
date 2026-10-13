@@ -117,6 +117,8 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
     IE_RANfunctionID = 5
     IE_RICcontrolHeader = 22
     IE_RICcontrolMessage = 23
+    IE_RICcallProcessID = 20
+    call_process_id = b""
 
     for ie in ctrl_req.get("protocolIEs", []):
         ie_id = ie.get("id")
@@ -135,6 +137,9 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
             header_bytes = bytes(val) if not isinstance(val, bytes) else val
         elif ie_id == IE_RICcontrolMessage:
             message_bytes = bytes(val) if not isinstance(val, bytes) else val
+        elif ie_id == IE_RICcallProcessID:
+            # RIC 閘道的對帳標籤(UTF-8);ACK / Failure 原樣帶回
+            call_process_id = bytes(val) if not isinstance(val, bytes) else val
 
     # 內層 CCC 是 JSON
     ric_style_type = 0
@@ -163,6 +168,7 @@ def decode_ric_control_request(data: bytes) -> dict[str, Any]:
 
     return {
         "ric_req_id": ric_req_id,
+        "call_process_id": call_process_id,
         "ran_function_id": ran_function_id,
         "ric_style_type": ric_style_type,
         "cells": cells,

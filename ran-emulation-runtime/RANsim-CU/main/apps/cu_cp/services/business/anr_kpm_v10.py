@@ -228,6 +228,12 @@ def _to_wrong_cell_by_relation(window_min: float) -> dict[tuple[str, str], float
     return {k: round(v / max(window_min, 1e-9), 3) for k, v in out.items()}
 
 
+def _std(cell_id: str) -> dict:
+    """cell 的 nci / ncgiStd(RIC 選項 A;ncgi 欄位本身維持 cell 名稱)。"""
+    from main.apps.cu_cp.services.business.xn import std_ids
+    return std_ids(cell_id)
+
+
 def _relation_ie_v10(r: NrCellRelation) -> dict[str, Any]:
     """9.3.38 之必要欄位 —— **刻意不含**旗標與管理面屬性(見檔頭說明)。"""
     return {
@@ -236,6 +242,8 @@ def _relation_ie_v10(r: NrCellRelation) -> dict[str, Any]:
         "targetPhysicalCellId": r.target_pci,
         "targetArfcn": r.target_arfcn,
         "targetRadioAccessTechnology": r.target_rat,
+        # RIC 選項 A(2026-09-27):目標的標準識別
+        **{"targetNci": _std(r.target_cgi)["nci"], "targetNcgiStd": _std(r.target_cgi)["ncgiStd"]},
         "xnX2Established": r.xn_x2_established,
         "hoValidated": r.ho_validated,
         "version": r.version,
@@ -356,7 +364,7 @@ def indication_v10(cell_id: str | None = None,
             # 這裡逐 cell 輸出只是為了對齊 xApp 的讀取位置,同一時刻各 cell 必然相同;
             # 劇本覆寫是換掉這個全域值,不是只換某顆 cell。
             "servingCells": [
-                {"ncgi": c.cell_id, "physicalCellId": c.pci,
+                {"ncgi": c.cell_id, **_std(c.cell_id), "physicalCellId": c.pci,
                  "arfcn": nr_arfcn_from_ghz(c.frequency_ghz),
                  "radioAccessTechnology": "NR",
                  "barred": __import__("main.apps.cu_cp.services.common.fixture_state", fromlist=["is_cell_barred"]).is_cell_barred(c.cell_id, c.is_barred),

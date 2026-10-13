@@ -2,9 +2,10 @@
 
 2026-05-16 P2.5 — 對應 alignment_action_plan.md。
 
-Resolution order(優先用 explicit OAI 真值,沒有再 fallback SHA-1 hash):
-  1. CellConfig.nr_cellid 欄位(來自 scene_config 顯式設定)
-  2. SHA-1(cell_id)[:5] mod (1<<36) — deterministic 隨機分布,collision <1e-7
+Resolution order(優先用 explicit 真值,沒有再 fallback SHA-1 hash):
+  1. CellConfig.nr_cellid 欄位 —— 多 gNB 改版(2026-09-27)起,per-run 場景一律由場次拓樸給
+     3GPP NCI(gNB ID 22 bit ‖ 本地 cell ID 14 bit,ran_sim_protocol.e2_identity)
+  2. SHA-1(cell_id)[:5] mod (1<<36) — 只剩舊的共用容器(沒有拓樸)會走到
 
 Reverse lookup:
   - 先用 CellConfig.objects.filter(nr_cellid=...) 做精確比對
@@ -56,4 +57,12 @@ def to_platform_cell_id(nr_cellid: int) -> str | None:
             continue
         if hash_cell_id(c.cell_id) == target:
             return c.cell_id
+    # 多 gNB(C10):目標可以是鄰 gNB 的 cell(Xn Setup 交換來的 served cells)
+    try:
+        from main.apps.cu_cp.models.xn import XnNeighbourCell
+        f = XnNeighbourCell.objects.filter(nci=target).values_list("cell_id", flat=True).first()
+        if f:
+            return f
+    except Exception:  # noqa: BLE001 — 舊 DB 沒有 Xn 表
+        pass
     return None

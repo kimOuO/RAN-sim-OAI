@@ -6,6 +6,7 @@ from main.apps.ue_lifecycle.actors.lifecycle_actor import (
     StatusController,
 )
 from main.apps.ue_lifecycle.actors.trajectory_actor import TrajectoryController
+from main.apps.ue_lifecycle.actors.user_plane_actor import UserPlaneController
 
 urlpatterns = [
     path("Status/read", StatusController.read, name="ue_status_read"),
@@ -15,4 +16,6 @@ urlpatterns = [
     path("Trajectory/set", TrajectoryController.set, name="ue_trajectory_set"),
     path("Trajectory/clear", TrajectoryController.clear, name="ue_trajectory_clear"),
     path("Trajectory/list", TrajectoryController.list, name="ue_trajectory_list"),
+    path("UserPlane/path_update", UserPlaneController.path_update, name="ue_userplane_path_update"),
+    path("UserPlane/read", UserPlaneController.read, name="ue_userplane_read"),
 ]

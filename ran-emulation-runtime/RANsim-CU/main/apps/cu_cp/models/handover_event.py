@@ -38,6 +38,16 @@ class HandoverEvent(models.Model):
     failure_cause = models.CharField(max_length=32, blank=True, default="")
     # P2-1:MRO 歸因(TooEarly/TooLate/ToWrongCell),由歸因引擎回填。
     mro_class = models.CharField(max_length=16, blank=True, default="")
+    # 多 gNB(2026-09-27,介面 C14):換手種類。intra-DU / inter-DU(同 gNB 跨 DU,F1)/
+    # Xn(跨 gNB)/ NG(跨 gNB 經 AMF,無 Xn 時的退路)。舊資料 = intra-DU(改版前只有這種)。
+    ho_type = models.CharField(max_length=16, blank=True, default="intra-DU")
+    # C14:換手事件對外帶 UE 的 AMF UE NGAP ID(跨 gNB 不變)與兩端 ncgi(D2 固定格式)
+    amf_ue_ngap_id = models.BigIntegerField(null=True, blank=True)
+    source_ncgi = models.CharField(max_length=32, blank=True, default="")
+    target_ncgi = models.CharField(max_length=32, blank=True, default="")
+    # RIC 對帳(C14):RIC 控制觸發的換手記下 E2AP RICrequestID.ricInstanceID 與閘道標籤(RICcallProcessID)
+    ric_instance_id = models.BigIntegerField(null=True, blank=True)
+    ric_label = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         app_label = "cu_cp"

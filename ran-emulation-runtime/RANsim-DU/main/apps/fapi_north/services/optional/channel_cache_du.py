@@ -232,6 +232,15 @@ def _cell_freq_map() -> dict[str, tuple[float, float]]:
         try:
             from main.apps.mac.models.cell_state import CellState
             m: dict[str, tuple[float, float]] = {}
+            # 多 gNB:別的 DU 的 cell 不在本 DU 的 CellState,頻率取自場次拓樸(自己的 cell 仍以 CellState 為準)
+            try:
+                from ran_sim_protocol.run_topology import RunTopology
+                topo = RunTopology.from_env()
+            except Exception:  # noqa: BLE001
+                topo = None
+            for tc in (topo.cells() if topo is not None else []):
+                if tc.freq_ghz is not None and tc.bw_mhz is not None:
+                    m[cell_id_to_tx(tc.cell_id)] = (float(tc.freq_ghz), float(tc.bw_mhz))
             for c in CellState.objects.values("cell_id", "freq_ghz", "bw_mhz"):
                 m[cell_id_to_tx(c["cell_id"])] = (float(c["freq_ghz"]), float(c["bw_mhz"]))
             _FREQ_MAP_CACHE["map"] = m

@@ -12,6 +12,10 @@
   - lazy-start 一條 daemon thread,每 _REFRESH_INTERVAL_SEC 從 DU 拉 achieved
   - get_achieved_speed() 純查 cache(不在 inject 熱路徑打 HTTP)
   - 拉不到 / 尚未量到(DU 回 0.0)→ cache 維持 0.0,caller 自行 fallback 到設定值
+
+2026-09-27:同一條執行緒也快取劇本時鐘(scene_sim_ms,外部時鐘讀 RU、否則讀 DU),
+每 0.1 s 一次。流量產生器改用劇本時鐘算注入量與查流量排程 —— 以前用「牆鐘 × 達成倍速」,
+注入量跟著當下跑多快漂移,同一劇本兩次跑出不同的負載。
 """
 from __future__ import annotations
 
@@ -19,38 +23,34 @@ import logging
 import threading
 import time
 
-import requests
-from django.conf import settings
 
 
 logger = logging.getLogger(__name__)
 
-_REFRESH_INTERVAL_SEC = 1.5
+_REFRESH_INTERVAL_SEC = 0.1
 _HTTP_TIMEOUT_SEC = 1.0
 
 _lock = threading.Lock()
 _achieved_speed_x: float = 0.0
+_scene_ms: int | None = None
 _started = False
 _started_lock = threading.Lock()
 
 
 def _refresh_from_du() -> None:
-    global _achieved_speed_x
-    base = getattr(settings, "SIM_DU_URL", "").rstrip("/")
-    if not base:
-        return
+    """時鐘的實際達成倍速與劇本時鐘:外部時鐘讀 RU 鎖步時鐘,否則讀 DU(見 du_client._clock_read)。"""
+    global _achieved_speed_x, _scene_ms
+    from main.apps.ue_lifecycle.services import du_client
     try:
-        r = requests.post(
-            f"{base}/api/v0.1/DU/Tick/TickController/read",
-            json={}, timeout=_HTTP_TIMEOUT_SEC,
-        )
-        data = (r.json() or {}).get("data") or {}
+        data = du_client._clock_read() or {}
         new_val = float(data.get("achieved_speed_x", 0.0) or 0.0)
+        scene = data.get("scene_sim_ms")
     except Exception:
         return
     new_val = max(0.0, min(30.0, new_val))
     with _lock:
         _achieved_speed_x = new_val
+        _scene_ms = int(scene) if scene is not None else None
 
 
 def _refresher_loop() -> None:
@@ -78,3 +78,10 @@ def get_achieved_speed() -> float:
     _ensure_started()
     with _lock:
         return _achieved_speed_x
+
+
+def scene_now_ms() -> int | None:
+    """劇本時鐘(ms,0.1 s 內的快取);拿不到回 None,caller 退回牆鐘算法。"""
+    _ensure_started()
+    with _lock:
+        return _scene_ms

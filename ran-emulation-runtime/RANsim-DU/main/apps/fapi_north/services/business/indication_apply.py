@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from main.apps.mac.services.common.timestamp_service import TimestampService
 from main.utils.env_loader import get_float
 from main.utils.logger import get_logger
 
@@ -27,9 +26,10 @@ def apply_cqi(v: dict[str, Any]) -> tuple[int, float]:
     from main.apps.mac.services.optional.link_adaptation.mcs_controller import get_mcs_controller
     from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
 
-    new_mcs, smoothed_bler = get_mcs_controller().update(
-        v["ue_id"], v["sinr_db"], TimestampService.now_ms(),
-    )
+    # 外迴路鏈路適應只在 tick 內以模擬時間推進一次(用 MU 配對後的 SINR);
+    # 這裡只讀目前狀態。2026-09-26 前這裡也會用牆鐘推進一次,每 tick 動兩階且受倍速影響。
+    _ctl = get_mcs_controller()
+    new_mcs, smoothed_bler = _ctl.get_mcs(v["ue_id"]), _ctl.get_bler(v["ue_id"])
     rsrp_real = float(v.get("rsrp_dbm", -200.0))
     if rsrp_real > -150.0:
         rsrp_for_pm = rsrp_real

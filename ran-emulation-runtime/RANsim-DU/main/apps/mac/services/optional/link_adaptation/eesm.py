@@ -127,9 +127,8 @@ def effective_sinr_for_layers(sinr_db: float, n_layers: int, sinr_layers=None, m
     RU 回報的 SINR 未考慮發射功率要分給多層。若直接拿它配上 TBS×ν,等於憑空多送
     資料。本函式在 NR_MIMO_LAYERS_ENABLED=off 時原樣返回(舊行為)。
 
-    ⚠ 目前的近似:RU 只回一個純量 SINR,故此處以等功率分配做一階修正。
-       完整做法是 RU 回 per-layer SINR 陣列,DU 端用 combine_db() 做 EESM 壓縮。
-       前者是本次可做的最小正確耦合,後者需要改 RU 的 CqiIndication 介面。
+    RU 有回每層 SINR(``CqiIndication.sinr_per_layer_db``)時以 combine_db() 做 EESM;
+    沒有(舊 RU、或 rank 1)才以等功率分配 ``equal_power_split_db`` 做一階修正。
     """
     from main.apps.mac.services.optional.link_adaptation import nr_resources
     if not nr_resources.MIMO_LAYERS_ENABLED:

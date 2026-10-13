@@ -20,11 +20,10 @@ RANsim-DU/
 └── main/
     ├── settings/{base,local,production,test}.py
     ├── utils/{env_loader,logger,response}.py
-    ├── urls.py     # 聚合 6 個 app
+    ├── urls.py     # 聚合 5 個 app
     └── apps/
-        ├── mac/         # OAI: NR_MAC_gNB/   — Scheduler / HARQ / MCS / RA / LCP / PM
+        ├── mac/         # OAI: NR_MAC_gNB/   — Scheduler / HARQ / 鏈路適應(MCS、BLER 曲線、CQI)/ RA / LCP / PM
         ├── rlc/         # OAI: nr_rlc/        — AM / UM / TM
-        ├── phy_high/    # OAI: NR_TRANSPORT/  — modulation / LDPC / layer / precoding
         ├── f1ap_du/     # OAI: F1AP/f1ap_du_* — F1Setup / UE context / DL RRC
         ├── fapi_north/  # OAI: nfapi/         — DL/UL TTI / CQI / CRC
         └── tick/        # tick driver(無對應 OAI)
@@ -47,8 +46,6 @@ RANsim-DU/
 | `POST /api/v0.1/DU/RLC/RlcEntityController/{create,read,delete}` | RLC entity |
 | `POST /api/v0.1/DU/RLC/RlcDataController/inject_sdu` | 模擬注入 SDU |
 | `POST /api/v0.1/DU/RLC/RlcDataController/read_buffer_status` | 查 BO |
-| `POST /api/v0.1/DU/PHY/PhyHighController/compute_modulation_throughput` | MCS+PRB→Mbps |
-| `POST /api/v0.1/DU/PHY/PhyHighController/estimate_bler` | SINR+MCS→BLER |
 | `POST /api/v0.1/DU/F1AP/F1ApRouter/ue_context_setup` | CU → DU |
 | `POST /api/v0.1/DU/F1AP/F1ApRouter/ue_context_release` | CU → DU |
 | `POST /api/v0.1/DU/F1AP/F1ApRouter/dl_rrc_message` | CU → DU → UE |
@@ -90,7 +87,6 @@ HTTP_CU_HOST / HTTP_CU_PORT
 HTTP_RU_HOST / HTTP_RU_PORT
 SIM_TICK_MS=500
 SIM_SCHEDULER=PF | RR | MAXTHROUGHPUT
-SIM_BLER_CURVE_PATH=/app/main/apps/phy_high/data/bler_curve.csv
 SIM_GNB_DU_ID=1
 SIM_DEFAULT_PRB_PER_CELL=273
 ```
@@ -198,10 +194,10 @@ pytest -k pf_scheduler -v       # 指定函式
 | `apps/mac/services/optional/scheduler/` | `openair2/LAYER2/NR_MAC_gNB/gNB_scheduler*.c` |
 | `apps/mac/services/optional/harq/` | `openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c` (HARQ pool) |
 | `apps/mac/services/optional/random_access/` | `openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_RA.c` |
-| `apps/mac/services/optional/link_adaptation/mcs_controller.py` | `get_mcs_from_bler()` in scheduler_primitives.c |
+| `apps/mac/services/optional/link_adaptation/mcs_controller.py` | `get_mcs_from_bler()` in scheduler_primitives.c(門檻、週期、平滑係數與 OAI 預設相同) |
+| `apps/mac/services/optional/link_adaptation/bler_curve.py` + `data/bler_curve.csv` | `openair1/SIMULATION/NR_PHY/BLER_SIMULATIONS/AWGN/AWGN_results/`(OAI 官方 AWGN 曲線) |
+| `ran_sim_protocol/nr_link_tables.py`(與 RU 共用) | `Table_51311`(nr_mac_common.c)、`cqi_table1`(gNB_scheduler_primitives.c) |
 | `apps/rlc/services/optional/entities/{am,um,tm}_entity.py` | `nr_rlc_entity_{am,um,tm}.c` |
-| `apps/phy_high/services/optional/coding/ldpc_abstract.py` | `openair1/PHY/CODING/` (LDPC,我們抽象成 BLER) |
-| `apps/phy_high/services/optional/precoding/mimo_processor.py` | `openair1/PHY/MODULATION/` (precoding 抽象) |
 | `apps/f1ap_du/actors/f1ap_router_actor.py` | `openair2/F1AP/f1ap_du_{ue_context_management,rrc_message_transfer}.c` |
 | `apps/f1ap_du/services/optional/lifecycle/du_bootstrap.py` | `openair2/F1AP/f1ap_du_task.c:F1AP_DU_REGISTER_REQ` |
 | `apps/fapi_north/services/optional/tti_builder/` | `nfapi/oai_integration/` (FAPI MAC→PHY) |

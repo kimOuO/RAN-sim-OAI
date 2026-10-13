@@ -47,8 +47,13 @@ def _select_suitable(ue_id: str, du_best: str, du_best_rsrp: float) -> tuple[str
     """
     def _ok(cid: str) -> bool:
         c = CellConfig.objects.filter(cell_id=cid).first()
-        from main.apps.cu_cp.services.common.fixture_state import is_cell_barred
-        return bool(c and c.is_active and not is_cell_barred(c.cell_id, c.is_barred))
+        if c is None:
+            # 多 gNB:鄰 gNB 的 cell(Xn Setup 交換來的)也可以是重建落點
+            from main.apps.cu_cp.services.business import xn
+            f = xn.foreign_cell(cid)
+            return bool(f and f.is_active and not f.is_barred)
+        from main.apps.cu_cp.services.common.fixture_state import admission_blocked
+        return bool(c.is_active and not admission_blocked(c.cell_id, c.is_barred))
 
     if du_best and _ok(du_best):
         return du_best, du_best_rsrp
@@ -104,6 +109,15 @@ def handle_rlf(report: dict[str, Any]) -> dict[str, Any]:
     strongest, strongest_rsrp = _select_suitable(ue_id, strongest, strongest_rsrp)
     target = CellConfig.objects.filter(cell_id=strongest).first() if strongest else None
 
+    # 多 gNB P6:落點在鄰 gNB → 由對端 gNB 做重建(Retrieve UE Context 取不取得到由 Xn 與關係決定)
+    if target is None and strongest and strongest_rsrp >= _REESTAB_MIN_RSRP:
+        from main.apps.cu_cp.services.business import xn
+        f = xn.foreign_cell(strongest)
+        if f is not None:
+            outcome = _reestablish_at_peer(ue, report, evt, f, strongest_rsrp, source_cell, source_pci, now)
+            _mro_report(ue, source_cell, strongest)
+            return outcome
+
     if not strongest or strongest_rsrp < _REESTAB_MIN_RSRP or target is None:
         # 無處可去 → 掉話
         outcome = "DROP"
@@ -128,13 +142,20 @@ def handle_rlf(report: dict[str, Any]) -> dict[str, Any]:
             rel = NrCellRelation.objects.filter(
                 source_cell_id=source_cell,
                 target_cgi=f"{int(target.nr_cellid):015x}").first()
-        has_ctx = bool(rel and rel.xn_x2_established)
+        # 同一個 gNB 內重建:UE context 就在本 CU,一定取得到(多 gNB 改版,計畫 4.2)。
+        # 跨 gNB 才要經 Xn Retrieve UE Context,那時才看關係與 Xn 是否建立。
+        _src_gnb = CellConfig.objects.filter(cell_id=source_cell).values_list("gnb_id", flat=True).first() or ""
+        same_gnb = bool(_src_gnb) and _src_gnb == (target.gnb_id or "")
+        has_ctx = same_gnb or bool(rel and rel.xn_x2_established)
         outcome = "REESTAB_WITH_CTX" if has_ctx else "REESTAB_WITHOUT_CTX"
+        from main.apps.cu_cp.services.business.du_client_operations import du_of_ue
+        src_du = du_of_ue(ue_id)
+        tgt_du = target.served_by_du_id
         if ue is not None:
             SqlDbBusinessService.update_entity(
                 UeContext, "ue_id", ue_id,
                 {"rrc_state": "CONNECTED", "serving_cell": target.cell_id,
-                 "updated_at": now})
+                 "gnb_du_id": tgt_du, "updated_at": now})
         # P1-2 修補(2026-08-12):重建成功 → 把 UE 用新 serving_cell 註冊回 DU tick
         # 迴圈,並重置該 UE 的 RLF 狀態。否則 UE 掉出量測、後續走過凹陷不再觸發 RLF
         # (掉話 UE 永久沉默,ES 懲罰信號只算一次)。真實:重建後 UE 在新 cell 上活著。
@@ -142,9 +163,23 @@ def handle_rlf(report: dict[str, Any]) -> dict[str, Any]:
             from main.apps.cu_cp.services.business.du_client_operations import (
                 DuClientBusinessService,
             )
-            DuClientBusinessService.post_register_ue(
-                ue_id, target.cell_id,
-                sinr_db=15.0, rsrp_dbm=float(strongest_rsrp))
+            if src_du is not None and tgt_du is not None and src_du != tgt_du:
+                # 重建到同 gNB 的另一個 DU:目標 DU 建 UE context(含 DRB),來源 DU 釋放
+                from main.apps.cu_cp.services.optional.f1ap.f1ap_handler import F1apHandler
+                prof = (ue.traffic_profile_json if ue is not None else None) or {}
+                drbs = [] if (prof.get("pattern") or "idle") == "idle" else [{
+                    "drb_id": int(prof.get("bearer_id", 1) or 1),
+                    "qos_5qi": int(prof.get("qos_5qi", 9) or 9), "rlc_mode": "AM"}]
+                DuClientBusinessService.post_ue_context_setup(
+                    F1apHandler.build_ue_context_setup(ue_id, drbs, serving_cell_id=target.cell_id),
+                    gnb_du_id=tgt_du)
+                DuClientBusinessService.post_ue_context_release({"ue_id": ue_id, "cause": "rlf"}, gnb_du_id=src_du)
+            else:
+                DuClientBusinessService.post_register_ue(
+                    ue_id, target.cell_id,
+                    sinr_db=15.0, rsrp_dbm=float(strongest_rsrp))
+            from main.apps.cu_cp.services.business import ue_notify
+            ue_notify.path_update(ue_id, target.cell_id)
         except Exception:
             logger.exception("re-register UE to DU after reestab failed: %s", ue_id)
         logger.info("[REESTAB] ue=%s %s → %s (%s, prevPci=%d, rel=%s)",
@@ -152,6 +187,8 @@ def handle_rlf(report: dict[str, Any]) -> dict[str, Any]:
                     "WITH_CTX" if has_ctx else "WITHOUT_CTX", source_pci,
                     "yes" if rel else "MISSING")
 
+    if outcome != "DROP" and target is not None:
+        _mro_report(ue, source_cell, target.cell_id)
     SqlDbBusinessService.update_entity(
         RlfEvent, "id", evt.id,
         {"outcome": outcome,
@@ -165,3 +202,62 @@ def handle_rlf(report: dict[str, Any]) -> dict[str, Any]:
         "reestab_cell": target.cell_id if (target and outcome != "DROP") else "",
         "strongest_rsrp": strongest_rsrp,
     }
+
+
+def _reestablish_at_peer(ue, report, evt, foreign, rsrp: float, source_cell: str, source_pci: int, now) -> dict[str, Any]:
+    """UE 在鄰 gNB 的 cell 重建(TS 38.331 §5.3.7 + TS 38.423 Retrieve UE Context)。
+
+    取得回 context 的條件與同 gNB 時的舊語意一致:source→target 有關係且 xnX2Established,
+    再加上兩個 gNB 之間的 Xn 確實已建立。取得回 → REESTAB_WITH_CTX(Path Switch 接續 NG 關聯);
+    取不回 → REESTAB_WITHOUT_CTX(對端走完整接入)。對端拒收 → DROP。
+    """
+    from main.apps.cu_cp.services.business import xn
+    from main.apps.cu_cp.services.business.du_client_operations import DuClientBusinessService
+    ue_id = report.get("ue_id", "")
+    rel = NrCellRelation.objects.filter(source_cell_id=source_cell, target_cgi=foreign.cell_id).first()
+    with_ctx = bool(rel and rel.xn_x2_established and not rel.xn_blocklist) and xn.xn_available(foreign.gnb_id)
+    me = xn.self_gnb()
+    outcome, reestab_cell, reestab_pci = "DROP", "", -1
+    try:
+        xn._post(xn.peer_url_for_gnb(foreign.gnb_id), "rrc_reestablishment", {
+            "ue_id": ue_id, "source_gnb_id": me.gnb_id if me else None, "source_cell": source_cell,
+            "source_pci": source_pci, "target_cell": foreign.cell_id, "with_ctx": with_ctx,
+            "ue_context": {"traffic_profile": (ue.traffic_profile_json if ue is not None else None) or {},
+                           "amf_ue_ngap_id": int(ue.amf_ue_ngap_id or 0) if ue is not None else None}})
+        outcome = "REESTAB_WITH_CTX" if with_ctx else "REESTAB_WITHOUT_CTX"
+        reestab_cell, reestab_pci = foreign.cell_id, foreign.pci
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[REESTAB] ue=%s → 鄰 gNB 0x%06x %s 失敗,判掉話: %s", ue_id, foreign.gnb_id, foreign.cell_id, exc)
+    if ue is not None:
+        # UE 已不在本 gNB:釋放來源 DU 的 context(RLF 時 DU 已停排程,這裡清 MAC/RLC)
+        DuClientBusinessService.post_ue_context_release({"ue_id": ue_id, "cause": "rlf"}, gnb_du_id=ue.gnb_du_id)
+        if outcome == "DROP":
+            SqlDbBusinessService.update_entity(UeContext, "ue_id", ue_id, {"rrc_state": "IDLE", "serving_cell": "", "updated_at": now})
+        else:
+            UeContext.objects.filter(ue_id=ue_id).delete()
+    logger.info("[REESTAB] ue=%s %s → %s @gNB 0x%06x (%s, prevPci=%d, rel=%s)", ue_id, source_cell, foreign.cell_id,
+                foreign.gnb_id, outcome, source_pci, "yes" if rel else "MISSING")
+    SqlDbBusinessService.update_entity(RlfEvent, "id", evt.id, {
+        "outcome": outcome, "reestab_cell": reestab_cell, "reestab_pci": reestab_pci, "resolved_at": now})
+    return {"ue_id": ue_id, "source_cell": source_cell, "source_pci": source_pci, "outcome": outcome,
+            "reestab_cell": reestab_cell, "strongest_rsrp": rsrp, "reestab_gnb": foreign.gnb_id}
+
+
+def _mro_report(ue, rlf_cell: str, reestab_cell: str) -> None:
+    """跨 gNB MRO(TS 38.423 Handover Report):UE 經 Xn / NG 從鄰 gNB 換進來,T_SHORT 內就 RLF ——
+    重建回原來源 cell = TooEarly,重建到第三個 cell = ToWrongCell;報給來源 gNB 回填它那筆換手事件。
+    同 gNB 內的歸因仍由 mro.py 以本地事件推導。"""
+    if ue is None or not ue.last_ho_source_gnb or not ue.last_ho_uuid or ue.last_ho_at is None:
+        return
+    from main.apps.cu_cp.services.business import mro, xn
+    if (TimestampService.now() - ue.last_ho_at).total_seconds() > mro._T_SHORT_SEC:
+        return
+    if reestab_cell == rlf_cell:
+        return   # 接回目標自己:覆蓋問題,不是行動性時序(與 mro._classify_one 相同)
+    kind = "TooEarly" if reestab_cell == ue.last_ho_source_cell else "ToWrongCell"
+    try:
+        xn._post(xn.peer_url_for_gnb(int(ue.last_ho_source_gnb)), "handover_report",
+                 {"ho_uuid": ue.last_ho_uuid, "ue_id": ue.ue_id, "type": kind, "rlf_cell": rlf_cell, "reestab_cell": reestab_cell})
+        logger.info("Xn Handover Report → gNB 0x%06x: ue=%s %s", int(ue.last_ho_source_gnb), ue.ue_id, kind)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Xn Handover Report failed: %s", exc)

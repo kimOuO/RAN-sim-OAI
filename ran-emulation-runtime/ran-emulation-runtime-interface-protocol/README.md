@@ -23,6 +23,13 @@ pip install -e /home/mitlab/XAPP_DT/RAN-sim/ran-sim-protocol
 | `e1ap`    | CU-CP ↔ CU-UP        | `openair2/E1AP/` |
 | `physics` | RU → Physics REST    | （無，本平台特有） |
 | `common`  | 共用 dataclass        | — |
+| `nr_link_tables` | DU 與 RU 共用的 3GPP 鏈路表:MCS 表 1、CQI 表 1、SINR→CQI 切點 | `Table_51311`(nr_mac_common.c)、`cqi_table1`(gNB_scheduler_primitives.c) |
+
+`nr_link_tables` 的 CQI 切點由 `RANsim-DU/tools/derive_cqi_thresholds.py` 從 OAI BLER 曲線產生,勿手改;
+換曲線後要重跑,否則 DU 測試 `test_cqi_table` 會失敗。
+
+DU 與 RU 容器以 `PYTHONPATH=/opt/ran-sim-protocol` 讀掛載的原始碼(per-run 模板與 docker-compose 皆已設定),
+改了本套件不必重建映像。
 
 ## 使用方式
 

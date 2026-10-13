@@ -19,6 +19,9 @@ class RunControlEvent(models.Model):
     outcome = models.CharField(max_length=16, default='pending')
     landing_latency_ms = models.IntegerField(null=True, blank=True)
     detail = models.JSONField(null=True, blank=True)
+    # 多 gNB(2026-09-27,介面 C14):事件來自哪個 gNB(= RIC 的 nodeId)與它的 E2 node(meid)。舊資料空字串。
+    node_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    meid = models.CharField(max_length=64, blank=True, default="")
     run_control_event_created_at = models.DateTimeField()
     run_control_event_updated_at = models.DateTimeField()
 

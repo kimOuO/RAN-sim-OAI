@@ -7,6 +7,7 @@ import { useAsync } from '@/hooks/base/useAsync';
 import { useDismissed } from '@/hooks/base/useDismissed';
 import { usePolling } from '@/hooks/base/usePolling';
 import { listRuns, listScenes } from '@/services/api/runs';
+import { hasRunData } from '@/hooks/feature/runStatus';
 
 const DISMISS_KEY = 'monitor.dismissedRunTabs';
 
@@ -18,7 +19,7 @@ export function RunTabs() {
   const { ids: dismissed, dismiss, restore } = useDismissed(DISMISS_KEY);
 
   const candidates = useMemo(
-    () => (runs.data ?? []).filter((r) => r.status === 'running' || r.status === 'stopped'),
+    () => (runs.data ?? []).filter(hasRunData),
     [runs.data],
   );
 

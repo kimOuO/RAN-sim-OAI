@@ -655,7 +655,8 @@ def _handle_sub_delete(sock, sub_del_value: dict) -> None:
             if sig == base_sig or sig.startswith(base_sig + ":") or sig.startswith(base_sig + "#") or sig.startswith(base_sig + "-a") or sig.startswith(base_sig + "_"):
                 meta = _ACTIVE_SUBS.pop(sig)
                 meta["stop"].set(); stopped.append(sig)
-                if meta.get("sub_id"):
+                # 只有 KPM producer 在 sim CU 建過訂閱;anr / fullkpm / nodeinfo 直接讀 CU,沒有可刪的(2026-10-13)
+                if meta.get("sub_id") and meta.get("producer", "kpm") == "kpm":
                     sim_ids.add(str(meta["sub_id"]))
     for sid in sim_ids:
         try:
@@ -1154,6 +1155,7 @@ def _start_producer(sock, sub_id: str, ric_req_id: dict, ran_func_id: int,
             "sn": 0,
             "stop": stop_evt,
             "_sub_signature": sub_signature,   # for self-cleanup on SubNotFoundError
+            "producer": producer,
         }
         _PRODUCERS = {
             "fullkpm": _fullkpm_producer_loop,
@@ -1270,10 +1272,8 @@ def _indication_producer_loop(sock, meta: dict) -> None:
                     # 跟 E2 Setup F1 component config 的 NCI 對齊 (從 _hash_nr_cell_id
                     # 產生 36-bit). RIC 可直接從 senderName parse NCI 不用查 F1 map.
                     # Format: "<cell_name>/0x<nci_hex>"  (PrintableString 允許 - / 0x)
-                    from main.apps.e2_adapter.services.optional.codec.e2ap_codec import (
-                        _hash_nr_cell_id,
-                    )
-                    nci = _hash_nr_cell_id(cell_id)
+                    from main.apps.e2_adapter.services.optional.codec.e2ap_codec import nci_for_cell
+                    nci = nci_for_cell(cell_id)
                     sender_label = f"{cell_id}/0x{nci:010x}"
                     msg_bytes = e2sm_kpm_codec.encode_kpm_indication_message(cell_msg)
                     hdr_bytes = e2sm_kpm_codec.encode_kpm_indication_header(
@@ -1399,7 +1399,7 @@ _RC_RAN_FUNCTION_ID = 3
 def _send_control_failure(sock, ric_req_id: dict, ran_func_id: int,
                             cause: tuple[str, str], call_process_id: bytes,
                             style: int, action: int, reason: str,
-                            inst_id: int | None = None) -> None:
+                            inst_id: int | None = None, outcome_bytes: bytes = b"") -> None:
     """Encode + send RIC_CONTROL_FAILURE. cause = (group, value) e.g.
     ("ricRequest", "ran-function-id-invalid")。
     2026-09-23:送成功也要記 control_failure(帶 inst_id),否則稽核只看到請求、沒看到結果。"""
@@ -1415,6 +1415,7 @@ def _send_control_failure(sock, ric_req_id: dict, ran_func_id: int,
             ran_function_id=ran_func_id,
             cause=cause,
             call_process_id=call_process_id,
+            outcome_bytes=outcome_bytes,
         )
     except Exception:
         logger.exception("encode RIC_CONTROL_FAILURE failed")
@@ -1454,12 +1455,13 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
         return
 
     ric_req_id = decoded.get("ric_req_id", {})
+    _ccc_cpid = decoded.get("call_process_id") or b""
     payload = e2sm_ccc_codec.to_sim_control_payload(decoded)
     if not payload:
         _send_control_failure(
             sock, ric_req_id, e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
             cause=("ricRequest", "control-message-invalid"),
-            call_process_id=b"", style=2, action=0,
+            call_process_id=_ccc_cpid, style=2, action=0,
             reason="CCC control has no actionable cell state change",
         )
         return
@@ -1471,14 +1473,20 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
             style=2, action=0, sim_action=f"control_cell_{c['action']}", ueid={},
             ran_func=e2sm_ccc_codec.CCC_RAN_FUNCTION_ID, inst_id=_inst_ccc,
             params={"cell": c.get("cell_id", ""), "op": c.get("action", "")},
+            requestor_id=(ric_req_id or {}).get("requestor_id"),
+            ric_label=event_ring.label_of_call_process_id(_ccc_cpid),
         )
+    # 與 RC 路徑相同:帶 RICrequestID 與標籤給 CU,節能趕人觸發的換手事件(I-6)才對得回這筆 RIC 控制
+    payload = {**payload, "ric_request": {"requestor_id": (ric_req_id or {}).get("requestor_id"),
+                                          "instance_id": _inst_ccc,
+                                          "label": event_ring.label_of_call_process_id(_ccc_cpid)}}
     logger.info("CCC control → sim CU: %s", payload["cells"])
     # 2026-09-17:以前不看結果一律 ACK;CU 找不到 cell / DU 拒絕時要回 ControlFailure
     if sim_http_client.call_control_request(payload) is None:
         _send_control_failure(
             sock, ric_req_id, e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
             cause=("ricRequest", "control-message-invalid"),
-            call_process_id=b"", style=2, action=0,
+            call_process_id=_ccc_cpid, style=2, action=0,
             reason=f"sim CU rejected CCC cell control: {payload['cells']}",
         )
         return
@@ -1486,6 +1494,7 @@ def _handle_ccc_control_req(sock, raw_pdu: bytes) -> None:
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
             ric_req_id=ric_req_id, ran_function_id=e2sm_ccc_codec.CCC_RAN_FUNCTION_ID,
+            call_process_id=_ccc_cpid,   # RIC 對帳標籤原樣帶回
         )
         _send_sctp(sock, ack)
         event_ring.record_control_ack_sent(
@@ -1510,11 +1519,14 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
         return
 
     ric_req_id = decoded.get("ric_req_id", {})
+    _anr_cpid = decoded.get("call_process_id") or b""
     payload = e2sm_anr_codec.to_sim_control_payload(decoded)
     if not payload:
+        # 2026-09-27:以前少帶 call_process_id / style / action → TypeError,RIC 等不到 Failure
         _send_control_failure(
             sock, ric_req_id, e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
-            cause=("ricRequest", "control-message-invalid"),
+            cause=("ricRequest", "control-message-invalid"), call_process_id=_anr_cpid,
+            style=1, action=0,
             reason="ANR control has no valid SON trigger request",
         )
         return
@@ -1528,6 +1540,8 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
         params={"source": req.get("sourceCellId", ""), "target": _tgt,
                 "flag": req.get("flag", ""), "op": req.get("op", ""),
                 "reason": req.get("reason", "")},
+        requestor_id=(ric_req_id or {}).get("requestor_id"),
+        ric_label=event_ring.label_of_call_process_id(_anr_cpid),
     )
     _t0 = time.time()
     logger.info("ANR control → sim CU: %s ric_req_id=%s", req, ric_req_id)
@@ -1553,6 +1567,7 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
             ric_req_id=ric_req_id, ran_function_id=e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
+            call_process_id=_anr_cpid,   # RIC 對帳標籤原樣帶回
             outcome_bytes=outcome_bytes,
         )
         sent = _send_sctp(sock, ack)
@@ -1695,12 +1710,17 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     sim_action = sim_payload.get("action", "?")
     _inst_rc = (ric_req_id or {}).get("instance_id")
     _t0_rc = time.time()
+    _ric_label = event_ring.label_of_call_process_id(call_proc_bytes)
     event_ring.record_control_req_recv(
         style=style, action=action, sim_action=sim_action, ueid=ueid,
         ran_func=ran_func_id, inst_id=_inst_rc,
         params={k: v for k, v in sim_payload.items()
                 if k not in ("action",) and isinstance(v, (str, int, float, bool))},
+        requestor_id=(ric_req_id or {}).get("requestor_id"), ric_label=_ric_label,
     )
+    # CU 端把它記進換手事件(I-6 的 ric_instance_id / ric_label),RIC 據此對帳
+    sim_payload = {**sim_payload, "ric_request": {"requestor_id": (ric_req_id or {}).get("requestor_id"),
+                                                  "instance_id": _inst_rc, "label": _ric_label}}
     logger.info(
         "RIC_CONTROL_REQ recv style=%d action=%d → sim action=%s ueid=%s",
         style, action, sim_action, ueid,
@@ -1712,6 +1732,21 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
     sim_resp = sim_http_client.call_control_request(sim_payload)
     sim_ok = sim_resp is not None
     outcome = "ok" if sim_ok else "sim_error"
+    sim_err = sim_http_client.last_error_body() if not sim_ok else None
+    _fail_co = ((sim_err or {}).get("errors") or {}).get("control_outcome") if isinstance(sim_err, dict) else None
+    if not sim_ok and isinstance(_fail_co, dict) and _fail_co.get("result") == "HANDOVER_FAILED":
+        # 2026-09-28(RIC 決定):3-1 換手沒成 → RICcontrolFailure,cause ricRequest/unspecified,
+        # 原因放 IE 32(control-message-invalid 留給格式錯的請求)
+        import json as _json
+        logger.info("RC handover failed at RAN: %s → ControlFailure", _fail_co)
+        _send_control_failure(
+            sock, ric_req_id, ran_func_id,
+            cause=("ricRequest", "unspecified"),
+            call_process_id=call_proc_bytes, style=style, action=action,
+            reason=f"handover failed: {_fail_co.get('failureCause')}", inst_id=_inst_rc,
+            outcome_bytes=_json.dumps(_fail_co, separators=(",", ":")).encode("utf-8"),
+        )
+        return
     if not sim_ok:
         logger.warning("sim CU /Control/request returned None for style=%d action=%d → ControlFailure",
                        style, action)

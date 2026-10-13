@@ -45,8 +45,6 @@ CQI_BINS = 16
 # interfered 判定:任一鄰區 RSRP 進到 serving 10 dB 以內 → 視為受干擾
 _INTERFERED_GAP_DB = 10.0
 
-# RRC.ConnMax 追蹤(process 存活期間的高水位;restart 歸零)
-_conn_max_seen: dict[str, int] = defaultdict(int)
 
 
 # ── 小工具 ─────────────────────────────────────────────────────────
@@ -158,27 +156,52 @@ def _ncgi_of(cfg: CellConfig) -> str:
 
 
 def _cell_hex_id(cfg: CellConfig) -> str:
-    """範例 cell_id 是 36-bit NCI hex(15 位)。有 nr_cellid 用 hex,否則退回字串 id。"""
-    if cfg.nr_cellid:
-        return f"{int(cfg.nr_cellid):015x}"
+    """ran_func 5 的 cell_id = cell 名稱(與 ran_func 6 的 servingCells / ncgi 同一套,RIC 決定 A)。
+
+    2026-09-27:以前有 nr_cellid 就印成 15 位 NCI hex。舊場景的 cell 沒有 nr_cellid,一直是名稱;
+    多 gNB 起每個 cell 都有 nr_cellid,才意外改成數字,與 ran_func 6 對不上(RIC run 5 回報)。
+    數字 NCI 改放另外的 `nci` / `ncgiStd` 欄位(_std_ids)。"""
     return cfg.cell_id
 
 
-def _fetch_du_dump_pm() -> dict[str, Any]:
+def _std_ids(cfg: CellConfig) -> dict[str, Any]:
+    """cell 的標準識別:nci(36-bit 整數)與 ncgiStd(<PLMN6>-<NCI 9 hex>)。沒有明確 NCI 的舊場景不附。"""
+    if not cfg.nr_cellid:
+        return {}
+    return {"nci": int(cfg.nr_cellid), "ncgiStd": _ncgi_of(cfg)}
+
+
+def _du_base_urls() -> list[str]:
+    """要讀 dump_pm 的 DU 端點:F1 Setup 登記的每個 DU;都沒報端點才退回 env HTTP_DU_HOST。
+
+    2026-10-10(I2 測試):以前只讀 HTTP_DU_HOST,一個 CU 接兩個 DU 時,第二個 DU 的 cell
+    在 dump_pm 裡查不到 → du_* 計數(PRB、MCS、HARQ…)全為 0。"""
+    from main.apps.cu_cp.models.du_registry import DuRegistry
+    urls = [e for e in DuRegistry.objects.values_list("endpoint", flat=True) if e]
+    if urls:
+        return list(dict.fromkeys(urls))
     host = get_str("HTTP_DU_HOST")
     if not host:
-        return {}
-    port = get_str("HTTP_DU_PORT", "8000")
+        return []
+    return [f"http://{host}:{get_str('HTTP_DU_PORT', '8000')}"]
+
+
+def _fetch_one_dump_pm(base: str) -> dict[str, Any]:
     try:
         r = requests.post(
-            f"http://{host}:{port}/api/v0.1/DU/Tick/TickController/dump_pm",
+            f"{base}/api/v0.1/DU/Tick/TickController/dump_pm",
             json={}, timeout=_HTTP_TIMEOUT,
         )
         r.raise_for_status()
         return r.json().get("data", {}) or {}
     except requests.RequestException as exc:
-        logger.warning("dump_pm fetch failed: %s", exc)
+        logger.warning("dump_pm fetch failed (%s): %s", base, exc)
         return {}
+
+
+def _fetch_du_dumps() -> list[dict[str, Any]]:
+    """每個 DU 各一份 dump_pm(讀不到的略過)。第一份(gnb_du_id 最小)當主時鐘來源。"""
+    return [d for d in (_fetch_one_dump_pm(u) for u in _du_base_urls()) if d]
 
 
 # ── pm 區:190 欄模板 ───────────────────────────────────────────────
@@ -278,6 +301,7 @@ def _pm_record(
 
     rec: dict[str, str] = {
         "cell_id": _cell_hex_id(cfg),
+        **{k: str(v) for k, v in _std_ids(cfg).items()},
         "cu_timestamp_start": ts_start,
         "cu_timestamp_end": ts_end,
         "cu_filename": f"A{ts_start}-{ts_end}_{gid}-cu.xml",
@@ -294,7 +318,7 @@ def _pm_record(
         "cu_RRC.ConnEstabSucc.mo-Signalling": "0",
         "cu_RRC.ConnEstabSucc.emergency": "0",
         "cu_RRC.ConnMax": str(conn_max),
-        "cu_RRC.ConnMean": str(int(round(conn_mean if conn_mean is not None else conn_cnt))),  # C:取樣真平均
+        "cu_RRC.ConnMean": str(int(round(conn_mean if conn_mean is not None else conn_cnt))),  # 本 report 週期的平均
         # ReEstab — P1-3(2026-08-12)轉真:RlfEvent 依 source_cell 聚合
         "cu_RRC.ConnReEstabSetup.sum": str((rlf or {}).get("reestab_att", 0)),
         "cu_RRC.ReEstabAtt": str((rlf or {}).get("reestab_att", 0)),
@@ -438,10 +462,12 @@ def _pm_record(
     rec["du_DRB.UEThpUl"] = f"{(sum(_thp_ul) / len(_thp_ul)) if _thp_ul else 0.0:.3f}"
     # 2026-09-22:傳輸區塊計數(TS 28.552 §5.1.1.x)。DU 的 HARQ 計數器一直都有值,
     # 只是從沒對外輸出 —— RIC 端因此判定「du_TB 整族都沒有」。
-    #   harq_rounds_dl[i] = 依下行 SINR 分箱估的「第 i 輪才成功」TB 數
-    #   harq_errors_dl    = SINR < 0 dB 的 TB 數(視為最終失敗)
-    # ⚠ 這是 SINR 分箱的**近似**,不是逐 TB 的 HARQ 實際回報。方向與量級可用,
-    #   但不宜拿來做嚴格的 BLER 校驗。文件已標註。
+    #   harq_rounds_dl[i] = 「第 i 輪才成功」的 TB 數期望值
+    #   harq_errors_dl    = 用滿重傳上限仍失敗的 TB 數期望值
+    # 2026-09-26 起由 DU 依該 UE 當下的 MCS 與 SINR 在 OAI AWGN BLER 曲線上計算
+    # (重傳以 Chase combining 近似),取代舊的固定 SINR 分箱。
+    # ⚠ 仍是**期望值**,不是逐 TB 的 HARQ 實際回報;且每 UE 每 tick 算一個 TB,
+    #   比例(錯誤率、重傳率)可用,絕對數量不可用。見 docs/architecture/phy_fidelity_sources.md。
     # 對映:TotNbr = 首傳數(每個 TB 只算一次);Tot = 含重傳的總傳輸次數。
     _hr = list(du_acc.get("harq_rounds_dl") or [])
     _herr = int(du_acc.get("harq_errors_dl") or 0)
@@ -552,8 +578,15 @@ class FullKpmReporter:
         gnb_of_cell = {c.cell_id: (c.gnb_id or "unknown") for c in cells}
         gnb_ids = sorted({c.gnb_id or "unknown" for c in cells})
 
-        du_dump = _fetch_du_dump_pm()
-        du_gnbs: dict[str, Any] = du_dump.get("gnbs", {}) or {}
+        du_dumps = _fetch_du_dumps()
+        du_dump = du_dumps[0] if du_dumps else {}
+        # cell → 服務它的 DU 那份 dump(PRB、tick 等 du_* 計數要用同一個 DU 的)
+        du_dump_of_cell: dict[str, dict[str, Any]] = {}
+        du_gnbs: dict[str, Any] = {}
+        for d in du_dumps:
+            for cid, acc in (d.get("gnbs", {}) or {}).items():
+                du_gnbs.setdefault(cid, acc)
+                du_dump_of_cell.setdefault(cid, d)
         tick_ms = int(du_dump.get("wall_tick_ms") or 0)
         if not du_dump:
             warnings.append("du dump_pm unreachable — du_* counters are 0")
@@ -722,6 +755,7 @@ class FullKpmReporter:
                 _beams = _beam_stats(conn_per_cell.get(cfg.cell_id, []))
                 g_cells.append({
                     "cell_id": _cell_hex_id(cfg),
+                    **_std_ids(cfg),
                     "ran_name": gid,
                     "pci": int(cfg.pci),
                     "ues": ues_out,
@@ -786,17 +820,15 @@ class FullKpmReporter:
                 if (cfg.gnb_id or "unknown") != gid:
                     continue
                 conn_cnt = len(conn_per_cell.get(cfg.cell_id, []))
-                # B/C(2026-08-12):持久高水位 + 真平均(取樣累計,CU 重啟不歸零)
+                # 2026-10-13:RRC.ConnMean / ConnMax 改為「本次 report 週期」的值(TS 28.552:單一量測週期內的
+                # 平均 / 最大)。CU 每個 report 週期 collect 一次、取樣一次,所以週期內的平均與最大都等於本次取樣。
+                # 以前(2026-08-12 起)是跨週期累計的平均與歷史高水位,劇本越久越反映不出當下變化。
                 try:
-                    from main.apps.cu_cp.services.business.cell_counters import (
-                        get_session_time, sample_conn,
-                    )
-                    conn_max_db, conn_mean_db = sample_conn(cfg.cell_id, conn_cnt)
+                    from main.apps.cu_cp.services.business.cell_counters import get_session_time
                     released_session_sec = get_session_time(cfg.cell_id)
                 except Exception:
-                    conn_max_db, conn_mean_db = conn_cnt, float(conn_cnt)
                     released_session_sec = 0
-                _conn_max_seen[cfg.cell_id] = max(_conn_max_seen[cfg.cell_id], conn_max_db)
+                conn_max_db, conn_mean_db = conn_cnt, float(conn_cnt)
                 rows = conn_per_cell.get(cfg.cell_id, [])
                 delays = [
                     float(getattr(r["meas"], "rlc_sdu_delay_dl_ms", 0.0) or 0.0)
@@ -815,12 +847,12 @@ class FullKpmReporter:
                     cfg,
                     now=now,
                     conn_cnt=conn_cnt,
-                    conn_max=_conn_max_seen[cfg.cell_id],
+                    conn_max=conn_max_db,
                     ho=ho_per_cell.get(cfg.cell_id, {}),
                     rlf=rlf_per_cell.get(cfg.cell_id, {}),
                     du_acc=du_gnbs.get(cfg.cell_id, {}),
-                    prb_avail=int(du_dump.get("prb_per_cell") or 0),
-                    du_tick_now=int(du_dump.get("tick_count") or 0),
+                    prb_avail=int(du_dump_of_cell.get(cfg.cell_id, du_dump).get("prb_per_cell") or 0),
+                    du_tick_now=int(du_dump_of_cell.get(cfg.cell_id, du_dump).get("tick_count") or 0),
                     cell_ue_rows=conn_per_cell.get(cfg.cell_id, []),
                     prb_log=None,
                     cell_delay_ms=(sum(delays) / len(delays)) if delays else 0.0,
@@ -829,7 +861,7 @@ class FullKpmReporter:
                     session_time_sec=session_time_sec,
                     estab=estab_by_cell.get(cfg.cell_id, (0, 0)),
                     conn_mean=conn_mean_db,
-                    sim_dt_ms=int(du_dump.get("sim_dt_ms") or 0),
+                    sim_dt_ms=int(du_dump_of_cell.get(cfg.cell_id, du_dump).get("sim_dt_ms") or 0),
                 ))
             pm_out[f"gnb-{gid}"] = recs
 

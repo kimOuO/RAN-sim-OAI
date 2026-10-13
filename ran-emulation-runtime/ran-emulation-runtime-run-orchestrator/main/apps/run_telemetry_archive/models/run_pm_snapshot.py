@@ -29,6 +29,9 @@ class RunPmSnapshot(models.Model):
     # e2 區塊(逐 UE 量測)與 warnings,原樣保留
     e2 = models.JSONField(default=list)
     warnings = models.JSONField(default=list)
+    # 多 gNB(2026-09-27,介面 C14):事件來自哪個 gNB(= RIC 的 nodeId)與它的 E2 node(meid)。舊資料空字串。
+    node_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    meid = models.CharField(max_length=64, blank=True, default="")
     run_pm_snapshot_created_at = models.DateTimeField()
     run_pm_snapshot_updated_at = models.DateTimeField()
 

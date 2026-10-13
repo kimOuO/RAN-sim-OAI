@@ -238,6 +238,17 @@ def _upsert_with_created_flag(model_class, lookup_field, lookup_value, data):
     return obj, created
 
 
+def _sync_ru_transmit(cell_id: str, active: bool) -> dict:
+    """關 cell 時 RU 也要停發射(否則 UE 仍量得到它,見 RuClientBusinessService.post_cell_active)。
+
+    RU 失敗只記警告、不讓 DU 的開關失敗 —— DU 排程狀態才是 cell 能不能服務的依據。"""
+    from main.apps.fapi_north.services.business.ru_client_operations import RuClientBusinessService
+    res = RuClientBusinessService.post_cell_active(cell_id, active)
+    if not res.get("ok"):
+        logger.warning("RU set_cell_active(%s, %s) failed: %s", cell_id, active, res.get("error") or res.get("status"))
+    return res
+
+
 def _set_cell_active(request, *, active: bool):
     """Toggle CellState.is_active 並通知 CU（cells_to_modify 路徑）。
 
@@ -258,6 +269,7 @@ def _set_cell_active(request, *, active: bool):
         return error_response(f"cell_id {cell_id} not found", http_status=404)
 
     if obj.is_active == active:
+        _sync_ru_transmit(obj.cell_id, active)   # RU 可能與 DU 不同步(舊路徑只切 DU),冪等補齊
         return success_response(
             CellStateReadSerializer(obj.__dict__).data,
             f"cell_id {cell_id} already {'active' if active else 'inactive'}",
@@ -272,10 +284,11 @@ def _set_cell_active(request, *, active: bool):
     cfg = du_config_update.cell_state_to_config(obj)
     du_config_update.send(cells_to_modify=[cfg])
 
+    ru = _sync_ru_transmit(obj.cell_id, active)
     logger.info(
-        "MacCellController.%s cell_id=%s pci=%s",
+        "MacCellController.%s cell_id=%s pci=%s ru_applied=%s",
         "enable" if active else "disable",
-        obj.cell_id, obj.pci,
+        obj.cell_id, obj.pci, ru.get("ok"),
     )
     return success_response(
         CellStateReadSerializer(obj.__dict__).data,

@@ -110,7 +110,10 @@ def _son_effective(run_uuid: str) -> dict:
 
 
 def son_effective_from_knobs(kn: dict) -> dict:
-    """knob 原值 → I-2 / I-3 對外的 `son` 形狀。預設值與 CU 的 env 預設一致(anr_auto_add 開、pci_lookup 關、fail_rate 0)。"""
+    """knob 原值 → I-2 / I-3 對外的 `son` 形狀。預設值與 CU 實際一致(anr_auto_add 關、pci_lookup 關、fail_rate 0)。
+
+    2026-09-27:以前 anr_auto_add 沒設 knob 時對外報 true,但 CU 的 env 預設是關(anr_auto.py),
+    場次模板也明寫 ANR_AUTO_ADD=0 —— 報的與實際相反(第三場走廊整場 0 條自動關係才看出來)。"""
     def _b(v, default):
         if v in (None, ""):
             return default
@@ -119,7 +122,7 @@ def son_effective_from_knobs(kn: dict) -> dict:
         fr = float(kn.get("anr_cgi_fail_rate") or 0.0)
     except (TypeError, ValueError):
         fr = 0.0
-    return {"anr_auto_add": _b(kn.get("anr_auto_add"), True),
+    return {"anr_auto_add": _b(kn.get("anr_auto_add"), False),
             "anr_pci_lookup": _b(kn.get("anr_pci_lookup"), False),
             "anr_cgi_fail_rate": fr}
 
@@ -187,7 +190,7 @@ class ScenarioController:
         run_uuid = str(run_row["scene_run_uuid"])
         mode = str(run_row.get("mode") or "cached")
 
-        if str(run_row.get("status") or "") in ("running", "starting", "precomputing"):
+        if str(run_row.get("status") or "") in ("running", "precomputing"):
             return error_response(
                 "field is already running",
                 {"run_id": run_uuid, "status": run_row.get("status"),
@@ -255,18 +258,18 @@ class ScenarioController:
         cell_ids = [str(c.get("name") or "") for _g, c in pairs]
         inactive = [str(c.get("name") or "") for _g, c in pairs
                     if c.get("is_active") is False]
-        # 執行期的 cell_id 帶 E2 槽位標籤(e03:src),但對方從 I-2 拿到的是 src / ncgi。
-        # 標籤由場域釘住的 e2_slot 決定 —— 釘住才推得出來,這也是 I-1 只把釘住的場域
+        # 執行期的 cell_id 帶所屬 gNB 的前綴(e31:src),但對方從 I-2 拿到的是 src / ncgi。
+        # 前綴由場域釘住的 e2_block 決定 —— 釘住才推得出來,這也是 I-1 只把釘住的場域
         # 標為可用的原因。沒釘就退回執行期識別無法事先決定。
-        slot = scene.get("e2_slot")
-        if not slot:
+        block = scene.get("e2_block")
+        if not block:
             return error_response(
-                "field has no pinned E2 slot",
+                "field has no pinned E2 block",
                 {"field_id": field_id,
-                 "hint": "場域未釘 e2_slot,cell 識別要啟動後才確定,無法事先注入事件"}, 409)
-        ident = e2_identity.field_e2_identity(int(slot), cell_ids)
-        name_to_runtime = {c["name"]: c["cell_id"] for c in ident["cells"]}
-        ncgi_to_name = {c["ncgi"]: c["name"] for c in ident["cells"] if c.get("ncgi")}
+                 "hint": "場域未釘 e2_block,cell 識別要啟動後才確定,無法事先注入事件"}, 409)
+        idents = e2_identity.cells_by_name(e2_identity.field_e2_identities(tree, int(block)))
+        name_to_runtime = {n: c["cell_id"] for n, c in idents.items()}
+        ncgi_to_name = {c["ncgi"]: n for n, c in idents.items() if c.get("ncgi")}
         events, errs = scenario_events.validate(
             payload.get("events") or [],
             cell_ids=cell_ids, inactive_cell_ids=inactive,

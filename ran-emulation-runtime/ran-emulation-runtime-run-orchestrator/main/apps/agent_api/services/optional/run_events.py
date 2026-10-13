@@ -37,7 +37,8 @@ _CAUSE_CATEGORY = {
 
 
 def _base(type_: str, offset_s: float, gnb_id: str, cell_id: str, ue_id: str | None,
-          payload: dict) -> dict:
+          payload: dict, *, node_id: str = "", meid: str = "", ric_triggered: bool = False,
+          ric_label: str | None = None, ric_instance_id: int | None = None) -> dict:
     # ts / ts_iso 由 actor 端用 wall_clock_mapper 回填(需要該輪 KPM 的牆鐘對照)
     return {
         "type": type_,
@@ -47,6 +48,12 @@ def _base(type_: str, offset_s: float, gnb_id: str, cell_id: str, ue_id: str | N
         "gnb_id": gnb_id,
         "cell_id": cell_id,
         "ue_id": ue_id,
+        # 多 gNB(C14):事件來自哪個 gNB / E2 node;是否由 RIC 控制觸發(閘道注入的標籤另附)
+        "node_id": node_id or gnb_id or None,
+        "meid": meid or None,
+        "ric_triggered": bool(ric_triggered),
+        "ric_label": ric_label,
+        "ric_instance_id": ric_instance_id,
         "payload": payload,
     }
 
@@ -122,10 +129,10 @@ def meas_reports(kpm_rows: list[dict], gnb_of_cell: dict[str, str],
                     "arfcn": n.get("arfcn"),
                     "rsrp": n.get("rsrp_dbm"),
                     "rsrq": n.get("rsrq_db"),
-                    # 我方的真值,對方可用來對答案;真實 UE 量測不會有這個
-                    "cell_id": strip(n.get("cell_id") or ""),
+                    # 2026-09-28:移除 cell_id —— 真實 UE 量測只讀得到 PCI / ARFCN,帶 cell 名是上帝視角
                 })
-            out.append(_base(MEAS_REPORT, t, gnb_of_cell.get(serving, ""), serving, ue_id, {
+            out.append(_base(MEAS_REPORT, t, gnb_of_cell.get(serving, ""), serving, ue_id,
+                             node_id=str(m.get("node_id") or ""), meid=str(m.get("meid") or ""), payload={
                 "reported": reported,
                 "serving_rsrp": m.get("rsrp_dbm"),
                 "serving_rsrq": m.get("rsrq_db"),
@@ -137,13 +144,17 @@ def meas_reports(kpm_rows: list[dict], gnb_of_cell: dict[str, str],
 
 
 def handover_events(rows: list[dict], gnb_of_cell: dict[str, str], strip,
-                    pci_of_cell: dict[str, int] | None = None) -> list[dict]:
+                    pci_of_cell: dict[str, int] | None = None,
+                    ncgi_of_cell: dict[str, str] | None = None) -> list[dict]:
     """換手 / RLF 事件。RLF 若有重建,額外導出一筆 rrc_reestab_req。
 
     pci_of_cell:規格的 ho_* payload 要 target_pci;事件表只存 target_cell,
     由 registry 的 cell 設定回查。查不到留 None(不猜)。
     """
     pci_of_cell = pci_of_cell or {}
+    ncgi_of_cell = ncgi_of_cell or {}
+    # 重建請求屬於「目標 cell 所在的 gNB」,可能是另一個 node;它的 meid 由同一場其他列的 (node_id, meid) 回查
+    meid_of_node = {str(r.get("node_id")): str(r.get("meid")) for r in rows if r.get("node_id") and r.get("meid")}
     out = []
     for r in rows:
         t = (r.get("at_sim_ms") or 0) / 1000.0
@@ -155,8 +166,9 @@ def handover_events(rows: list[dict], gnb_of_cell: dict[str, str], strip,
         if type_ is None:
             continue
         gnb = gnb_of_cell.get(src, "")
+        node = {"node_id": str(r.get("node_id") or ""), "meid": str(r.get("meid") or "")}
         if type_ == RLF:
-            out.append(_base(RLF, t, gnb, src, r.get("ue_id"), {
+            out.append(_base(RLF, t, gnb, src, r.get("ue_id"), **node, payload={
                 "serving_pci": d.get("source_pci"),
                 "last_sinr": d.get("sinr_at_rlf"),
                 "last_rsrp": None,          # RLF 當下只留了 SINR
@@ -166,20 +178,30 @@ def handover_events(rows: list[dict], gnb_of_cell: dict[str, str], strip,
             }))
             if tgt:
                 # 重建請求沒有獨立訊息紀錄,由 RLF 的 reestab 欄位導出(時間相同)
-                out.append(_base(RRC_REESTAB_REQ, t, gnb_of_cell.get(tgt, ""), tgt, r.get("ue_id"), {
+                _tg = gnb_of_cell.get(tgt, "")
+                out.append(_base(RRC_REESTAB_REQ, t, _tg, tgt, r.get("ue_id"),
+                                 node_id=_tg, meid=meid_of_node.get(_tg, ""), payload={
                     "reestablishment_cause": d.get("reason") or "otherFailure",
                     "previous_pci": d.get("source_pci"),
-                    "previous_ncgi": src,
+                    # 2026-09-28:以前放 cell 名;改為 ncgi 字串(與 ho_* 的 source_ncgi 同格式),cell 名另放
+                    "previous_ncgi": ncgi_of_cell.get(src) or None,
+                    "previous_cell_id": src,
                     "target_cell_id": tgt,
                     "derived_from": "rlf",
                 }))
             continue
         cause = d.get("failure_cause") or ""
-        out.append(_base(type_, t, gnb, src, r.get("ue_id"), {
+        out.append(_base(type_, t, gnb, src, r.get("ue_id"), **node,
+                         ric_triggered=(d.get("trigger") == "E2_RIC_CONTROL"), ric_label=d.get("ric_label") or None,
+                         ric_instance_id=d.get("ric_instance_id"), payload={
             "target_cell_id": tgt,
-            "target_ncgi": tgt or None,
+            "target_ncgi": d.get("target_ncgi") or tgt or None,
+            "source_ncgi": d.get("source_ncgi") or None,
             "target_pci": pci_of_cell.get(tgt),
             "trigger": d.get("trigger"),
+            # C14:intra-DU / inter-DU / Xn / NG;舊資料沒有這欄 = 改版前只有同 CU 換手
+            "ho_type": d.get("ho_type") or "intra-DU",
+            "ngap_id": d.get("amf_ue_ngap_id"),
             "cause": cause or None,
             "cause_category": _CAUSE_CATEGORY.get(cause) if cause else None,
             "mro_class": d.get("mro_class") or None,

@@ -14,6 +14,10 @@ class F1Setup:
     """DU 啟動時送給 CU。"""
     gnb_du_id: int
     served_cells: list[CellConfig] = field(default_factory=list)
+    # 多 gNB(2026-09-27):一個 CU 接多個 DU,CU 要知道每個 DU 的端點才能把 F1 訊息送對 DU。
+    # 真實 F1 的 TNL 位址在 SCTP association 上;我們走 HTTP,所以明寫在訊息裡。空 = 舊 DU。
+    du_endpoint: str = ""
+    du_name: str = ""
 
 
 @dataclass
@@ -55,9 +59,16 @@ class DlRrcMessageTransfer:
 
 @dataclass
 class UlRrcMessageTransfer:
-    """UE → DU → CU。"""
+    """UE → DU → CU。
+
+    is_initial=True 對應 TS 38.473 §8.4.1 Initial UL RRC Message Transfer:DU 在 RA Msg3 收到
+    CCCH 訊息後送出,帶 NR CGI(這裡用 cell_id)與 gNB-DU ID,CU 據此建立 UE context 並記下 UE 在哪個 DU。
+    """
     ue_id: str
     rrc_msg_b64: str
+    is_initial: bool = False
+    cell_id: str = ""
+    gnb_du_id: int | None = None
 
 
 @dataclass

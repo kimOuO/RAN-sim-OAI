@@ -32,9 +32,10 @@ from main.apps.fapi_north.services.optional.message_codec.fapi_codec import enco
 from main.apps.fapi_north.services.optional.tti_builder.tti_builder import build_dl_tti
 from main.apps.mac.services.optional.harq.harq_manager import get_harq_manager
 from main.apps.mac.services.optional.link_adaptation.mcs_controller import get_mcs_controller
+from main.apps.mac.services.optional.link_adaptation.bler_curve import op_point_mcs
 from main.apps.mac.services.optional.link_adaptation.mcs_table import (
+    goodput_efficiency,
     mcs_to_throughput_mbps,
-    sinr_to_mcs,
 )
 from main.apps.mac.services.optional.pm_aggregator.pm_aggregator import get_pm_aggregator
 from main.apps.mac.services.optional.scheduler.scheduler_factory import get_scheduler
@@ -141,6 +142,9 @@ class TickStatus:
     is_running: bool = False
 
 
+# 2026-09-27 多 gNB(D1):時鐘來源。internal = DU 自己計時(舊行為,共用 ransim-du 用);
+# external = 由 RU 的全場鎖步時鐘驅動,每拍打 TickController/step,DU 跑完回傳本拍 DL TTI。
+_EXTERNAL_CLOCK = (get_str("SIM_CLOCK", "internal") or "internal").strip().lower() == "external"
 _WALL_TICK_MAX_MS = get_int("DU_WALL_TICK_MAX_MS", 5000)   # 牆鐘 tick 上限 → 最低倍速 = sim_dt / 上限
 _DL_LOAD_TAU_SEC = get_float("DU_DL_LOAD_TAU_SEC", 1.0)   # 下行 cell 負載平滑時間常數(模擬秒)
 
@@ -220,6 +224,11 @@ class TickRunner:
         self._slot_states: dict[str, Any] = {}
         # Phase1 反事實 — 「若 scheduler 用操作點 MCS 配 PRB」的平行 state(預測修了會怎樣)
         self._slot_states_op: dict[str, Any] = {}
+        # 外部時鐘(D1):RU 指定的 (全場 tick, 劇本 tick);別的 DU 的 cell 負載(上一拍,全場合併)
+        self._ext_tick: tuple[int, int] | None = None
+        self._global_dl_load: dict[str, float] = {}
+        self._ext_dl_tti: dict[str, Any] | None = None
+        self._step_lock = threading.Lock()
 
     # --- public API ----------------------------------------------------------
 
@@ -413,6 +422,14 @@ class TickRunner:
         try:
             from ran_sim_protocol.nr_frequency import nr_arfcn_from_ghz
             from main.apps.mac.models.cell_state import CellState
+            # 多 gNB:鄰區可能屬於別的 DU / gNB,先放場次拓樸的全場 cell,再以本 DU 的 CellState 覆蓋
+            try:
+                from ran_sim_protocol.run_topology import RunTopology
+                topo = RunTopology.from_env()
+            except Exception:  # noqa: BLE001
+                topo = None
+            for tc in (topo.cells() if topo is not None else []):
+                out[tc.cell_id] = (int(tc.pci), nr_arfcn_from_ghz(tc.freq_ghz) if tc.freq_ghz is not None else None)
             for cid, pci, fghz in CellState.objects.values_list("cell_id", "pci", "freq_ghz"):
                 out[cid] = (int(pci) if pci is not None else None, nr_arfcn_from_ghz(fghz))
         except Exception:  # noqa: BLE001 — 查不到就回空,鄰區量測的 pci/arfcn 會是 None
@@ -549,13 +566,60 @@ class TickRunner:
         self._stop_event.clear()
         self.status.is_running = True
         self.status.started_at_ms = int(time.time() * 1000)
+        self._global_dl_load = {}
+        self._ext_tick = None
+        if self.external_clock:
+            # 由 RU 鎖步時鐘驅動:不起自己的迴圈,等 step()
+            logger.info("TickRunner started (external clock, waiting for RU step)")
+            return True
         self._thread = threading.Thread(target=self._loop, daemon=True, name="du-tick")
         self._thread.start()
         return True
 
     @property
+    def external_clock(self) -> bool:
+        return _EXTERNAL_CLOCK
+
+    def step(self, *, tick: int, scene_tick: int, sim_dt_ms: int, speed_x: float,
+             cell_dl_load: dict[str, float] | None = None,
+             indications: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """外部時鐘的一拍(D1)。RU 平行呼叫全場每個 DU,收齊 DL TTI 後合併算空中介面。
+
+        indications = 上一拍 RU 算出、屬於本 DU 的 UE 的 CQI(先套用再跑本拍,與舊的
+        「dl_tti 回應本體套用」一樣是一拍延遲);cell_dl_load = 上一拍全場各 cell 的下行負載。
+        回傳本拍 DL TTI(已編碼),DU 不再自己送給 RU。
+        """
+        with self._step_lock:
+            if not self.status.is_running:
+                return {"ran": False, "tick": int(tick), "dl_tti": None}
+            if indications:
+                from main.apps.fapi_north.services.business.indication_apply import apply_from_response
+                apply_from_response({"data": {"cqi_indications": indications}}, "cqi")
+            if int(sim_dt_ms) != self._sim_dt_ms:
+                self.set_sim_dt(int(sim_dt_ms))
+            if speed_x and speed_x > 0:
+                with self._tick_ms_lock:
+                    self._wall_tick_ms = max(1, int(round(self._sim_dt_ms / float(speed_x))))
+            self._global_dl_load = dict(cell_dl_load or {})
+            self._ext_tick = (int(tick), int(scene_tick))
+            self._ext_dl_tti = None
+            _t0 = time.perf_counter()
+            try:
+                result = self._tick_body()
+            finally:
+                self._ext_tick = None
+            self._body_acc.append((time.perf_counter() - _t0) * 1000.0)
+            self._update_achieved_speed()
+            return {"ran": True, "tick": int(tick), "dl_tti": self._ext_dl_tti,
+                    "report_sent_to_cu": bool(result.get("report_sent_to_cu"))}
+
+    @property
     def cell_dl_load(self) -> dict[str, float]:
-        return getattr(self, "_cell_dl_load", {})
+        """干擾計算用的各 cell 下行負載。外部時鐘時 = 全場上一拍(RU 合併)疊上本 DU 自己的最新值。"""
+        own = getattr(self, "_cell_dl_load", {})
+        if self._global_dl_load:
+            return {**self._global_dl_load, **own}
+        return own
 
     def _update_cell_dl_load(self, cell_of: dict[str, str], rb_alloc: dict[str, int], prb_per_cell: int) -> None:
         """每 cell 下行 PRB 佔用率,約 1 s(模擬時間)指數平滑 —— 干擾看的是平均負載,不是單一 slot 的有無。"""
@@ -680,7 +744,12 @@ class TickRunner:
                 logger.warning("report send failed: %s", exc)
 
     def _tick_body(self) -> dict[str, Any]:
-        self.status.tick_count += 1
+        if self._ext_tick is not None:
+            # 外部時鐘:tick 編號與劇本時鐘都以 RU 為準(全場同一拍)
+            self.status.tick_count, _scene = self._ext_tick
+            self._scene_origin_tick = self.status.tick_count - _scene
+        else:
+            self.status.tick_count += 1
         self.status.last_tick_ms = int(time.time() * 1000)
         _ph_t = [time.perf_counter()]
         def _ph(name: str) -> None:   # 記上一階段耗時
@@ -887,11 +956,13 @@ class TickRunner:
         for ue in ues_for_measurement:
             uid = ue["id"]
             _sinr_sched = self._mu_tick.get(uid, ue["sinr_db"])   # MU 配對時用 MU SINR
-            mcs_ctl.update(uid, _sinr_sched, self.status.last_tick_ms)
-            mcs = mcs_ctl.get_mcs(uid)
+            # 外迴路鏈路適應以模擬時間推進(OAI 每 100 ms 更新一次),倍速不影響收斂速度
+            mcs, _ = mcs_ctl.update(uid, _sinr_sched, self.status.tick_count * self._sim_dt_ms)
             mcs_map[uid] = mcs
-            _, bps_re = sinr_to_mcs(_sinr_sched)
-            mbps = mcs_to_throughput_mbps(mcs=mcs, bps_re=bps_re, n_rb=rb_alloc_global.get(uid, 0))
+            # 本 tick 送得出去的量 = 此 MCS 的表列頻譜效率 × (1 − 首傳 BLER)。
+            # 2026-09-26 前頻譜效率另由一張無出處的 SINR 表查,與實際使用的 MCS 無關。
+            mbps = mcs_to_throughput_mbps(mcs=mcs, bps_re=goodput_efficiency(mcs, _sinr_sched),
+                                          n_rb=rb_alloc_global.get(uid, 0))
             # 每 tick 對應 bytes — 用 sim-time (=throughput × sim-second-per-tick)
             tick_s = self._sim_dt_ms / 1000.0
             tbs_map[uid] = int(mbps * 1e6 * tick_s / 8)
@@ -973,10 +1044,18 @@ class TickRunner:
             cell_ul_load=getattr(self, "_cell_ul_load_last", {}),   # P6:上一 tick 每 cell UL PRB 負載 → RU 算上行干擾
         )
         dl_msg.scene_sim_ms = int(self.scene_tick * self._sim_dt_ms)   # RU cached 查表用劇本時鐘
-        dl_msg.cell_dl_load = dict(self.cell_dl_load)                  # RU 下行干擾依鄰 cell 負載加權
+        # RU 下行干擾依鄰 cell 負載加權。外部時鐘時只報「本 DU 自己的 cell」:RU 合併各 DU 的回報
+        # 才是全場值。若連別的 DU 的 cell(上一拍收到的舊值)一起報,RU 依序合併時後面的 DU 會用
+        # 舊值蓋掉前面 DU 的新值 —— 實測那些 cell 的負載整場凍在初值,干擾被低估、SINR 高 1.2 dB。
+        dl_msg.cell_dl_load = dict(getattr(self, "_cell_dl_load", {}) if self._ext_tick is not None
+                                   else self.cell_dl_load)
         # in-process Step3:in-process mode 下 SINR 已自算,dl_tti 只供 RU 端 KPM/viz → 改非阻塞
         # (fire-and-forget thread),不再 gate tick loop → 解放 tick 粒度(可縮 sim_dt)。
-        if _DU_RU_INPROCESS:
+        if self._ext_tick is not None:
+            # 外部時鐘:DL TTI 交回給 RU 的時鐘迴圈,由它合併全場後一次算空中介面
+            self._ext_dl_tti = encode_dl_tti(dl_msg)
+            dispatched = True
+        elif _DU_RU_INPROCESS:
             _enc = encode_dl_tti(dl_msg)
             threading.Thread(
                 target=RuClientBusinessService.post_dl_tti_request, args=(_enc,), daemon=True
@@ -997,9 +1076,6 @@ class TickRunner:
         # 最小可用 UL:用 UL 時隙容量(獨立於 DL,不搶 PRB)drain UL backlog →
         # 真 ul_bytes / prb_ul,取代舊的 DL÷5 代理。OAI 無 UL delay 故不做 delay。
         from main.apps.mac.services.optional.ul_buffer import ul_buffer
-        from main.apps.mac.services.optional.link_adaptation.mcs_table import (
-            TDD_UL_SLOT_RATIO as _UL_RATIO,
-        )
         _ul_tick_s = self._sim_dt_ms / 1000.0
         _cell_ul_prb_now: dict[str, int] = {}
         for ue in ues_for_measurement:
@@ -1022,9 +1098,9 @@ class TickRunner:
             _ul_sinr = ue.get("ul_sinr_db")
             if _ul_sinr is None:
                 _ul_sinr = float(ue["sinr_db"]) - 20.0
-            _mcs_ul, _bps_re_ul = sinr_to_mcs(_ul_sinr)
+            _mcs_ul = op_point_mcs(_ul_sinr)
             _ul_bytes_per_prb = mcs_to_throughput_mbps(
-                mcs=_mcs_ul, bps_re=_bps_re_ul, n_rb=1, tdd_dl_ratio=_UL_RATIO,
+                mcs=_mcs_ul, bps_re=goodput_efficiency(_mcs_ul, _ul_sinr), n_rb=1, uplink=True,
             ) * 1e6 * _ul_tick_s / 8.0
             _ul_cap = int(_ul_bytes_per_prb * prb_per_cell)
             _ul_drained, _prb_ul = ul_buffer.drain(uid, _ul_cap, _ul_bytes_per_prb)

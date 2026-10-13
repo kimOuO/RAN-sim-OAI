@@ -11,8 +11,10 @@ def test_sinr_to_cqi_low():
 
 
 def test_sinr_to_cqi_mid():
-    assert sinr_estimator.sinr_to_cqi(0) == 4
-    assert sinr_estimator.sinr_to_cqi(10) == 9
+    # 切點(OAI AWGN 曲線 10% BLER):CQI 3 = −0.26 dB、CQI 4 = 0.36 dB、CQI 8 = 8.66 dB、CQI 9 = 10.48 dB
+    assert sinr_estimator.sinr_to_cqi(0) == 3
+    assert sinr_estimator.sinr_to_cqi(10) == 8
+    assert sinr_estimator.sinr_to_cqi(11) == 9
 
 
 def test_sinr_to_cqi_max():

@@ -49,6 +49,31 @@ class TickController:
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])
+    def step(request):
+        """外部時鐘的一拍(多 gNB D1)。只有 SIM_CLOCK=external 的 DU 接受。
+
+        Body: {tick, scene_tick, sim_dt_ms, speed_x, cell_dl_load{cell: 0–1}, indications[CqiIndication]}
+        回傳: {ran, tick, dl_tti(已編碼的 DlTtiRequest 或 null), report_sent_to_cu}
+        """
+        runner = get_tick_runner()
+        if not runner.external_clock:
+            return error_response("DU 不是外部時鐘模式(SIM_CLOCK=external)", http_status=409)
+        try:
+            p = json.loads(request.body or b"{}")
+            out = runner.step(
+                tick=int(p["tick"]), scene_tick=int(p.get("scene_tick", p["tick"])),
+                sim_dt_ms=int(p.get("sim_dt_ms") or runner.sim_dt_ms),
+                speed_x=float(p.get("speed_x") or 1.0),
+                cell_dl_load={str(k): float(v) for k, v in (p.get("cell_dl_load") or {}).items()},
+                indications=list(p.get("indications") or []),
+            )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+            return error_response("Invalid step body", str(e), http_status=400)
+        return success_response(out, "Stepped")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
     def align_scene_clock(request):
         """UE 劇本開始時呼叫:劇本時鐘從此刻歸零(cached 通道查表與 UE 軌跡同步)。"""
         origin = get_tick_runner().align_scene_clock()
@@ -296,4 +321,5 @@ def _status_dict() -> dict:
         # 劇本時鐘(align_scene_clock 之後由 0 起算)。cached 通道查表用的就是它,
         # UE 的在場時段也必須讀同一個時鐘 —— 各自用牆鐘外推,DU 沒跑滿倍速時就會漂移。
         "scene_sim_ms": int(runner.scene_tick * runner.sim_dt_ms),
+        "clock": "external" if runner.external_clock else "internal",
     }).data

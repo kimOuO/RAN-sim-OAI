@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import numpy as np
+from ran_sim_protocol.nr_link_tables import sinr_to_cqi as _shared_sinr_to_cqi
 
 
 def _to_db(linear: float) -> float:
@@ -45,20 +46,10 @@ def estimate_rank(H_eff: np.ndarray, *, sv_ratio_threshold: float = 0.1) -> int:
     return max(1, significant)
 
 
-# 38.214 Table 5.2.2.1-2 的簡化版 (CQI 0..15)：以 SINR(dB) 切點查表。
-# 低於 -6 dB → CQI 0；高於 22.7 dB → CQI 15。
-_CQI_THRESHOLDS_DB = [
-    -float("inf"), -6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0,
-    8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0,
-]
-
-
 def sinr_to_cqi(sinr_db: float) -> int:
-    """SINR (dB) → CQI 0..15。"""
-    cqi = 0
-    for i, th in enumerate(_CQI_THRESHOLDS_DB):
-        if sinr_db >= th:
-            cqi = i
-        else:
-            break
-    return min(cqi, 15)
+    """SINR (dB) → CQI 0..15,依 TS 38.214 §5.2.2.1(BLER ≤ 0.1 的最高 CQI)。
+
+    切點由 OAI AWGN BLER 曲線推導,與 DU 共用同一張表(ran_sim_protocol.nr_link_tables)。
+    2026-09-26 前這裡是一張每 2 dB 一格的手寫表,與 DU 的表不同、兩者皆無出處。
+    """
+    return _shared_sinr_to_cqi(sinr_db)

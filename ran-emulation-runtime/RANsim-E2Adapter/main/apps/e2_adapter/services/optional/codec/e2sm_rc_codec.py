@@ -620,8 +620,12 @@ def encode_ric_control_failure(
     ran_function_id: int,
     cause: tuple[str, str],
     call_process_id: bytes = b"",
+    outcome_bytes: bytes = b"",
 ) -> bytes:
     """Encode RIC Control Failure (unsuccessfulOutcome) → APER E2AP-PDU bytes.
+
+    outcome_bytes 非空時帶 id=32 RICcontrolOutcome(E2AP v2 §9.1.1.3 選配;2026-09-28 起 3-1 換手沒成時
+    放 {"result":"HANDOVER_FAILED","failureCause":…} 讓 RIC 知道原因)。
 
     cause = (group, value) e.g. ("ricRequest", "ran-function-id-invalid"),
     ("ricRequest", "action-not-supported"), ("ricRequest", "control-message-invalid").
@@ -650,6 +654,9 @@ def encode_ric_control_failure(
                     "value": ("RICcallProcessID", call_process_id)})
     ies.append({"id": _IE_ID_Cause, "criticality": "ignore",
                 "value": ("Cause", cause)})
+    if outcome_bytes:
+        ies.append({"id": _IE_ID_RICcontrolOutcome, "criticality": "reject",
+                    "value": ("RICcontrolOutcome", outcome_bytes)})
 
     pdu_cls.set_val(("unsuccessfulOutcome", {
         "procedureCode": _PROC_CODE_RICcontrol,

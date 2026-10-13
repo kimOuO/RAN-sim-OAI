@@ -16,3 +16,4 @@ class TickStateReadSerializer(serializers.Serializer):
     report_dropped = serializers.IntegerField(required=False)   # 量測報告佇列丟包累計
     body_ms = serializers.DictField(required=False)   # tick body 耗時 avg/max(ms)
     scene_sim_ms = serializers.IntegerField(required=False)   # 劇本時鐘(UE 在場時段共用)
+    clock = serializers.CharField(required=False)   # internal = DU 自己計時;external = RU 鎖步時鐘驅動

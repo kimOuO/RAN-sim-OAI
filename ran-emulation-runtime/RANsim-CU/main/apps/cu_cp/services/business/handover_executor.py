@@ -54,6 +54,11 @@ def execute_f1_handover(
     # A3 評到後 trigger HO 把 UE.serving_cell 寫成 phantom, 整條 traffic pipeline 卡死.
     from main.apps.cu_cp.models.cell_config import CellConfig
     if not CellConfig.objects.filter(cell_id=target_cell).exists():
+        # 多 gNB P6:目標是 Xn 鄰居 gNB 的 cell → 跨 gNB 換手(Xn,或沒有 Xn 時 NG)
+        from main.apps.cu_cp.services.business import xn as _xn
+        _f = _xn.foreign_cell(target_cell)
+        if _f is not None:
+            return execute_inter_gnb_handover(ue=ue, foreign=_f, trigger=trigger, target_rsrp=target_rsrp)
         logger.warning(
             "execute_f1_handover refused: target_cell=%r not in CellConfig (phantom?). "
             "ue=%s trigger=%s — keeping current serving_cell=%s",
@@ -84,15 +89,19 @@ def execute_f1_handover(
     # RIC ADD 補上關係後,A3 立刻把五台 UE 全部換進 barred 的 n91,
     # 深邊緣場景當場瓦解,hoValidated 還翻真、可能連帶觸發對方的行為類告警。
     elif tgt is not None and __import__("main.apps.cu_cp.services.common.fixture_state",
-            fromlist=["is_cell_barred"]).is_cell_barred(tgt.cell_id, getattr(tgt, "is_barred", False)):
+            fromlist=["admission_blocked"]).admission_blocked(tgt.cell_id, getattr(tgt, "is_barred", False)):
         fail_cause = "CellNotAvailable"
         logger.info("HO target %s is barred → CellNotAvailable(擋在執行端)", target_cell)
     elif target_rsrp is not None and float(target_rsrp) < _RA_MIN_RSRP:
         fail_cause = "RandomAccessProblem"
+    # Xn 相關的判定只適用跨 gNB 的換手(多 gNB 改版,計畫 4.2):同一個 gNB 內的 cell
+    # 之間走 F1,與 Xn 是否建立、是否被 blocklist 無關。cell 的 gnb_id = registry gNB 名稱。
+    _src_gnb = _CC.objects.filter(cell_id=source_cell).values_list("gnb_id", flat=True).first() or ""
+    _cross_gnb = bool(tgt is not None and _src_gnb and tgt.gnb_id and tgt.gnb_id != _src_gnb)
     # ANR 第6題 Xn-C TNL 探索失敗:關係存在但 Xn 傳輸從未建立(xnX2Established=false)
     #   → 換手準備逾時 TXnRELOCprepExpiry(TS 38.423)。這是物理正確的:沒有 Xn 傳輸
     #   就無法送 Handover Request,準備階段必然逾時。xApp 不得自動修 —— Xn 建立屬管理面。
-    if not fail_cause:
+    if not fail_cause and _cross_gnb:
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _R0
         _rel0 = _R0.objects.filter(source_cell_id=source_cell, target_cgi=target_cell).first()
         if _rel0 is not None and not _rel0.xn_x2_established:
@@ -102,7 +111,7 @@ def execute_f1_handover(
 
     # v10 第6題:xnBlocklist = Xn 換手路徑被禁用(TS 28.313 §6.4.1.3.7,不拆線)。
     # A3 已會跳過,但 RC 直接下令仍會走到這裡 —— 路徑禁用時準備階段必然逾時。
-    if not fail_cause:
+    if not fail_cause and _cross_gnb:
         from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation as _RX
         _relx = _RX.objects.filter(source_cell_id=source_cell, target_cgi=target_cell).first()
         if _relx is not None and _relx.xn_blocklist:
@@ -151,13 +160,52 @@ def execute_f1_handover(
             "source_cell": source_cell, "target_cell": target_cell,
             "trigger": trigger, "status": "FAIL", "failure_cause": fail_cause,
             "started_at": now, "completed_at": now,
-            "scene_sim_ms": scene_clock.now_ms(),
+            "scene_sim_ms": scene_clock.now_ms(), **_ho_fields(ue, source_cell, target_cell),
         })
         logger.warning("F1 Handover FAILED [%s]: UE %s %s → %s cause=%s",
                        trigger, ue_id, source_cell, target_cell, fail_cause)
         # 失敗不改 serving_cell(UE 留原 cell,後續可能觸發 RLF)
         return {"ho_uuid": ho_uuid, "ue_id": ue_id, "source_cell": source_cell,
                 "target_cell": target_cell, "failed": True, "failure_cause": fail_cause}
+
+    # ── F1 執行(TS 38.401 §8.2.1):同 DU 用 UE Context Modification 換 cell;
+    #    同 gNB 跨 DU 先在目標 DU 建 UE context(帶 SpCell 與 DRB),成功後釋放來源 DU 的 context。
+    from main.apps.cu_cp.services.business.du_client_operations import du_of_cell, du_of_ue
+    src_du, tgt_du = du_of_ue(ue_id), du_of_cell(target_cell)
+    inter_du = src_du is not None and tgt_du is not None and src_du != tgt_du
+    ho_type = "inter-DU" if inter_du else "intra-DU"
+    if inter_du:
+        prof = ue.traffic_profile_json or {}
+        drbs = [] if (prof.get("pattern") or "idle") == "idle" else [{
+            "drb_id": int(prof.get("bearer_id", 1) or 1),
+            "qos_5qi": int(prof.get("qos_5qi", 9) or 9), "rlc_mode": "AM"}]
+        setup = DuClientBusinessService.post_ue_context_setup(
+            F1apHandler.build_ue_context_setup(ue_id, drbs, rrc_msg_b64="", serving_cell_id=target_cell),
+            gnb_du_id=tgt_du)
+        from main.apps.cu_cp.services.business.du_client_operations import du_ok
+        if not du_ok(setup):
+            SqlDbBusinessService.create_entity(HandoverEvent, {
+                "ho_uuid": ho_uuid, "ue_id": ue_id, "source_cell": source_cell, "target_cell": target_cell,
+                "trigger": trigger, "status": "FAIL", "failure_cause": "UeContextSetupFailure", "ho_type": ho_type,
+                "started_at": now, "completed_at": now, "scene_sim_ms": scene_clock.now_ms()})
+            logger.warning("inter-DU HO FAILED [%s]: UE %s %s → %s,目標 DU#%s UE Context Setup 失敗: %s",
+                           trigger, ue_id, source_cell, target_cell, tgt_du, setup)
+            return {"ho_uuid": ho_uuid, "ue_id": ue_id, "source_cell": source_cell,
+                    "target_cell": target_cell, "failed": True, "failure_cause": "UeContextSetupFailure"}
+        DuClientBusinessService.post_ue_context_release({"ue_id": ue_id, "cause": "handover"}, gnb_du_id=src_du)
+    else:
+        try:
+            DuClientBusinessService.post_ue_context_modification(
+                F1apHandler.build_ue_context_modification(ue_id, target_cell),
+            )
+        except Exception as e:
+            logger.warning("F1AP UE Context Modification push failed: %s", e)
+    SqlDbBusinessService.update_entity(
+        UeContext, "ue_id", ue_id,
+        {"serving_cell": target_cell, "gnb_du_id": tgt_du if tgt_du is not None else ue.gnb_du_id, "updated_at": now},
+    )
+    from main.apps.cu_cp.services.business import ue_notify
+    ue_notify.path_update(ue_id, target_cell)
 
     SqlDbBusinessService.create_entity(HandoverEvent, {
         "ho_uuid": ho_uuid,
@@ -166,9 +214,11 @@ def execute_f1_handover(
         "target_cell": target_cell,
         "trigger": trigger,
         "status": "SUCC",
+        "ho_type": ho_type,
         "started_at": now,
         "completed_at": now,
         "scene_sim_ms": scene_clock.now_ms(),
+        **_ho_fields(ue, source_cell, target_cell),
     })
     # 2026-08-26(RIC 第三十七輪):換手成功 = 該鄰區關係已驗證(TS 38.300 §15.3.3;
     # E2SM-RC §9.3.38 hoValidated)。此前全網恆 false,第 12 題的鑑別線是死的,
@@ -190,18 +240,8 @@ def execute_f1_handover(
                               ho_validated=False).update(ho_validated=True, updated_at=now)
         except Exception:
             logger.exception("mark hoValidated failed %s→%s", source_cell, target_cell)
-    try:
-        DuClientBusinessService.post_ue_context_modification(
-            F1apHandler.build_ue_context_modification(ue_id, target_cell),
-        )
-    except Exception as e:
-        logger.warning("F1AP UE Context Modification push failed: %s", e)
-    SqlDbBusinessService.update_entity(
-        UeContext, "ue_id", ue_id,
-        {"serving_cell": target_cell, "updated_at": now},
-    )
-    logger.info("F1 Handover [%s]: UE %s  %s → %s  (ho_uuid=%s)",
-                trigger, ue_id, source_cell, target_cell, ho_uuid[:8])
+    logger.info("F1 Handover [%s/%s]: UE %s  %s → %s  (ho_uuid=%s)",
+                trigger, ho_type, ue_id, source_cell, target_cell, ho_uuid[:8])
     # 2026-05-17 #1: fire-and-forget 推給 Omniverse,playback 能把 HO 切回 frame_ts
     push_handover_event(
         ho_uuid=ho_uuid,
@@ -219,3 +259,106 @@ def execute_f1_handover(
         "target_cell": target_cell,
         "trigger": trigger,
     }
+
+
+def _ho_fields(ue, source_cell: str, target_cell: str) -> dict[str, Any]:
+    """C14:換手事件帶 AMF UE NGAP ID、兩端 ncgi;RIC 控制觸發的另帶 RIC 請求編號與標籤。"""
+    from main.apps.cu_cp.services.business import xn
+    from main.apps.cu_cp.services.common import ric_context
+    return {"amf_ue_ngap_id": int(ue.amf_ue_ngap_id or 0) or None,
+            "source_ncgi": xn.ncgi_of(source_cell), "target_ncgi": xn.ncgi_of(target_cell),
+            **ric_context.event_fields()}
+
+
+def execute_inter_gnb_handover(*, ue, foreign, trigger: str, target_rsrp: float | None = None) -> dict[str, Any]:
+    """跨 gNB 換手(多 gNB P6)。
+
+    Xn 可用 → Xn 換手(TS 38.423 §8.2.1):Handover Request → Ack → SN Status Transfer →
+              來源 DU 釋放;目標收到 SN Status Transfer 後送 Path Switch 給 AMF、回送 UE Context Release。
+    Xn 不可用(對端 Xn 沒建立、關係 xnX2Established=false、xnBlocklist):
+      env HO_NG_FALLBACK=on 且有 AMF → NG 換手(TS 38.413 §8.4.1,經 AMF);
+      否則換手準備逾時 TXnRELOCprepExpiry(與改版前 ANR 第 6 題語意相同)。
+    """
+    from main.apps.cu_cp.models.nr_cell_relation import NrCellRelation
+    from main.apps.cu_cp.services.business import amf_client, xn
+    from main.utils.env_loader import get_bool as _gb, get_float as _gf, get_str as _gs
+    now = TimestampService.now()
+    ho_uuid = UUIDService.random_uuid()
+    source_cell = ue.serving_cell or ""
+    target_cell = foreign.cell_id
+    rel = NrCellRelation.objects.filter(source_cell_id=source_cell, target_cgi=target_cell).first()
+    xn_ok = xn.xn_available(foreign.gnb_id) and not (rel is not None and (not rel.xn_x2_established or rel.xn_blocklist))
+    via = "Xn" if xn_ok else ("NG" if (_gb("HO_NG_FALLBACK", False) and amf_client.enabled()) else "Xn")
+
+    fail_cause = ""
+    if not foreign.is_active or foreign.is_barred:
+        fail_cause = "CellNotAvailable"
+    elif target_rsrp is not None and float(target_rsrp) < _gf("HO_RA_MIN_RSRP_DBM", -115.0):
+        fail_cause = "RandomAccessProblem"
+    elif via == "Xn" and not xn_ok:
+        fail_cause = "TXnRELOCprepExpiry"   # 沒有 Xn 傳輸就送不出 Handover Request,準備必然逾時
+    elif (rel is not None and rel.target_pci is not None and _gs("ANR_STALE_PCI_CHECK", "on") != "off"
+          and int(rel.target_pci) != int(foreign.pci)):
+        fail_cause = "CellNotAvailable"     # 過期 PCI 對應(ANR 第 10 題)
+    if not fail_cause:
+        _force = {t.strip() for t in (_gs("HO_FORCE_FAIL_TARGET", "") or "").split(",") if t.strip()}
+        if target_cell in _force:
+            fail_cause = _gs("HO_FORCE_FAIL_CAUSE", "RandomAccessProblem") or "RandomAccessProblem"
+
+    def _fail(cause: str) -> dict[str, Any]:
+        SqlDbBusinessService.create_entity(HandoverEvent, {
+            "ho_uuid": ho_uuid, "ue_id": ue.ue_id, "source_cell": source_cell, "target_cell": target_cell,
+            "trigger": trigger, "status": "FAIL", "failure_cause": cause, "ho_type": via,
+            "started_at": now, "completed_at": now, "scene_sim_ms": scene_clock.now_ms(),
+            **_ho_fields(ue, source_cell, target_cell)})
+        logger.warning("%s Handover FAILED [%s]: UE %s %s → %s cause=%s", via, trigger, ue.ue_id, source_cell, target_cell, cause)
+        return {"ho_uuid": ho_uuid, "ue_id": ue.ue_id, "source_cell": source_cell, "target_cell": target_cell,
+                "failed": True, "failure_cause": cause, "ho_type": via}
+
+    if fail_cause:
+        return _fail(fail_cause)
+
+    me = xn.self_gnb()
+    src_du = ue.gnb_du_id
+    ctx = {"traffic_profile": ue.traffic_profile_json or {}}
+    if via == "Xn":
+        try:
+            xn._post(xn.peer_url_for_gnb(foreign.gnb_id), "handover_request", {
+                "ue_id": ue.ue_id, "amf_ue_ngap_id": int(ue.amf_ue_ngap_id or 0), "source_gnb_id": me.gnb_id if me else None,
+                "source_cell": source_cell, "target_cell": target_cell, "ue_context": ctx, "ho_uuid": ho_uuid, "cause": trigger})
+        except xn.XnError as exc:
+            return _fail(exc.cause if exc.cause in ("CellNotAvailable", "RadioResourcesNotAvailable") else "HandoverPreparationFailure")
+        except Exception:  # noqa: BLE001 — 對端沒回應 = 準備逾時
+            return _fail("TXnRELOCprepExpiry")
+        try:
+            xn._post(xn.peer_url_for_gnb(foreign.gnb_id), "sn_status_transfer",
+                     {"ue_id": ue.ue_id, "ho_uuid": ho_uuid, "source_gnb_id": me.gnb_id if me else None})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SN Status Transfer → gNB 0x%06x failed for %s: %s", foreign.gnb_id, ue.ue_id, exc)
+        # UE 已離開本 gNB:釋放來源 DU 的 context;本地 context 等對端的 UE Context Release 再刪
+        DuClientBusinessService.post_ue_context_release({"ue_id": ue.ue_id, "cause": "handover"}, gnb_du_id=src_du)
+        UeContext.objects.filter(ue_id=ue.ue_id).update(rrc_state="RELEASE", serving_cell=target_cell, updated_at=now)
+    else:
+        try:
+            amf_client.post("handover_required", {
+                "gnb_id": amf_client.gnb_id(), "ran_ue_ngap_id": int(ue.ran_ue_ngap_id), "amf_ue_ngap_id": int(ue.amf_ue_ngap_id),
+                "target_gnb_id": foreign.gnb_id, "target_cell_id": target_cell, "cause": trigger, "ue_state": ctx})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("NG Handover preparation failed for %s: %s", ue.ue_id, exc)
+            return _fail("HandoverPreparationFailure")
+        DuClientBusinessService.post_ue_context_release({"ue_id": ue.ue_id, "cause": "handover"}, gnb_du_id=src_du)
+        UeContext.objects.filter(ue_id=ue.ue_id).delete()   # NG 換手:AMF 已把 UE 交給目標,本地 context 釋放
+
+    SqlDbBusinessService.create_entity(HandoverEvent, {
+        "ho_uuid": ho_uuid, "ue_id": ue.ue_id, "source_cell": source_cell, "target_cell": target_cell,
+        "trigger": trigger, "status": "SUCC", "ho_type": via, "started_at": now, "completed_at": now,
+        "scene_sim_ms": scene_clock.now_ms(), **_ho_fields(ue, source_cell, target_cell)})
+    if trigger != "MANUAL":   # hoValidated:見 execute_f1_handover 的說明(MANUAL 不採計)
+        NrCellRelation.objects.filter(source_cell_id=source_cell, target_cgi=target_cell,
+                                      ho_validated=False).update(ho_validated=True, updated_at=now)
+    logger.info("%s Handover [%s]: UE %s  %s → %s (gNB 0x%06x, ho_uuid=%s)", via, trigger, ue.ue_id,
+                source_cell, target_cell, foreign.gnb_id, ho_uuid[:8])
+    push_handover_event(ho_uuid=ho_uuid, ue_id=ue.ue_id, source_cell=source_cell, target_cell=target_cell,
+                        trigger=trigger, status="SUCC", event_ts=now.isoformat() if hasattr(now, "isoformat") else None)
+    return {"ho_uuid": ho_uuid, "ue_id": ue.ue_id, "source_cell": source_cell, "target_cell": target_cell,
+            "trigger": trigger, "ho_type": via}

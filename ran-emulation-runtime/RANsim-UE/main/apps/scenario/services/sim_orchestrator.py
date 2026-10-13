@@ -22,7 +22,7 @@ from main.apps.scenario.services.ue_attach import UeAttachService
 from main.apps.scenario.services.scenario_loader import waypoints_with_speed_to_trajectory
 from main.apps.scenario.services import scenario_driver
 from main.apps.ue_lifecycle.services import (
-    cu_client, du_client, omniverse_client, physics_client, ru_client,
+    cu_client, du_client, omniverse_client, physics_client, ran_endpoints, ru_client,
 )
 from main.apps.ue_lifecycle.services.trajectory_store import get_store as get_traj_store
 
@@ -182,19 +182,22 @@ def _broadcast_speed(speed_x: float, sim_dt_ms: int = 500) -> dict[str, Any]:
     # 要 0.5× 時 UE driver 走 0.5×、DU 被夾回 1×,兩邊時鐘差兩倍 → 通道與 UE 位置錯開。
     target_tick_ms = max(10, min(5000, int(round(sim_dt_ms / max(speed_x, 0.01)))))
     out: dict[str, Any] = {"target_tick_ms": target_tick_ms, "speed_x": speed_x, "sim_dt_ms": sim_dt_ms}
-    try:
-        _post(f"{DU_URL}/api/v0.1/DU/Tick/TickController/set_speed",
-              {"tick_ms": target_tick_ms, "sim_dt_ms": sim_dt_ms})
-    except Exception as e:  # noqa: BLE001
-        out["du_set_speed_error"] = str(e)
-        logger.warning("DU set_speed failed: %s", e)
-    try:
-        from django.conf import settings as dj_settings
-        cu_url = getattr(dj_settings, "SIM_CU_URL", "http://ransim-cu:8000")
-        _post(f"{cu_url}/api/v0.1/CU/E2/KpmSpeed/set", {"sim_speed_x": speed_x})
-    except Exception as e:  # noqa: BLE001
-        out["cu_kpm_speed_error"] = str(e)
-        logger.warning("CU KpmSpeed/set failed: %s", e)
+    # 時鐘:外部時鐘(多 gNB)記給 RU 鎖步時鐘;否則照舊設每個 DU 的牆鐘節拍
+    du_client.configure_clock(speed_x, sim_dt_ms)
+    if not ran_endpoints.external_clock():
+        for du_url in ran_endpoints.du_urls():
+            try:
+                _post(f"{du_url}/api/v0.1/DU/Tick/TickController/set_speed",
+                      {"tick_ms": target_tick_ms, "sim_dt_ms": sim_dt_ms})
+            except Exception as e:  # noqa: BLE001
+                out["du_set_speed_error"] = str(e)
+                logger.warning("DU set_speed failed: %s", e)
+    for cu_url in ran_endpoints.cu_urls():
+        try:
+            _post(f"{cu_url}/api/v0.1/CU/E2/KpmSpeed/set", {"sim_speed_x": speed_x})
+        except Exception as e:  # noqa: BLE001
+            out["cu_kpm_speed_error"] = str(e)
+            logger.warning("CU KpmSpeed/set failed (%s): %s", cu_url, e)
     return out
 
 
@@ -465,27 +468,25 @@ def stop_sim() -> dict[str, Any]:
         out["lifecycle_stopped"] = True
     except Exception as e:  # noqa: BLE001
         out["lifecycle_error"] = str(e)
-    try:
-        _post(f"{DU_URL}/api/v0.1/DU/Tick/TickController/stop")
-        out["du_tick_stopped"] = True
-    except Exception as e:  # noqa: BLE001
-        out["du_tick_error"] = str(e)
+    out["du_tick_stopped"] = du_client.tick_stop()
     # 通知 CU 把所有 UE 降回 IDLE — CU indication_producer 看到沒 CONNECTED 就停 emit,
     # 解決「stop sim 後 Influx 還持續收 stale KPM」的問題。
-    try:
-        cu_url = getattr(settings, "SIM_CU_URL", "http://ransim-cu:8000")
-        resp = _post(f"{cu_url}/api/v0.1/CU/Session/SessionController/release_all", {})
-        out["cu_release_all"] = resp.get("data", {}) if isinstance(resp, dict) else resp
-    except Exception as e:  # noqa: BLE001
-        out["cu_release_all_error"] = str(e)
+    for cu_url in ran_endpoints.cu_urls():
+        try:
+            resp = _post(f"{cu_url}/api/v0.1/CU/Session/SessionController/release_all", {})
+            out.setdefault("cu_release_all", {})[cu_url] = resp.get("data", {}) if isinstance(resp, dict) else resp
+        except Exception as e:  # noqa: BLE001
+            out.setdefault("cu_release_all_error", {})[cu_url] = str(e)
+    ran_endpoints.routes.clear()
     # 跨 sim 隔離 cleanup — 清 DU PM window + e2adapter KPM ring buffer。
     # 沒這兩步:下次 sim 起來時 dump_pm / KPM RecentReader 還會回上輪殘留,
     # KPM window mean 也帶舊累積值,讓 xApp 在 sim 初期看到「上次的數字」誤判。
-    try:
-        _post(f"{DU_URL}/api/v0.1/DU/Tick/TickController/reset_pm")
-        out["du_pm_reset"] = True
-    except Exception as e:  # noqa: BLE001
-        out["du_pm_reset_error"] = str(e)
+    for du_url in ran_endpoints.du_urls():
+        try:
+            _post(f"{du_url}/api/v0.1/DU/Tick/TickController/reset_pm")
+            out["du_pm_reset"] = True
+        except Exception as e:  # noqa: BLE001
+            out["du_pm_reset_error"] = str(e)
     try:
         _post(f"{E2_ADAPTER_URL}/api/v0.1/E2Adapter/KpmSnapshot/SnapshotReader/reset")
         out["e2adapter_kpm_reset"] = True
@@ -495,20 +496,21 @@ def stop_sim() -> dict[str, Any]:
     # _PrbQuotaStore 是 DU in-memory dict,DU 沒重啟就會跨 sim 殘留,
     # 讓下一輪 sim 起來時 scheduler 還被舊 cap 卡住。
     # 取所有 active quota 的 cell_id,逐 cell call clear_prb_quota。
-    try:
-        list_resp = _post(f"{DU_URL}/api/v0.1/DU/MAC/MacScheduler/list_prb_quota")
-        quotas = list_resp.get("data", {}).get("quotas", []) if isinstance(list_resp, dict) else []
-        cleared = []
-        for q in quotas:
-            cid = q.get("cell_id")
-            if not cid:
-                continue
-            try:
-                _post(f"{DU_URL}/api/v0.1/DU/MAC/MacScheduler/clear_prb_quota", {"cell_id": cid})
-                cleared.append(cid)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("clear_prb_quota %s failed: %s", cid, e)
-        out["du_prb_quota_cleared"] = cleared
-    except Exception as e:  # noqa: BLE001
-        out["du_prb_quota_cleared_error"] = str(e)
+    cleared = []
+    for du_url in ran_endpoints.du_urls():
+        try:
+            list_resp = _post(f"{du_url}/api/v0.1/DU/MAC/MacScheduler/list_prb_quota")
+            quotas = list_resp.get("data", {}).get("quotas", []) if isinstance(list_resp, dict) else []
+            for q in quotas:
+                cid = q.get("cell_id")
+                if not cid:
+                    continue
+                try:
+                    _post(f"{du_url}/api/v0.1/DU/MAC/MacScheduler/clear_prb_quota", {"cell_id": cid})
+                    cleared.append(cid)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("clear_prb_quota %s failed: %s", cid, e)
+        except Exception as e:  # noqa: BLE001
+            out["du_prb_quota_cleared_error"] = str(e)
+    out["du_prb_quota_cleared"] = cleared
     return out

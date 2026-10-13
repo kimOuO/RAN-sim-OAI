@@ -43,9 +43,15 @@ def _mock_amf_respond_initial_context_setup(initial_ue_payload: dict[str, Any]) 
     if not ran_ue_ngap_id:
         return
 
+    # AMF UE NGAP ID 沿用 RRC attach 時配的值(= 真 AMF 的規則);查不到才退回舊的 ran+1
+    try:
+        from main.apps.cu_cp.models.ue_context import UeContext
+        amf_id = UeContext.objects.filter(ran_ue_ngap_id=ran_ue_ngap_id).values_list("amf_ue_ngap_id", flat=True).first()
+    except Exception:  # noqa: BLE001
+        amf_id = None
     payload = {
         "ran_ue_ngap_id": ran_ue_ngap_id,
-        "amf_ue_ngap_id": int(ran_ue_ngap_id) + 1,    # 跟 RRC attach 時生成的 amf_ue_ngap_id 對齊
+        "amf_ue_ngap_id": int(amf_id) if amf_id else int(ran_ue_ngap_id) + 1,
         "pdu_session_resources": [
             {
                 "pdu_session_id": 1,

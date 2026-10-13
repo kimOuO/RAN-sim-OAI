@@ -128,7 +128,7 @@ class UeLifecycleManager:
             elapsed_ms %= total_ms
         return max(0.0, elapsed_ms)
 
-    def _apply_presence(self, ue_id: str, present: bool) -> None:
+    def _apply_presence(self, ue_id: str, present: bool) -> bool:
         """UE 進場 / 離場時同步 RAN 側狀態。**沒有開關** —— 人不在場景裡就不該算他的
         網路連線,這是語意而非選項(2026-09-21)。
 
@@ -141,23 +141,39 @@ class UeLifecycleManager:
         try:
             if not present:
                 cu_client.release_ue(ue_id)
-                return
+                return True
             serving = self._serving_hint.get(ue_id) or ""
-            if not cu_client.rrc_attach(ue_id):
-                logger.warning("UE %s 回場:RRC attach 失敗", ue_id)
-                return
-            from main.apps.ue_lifecycle.services import du_client
-            if serving:
-                du_client.register_ue_at(ue_id, serving_cell=serving)
-                cu_client.force_serving_cell(ue_id, serving)
+            from main.apps.ue_lifecycle.services import ran_endpoints
+            topo = ran_endpoints.topology()
+            if topo is not None and serving:
+                # 多 gNB:在回場 cell 的 DU 接入(Initial UL RRC 帶 cell),不再事後強制換 cell。
+                # 被拒(cell barred / 正在進入節能 = RRC Reject)時改選場上其他 cell,
+                # 就像真實 UE 看到 SIB1 cellBarred 改駐別顆;之後 A3 會再把它帶到最好的 cell。
+                candidates = [serving] + [c.cell_id for d in topo.dus() for c in d.cells if c.cell_id != serving]
+                chosen = next((c for c in candidates if cu_client.rrc_attach(ue_id, c)), None)
+                if chosen is None:
+                    logger.warning("UE %s 回場:RRC attach 失敗(試過 %s)", ue_id, candidates)
+                    return False
+                if chosen != serving:
+                    logger.info("UE %s 回場:%s 不收(barred / 節能),改接 %s", ue_id, serving, chosen)
+            else:
+                if not cu_client.rrc_attach(ue_id):
+                    logger.warning("UE %s 回場:RRC attach 失敗", ue_id)
+                    return False
+                from main.apps.ue_lifecycle.services import du_client
+                if serving:
+                    du_client.register_ue_at(ue_id, serving_cell=serving)
+                    cu_client.force_serving_cell(ue_id, serving)
             # 開場就不在場的人 CU 端從沒收過 profile(release_ue 只是沒清掉既有的),
             # 所以有提示就推一次;沒有提示才沿用 CU 既存值。
             prof = self._traffic_hint.get(ue_id)
             if prof:
                 cu_client.update_traffic_profile(ue_id, prof)
             logger.info("UE %s 回場:已重新 attach(serving=%s)", ue_id, serving or "(由 CU 決定)")
+            return True
         except Exception:  # noqa: BLE001
             logger.exception("UE %s 進出場同步失敗(present=%s)", ue_id, present)
+            return False
 
     def set_active_windows(self, windows: dict[str, list[list[float]]] | None) -> None:
         """設定劇本在場時段。換 session 要重設,否則沿用上一齣戲的時間軸。"""
@@ -320,12 +336,19 @@ class UeLifecycleManager:
             visible = any(a <= t < b for a, b in windows)
             if self._last_visible.get(ue_id) == visible:
                 continue
+            # 2026-09-27:RAN 側(回場接入)失敗就不記成已同步,3 秒後重試 —— 以前失敗一次那個人就整段沒有服務
+            _retry_at = getattr(self, "_presence_retry_at", {})
+            if now_ms < _retry_at.get(ue_id, 0):
+                continue
             self._last_visible[ue_id] = visible
             # 2026-09-20:active_windows 以前只管「看不看得到」—— 3D 不畫、Kit 藏起來,
             # 但 RRC 連線、DU 排程、流量注入全照舊,於是「人不見了卻還掛在 gNB 上傳資料」。
             # 這裡讓它真的離場 / 回場,沒有開關 —— 不在場景裡的人不該算網路連線。
             # 注意:Kit 不是我們的元件、也可能沒在跑,所以 RAN 側動作不能綁在它的成敗上。
-            self._apply_presence(ue_id, visible)
+            if not self._apply_presence(ue_id, visible):
+                self._last_visible.pop(ue_id, None)
+                self._presence_retry_at = {**_retry_at, ue_id: now_ms + 3000}
+                continue
             if not kit_client.set_ue_visible(ue_id, visible):
                 # 推失敗就把快取清掉,下一個 tick 會重試(不要記成已同步)
                 self._last_visible.pop(ue_id, None)
@@ -399,7 +422,10 @@ class UeLifecycleManager:
         logger.info("UE %s 選到 %s(rsrp=%.1f ≥ %.1f)→ 重新發起 RRC 連線",
                     ue_id, cell, rsrp, settings.CAMP_MIN_RSRP_DBM)
         try:
-            if cu_client.rrc_attach(ue_id):
+            from main.apps.ue_lifecycle.services import ran_endpoints
+            if ran_endpoints.topology() is not None:
+                cu_client.rrc_attach(ue_id, cell)       # 多 gNB:在選到的 cell 的 DU 接入
+            elif cu_client.rrc_attach(ue_id):
                 cu_client.force_serving_cell(ue_id, cell)
                 # 不 pop —— attach 回 True 只代表訊息送出去了,是否真的回到
                 # CONNECTED 由下一輪 _sync_from_cu 認定。這裡 pop 會讓節流失效,

@@ -43,12 +43,33 @@ class CuCpConfig(AppConfig):
 
             _resume_anr_fixture()
 
+            # 多 gNB(P5 / P6):對 AMF 做 NG Setup、對鄰居 gNB 做 Xn Setup(背景重試到成功)。
+            # 沒有 HTTP_AMF_HOST / RUN_TOPOLOGY 的舊部署兩者都不會啟動。
+            # 只在伺服器行程做:manage.py shell / 一次性命令也會跑 ready(),以前每次查資料都重送 NG Setup。
+            if _is_server_process():
+                try:
+                    from main.apps.cu_cp.services.business import amf_client, xn
+                    amf_client.ensure_ng_setup()
+                    xn.ensure_xn_setup()
+                except Exception:
+                    import logging
+                    logging.exception("Failed to start NG / Xn setup")
+
             try:
                 from main.apps.cu_cp.services.optional.retention import log_pruner
                 log_pruner.start()
             except Exception:
                 import logging
                 logging.exception("Failed to start CU log retention pruner")
+
+
+def _is_server_process() -> bool:
+    """這個行程是 CU 伺服器(runserver / daphne / gunicorn / runworker),不是 manage.py shell 或一次性命令。"""
+    import sys
+    argv = " ".join(sys.argv)
+    return not ("runserver" not in argv and "daphne" not in argv
+                and "runworker" not in argv and "gunicorn" not in argv
+                and "manage.py" in argv)
 
 
 def _resume_anr_fixture() -> None:
@@ -68,15 +89,11 @@ def _resume_anr_fixture() -> None:
     import subprocess
     import time
 
-    import sys
     # 只有「伺服器行程」該續跑 —— 這個 hook 在每個 Django 行程的 ready() 都會跑,
     # 包括 manage.py shell / 一次性命令:2026-08-29 Q5r2 實錄,prepare 自己的
     # shell 啟動先把舊時間軸復活,清理永遠追不上復活(殭屍家族第四員:
     # 復活鉤 vs 清理者)。shell/命令行程一律不續跑。
-    argv = " ".join(sys.argv)
-    if ("runserver" not in argv and "daphne" not in argv
-            and "runworker" not in argv and "gunicorn" not in argv
-            and "manage.py" in argv):
+    if not _is_server_process():
         return
     # 抑制閥:prepare 清場期間豎旗,任何行程都不得續跑
     if os.path.exists("/app/tmp/anr_fixture.suppress"):

@@ -7,6 +7,8 @@ from typing import Any
 import requests
 from django.conf import settings
 
+from main.apps.ue_lifecycle.services import ran_endpoints
+
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_SEC = 2.0
@@ -14,82 +16,112 @@ _TIMEOUT_SEC = 2.0
 _session = requests.Session()
 
 
-def tick_start() -> bool:
-    """POST DU /Tick/TickController/start — 啟動 DU 內部 sim tick loop。
+# ── 時鐘 ────────────────────────────────────────────────────────────
+# SIM_CLOCK=external(per-run 多 gNB):時鐘在 RU,DU 只重設狀態、等 RU 每拍呼叫 step。
+# 其他(共用 ransim-du):DU 自己計時,與改版前相同。
+_clock_cfg = {"speed_x": 1.0, "sim_dt_ms": 500}
 
-    sim_orchestrator + scenario_driver 都用這個取代散落各處的 HTTP call。
-    """
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/start"
+
+def configure_clock(speed_x: float, sim_dt_ms: int) -> bool:
+    """記下倍速與每拍模擬時間;鎖步時鐘已在跑就即時生效。回傳 RU 是否接受(非外部時鐘恆 True)。"""
+    _clock_cfg.update(speed_x=float(speed_x), sim_dt_ms=int(sim_dt_ms))
+    if not ran_endpoints.external_clock():
+        return True
+    return _ru_clock("set_speed", {"speed_x": float(speed_x), "sim_dt_ms": int(sim_dt_ms)}) is not None
+
+
+def _ru_clock(element: str, body: dict | None = None) -> dict | None:
+    url = f"{ran_endpoints.ru_url()}/api/v0.1/RU/State/LockstepClock/{element}"
     try:
-        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
-        return r.ok
-    except requests.RequestException as exc:
-        logger.warning("DU TickController.start failed: %s", exc)
-        return False
+        r = _session.post(url, json=body or {}, timeout=_TIMEOUT_SEC * 3)
+        if not r.ok:
+            logger.warning("RU LockstepClock/%s non-OK %s: %s", element, r.status_code, r.text[:200])
+            return None
+        return r.json().get("data") or {}
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("RU LockstepClock/%s failed: %s", element, exc)
+        return None
+
+
+def _all_dus(path: str, body: dict | None = None) -> bool:
+    ok = True
+    for base in ran_endpoints.du_urls():
+        try:
+            r = _session.post(f"{base}{path}", json=body or {}, timeout=_TIMEOUT_SEC)
+            ok = ok and r.ok
+        except requests.RequestException as exc:
+            logger.warning("DU %s%s failed: %s", base, path, exc)
+            ok = False
+    return ok
+
+
+def tick_start() -> bool:
+    """啟動模擬時鐘。
+
+    外部時鐘:先讓每個 DU 重設(清 registry/PM/RLC,不起迴圈),再啟動 RU 鎖步時鐘。
+    否則:POST DU /Tick/TickController/start 啟動 DU 內部 tick loop(舊行為)。
+    """
+    ok = _all_dus("/api/v0.1/DU/Tick/TickController/start")
+    if ran_endpoints.external_clock():
+        return ok and _ru_clock("start", dict(_clock_cfg)) is not None
+    return ok
 
 
 def align_scene_clock() -> bool:
-    """POST DU /Tick/TickController/align_scene_clock — 劇本時鐘從此刻起算。"""
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/align_scene_clock"
-    try:
-        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
-        return r.ok
-    except requests.RequestException as exc:
-        logger.warning("DU align_scene_clock failed: %s", exc)
-        return False
+    """劇本時鐘從此刻起算。"""
+    if ran_endpoints.external_clock():
+        return _ru_clock("align_scene") is not None
+    return _all_dus("/api/v0.1/DU/Tick/TickController/align_scene_clock")
 
 
-def get_scene_clock() -> tuple[int, float] | None:
-    """POST DU /Tick/TickController/read → (劇本時鐘 ms, 實際達成倍率)。拿不到回 None。
-
-    2026-09-22:外推要用**實際達成**的倍率,不是設定值。走廊 30x 實測達成只有 0.7x,
-    用設定值外推每 2 秒就會多跑 60 秒再被拉回,劇本時鐘來回跳,站在在場時段邊界的
-    UE 每秒離場/回場一次。達成率拿不到就當 0(不外推,只吃 DU 的值)—— 寧可慢半拍
-    也不要往前衝。
-    """
+def _clock_read() -> dict | None:
+    if ran_endpoints.external_clock():
+        return _ru_clock("read")
     url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/read"
     try:
         r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
         if not r.ok:
             return None
-        d = r.json().get("data") or {}
-        v = d.get("scene_sim_ms")
-        if v is None:
-            return None
-        ach = d.get("achieved_speed_x")
-        return int(v), max(0.0, float(ach)) if ach is not None else 0.0
-    except (requests.RequestException, ValueError, TypeError) as exc:
+        return r.json().get("data") or {}
+    except (requests.RequestException, ValueError) as exc:
         logger.warning("DU read scene clock failed: %s", exc)
         return None
 
 
-def get_scene_sim_ms() -> int | None:
-    """POST DU /Tick/TickController/read → 劇本時鐘(ms)。拿不到回 None。
+def get_scene_clock() -> tuple[int, float] | None:
+    """(劇本時鐘 ms, 實際達成倍率)。拿不到回 None。
 
-    在場時段必須跟 cached 通道查表用同一個時鐘。UE 這端自己用牆鐘×倍速外推的話,
-    DU 一沒跑滿倍速兩者就漂移(2026-09-21 實測整段 8h 劇本 DU 走了 32203s)。
+    2026-09-22:外推要用**實際達成**的倍率,不是設定值。走廊 30x 實測達成只有 0.7x,
+    用設定值外推每 2 秒就會多跑 60 秒再被拉回,劇本時鐘來回跳,站在在場時段邊界的
+    UE 每秒離場/回場一次。達成率拿不到就當 0(不外推,只吃時鐘的值)—— 寧可慢半拍
+    也不要往前衝。
     """
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/read"
+    d = _clock_read()
+    if not d or d.get("scene_sim_ms") is None:
+        return None
     try:
-        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
-        if not r.ok:
-            return None
-        v = (r.json().get("data") or {}).get("scene_sim_ms")
-        return int(v) if v is not None else None
-    except (requests.RequestException, ValueError) as exc:
-        logger.warning("DU read scene_sim_ms failed: %s", exc)
+        ach = d.get("achieved_speed_x")
+        return int(d["scene_sim_ms"]), max(0.0, float(ach)) if ach is not None else 0.0
+    except (TypeError, ValueError):
         return None
 
 
+def get_scene_sim_ms() -> int | None:
+    """劇本時鐘(ms)。拿不到回 None。
+
+    在場時段必須跟 cached 通道查表用同一個時鐘。UE 這端自己用牆鐘×倍速外推的話,
+    時鐘一沒跑滿倍速兩者就漂移(2026-09-21 實測整段 8h 劇本 DU 走了 32203s)。
+    """
+    v = get_scene_clock()
+    return v[0] if v else None
+
+
 def tick_stop() -> bool:
-    """POST DU /Tick/TickController/stop。"""
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/stop"
-    try:
-        r = _session.post(url, json={}, timeout=_TIMEOUT_SEC)
-        return r.ok
-    except requests.RequestException as exc:
-        logger.warning("DU TickController.stop failed: %s", exc)
-        return False
+    """停時鐘:外部時鐘先停 RU(不再有下一拍),再停每個 DU。"""
+    ok = True
+    if ran_endpoints.external_clock():
+        ok = _ru_clock("stop") is not None
+    return _all_dus("/api/v0.1/DU/Tick/TickController/stop") and ok
 
 
 def set_runtime_phys(*, inter_freq: bool, discard_timer_ms: int, tx_power_dbm: float,
@@ -97,23 +129,26 @@ def set_runtime_phys(*, inter_freq: bool, discard_timer_ms: int, tx_power_dbm: f
     """POST DU /MAC/MacScheduler/set_runtime_phys — 劇本 start 套用 per-scenario 物理參數
     (inter-freq / discard / tx_power / rlc_delay_model),免 DU 專用 env;
     缺省 = 還原預設(co-channel/300/23/calib)。CCO 用 rlc_delay_model=subtick 讓壅塞 delay 真實爬。"""
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/MAC/MacScheduler/set_runtime_phys"
-    try:
-        r = _session.post(url, json={
-            "inter_freq": bool(inter_freq), "discard_timer_ms": int(discard_timer_ms),
-            "tx_power_dbm": float(tx_power_dbm), "rlc_delay_model": str(rlc_delay_model),
-        }, timeout=_TIMEOUT_SEC)
-        return r.ok
-    except requests.RequestException as exc:
-        logger.warning("DU set_runtime_phys failed: %s", exc)
-        return False
+    ok = True
+    for base in ran_endpoints.du_urls():
+        try:
+            r = _session.post(f"{base}/api/v0.1/DU/MAC/MacScheduler/set_runtime_phys", json={
+                "inter_freq": bool(inter_freq), "discard_timer_ms": int(discard_timer_ms),
+                "tx_power_dbm": float(tx_power_dbm), "rlc_delay_model": str(rlc_delay_model),
+            }, timeout=_TIMEOUT_SEC)
+            ok = ok and r.ok
+        except requests.RequestException as exc:
+            logger.warning("DU set_runtime_phys failed (%s): %s", base, exc)
+            ok = False
+    return ok
+
 
 
 def set_prb_quota(cell_id: str, max_prb: int, *, min_prb: int = 0) -> bool:
     """POST DU /MAC/MacScheduler/set_prb_quota — 劇本自帶 cell_quotas 時啟動自動套用。
     ★ set_by="scenario":這是「劇本」套的容量受限,**不是** xApp(E2)即時下發,
       前端 PRB Quota 表才能把劇本/手動/xApp 三種來源分開(否則預設 'xApp' 會混淆)。"""
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/MAC/MacScheduler/set_prb_quota"
+    url = f"{ran_endpoints.du_url_for_cell(cell_id)}/api/v0.1/DU/MAC/MacScheduler/set_prb_quota"
     try:
         r = _session.post(url, json={"cell_id": cell_id, "min_prb": min_prb, "max_prb": max_prb, "set_by": "scenario"}, timeout=_TIMEOUT_SEC)
         return r.ok
@@ -137,7 +172,7 @@ def inject_sdu(
       - "no_entity"     RLC entity 不存在 (DU restart 後常見) — caller 該觸發 re-sync
       - "fail"          其他失敗 (HTTP error, validation, etc)
     """
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/RLC/RlcDataController/inject_sdu"
+    url = f"{ran_endpoints.du_url_for_ue(ue_id)}/api/v0.1/DU/RLC/RlcDataController/inject_sdu"
     body = {
         "ue_id": ue_id,
         "bearer_type": bearer_type,
@@ -171,16 +206,28 @@ def replace_cells(cells: list[dict[str, Any]]) -> bool:
     """
     if not cells:
         return True
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/MAC/MacCellController/replace_cells"
-    try:
-        r = _session.post(url, json={"cells": cells}, timeout=_TIMEOUT_SEC)
-        if not r.ok:
-            logger.warning("replace_cells non-OK %s: %s", r.status_code, r.text[:200])
-            return False
-        return True
-    except requests.RequestException as exc:
-        logger.warning("replace_cells HTTP failed: %s", exc)
-        return False
+    # 多 DU:每個 DU 只收自己服務的 cell(依拓樸);沒有拓樸時全部給唯一的 DU
+    t = ran_endpoints.topology()
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for c in cells:
+        base = ran_endpoints.du_url_for_cell(str(c.get("cell_id") or ""))
+        if t is not None and t.du_of_cell(str(c.get("cell_id") or "")) is None:
+            logger.warning("replace_cells: cell %s 不在拓樸裡,略過", c.get("cell_id"))
+            continue
+        groups.setdefault(base, []).append(c)
+    ok = True
+    for base, group in groups.items():
+        try:
+            r = _session.post(f"{base}/api/v0.1/DU/MAC/MacCellController/replace_cells",
+                              json={"cells": group}, timeout=_TIMEOUT_SEC)
+            if not r.ok:
+                logger.warning("replace_cells %s non-OK %s: %s", base, r.status_code, r.text[:200])
+                ok = False
+        except requests.RequestException as exc:
+            logger.warning("replace_cells %s HTTP failed: %s", base, exc)
+            ok = False
+    return ok
+
 
 
 def replace_ues(ue_ids: list[str]) -> bool:
@@ -189,6 +236,10 @@ def replace_ues(ue_ids: list[str]) -> bool:
     給 scenario_driver start() 用,跟 Dashboard handleStartSim C.4 對齊 — unregister
     上一場留下的 stale UE,避免 DU tick loop 還在跑舊 UE 的 scheduling 動作。
     """
+    if ran_endpoints.topology() is not None:
+        # per-run 多 DU:DU 是本場新起的容器,沒有上一場的殘留;且全量替換會把每個 UE
+        # 註冊進每個 DU。UE 由 Initial UL RRC 進到自己接入的 DU。
+        return True
     url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/replace_ues"
     body = {"ues": [{"ue_id": uid} for uid in ue_ids]}
     try:
@@ -207,7 +258,7 @@ def register_ue_at(ue_id: str, serving_cell: str = "") -> bool:
 
     serving_cell 不空時直接帶上;空字串時 DU 會走 UeMacState fallback。
     """
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/register_ue"
+    url = f"{ran_endpoints.du_url_for_cell(serving_cell)}/api/v0.1/DU/Tick/TickController/register_ue"
     body: dict[str, Any] = {"ue_id": ue_id}
     if serving_cell:
         body["serving_cell"] = serving_cell
@@ -239,7 +290,7 @@ def inject_sdu_batch(
 
     Returns same tri-state semantics as inject_sdu: "ok" / "no_entity" / "fail".
     """
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/RLC/RlcDataController/inject_sdu_batch"
+    url = f"{ran_endpoints.du_url_for_ue(ue_id)}/api/v0.1/DU/RLC/RlcDataController/inject_sdu_batch"
     body = {
         "ue_id": ue_id,
         "bearer_type": bearer_type,
@@ -269,7 +320,7 @@ def report_ul_traffic(ue_id: str, ul_bytes: int) -> bool:
     """
     if ul_bytes <= 0:
         return True
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/RLC/RlcDataController/report_ul_traffic"
+    url = f"{ran_endpoints.du_url_for_ue(ue_id)}/api/v0.1/DU/RLC/RlcDataController/report_ul_traffic"
     try:
         r = _session.post(url, json={"ue_id": ue_id, "ul_bytes": int(ul_bytes)}, timeout=_TIMEOUT_SEC)
         return bool(r.ok)
@@ -285,18 +336,21 @@ def fetch_ue_signals() -> dict[str, dict[str, Any]]:
     回傳 {ue_name: {sinr_db, rsrp_dbm, serving_cell, throughput_dl_mbps, mcs_dl,
                       prb_used_dl, rlc_buffer_bo}} — 拉不到時回空 dict 不擋 driver。
     """
-    url = f"{settings.SIM_DU_URL.rstrip('/')}/api/v0.1/DU/Tick/TickController/dump_pm"
-    try:
-        r = _session.post(url, json={}, timeout=1.0)
-        if not r.ok:
-            return {}
-        data = r.json().get("data", {})
-    except (requests.RequestException, ValueError) as exc:
-        logger.warning("fetch_ue_signals HTTP failed: %s", exc)
-        return {}
+    src: dict[str, Any] = {}
+    for base in ran_endpoints.du_urls():
+        try:
+            r = _session.post(f"{base}/api/v0.1/DU/Tick/TickController/dump_pm", json={}, timeout=1.0)
+            if not r.ok:
+                continue
+            data = r.json().get("data", {})
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("fetch_ue_signals HTTP failed (%s): %s", base, exc)
+            continue
+        # 先用 last_ue_stats(per-tick 即時),fallback ue_latest;同一個 UE 只會在服務它的 DU 出現
+        for k, v in (data.get("last_ue_stats") or data.get("ue_latest") or {}).items():
+            if k not in src or (v.get("serving_cell") and not src[k].get("serving_cell")):
+                src[k] = v
     out: dict[str, dict[str, Any]] = {}
-    # 先用 last_ue_stats(per-tick 即時),fallback ue_latest
-    src = data.get("last_ue_stats") or data.get("ue_latest") or {}
     for ue_name, s in src.items():
         # throughput 用 1s 窗口平均(= KPM DRB.UEThpDl,平滑且與 KPM 一致);
         # 窗口值還沒 flush 過(剛起 sim)時 fallback 到逐 tick 瞬時值。

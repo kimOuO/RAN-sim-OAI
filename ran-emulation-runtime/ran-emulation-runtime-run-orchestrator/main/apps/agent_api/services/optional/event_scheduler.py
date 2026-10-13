@@ -135,7 +135,7 @@ class EventScheduler(threading.Thread):
             # progress_sec 一併寫:健康監控每 15 s 才回寫一次,30x 下 120 s 的 run
             # 4 s 就跑完,對方看到 progress_s=0 但 status=done 會困惑。
             platform_clients.update_scene_run(
-                self.run_uuid, status="done", progress_sec=round(now_s, 1),
+                self.run_uuid, status="idle", last_result="done", progress_sec=round(now_s, 1),
                 notes=f"agent duration_s={self.deadline_s:.0f} reached at scene {now_s:.1f}s "
                       f"({platform_clients.now_iso()})")
         except Exception:  # noqa: BLE001

@@ -28,6 +28,12 @@ class UeContext(models.Model):
     amf_ue_ngap_id = models.BigIntegerField(default=0)
     ran_ue_ngap_id = models.BigIntegerField(default=0)
     gnb_du_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    # 多 gNB P6:UE 最近一次是經 Xn / NG 從哪個 gNB 換進來的(MRO:換進來很快又 RLF
+    # 並重建回來源 → 向來源送 Handover Report「TooEarly」)。
+    last_ho_source_gnb = models.BigIntegerField(null=True, blank=True)
+    last_ho_source_cell = models.CharField(max_length=64, blank=True, default="")
+    last_ho_uuid = models.CharField(max_length=255, blank=True, default="")
+    last_ho_at = models.DateTimeField(null=True, blank=True)
 
     last_measurement_at = models.DateTimeField(null=True, blank=True)
     # Traffic profile (declarative spec, UE container reads + drives traffic generation).

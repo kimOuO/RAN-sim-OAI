@@ -108,6 +108,8 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .topnav .shell { padding-bottom: 0; } .topnav .brand { padding-bottom: 8px; }
 .ue-now { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 8px; color: var(--muted); } .ue-now b { color: var(--ink); margin-left: 2px; } .nbrs { display: flex; gap: 10px; flex-wrap: wrap; } .nbr { display: inline-flex; gap: 4px; align-items: center; } .nbr i { width: 8px; height: 8px; border-radius: 2px; }
 .inst-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; font-size: 12px; } .inst { display: inline-flex; gap: 6px; align-items: center; }
+/* 多 gNB:每個 E2 node 一個連線狀態 */
+.e2node { display: inline-flex; gap: 4px; align-items: baseline; margin-right: 12px; }
 /* 3D 即時(2026-09-17) */
 .live3d { position: relative; height: calc(100vh - 150px); min-height: 480px; border: 1px solid var(--line-2, #26313f); border-radius: 4px; overflow: hidden; margin-top: 10px; }
 .live3d canvas { display: block; }
@@ -134,3 +136,7 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 .covctl .ramp > div { height: 8px; flex: 1; border-radius: 2px; }
 .covctl .legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .covctl .legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; border-radius: 2px; }
+
+/* 2026-09-28 場次三種狀態:閒置用中性色,預算中用 fair,執行中沿用 good */
+.pill.idle { background: transparent; }
+.pill.precomputing { background: var(--fair); color: var(--fair-fg); border-color: transparent; }

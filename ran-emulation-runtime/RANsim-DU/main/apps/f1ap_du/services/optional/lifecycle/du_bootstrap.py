@@ -97,9 +97,12 @@ def _build_setup_message() -> F1Setup:
     # 2026-09-15:DB 還空時不再塞 "default-cell-0" 幽靈 cell(它會進 CU cell_config / cell_measurement_log,
     # 連 E2 indication 都會帶 cell=default-cell-0)。空 served_cells 合法,真 cell 由 gNB-DU Configuration Update 補。
 
+    from main.apps.f1ap_du.services.common import du_identity
     return F1Setup(
-        gnb_du_id=get_int("SIM_GNB_DU_ID", 1),
+        gnb_du_id=du_identity.gnb_du_id(),
         served_cells=served_cells,
+        du_endpoint=du_identity.self_url(),
+        du_name=du_identity.name(),
     )
 
 

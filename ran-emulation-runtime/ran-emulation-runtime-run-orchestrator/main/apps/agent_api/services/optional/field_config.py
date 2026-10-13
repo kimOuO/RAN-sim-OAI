@@ -5,9 +5,9 @@
   2. **依此部署 xApp 到 RIC** —— E2 訂閱與 RICcontrolRequest 都用 meid + NCI 定位
 
 所以 cell 識別必須跟 RIC 端看到的完全一致,而且要在模擬啟動前就算得出來。
-這靠場景的 `e2_slot`:槽位釘住 → gNB ID 固定 → cell 標籤固定 → NCI 固定
-(推導在同目錄的 e2_identity,與 e2adapter 同一套規則)。
-場景沒釘槽位時 E2 識別欄位一律回 None 並列進 unavailable_fields —— 寧可明講沒有,
+這靠場景的 `e2_block`:區塊釘住 → 每個 gNB 的 gNB ID 固定 → cell 標籤固定 → NCI 固定
+(推導在同目錄的 e2_identity,呼叫的是執行期同一份 ran_sim_protocol.run_topology)。
+場景沒釘區塊時 E2 識別欄位一律回 None 並列進 unavailable_fields —— 寧可明講沒有,
 也不要給一個啟動後會變的值讓 xApp 訂閱失敗。
 
 缺項一律 None 並列進 unavailable_fields,不用 0 或空字串頂替(0 是有效觀測值)。
@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from main.apps.agent_api.services.optional.e2_identity import field_e2_identity
+from main.apps.agent_api.services.optional.e2_identity import cells_by_name, field_e2_identities
 
 # 收集參數。PM 視窗秒數與 DU 的 PM_WINDOW_SEC 同源(預設 1.0 秒)。
 # 2026-09-22:I-5 觀測統一由 RIC 閘道提供,視窗與基準規則以 RIC 的 preproc 為準:
@@ -125,17 +125,17 @@ def build(tree: dict, bounds: dict | None = None) -> dict:
     """組出 I-2 的回應。tree = registry read_full_tree,bounds = 幾何範圍(可為 None)。"""
     scene = tree.get("scene") or {}
     pairs = _cells_of(tree)
-    slot = scene.get("e2_slot")
+    block = scene.get("e2_block")
     unavailable: list[str] = []
 
-    # E2 識別:只有釘了槽位才算得出來,否則啟動後才確定 —— 那對 xApp 沒用,寧可回 None
+    # E2 識別:只有釘了區塊才算得出來,否則啟動後才確定 —— 那對 xApp 沒用,寧可回 None
     ident_by_name: dict[str, dict] = {}
-    e2: dict[str, Any] | None = None
-    if slot:
-        e2 = field_e2_identity(int(slot), [c.get("name") or "" for _g, c in pairs])
-        ident_by_name = {c["name"]: c for c in e2["cells"]}
+    e2: list[dict[str, Any]] | None = None
+    if block:
+        e2 = field_e2_identities(tree, int(block))
+        ident_by_name = cells_by_name(e2)
     else:
-        unavailable += ["cells[].ncgi", "cells[].ran_name", "e2_identity"]
+        unavailable += ["cells[].ncgi", "cells[].ran_name", "e2_identities"]
 
     ncgi_of = {(c.get("name") or ""): (ident_by_name.get(c.get("name") or "") or {}).get("ncgi") for _g, c in pairs}
     pci_of = {(c.get("name") or ""): int(c.get("pci") or 0) for _g, c in pairs}
@@ -153,8 +153,8 @@ def build(tree: dict, bounds: dict | None = None) -> dict:
             "cell_id": name,
             "ncgi": ident.get("ncgi"),
             "nr_cell_identity": ident.get("nr_cell_identity"),
-            "ran_cell_id": ident.get("cell_id"),          # 執行期帶槽位標籤的 cell 識別
-            "ran_name": (e2 or {}).get("e2_node_id"),
+            "ran_cell_id": ident.get("cell_id"),          # 執行期的 cell 識別(帶所屬 gNB 前綴)
+            "ran_name": ident.get("ran_name"),             # 所屬 E2 node(多 gNB:每個 gNB 一個)
             "gnb_id": g.get("name") or "",
             "pci": pci_of[name],
             "arfcn": arfcn_of[name],
@@ -210,7 +210,7 @@ def build(tree: dict, bounds: dict | None = None) -> dict:
             "baseline_windows_required": BASELINE_WINDOWS_REQUIRED,
             "clock_source": "simulated",
         },
-        "e2_identity": e2,
+        "e2_identities": e2,   # C13:每個 gNB 一筆
         # gNB 自主 SON 功能的現行開關(場景層設定;I-3 可帶 `son` 覆寫,啟動時生效、整場固定)
         "son": _son_block(tree),
         "unavailable_fields": sorted(set(unavailable)),

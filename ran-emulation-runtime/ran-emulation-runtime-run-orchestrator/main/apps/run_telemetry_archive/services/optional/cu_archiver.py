@@ -50,7 +50,13 @@ def _stamp(prefix: str) -> dict[str, Any]:
 
 
 class RunArchiver(threading.Thread):
-    def __init__(self, scene_run_uuid: str, sim_dt_ms: int, poll_sec: float = 2.0, cu_host: str | None = None, e2_port: int | None = None, run_seq: int = 0, ric_run: int = 0) -> None:
+    """一場一條執行緒。多 gNB(2026-09-27):同時輪詢每個 gNB 的 CU(落地表、full KPM 快照)與
+    e2adapter(控制稽核),各自一個游標;鎖步時鐘下各 CU 的 PM 視窗序號相同,所以同一視窗的
+    報告自然併成同一列。每筆 UE / cell / 事件都標上來源 gNB(node_id)與 E2 node(meid)。"""
+
+    def __init__(self, scene_run_uuid: str, sim_dt_ms: int, poll_sec: float = 2.0, cu_host: str | None = None, e2_port: int | None = None,
+                 run_seq: int = 0, ric_run: int = 0, nodes: list[dict] | None = None,
+                 ue_host: str | None = None, du_host: str | None = None) -> None:
         super().__init__(name=f"archiver-{scene_run_uuid[-8:]}", daemon=True)
         self.run_uuid = scene_run_uuid
         self.run_seq = int(run_seq)
@@ -59,8 +65,6 @@ class RunArchiver(threading.Thread):
         self.sim_dt_ms = max(1, int(sim_dt_ms))
         self.poll_sec = poll_sec
         self._stop_evt = threading.Event()   # 不可叫 _stop:會蓋掉 Thread._stop() 讓 join() 炸
-        self.cursor: dict[str, int] = {}
-        self.control_seq = 0
         # 最後一次從 DU 報告看到的劇本時鐘。控制事件沒有自己的時間戳,用這個近似
         # (誤差 ≤ 一個輪詢週期,比 tick 累加可靠)。None = 還沒收到過任何報告。
         self._last_scene_ms: int | None = None
@@ -71,51 +75,79 @@ class RunArchiver(threading.Thread):
         self.ticks_so_far = (last.sim_time_ms // self.sim_dt_ms) if last else 0   # CellMeasurementLog.tick_count 是「窗內 tick 數」,累計才是 sim-time
         self._last_beam: dict = {}   # ue → (cell, beam_id),算波束切換次數
         self.stats = {"samples": 0, "handover": 0, "rlf": 0, "control": 0, "polls": 0, "errors": 0}
-        self._cu = f"http://{cu_host or settings.HTTP_CU_HOST}:{8000 if cu_host else settings.HTTP_CU_PORT}/api/v0.1/CU/Logs/TelemetryExportReader/read"   # per-run CU(P4-1)或共用 CU
+        # 舊呼叫方式(單一 CU / adapter)→ 一個沒有名字的 node
+        if not nodes:
+            nodes = [{"node_id": "", "meid": "", "cu_host": cu_host, "e2_port": e2_port}]
+            if cu_host and cu_host.startswith("cu-") and ue_host is None:
+                # 舊命名 cu-<rid> → ue-<rid> / du-<rid>(多 gNB 之前的單一實例)
+                ue_host = cu_host.replace("cu-", "ue-", 1); du_host = cu_host.replace("cu-", "du-", 1)
+        self.nodes: list[dict] = []
+        for n in nodes:
+            h = n.get("cu_host")
+            cu_base = f"http://{h or settings.HTTP_CU_HOST}:{8000 if h else settings.HTTP_CU_PORT}"
+            e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{n.get('e2_port') or settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"
+            if settings.PER_RUN_ENABLED and not n.get("e2_port"):
+                e2 = ""   # no_ric 場次沒有 e2adapter;不可退回共用 adapter(會把別人的控制稽核歸進這一場)
+            self.nodes.append({"node_id": n.get("node_id") or "", "meid": n.get("meid") or "",
+                               "cu": f"{cu_base}/api/v0.1/CU/Logs/TelemetryExportReader/read",
+                               # full KPM(322 鍵)快照。只經 E2 送 RIC 的話我方自己留不下來,
+                               # 外部 Agent 的 I-5 原始觀測就給不出 cell 級量測鍵。
+                               "pm": f"{cu_base}/api/v0.1/CU/E2/E2FullReporter/read",
+                               "e2": e2, "cursor": {}, "control_seq": 0})
         # per-run UE driver(劇本時間);共用模式沒有
-        self._ue = (f"http://{cu_host.replace('cu-', 'ue-', 1)}:8000/api/v0.1/UE/Scenario/ScenarioController/status"
-                    if cu_host and cu_host.startswith("cu-") else None)
+        self._ue = f"http://{ue_host}:8000/api/v0.1/UE/Scenario/ScenarioController/status" if ue_host else None
         # 2026-09-20:DU 的量測報告佇列滿了會丟最舊的,只寫在 DU log。資料悄悄變稀疏而
         # KPM 看起來完全正常(corridor_00_08 run 6:5× 下 3.5 分鐘丟 8,701 筆,每視窗
         # 只剩 4–12 個 UE 進統計)。接出來寫進 warnings,讓稀疏可見。
-        self._du = (f"http://{cu_host.replace('cu-', 'du-', 1)}:8000/api/v0.1/DU/Tick/TickController/read"
-                    if cu_host and cu_host.startswith("cu-") else None)
+        self._du = f"http://{du_host}:8000/api/v0.1/DU/Tick/TickController/read" if du_host else None
         self._report_dropped = 0
-        # full KPM(322 鍵)快照。只經 E2 送 RIC 的話我方自己留不下來,
-        # 外部 Agent 的 I-5 原始觀測就給不出 cell 級量測鍵。
-        self._pm = f"http://{cu_host or settings.HTTP_CU_HOST}:{8000 if cu_host else settings.HTTP_CU_PORT}/api/v0.1/CU/E2/E2FullReporter/read"
-        self._e2 = f"http://{settings.HTTP_E2ADAPTER_HOST}:{e2_port or settings.HTTP_E2ADAPTER_PORT}/api/v0.1/E2Adapter/ControlAudit/ControlAuditReader/read"   # per-run adapter(P4-2)或共用
+
+    @property
+    def control_seq(self) -> int:   # 舊介面(單 node)相容
+        return self.nodes[0]["control_seq"] if self.nodes else 0
 
     # 啟動時先把游標推到「現在」,只封存本 run 開始後的資料(CU 表跨 run 累積)
     def prime(self) -> None:
         """啟動時把游標推到「現在」:只封存本 run 開始後的資料(CU 表跨 run 累積,已達千萬列)。"""
-        self.cursor = dict(_post(self._cu, {"max_only": True})["data"]["cursor"])
-        # full KPM 快照。**不是每個輪詢週期都抓** —— 單筆約 27 KB,2 秒一份的話
-        # 1x 跑 8 小時就是 388 MB。對方要的彙整粒度是 60 秒,原始的逐秒觀測
-        # RunKpmSample 已經有,所以這裡預設 60 劇本秒一份(env PM_SNAPSHOT_EVERY_SEC)。
+        for n in self.nodes:
+            n["cursor"] = dict(_post(n["cu"], {"max_only": True})["data"]["cursor"])
+        self._snapshot_pm()
+        for n in self.nodes:
+            try:
+                if not n["e2"]:
+                    raise LookupError("no e2adapter")
+                e = _post(n["e2"], {}, timeout=5.0)["data"]
+                n["control_seq"] = max([int(x.get("seq", 0)) for x in _control_items(e)] or [0])
+            except Exception:  # noqa: BLE001
+                n["control_seq"] = 0
+
+    def _snapshot_pm(self) -> None:
+        """full KPM 快照。**不是每個輪詢週期都抓** —— 單筆約 27 KB,2 秒一份的話
+        1x 跑 8 小時就是 388 MB。對方要的彙整粒度是 60 秒,原始的逐秒觀測
+        RunKpmSample 已經有,所以這裡預設 60 劇本秒一份(env PM_SNAPSHOT_EVERY_SEC)。
+        多 gNB:每個 gNB 一列(node_id / meid 分開)。"""
         _snap_every = float(getattr(settings, "PM_SNAPSHOT_EVERY_SEC", 60.0)) * 1000.0
         _now_ms = self._last_scene_ms
         _due = (_now_ms is None or self._last_snap_ms is None
                 or (_now_ms - self._last_snap_ms) >= _snap_every)
-        try:
-            snap = _post(self._pm, {}, timeout=10.0)["data"] if _due else {}
-            if snap.get("pm"):
-                self._last_snap_ms = _now_ms
-                DB.create_entity(RunPmSnapshot, {**_stamp("run_pm_snapshot"),
-                    "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
-                    "at_sim_ms": self._last_scene_ms, "wall_time_ms": int(time.time() * 1000),
-                    # e2 區塊(逐 UE 量測)不存 —— RunKpmSample.per_ue 已有同樣的資料,
-                    # 存兩份只是讓歸檔多長 12%
-                    "pm": snap.get("pm") or {}, "e2": [],
-                    "warnings": snap.get("warnings") or []})
-                self.stats["pm_snapshots"] = self.stats.get("pm_snapshots", 0) + 1
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            e = _post(self._e2, {}, timeout=5.0)["data"]
-            self.control_seq = max([int(x.get("seq", 0)) for x in _control_items(e)] or [0])
-        except Exception:  # noqa: BLE001
-            self.control_seq = 0
+        if not _due:
+            return
+        for n in self.nodes:
+            try:
+                snap = _post(n["pm"], {}, timeout=10.0)["data"]
+                if snap.get("pm"):
+                    self._last_snap_ms = _now_ms
+                    DB.create_entity(RunPmSnapshot, {**_stamp("run_pm_snapshot"),
+                        "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
+                        "at_sim_ms": self._last_scene_ms, "wall_time_ms": int(time.time() * 1000),
+                        "node_id": n["node_id"], "meid": n["meid"],
+                        # e2 區塊(逐 UE 量測)不存 —— RunKpmSample.per_ue 已有同樣的資料,
+                        # 存兩份只是讓歸檔多長 12%
+                        "pm": snap.get("pm") or {}, "e2": [],
+                        "warnings": snap.get("warnings") or []})
+                    self.stats["pm_snapshots"] = self.stats.get("pm_snapshots", 0) + 1
+            except Exception:  # noqa: BLE001
+                pass
 
     def stop(self) -> None:
         self._stop_evt.set()
@@ -134,53 +166,75 @@ class RunArchiver(threading.Thread):
 
     def _poll_once(self) -> None:
         self.stats["polls"] += 1
+        close_old_connections()
+        meas: list[dict] = []; cells: list[dict] = []
+        for n in self.nodes:
+            try:
+                d = _post(n["cu"], {"since": n["cursor"], "limit": 2000})["data"]
+                n["cursor"] = d["cursor"]
+                tag = {"node_id": n["node_id"], "meid": n["meid"]}
+                for m in d["measurement"]:
+                    meas.append({**m, **tag})
+                for c in d["cell"]:
+                    cells.append({**c, **tag})
+                for h in d["handover"]:
+                    DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
+                        "at_sim_ms": int(h.get("scene_sim_ms") or 0), "ue_id": h["ue_id"], "source_cell": h["source_cell"], "target_cell": h["target_cell"],
+                        "outcome": str(h.get("status") or ""), **tag,
+                        "detail": {k: h.get(k) for k in ("trigger", "failure_cause", "mro_class", "started_at", "completed_at", "id",
+                                                         "ho_type", "amf_ue_ngap_id", "source_ncgi", "target_ncgi",
+                                                         "ric_label", "ric_instance_id")}})
+                    self.stats["handover"] += 1
+                # 自主組態變更(非 RIC 觸發)。與 RIC 下來的控制共用 RunControlEvent,
+                # 靠 source 前綴分開:son/* vs ric/* —— Agent 介面 I-7 的 origin 就是照這個判。
+                for a in d.get("son") or []:
+                    DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid,
+                        "run_seq": self.run_seq, "ric_run": self.ric_run, **tag,
+                        "at_sim_ms": self._last_scene_ms if self._last_scene_ms is not None else self.ticks_so_far * self.sim_dt_ms,
+                        "source": f"son/{a.get('function') or 'unknown'}",
+                        "action_type": f"{a.get('object_type')}_{a.get('action')}"[:32],
+                        "target": str(a.get("object_id") or "")[:128], "outcome": "applied",
+                        "landing_latency_ms": None, "detail": a})
+                    self.stats["control"] += 1
+                for r in d["rlf"]:
+                    DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
+                        "at_sim_ms": int(r.get("scene_sim_ms") or 0), "ue_id": r["ue_id"], "source_cell": r["source_cell"], "target_cell": r.get("reestab_cell") or "",
+                        "outcome": "RLF", **tag, "detail": {k: r.get(k) for k in ("source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_pci", "id", "outcome")}})
+                    self.stats["rlf"] += 1
+            except Exception as exc:  # noqa: BLE001
+                self.stats["errors"] += 1
+                logger.warning("archiver CU poll failed run=%s node=%s: %s", self.run_uuid, n["node_id"] or "-", exc)
         try:
-            close_old_connections()
-            d = _post(self._cu, {"since": self.cursor, "limit": 2000})["data"]
-            self.cursor = d["cursor"]
             scene_t = None
             if self._ue:
                 try:
                     scene_t = float(_post(self._ue, {}, timeout=3.0)["data"].get("elapsed_sim_sec"))
                 except Exception:  # noqa: BLE001 — 拿不到就留 null,不影響封存
                     scene_t = None
-            self._archive_kpm(d["measurement"], d["cell"], scene_t, self._poll_report_dropped())
-            for h in d["handover"]:
-                DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
-                    "at_sim_ms": int(h.get("scene_sim_ms") or 0), "ue_id": h["ue_id"], "source_cell": h["source_cell"], "target_cell": h["target_cell"],
-                    "outcome": str(h.get("status") or ""), "detail": {k: h.get(k) for k in ("trigger", "failure_cause", "mro_class", "started_at", "completed_at", "id")}})
-                self.stats["handover"] += 1
-            # 自主組態變更(非 RIC 觸發)。與 RIC 下來的控制共用 RunControlEvent,
-            # 靠 source 前綴分開:son/* vs ric/* —— Agent 介面 I-7 的 origin 就是照這個判。
-            for a in d.get("son") or []:
-                DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid,
-                    "run_seq": self.run_seq, "ric_run": self.ric_run,
-                    "at_sim_ms": self._last_scene_ms if self._last_scene_ms is not None else self.ticks_so_far * self.sim_dt_ms,
-                    "source": f"son/{a.get('function') or 'unknown'}",
-                    "action_type": f"{a.get('object_type')}_{a.get('action')}"[:32],
-                    "target": str(a.get("object_id") or "")[:128], "outcome": "applied",
-                    "landing_latency_ms": None, "detail": a})
-                self.stats["control"] += 1
-            for r in d["rlf"]:
-                DB.create_entity(RunHandoverEvent, {**_stamp("run_handover_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
-                    "at_sim_ms": int(r.get("scene_sim_ms") or 0), "ue_id": r["ue_id"], "source_cell": r["source_cell"], "target_cell": r.get("reestab_cell") or "",
-                    "outcome": "RLF", "detail": {k: r.get(k) for k in ("source_pci", "sinr_at_rlf", "t310_ms", "reason", "reestab_pci", "id")}})
-                self.stats["rlf"] += 1
+            self._archive_kpm(meas, cells, scene_t, self._poll_report_dropped())
         except Exception as exc:  # noqa: BLE001
             self.stats["errors"] += 1
-            logger.warning("archiver CU poll failed run=%s: %s", self.run_uuid, exc)
+            logger.warning("archiver KPM archive failed run=%s: %s", self.run_uuid, exc)
+        # 2026-09-27:full KPM 快照以前只在啟動時抓一次(註解說每 60 劇本秒一份,但程式只在 prime 裡)
+        self._snapshot_pm()
+        for n in self.nodes:
+            self._poll_control(n)
+
+    def _poll_control(self, n: dict) -> None:
         try:
-            e = _post(self._e2, {}, timeout=5.0)["data"]
+            if not n["e2"]:
+                raise LookupError("no e2adapter")
+            e = _post(n["e2"], {}, timeout=5.0)["data"]
             # 2026-09-23:adapter 的稽核列是「最新在最前」。以前照它的順序走,第一筆(最新 seq)就把
             # control_seq 推到最大,同一輪裡較舊的列全被當成「已歸檔」跳過 —— run 40 五筆只留兩筆。
             for x in sorted(_control_items(e), key=lambda r: int(r.get("seq", 0))):
                 # adapter 的稽核列:command(sim action)/ result(落地目標,例 cell id)/ acked / rttMs / failure
                 outcome = "ACK" if x.get("acked") else ("FAIL" if x.get("failure") else "pending")
-                if int(x.get("seq", 0)) <= self.control_seq:
+                if int(x.get("seq", 0)) <= n["control_seq"]:
                     # 2026-09-23:已歸檔過的命令,ack/failure 常在下一次輪詢才到 → 補寫結果,
                     # 否則 I-7 永遠是 pending(RIC 對 2-6 的 ACK 我方就對不上)。
                     _row = (RunControlEvent.objects
-                            .filter(f_scene_run_uuid=self.run_uuid, run_seq=self.run_seq,
+                            .filter(f_scene_run_uuid=self.run_uuid, run_seq=self.run_seq, node_id=n["node_id"],
                                     source__startswith="ric/", detail__seq=x.get("seq")).first())
                     if _row is not None and _row.outcome != outcome:
                         _row.outcome = outcome; _row.detail = x
@@ -188,8 +242,9 @@ class RunArchiver(threading.Thread):
                         _row.run_control_event_updated_at = TimestampService.now()
                         _row.save(update_fields=["outcome", "detail", "target", "run_control_event_updated_at"])
                     continue
-                self.control_seq = int(x.get("seq", 0))
+                n["control_seq"] = int(x.get("seq", 0))
                 DB.create_entity(RunControlEvent, {**_stamp("run_control_event"), "f_scene_run_uuid": self.run_uuid, "run_seq": self.run_seq, "ric_run": self.ric_run,
+                    "node_id": n["node_id"], "meid": n["meid"],
                     "at_sim_ms": self._last_scene_ms if self._last_scene_ms is not None else self.ticks_so_far * self.sim_dt_ms,
                     "source": f"ric/{x.get('ranFuncName') or 'RC'}",
                     "action_type": str(x.get("command") or x.get("kind") or "control")[:32],
@@ -226,13 +281,14 @@ class RunArchiver(threading.Thread):
             by_win[w]["per_ue"][m["ue_id"]] = {k: m.get(k) for k in ("serving_cell", "rsrp_dbm", "sinr_db", "throughput_dl_mbps", "throughput_ul_mbps",
                                                                     "mcs_dl", "rb_width_dl", "mimo_rank", "pdcp_sdu_volume_dl", "pdcp_sdu_volume_ul",
                                                                     "rlc_sdu_delay_dl_ms", "qos_5qi", "neighbor_cells_json",
-                                                                    "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id", "rsrq_db")}
+                                                                    "mcs_ul", "rb_width_ul", "ul_sinr_db", "sinr_layers_json", "beam_id", "rsrq_db",
+                                                                    "node_id", "meid")}
             if m.get("scene_sim_ms") is not None:
                 by_win[w]["scene_ms"] = int(m["scene_sim_ms"])
         for c in cells:
             cws = c.get("window_seq")
             w = f"w{cws}" if cws is not None else (c.get("recorded_at") or "")[:19]
-            by_win[w]["per_cell"][c["cell_id"]] = {k: c.get(k) for k in ("prb_pct_dl", "prb_pct_ul", "window_seconds", "connected_ues")}
+            by_win[w]["per_cell"][c["cell_id"]] = {k: c.get(k) for k in ("prb_pct_dl", "prb_pct_ul", "window_seconds", "connected_ues", "node_id", "meid")}
             # CU 是全域表,舊劇本殘留的 cell 會以 tick_count=0 出現在同一視窗;取視窗內最大值才是真的走了幾個 tick
             by_win[w]["tick"] = max(int(c.get("tick_count") or 0), int(by_win[w]["tick"] or 0))
             if c.get("scene_sim_ms") is not None:
@@ -400,7 +456,8 @@ def current_ric_run(scene_run_uuid: str) -> int:
 
 
 def start_archiver(scene_run_uuid: str, sim_dt_ms: int, cu_host: str | None = None, e2_port: int | None = None,
-                   new_run: bool = True, ric_run: int = 0) -> RunArchiver:
+                   new_run: bool = True, ric_run: int = 0, nodes: list[dict] | None = None,
+                   ue_host: str | None = None, du_host: str | None = None) -> RunArchiver:
     """new_run=True(一次 start)→ run_seq +1;False(orchestrator 重啟後接回)→ 沿用目前這次。
     ric_run:RIC 閘道宣告回應的 `run`;接回時沒有來源,沿用資料庫裡最近一次的值。"""
     with _lock:
@@ -410,7 +467,8 @@ def start_archiver(scene_run_uuid: str, sim_dt_ms: int, cu_host: str | None = No
         seq = current_run_seq(scene_run_uuid)
         seq = seq + 1 if new_run else max(seq, 1)
         rr = int(ric_run) or (current_ric_run(scene_run_uuid) if not new_run else 0)
-        t = RunArchiver(scene_run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port, run_seq=seq, ric_run=rr)
+        t = RunArchiver(scene_run_uuid, sim_dt_ms, cu_host=cu_host, e2_port=e2_port, run_seq=seq, ric_run=rr,
+                        nodes=nodes, ue_host=ue_host, du_host=du_host)
         logger.info("archiver run=%s run_seq=%d ric_run=%d(%s)", scene_run_uuid, seq, rr, "新一次執行" if new_run else "接回")
         _threads[scene_run_uuid] = t
         t.start()

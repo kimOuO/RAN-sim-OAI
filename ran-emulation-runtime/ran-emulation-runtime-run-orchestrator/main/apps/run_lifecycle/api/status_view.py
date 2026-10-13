@@ -2,6 +2,7 @@
 
 2026-09-19 RIC 端請求:他們會在每次更新 RIC 元件前自動查,`running` 非空就不動。
 刻意不放在 /api/v0.1/... 底下,也不需要任何參數 —— 這是給外部維運腳本用的,越簡單越好。
+每筆 running 帶 no_ric(true = DT 內部測試,不碰 RIC)與 meids(這場在 RIC 端的 E2 node)。
 """
 from __future__ import annotations
 
@@ -47,6 +48,12 @@ def status(request):
             purpose = _purpose_of(t.get("run") or {})
         except Exception as exc:   # noqa: BLE001 — 查不到名字不該讓整個端點失敗
             logger.warning("status: scene_tree %s 失敗 %s", uid, exc)
+        # 2026-09-27 RIC 端請求:DT 內部回歸(no_ric)不起 e2adapter、不碰 RIC,
+        # 部署閘門只需擋 no_ric=false 的 run。判準:這場沒有任何 E2 node 身分。
+        meids = [n.get("meid") for n in (r.get("e2_nodes") or []) if isinstance(n, dict) and n.get("meid")]
+        if not meids and r.get("e2_node_id"):
+            meids = [r["e2_node_id"]]
         out.append({"scene_run_uuid": uid, "scene_name": name,
-                    "started_at": r.get("started_at"), "purpose": purpose})
+                    "started_at": r.get("started_at"), "purpose": purpose,
+                    "no_ric": not meids, "meids": meids})
     return JsonResponse({"running": out})

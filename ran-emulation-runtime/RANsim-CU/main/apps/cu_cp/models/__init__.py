@@ -28,3 +28,4 @@ __all__ = [
     "CellCumCounter",
     "UeContext",
 ]
+from main.apps.cu_cp.models.xn import XnNeighbourCell, XnPeer

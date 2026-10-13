@@ -62,6 +62,15 @@ def _bump_estab_counter(cell_id: str, *, att: int = 0, succ: int = 0) -> None:
         logger.exception("bump estab counter failed for %s", cell_id)
 
 
+def _refresh_neighbours() -> None:
+    """cell 有變:交易提交後再對鄰居 gNB 重做 Xn Setup(帶最新的 served cells)。"""
+    try:
+        from main.apps.cu_cp.services.business import xn
+        transaction.on_commit(xn.ensure_xn_setup)
+    except Exception:  # noqa: BLE001 — Xn 更新失敗不擋 F1
+        logger.exception("Xn served-cell update scheduling failed")
+
+
 def _resolve_ue_base(ue_id: str) -> int:
     """UE 的 base id(rrc_ue_id = ran_ue_ngap_id = base，amf_ue_ngap_id = base + 1）。
 
@@ -114,7 +123,8 @@ class F1ApRouterActor:
             gnb_du_id,
             defaults={
                 "du_uuid": du_uuid,
-                "name": f"DU#{gnb_du_id}",
+                "name": data.get("du_name") or f"DU#{gnb_du_id}",
+                "endpoint": (data.get("du_endpoint") or "").rstrip("/"),
                 "served_cells_json": cells,
                 "registered_at": now,
                 "last_seen_at": now,
@@ -153,7 +163,8 @@ class F1ApRouterActor:
             stale.delete()
             logger.info("F1 Setup cleared %d stale cells from DU#%s", deleted, gnb_du_id)
 
-        logger.info("F1 Setup accepted: DU#%s with %d cell(s)", gnb_du_id, len(cells))
+        logger.info("F1 Setup accepted: DU#%s (%s) with %d cell(s)", gnb_du_id,
+                    data.get("du_endpoint") or "env HTTP_DU_HOST", len(cells))
 
         # E2SM-ANR M0：cell 就緒後(重)建 intra-gNB 鄰區關係 + CGI 解析(冪等)。
         try:
@@ -161,6 +172,9 @@ class F1ApRouterActor:
             seed_from_cells()
         except Exception:  # noqa: BLE001 — 種子失敗不應擋 F1 Setup
             logger.exception("ANR seed on F1 Setup failed")
+
+        # 多 gNB:本 gNB 的 served cells 變了 → 重新對鄰居做 Xn Setup(= NG-RAN node Configuration Update)
+        _refresh_neighbours()
 
         resp = F1apHandler.build_f1_setup_response(transaction_id=gnb_du_id, accepted=True)
         return success_response(resp, "F1 Setup accepted", status=200)
@@ -208,6 +222,8 @@ class F1ApRouterActor:
                     "gnb_id": cell.get("gnb_id", ""),
                     "is_active": cell.get("is_active", True),
                     "tx_power_dbm": cell.get("tx_power_dbm"),
+                    # 多 gNB:3GPP NCI(gNB ID ‖ 本地 cell ID)隨 Configuration Update 帶上來
+                    "nr_cellid": cell.get("nr_cellid"),
                     "served_by_du_id": gnb_du_id,
                     "created_at": now,
                     "updated_at": now,
@@ -236,6 +252,8 @@ class F1ApRouterActor:
             except Exception:
                 logger.exception("ANR reseed on DU Config Update failed")
 
+        if to_add or to_delete or to_modify:
+            _refresh_neighbours()
         return success_response(
             {"accepted": True, "transaction_id": body.get("transaction_id", 0)},
             "config update accepted",
@@ -257,6 +275,19 @@ class F1ApRouterActor:
 
         ue_id = serializer.validated_data["ue_id"]
         rrc_msg_b64 = serializer.validated_data["rrc_msg_b64"]
+        # Initial UL RRC Message Transfer:UE 在哪個 cell / DU 接入(舊 UE driver 不帶 → 空)
+        init_cell = (serializer.validated_data.get("cell_id") or "").strip()
+        init_du = serializer.validated_data.get("gnb_du_id")
+        if serializer.validated_data.get("is_initial") and init_cell:
+            _c = CellConfig.objects.filter(cell_id=init_cell).first()
+            if _c is None:
+                return error_response(f"cell {init_cell} not served by this gNB", status=404)
+            # barred 或正在進入節能(toBeEnergySaving)的 cell 不收新接入 = RRC Reject(TS 38.331 §5.3.3.8);
+            # UE 端會改選下一顆 cell。以前只擋換手 / 重建,UE 第一次接入仍會進來,要靠節能背景重試再趕走。
+            from main.apps.cu_cp.services.common.fixture_state import admission_blocked
+            if admission_blocked(init_cell, bool(_c.is_barred)):
+                return error_response(f"cell {init_cell} not accepting access (barred / entering energy saving)",
+                                      status=409)
 
         try:
             decoded = RrcMessageHandler.decode(rrc_msg_b64)
@@ -273,12 +304,16 @@ class F1ApRouterActor:
             # base 由 _resolve_ue_base() 決定:UE_ID_FIXED_MAP(鎖表值)→ UE_ID_RANDOM(隨機)
             # → 預設 SHA-1(決定性穩定)。見該函式註解 + memory ue_id_hash_nondeterminism。
             base = _resolve_ue_base(ue_id)
+            # 多 gNB:RAN UE NGAP ID 由各 gNB 自己配(UE 換到別的 gNB 會變,介面 C9);
+            # AMF UE NGAP ID 仍是同一個規則(真 AMF 在 Initial Context Setup 時確認)。
+            from main.apps.cu_cp.services.business import xn as _xn
+            ran = _xn.ran_ue_ngap_id_for(ue_id) if _xn.self_gnb() is not None else base
             ue = SqlDbBusinessService.create_entity(UeContext, {
                 "ue_uuid": ue_uuid,
                 "ue_id": ue_id,
                 "rrc_state": "IDLE",
-                "rrc_ue_id": base,
-                "ran_ue_ngap_id": base,
+                "rrc_ue_id": ran,
+                "ran_ue_ngap_id": ran,
                 "amf_ue_ngap_id": base + 1,    # 跟 ran_ue_ngap_id 差 1 避免混淆
                 "created_at": now,
                 "updated_at": now,
@@ -287,7 +322,22 @@ class F1ApRouterActor:
         next_state = ue.rrc_state
         downstream = {}
 
+        if init_cell:
+            # UE 由此 cell 接入:服務 cell 與所在 DU 以 DU 的 Initial UL RRC 為準
+            cell_du = CellConfig.objects.filter(cell_id=init_cell).values_list("served_by_du_id", flat=True).first()
+            du_id = init_du if init_du is not None else cell_du
+            SqlDbBusinessService.update_entity(UeContext, "ue_id", ue_id, {
+                "serving_cell": init_cell, "gnb_du_id": du_id, "updated_at": now})
+            ue.serving_cell, ue.gnb_du_id = init_cell, du_id
+            from main.apps.cu_cp.services.business import ue_notify
+            ue_notify.path_update(ue_id, init_cell)
+
         if msg_type == RrcMessageType.SETUP_REQUEST:
+            # UE 以新的 RRC Setup Request 重新接入,本 CU 上舊 context 還停在 RELEASE(剛經 Xn 換走、
+            # 或釋放還沒收完)→ 視為新連線,先回 IDLE 再進 SETUP。以前直接 RELEASE → SETUP 丟例外回 500,
+            # UE 只能靠重試(單 CU 版就偶發;多 gNB 下 UE 在 gNB 間來回更常見)。
+            if ue.rrc_state == "RELEASE":
+                ue.rrc_state = RrcStateMachine.transition(ue.rrc_state, "IDLE")
             next_state = RrcStateMachine.transition(ue.rrc_state, "SETUP")
             setup_b64 = RrcMessageHandler.encode_rrc_setup(transaction_id=1)
             downstream = DuClientBusinessService.post_dl_rrc_message(
@@ -300,6 +350,10 @@ class F1ApRouterActor:
                 "ran_ue_ngap_id": ue.ran_ue_ngap_id,
                 "nas_pdu_b64": decoded.get("payload", {}).get("nas_pdu_b64", ""),
                 "selected_plmn": "00101",
+                # 真 AMF(多 gNB P5)要知道是哪個 gNB、哪個 UE(SUPI 的替身)、在哪個 cell
+                "gnb_id": int(get_str("GNB_ID_HEX", "0x000e00"), 16),
+                "ue_id": ue_id,
+                "cell_id": ue.serving_cell or "",
             }
             NgapHandler.push_initial_ue_message(ngap_payload)
             logger.info("UE %s reached CONNECTED; InitialUEMessage queued", ue_id)
@@ -343,6 +397,11 @@ class F1ApRouterActor:
         ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
         if ue is None:
             return error_response(f"unknown UE {ue_id}", status=404)
+        # 多 gNB:UE 已經換到別的 gNB(Xn 換手後本地 context 還在等對端的 UE Context Release),
+        # 舊 DU 還在路上的報告不能拿來做 ANR / A3 —— 那時的「服務 cell」已經不是本 gNB 的 cell,
+        # 會在本 gNB 的 NRT 寫出來源是別人 cell 的關係(2026-09-27 實測)。
+        if ue.rrc_state != "CONNECTED" or (ue.serving_cell and not CellConfig.objects.filter(cell_id=ue.serving_cell).exists()):
+            return success_response({"ue_id": ue_id, "processed": False}, "UE not served by this gNB (stale report)")
 
         # 先更新劇本時鐘,再往下做 A3 / RLF 判斷 —— 那些會建立事件,要蓋上「劇本第幾秒」
         from main.apps.cu_cp.services.optional import scene_clock
@@ -430,10 +489,10 @@ class F1ApRouterActor:
                         ue_id, verdict.elapsed_ms, ho["source_cell"], ho["target_cell"],
                     )
 
-        SqlDbBusinessService.update_entity(
-            UeContext, "ue_id", ue_id,
-            {"last_measurement_at": now, "updated_at": now},
-        )
+        # 用條件式更新:這份報告觸發的換手若把 UE 交給了別的 gNB(NG 換手會刪本地 context),
+        # 這裡找不到那一列是正常的。以前用 update_entity 會丟 DoesNotExist → 500 →
+        # 整個交易回滾,連剛寫的換手事件一起消失(2026-09-27 NG 換手實測)。
+        UeContext.objects.filter(ue_id=ue_id).update(last_measurement_at=now, updated_at=now)
 
         # ── 2026-08-25 移除 legacy A3 段 ──────────────────────────────
         # 這裡原本還有**第二段** A3:自己建 PREP 事件、直接改 serving_cell,

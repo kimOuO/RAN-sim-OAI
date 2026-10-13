@@ -95,6 +95,7 @@ class UeThread:
             "rrc_state": self.snapshot.rrc_state,
             "traffic_profile": self.snapshot.traffic_profile or {},
             "injected_sdu_count": self.traffic_gen.injected_sdu_count,
+            "traffic": self.traffic_gen.debug_state(),
             "last_synced_at_ms": self.snapshot.last_synced_at_ms,
             "position": {"x": self.position[0], "y": self.position[1], "z": self.position[2]},
         }

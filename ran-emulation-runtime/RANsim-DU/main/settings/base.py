@@ -17,7 +17,6 @@ INSTALLED_APPS = [
     "corsheaders",
     "main.apps.mac.apps.MacConfig",
     "main.apps.rlc.apps.RlcConfig",
-    "main.apps.phy_high.apps.PhyHighConfig",
     "main.apps.f1ap_du.apps.F1apDuConfig",
     "main.apps.fapi_north.apps.FapiNorthConfig",
     "main.apps.tick.apps.TickConfig",

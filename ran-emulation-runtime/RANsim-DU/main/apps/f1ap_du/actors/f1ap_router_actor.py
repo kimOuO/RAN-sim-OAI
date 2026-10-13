@@ -42,6 +42,18 @@ from main.utils.response import error_response, success_response
 logger = get_logger(__name__)
 
 
+
+def _release_local_ue(ue_id: str) -> None:
+    """拆掉本 DU 上這個 UE 的所有狀態(MAC、RLC、HARQ、PM、tick 註冊)。F1 UE Context Release 與被拒的接入共用。"""
+    UeMacState.objects.filter(ue_id=ue_id).delete()
+    RlcEntity.objects.filter(ue_id=ue_id).delete()
+    rlc_factory.unregister_ue(ue_id)
+    get_harq_manager().remove_ue(ue_id)
+    get_pm_aggregator().remove_ue(ue_id)
+    # AG10: 同步清 tick_runner in-memory _ue_registry, 跟其他層對稱
+    from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+    get_tick_runner().unregister_ue(ue_id)
+
 class F1ApRouterController:
 
     @staticmethod
@@ -189,15 +201,7 @@ class F1ApRouterController:
         if not ser.is_valid():
             return error_response("Validation failed", ser.errors, http_status=400)
         ue_id = ser.validated_data["ue_id"]
-
-        UeMacState.objects.filter(ue_id=ue_id).delete()
-        RlcEntity.objects.filter(ue_id=ue_id).delete()
-        rlc_factory.unregister_ue(ue_id)
-        get_harq_manager().remove_ue(ue_id)
-        get_pm_aggregator().remove_ue(ue_id)
-        # AG10: 同步清 tick_runner in-memory _ue_registry, 跟其他層對稱
-        from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
-        get_tick_runner().unregister_ue(ue_id)
+        _release_local_ue(ue_id)
         logger.info("UE context release ue=%s", ue_id)
         return success_response({"ue_id": ue_id}, "Released")
 
@@ -249,16 +253,42 @@ class F1ApRouterController:
         rrc_b64 = v["rrc_msg_b64"]
         is_initial = bool(v.get("is_initial", False))
 
+        cell_id = (v.get("cell_id") or "").strip()
+
+        # 多 gNB:UE 指定在某個 cell 接入 → 那個 cell 必須是本 DU 服務的
+        # (UE driver 依拓樸把 Msg3 送到 cell 所屬的 DU;送錯表示拓樸不一致,不可默默接下)
+        if is_initial and cell_id:
+            from main.apps.mac.models.cell_state import CellState
+            if not CellState.objects.filter(cell_id=cell_id).exists():
+                return error_response(f"cell {cell_id} is not served by this DU", http_status=404)
+
         # RA hook:initial PDU 把 RA state 推進到 MSG4_SENT
         ra_state_after = None
         if is_initial:
             advanced = get_ra_manager().advance(ue_id, "MSG4_SENT")
             ra_state_after = advanced.state if advanced else None
+            if cell_id:
+                # 真實 DU 在 Msg3 就建立 UE context(C-RNTI、服務 cell)—— UE 從此在本 DU 被排程與量測,
+                # 不必等 CU 的 UE Context Setup(那是配 DRB 用的)
+                ts = MacTs.now_ms()
+                uid_mac = MacUuid.generate_uuid("ue_mac", ue_id)
+                MacRelDb.upsert_entity(UeMacState, "ue_mac_uuid", uid_mac, {
+                    "ue_mac_uuid": uid_mac, "ue_id": ue_id, "serving_cell_id": cell_id,
+                    "ue_mac_created_at": ts, "ue_mac_updated_at": ts})
+                from main.apps.tick.services.optional.runner.tick_runner import get_tick_runner
+                get_tick_runner().update_ue_serving_cell(ue_id, cell_id)
+                if rlc_factory.lookup(ue_id, "SRB", 1) is None:
+                    rlc_factory.register(ue_id, "SRB", 1, rlc_factory.make_entity("AM"))
 
         try:
-            forwarded = UlRrcDispatcher.dispatch(ue_id, rrc_b64)
+            forwarded = UlRrcDispatcher.dispatch(ue_id, rrc_b64, is_initial=is_initial, cell_id=cell_id)
         except (ValueError, TypeError) as e:
             return error_response(f"Bad rrc_msg_b64: {e}", http_status=400)
+        if is_initial and cell_id and not forwarded:
+            # CU 沒收下這個接入(例:cell 正在進入節能,等同 RRC Reject)或 CU 不通 → 剛在 Msg3 建的
+            # UE context 要拆掉,否則 UE 沒接上 CU、DU 卻還在排程它
+            _release_local_ue(ue_id)
+            logger.info("UE %s initial access at %s not accepted by CU → local context released", ue_id, cell_id)
 
         return success_response(
             {

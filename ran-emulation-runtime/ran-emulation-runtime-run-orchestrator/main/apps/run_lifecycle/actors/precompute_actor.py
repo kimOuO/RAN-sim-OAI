@@ -31,7 +31,7 @@ def _watch(scene_run_uuid: str, scenario_id: str) -> None:
             ok = st.get("exit_code") == 0 and st.get("done")
             cache_path = f"{CACHE_DIR_IN_CONTAINER}/{scenario_id}.npz"
             try:
-                platform_clients.update_scene_run(scene_run_uuid, status="ready" if ok else "failed", cache_path=cache_path if ok else "",
+                platform_clients.update_scene_run(scene_run_uuid, status="idle", cache_path=cache_path if ok else "",
                                                   notes=("precompute ok" if ok else f"precompute failed exit={st.get('exit_code')}: {' | '.join(st.get('last_lines') or [])[:400]}"))
             except Exception:  # noqa: BLE001
                 logger.exception("precompute result write-back failed %s", scene_run_uuid)
@@ -99,7 +99,7 @@ class PrecomputeController:
             return error_response("Validation failed", {"scene_run_uuid": "required"}, 400)
         res = container_spawner.stop_precompute(run_uuid)
         try:
-            platform_clients.update_scene_run(run_uuid, status="pending", notes="precompute stopped")
+            platform_clients.update_scene_run(run_uuid, status="idle", notes="precompute stopped")
         except Exception:  # noqa: BLE001
             pass
         return success_response({"scene_run_uuid": run_uuid, "container": res}, "precompute stopped", 200)

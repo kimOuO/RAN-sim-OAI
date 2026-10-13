@@ -99,7 +99,7 @@ class SessionControllerActor:
                         serving_cell_id=ue.serving_cell,
                     ),
                 )
-                DuClientBusinessService.post_tick_start()
+                DuClientBusinessService.post_tick_start(ue_id)
                 logger.info(
                     "UE %s DU auto-ready via F1AP UeCtxSetup (drbs=%s, cell=%s)",
                     ue_id, [d["drb_id"] for d in drbs], ue.serving_cell,
@@ -160,7 +160,7 @@ class SessionControllerActor:
         # 補位」的第四條路徑 —— RRC 重建、A3/xApp 換手、IDLE 選網三道閘都接了,
         # 這裡沒接就能把 UE 直接寫進 barred cell(2026-08-28 Q4 第九十一輪 RIC 指認)。
         from main.apps.cu_cp.models.cell_config import CellConfig as _CC
-        from main.apps.cu_cp.services.common.fixture_state import is_cell_barred as _icb
+        from main.apps.cu_cp.services.common.fixture_state import admission_blocked as _icb
         _row = _CC.objects.filter(cell_id=target_cell).first()
         if _icb(target_cell, bool(_row and _row.is_barred)):
             return error_response(f"cell {target_cell} is barred (TS 38.304)", status=409)
@@ -172,6 +172,16 @@ class SessionControllerActor:
         # 357 筆裡有 35 筆是這樣來的,RIC 端獨立估算 314 才對)。換手表只放真的換手。
         src = ue.serving_cell or ""
         is_handover = bool(src) and src != target_cell
+        if is_handover:
+            # 跨 DU 的換手要走完整的 F1 流程(目標 DU 建 context、來源 DU 釋放),交給共用執行器
+            from main.apps.cu_cp.services.business.du_client_operations import du_of_cell, du_of_ue
+            _sd, _td = du_of_ue(ue_id), du_of_cell(target_cell)
+            if _sd is not None and _td is not None and _sd != _td:
+                from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+                ho = execute_f1_handover(ue_id=ue_id, target_cell=target_cell, trigger="MANUAL") or {}
+                if ho.get("failed"):
+                    return error_response(f"handover failed: {ho.get('failure_cause')}", ho, status=409)
+                return success_response({"ho_uuid": ho.get("ho_uuid", ""), "ue_id": ue_id, "target_cell": target_cell})
         ho_uuid = UUIDService.random_uuid() if is_handover else ""
         if is_handover:
             SqlDbBusinessService.create_entity(HandoverEvent, {
@@ -190,10 +200,14 @@ class SessionControllerActor:
         DuClientBusinessService.post_ue_context_modification(
             F1apHandler.build_ue_context_modification(ue_id, target_cell),
         )
+        from main.apps.cu_cp.services.business.du_client_operations import du_of_cell
+        _tdu = du_of_cell(target_cell)
         SqlDbBusinessService.update_entity(
             UeContext, "ue_id", ue_id,
-            {"serving_cell": target_cell, "updated_at": now},
+            {"serving_cell": target_cell, "gnb_du_id": _tdu if _tdu is not None else ue.gnb_du_id, "updated_at": now},
         )
+        from main.apps.cu_cp.services.business import ue_notify
+        ue_notify.path_update(ue_id, target_cell)
         return success_response({"ho_uuid": ho_uuid, "ue_id": ue_id, "target_cell": target_cell})
 
     @staticmethod
@@ -225,6 +239,9 @@ class SessionControllerActor:
             DuClientBusinessService.post_ue_context_release({"ue_id": ue_id})
         except Exception as exc:  # noqa: BLE001 — DU 清不掉不該擋 CU 側標 IDLE
             logger.warning("release_ue DU fan-out failed ue=%s: %r(繼續)", ue_id, exc)
+        # 多 gNB P5:UE 進 IDLE → 通知 AMF(沒有真 AMF 時不送)
+        from main.apps.cu_cp.services.business import amf_client
+        amf_client.release_ue(ue.amf_ue_ngap_id)
         try:
             from main.apps.cu_up.models.drb import Drb
             Drb.objects.filter(ue_id=ue_id).update(dl_packets=0, ul_packets=0)

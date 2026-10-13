@@ -36,7 +36,11 @@ class SqlDbBusinessService:
         instance = model_class.objects.get(**{lookup_field: lookup_value})
         for k, v in update_data.items():
             setattr(instance, k, v)
-        instance.save()
+        # 2026-09-27:只寫這次要改的欄位。以前 save() 寫回整列 —— 同一個 UE 的量測報告、
+        # 流量設定、換手、AMF 的 Initial Context Setup 同時在寫時,後存的一方會用它讀到的
+        # 舊值蓋掉別人剛寫的欄位(實測:UE 的 traffic profile 被蓋回 {} 整場沒流量;
+        # serving cell 被蓋回舊值,CU 與 DU 認知不同 → 每秒一次假 RLF)。
+        instance.save(update_fields=list(update_data.keys()))
         return instance
 
     @staticmethod

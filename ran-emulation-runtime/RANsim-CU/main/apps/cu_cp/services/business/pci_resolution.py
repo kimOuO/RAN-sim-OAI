@@ -89,6 +89,9 @@ def observe(serving_cell: str, neighbors: list[dict]) -> int:
     """
     if not serving_cell or not neighbors:
         return 0
+    # 只為本 gNB 的 cell 建鄰區關係(NRT 屬於 cell 所在的 gNB)
+    if not CellConfig.objects.filter(cell_id=serving_cell).exists():
+        return 0
     cap = get_int("ANR_NRT_CAPACITY", 32)
     used = NrCellRelation.objects.filter(source_cell_id=serving_cell).count()
     now = TimestampService.now()
@@ -122,8 +125,14 @@ def observe(serving_cell: str, neighbors: list[dict]) -> int:
 
         tgt = CellConfig.objects.filter(cell_id=truth).first()
         if tgt is None:
-            _audit(oid, "fail", "", "", f"{verdict};解析出的 cell 不在 CellConfig")
-            continue
+            # 多 gNB:解析出的可能是 Xn 鄰居 gNB 的 cell(Xn Setup 交換過 served cells)
+            from main.apps.cu_cp.services.business import xn as _xn
+            _f = _xn.foreign_cell(truth)
+            if _f is None:
+                _audit(oid, "fail", "", "", f"{verdict};解析出的 cell 不在本 gNB,也不在 Xn 鄰居")
+                continue
+            from types import SimpleNamespace
+            tgt = SimpleNamespace(pci=_f.pci, served_plmn=_f.plmn)
         # 2026-09-23:ANR 自主建立關閉時,解析出 CGI 也**不寫 NRT**(交給 xApp / 管理面決定)。
         # 以前這條路沒受 ANR_AUTO_ADD 管:anr_auto_add=0 的場次,外部 Agent 經 I-3 remove 一條
         # 關係,2.5 s 後這裡就自己加回去 —— 對方注入的題目被我方自主行為蓋掉。

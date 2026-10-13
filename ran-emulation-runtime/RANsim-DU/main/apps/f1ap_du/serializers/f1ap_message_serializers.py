@@ -43,3 +43,5 @@ class UlRrcInjectSerializer(serializers.Serializer):
     ue_id = serializers.CharField(max_length=64)
     rrc_msg_b64 = serializers.CharField(min_length=1)
     is_initial = serializers.BooleanField(required=False, default=False)
+    # 多 gNB:UE 在哪個 cell 做隨機接入(= Initial UL RRC 的 NR CGI)。空 = 舊的 UE driver。
+    cell_id = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")

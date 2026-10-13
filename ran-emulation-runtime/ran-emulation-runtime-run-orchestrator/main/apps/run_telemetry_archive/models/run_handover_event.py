@@ -18,6 +18,9 @@ class RunHandoverEvent(models.Model):
     target_cell = models.CharField(max_length=128)
     outcome = models.CharField(max_length=16, default='success')
     detail = models.JSONField(null=True, blank=True)
+    # 多 gNB(2026-09-27,介面 C14):事件來自哪個 gNB(= RIC 的 nodeId)與它的 E2 node(meid)。舊資料空字串。
+    node_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    meid = models.CharField(max_length=64, blank=True, default="")
     run_handover_event_created_at = models.DateTimeField()
     run_handover_event_updated_at = models.DateTimeField()
 

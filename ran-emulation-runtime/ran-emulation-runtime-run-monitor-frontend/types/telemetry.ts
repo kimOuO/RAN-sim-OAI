@@ -1,7 +1,8 @@
 /** registry / orchestrator / DU / UE / E2Adapter 的 DTO(對齊後端欄位) */
 export interface SceneRun {
   scene_run_uuid: string; mode: 'live' | 'cached'; speed_x: number; sim_dt_ms: number; duration_sec: number;
-  status: string; cache_path: string; e2_node_id: string; started_at: string | null; stopped_at: string | null; notes: string; f_scene_uuid: string;
+  /** 2026-09-28:idle / precomputing / running;上一次結果另存 last_result */
+  status: string; last_result?: string; cache_path: string; e2_node_id: string; started_at: string | null; stopped_at: string | null; notes: string; f_scene_uuid: string;
 }
 export interface Scene { scene_uuid: string; name: string; legacy_scenario_id: string; }
 /** registry read_full_tree 的子集:只要 gNB → cell 名稱對應 */
@@ -32,7 +33,8 @@ export interface Series { key: string; label: string; color: string; points: Pt[
 export interface RicObservedBy { name: string; phase: string; ready: boolean; podIP?: string; }
 export interface RicNode { meid: string; e2ConnectionStatus?: string; subscriptionCount?: number | null; degraded?: string[]; view?: { xappName?: string; observedBy?: RicObservedBy[]; state?: string } | null; }
 export interface RicObservation { scene_run_uuid: string; gateway: boolean; scenario: { xappName?: string; profile?: string; isolation?: string; state?: string; ranFunctions?: number[]; connectedNodes?: number; controlPolicy?: { allowedStyles?: string[]; allowWrite?: boolean }; error?: string } | null; nodes: Record<string, RicNode>; }
-export interface RunInstance { run_instance_uuid: string; role: 'cu' | 'du' | 'ru' | 'ue' | 'e2adapter'; container_id: string; host_port: number | null; status: string; last_heartbeat: string | null; health_detail?: string; f_scene_run_uuid: string; }
+/** 多 gNB(2026-09-27):同一角色可有多個實例(cu / du / e2adapter 每個 gNB / DU 一個);name 是容器名,e2_node_id 是所屬 E2 node */
+export interface RunInstance { run_instance_uuid: string; role: 'amf' | 'cu' | 'du' | 'ru' | 'ue' | 'e2adapter'; name?: string; gnb_uuid?: string | null; du_uuid?: string | null; e2_node_id?: string; container_id: string; host_port: number | null; status: string; last_heartbeat: string | null; health_detail?: string; f_scene_run_uuid: string; }
 /** 3D 畫面用的完整場景樹(read_full_tree):位置 Y-up、公尺;UE 路徑點 [t, x, y, z] */
 export interface Cell3d { cell_uuid: string; name: string; pci: number; position: number[] | null; azimuth_deg: number; tilt_deg: number; is_active: boolean; }
 export interface Gnb3d { gnb_uuid: string; name: string; position: number[]; dus: { cells: Cell3d[] }[]; }

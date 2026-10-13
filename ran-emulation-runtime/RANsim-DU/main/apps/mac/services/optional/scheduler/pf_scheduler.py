@@ -15,9 +15,9 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from main.apps.mac.services.optional.link_adaptation import eesm, nr_resources
+from main.apps.mac.services.optional.link_adaptation import bler_curve, eesm, nr_resources
 from main.apps.mac.services.optional.link_adaptation.mcs_table import (
-    TDD_DL_SLOT_RATIO,
+    spectral_efficiency,
     mcs_to_throughput_mbps,
     sinr_to_mcs,
 )
@@ -124,16 +124,12 @@ class PfScheduler:
             )
             retx_eff = 1.0   # 1 = 不打折(舊行為)
             if _SCHED_MCS_CONSISTENT:
-                # 操作點 MCS:挑首傳 BLER≤10% 的最高 MCS(跟 slot 引擎同源,真實鏈路可達)
-                from main.apps.mac.services.optional.slot_engine.slot_loop import (
-                    _eff_for_mcs, _mcs_at_op_point,
-                )
-                mcs = _mcs_at_op_point(sinr_eff, 0.1)
-                bps_re = _eff_for_mcs(mcs)
+                # 操作點 MCS:挑首傳 BLER≤10% 的最高 MCS(跟 slot 引擎同一條 OAI 曲線)
+                mcs = bler_curve.op_point_mcs(sinr_eff)
+                bps_re = spectral_efficiency(mcs)
                 if _SCHED_RETX_AWARE:
                     # 用 slot 引擎同一個 BLER:期望需傳 1/(1-BLER) 次才成功 → 容量 ×(1-BLER)
-                    from main.apps.mac.services.optional.slot_engine.bler_table import bler
-                    b = bler(mcs, sinr_eff)
+                    b = bler_curve.bler(mcs, sinr_eff)
                     retx_eff = max(0.05, 1.0 - float(b))
             else:
                 mcs, bps_re = sinr_to_mcs(sinr_eff)
@@ -148,7 +144,7 @@ class PfScheduler:
                 # buffer 空 — 不需 PRB. tick_runner 已先 filter, 防禦性處理.
                 prb_needed[uid] = 1
             elif bps_re <= 0:
-                # MCS 0 (SINR < -6 dB) — bps_re=0, 給 1 PRB 試送
+                # 連 MCS 0 都送不出去(有效頻譜效率 0)— 給 1 PRB 試送
                 prb_needed[uid] = 1
             else:
                 # 直接 float 計算, 不走 mcs_to_throughput_mbps() 避免 int() 截 0。

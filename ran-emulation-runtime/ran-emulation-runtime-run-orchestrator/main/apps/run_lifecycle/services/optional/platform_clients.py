@@ -100,8 +100,11 @@ def ue_stop(host: str | None = None) -> dict:
 
 
 # run_instance(registry Simulation_run):每個 per-run 容器一列
-def create_run_instance(scene_run_uuid: str, role: str, container_id: str, host_port: int, status: str = "starting") -> dict:
-    return _registry("Simulation_run/RunInstanceController/create", {"f_scene_run_uuid": scene_run_uuid, "role": role, "container_id": container_id, "host_port": host_port, "status": status})
+def create_run_instance(scene_run_uuid: str, role: str, container_id: str, host_port: int, status: str = "starting",
+                        **extra) -> dict:
+    """extra:多 gNB 的實例資訊 —— name(容器名)、f_gnb_uuid、f_du_uuid、e2_node_id(registry P1 新欄位)。"""
+    return _registry("Simulation_run/RunInstanceController/create", {"f_scene_run_uuid": scene_run_uuid, "role": role, "container_id": container_id, "host_port": host_port, "status": status,
+                                                                     **{k: v for k, v in extra.items() if v not in (None, "")}})
 
 
 def update_run_instance(run_instance_uuid: str, **fields) -> dict:
@@ -204,6 +207,47 @@ def ric_register_scenario(scene_run_uuid: str, scene_name: str, meid: str, ran_f
     return gw
 
 
+def ric_register_scenario_nodes(scene_run_uuid: str, scene_name: str, nodes: list[dict], ran_functions: list[int] | None = None,
+                                profile: str | None = None, purpose: str = "") -> dict | None:
+    """多 gNB(計畫 D4):一場宣告 N 個 node,每個 gNB 一筆
+    {nodeId: registry gNB 名稱, meid, plmnId, nbIdBits}。必須在任何 e2adapter 做 E2 Setup 之前呼叫 ——
+    否則 RIC 常駐 xApp 會先接手還沒綁定的 meid。409 meid-already-bound 的處理與單 node 相同(逐 meid)。"""
+    labels = {"scene_name": scene_name}
+    if purpose:
+        labels["purpose"] = purpose
+    body = {"scenarioId": scene_run_uuid, "labels": labels, "profile": profile or settings.RIC_GATEWAY_PROFILE,
+            "nodes": nodes, "ranFunctions": ran_functions or [2, 3, 4, 5, 6],
+            "controlPolicy": {"allowedStyles": list(getattr(settings, "RIC_GATEWAY_ALLOWED_STYLES", None) or ["rc-reportcgi", "anr-add"]),
+                              "allowWrite": True},
+            "cleanStale": True}
+    gw = _gw("/v1/scenarios", body)
+    if isinstance(gw, dict) and gw.get("error") == 409 and "meid-already-bound" in str(gw.get("body", "")):
+        meids = {n.get("meid") for n in nodes}
+        stale = [sc.get("scenarioId") for sc in (_gw("/v1/scenarios", None, method="GET", timeout=20.0) or [])
+                 if isinstance(sc, dict) and sc.get("scenarioId") != scene_run_uuid
+                 and any((n or {}).get("meid") in meids for n in (sc.get("nodes") or {}).values())]
+        for sid in stale:
+            logger.warning("RIC gateway meid 被舊場景 %s 佔住 → DELETE 後重試登記", sid)
+            _gw(f"/v1/scenarios/{sid}", None, method="DELETE", timeout=30.0)
+        if stale:
+            gw = _gw("/v1/scenarios", body)
+    return gw
+
+
+def ric_register_nodes_with_retry(*args, attempts: int = 8, every_sec: float = 5.0, **kwargs) -> dict | None:
+    import time as _t
+    gw = None
+    for i in range(max(1, attempts)):
+        gw = ric_register_scenario_nodes(*args, **kwargs)
+        if gw and not (isinstance(gw, dict) and gw.get("error")):
+            return gw
+        if i + 1 < attempts:
+            logger.warning("RIC gateway 宣告失敗(%d/%d):%s —— %.0fs 後重試", i + 1, attempts,
+                           (gw or {}).get("error") if isinstance(gw, dict) else gw, every_sec)
+            _t.sleep(every_sec)
+    return gw
+
+
 def ric_gateway_alive(timeout: float = 5.0) -> bool:
     """RIC 場景閘道現在問得到嗎。I-3 觸發前先探:閘道換版的空窗裡起的場次會變成
     scenario=none(2026-09-22 12:28 實際發生),資料對 Agent 沒有用,不如直接拒絕。"""
@@ -237,11 +281,51 @@ def ric_deactivate_scenario(scene_run_uuid: str) -> dict | None:
     return _gw(f"/v1/scenarios/{scene_run_uuid}/deactivate", {}, timeout=30.0)
 
 
+def _dt_nodes_subscribed(scene_run_uuid: str) -> bool:
+    """這場每個 gNB 的 CU 都已有至少一筆 active E2 訂閱(= RIC 的訂閱真的到了 RAN)。查不到拓樸就不擋。"""
+    from main.apps.run_lifecycle.services.optional import container_spawner
+    try:
+        topo = container_spawner.topology_of(scene_run_uuid)
+    except Exception:  # noqa: BLE001
+        topo = None
+    if topo is None or not topo.gnbs:
+        return True
+    for g in topo.gnbs:
+        try:
+            req = urllib.request.Request(f"{g.cu_url}/api/v0.1/CU/E2/Subscription/list", data=b"{}",
+                                         headers={"content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                body = json.loads(r.read().decode() or "{}")
+            if int((body.get("data") or {}).get("count") or 0) < 1:
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+    return True
+
+
 def ric_activate_when_ready(scene_run_uuid: str, timeout_sec: float = 180.0, every_sec: float = 5.0) -> dict | None:
     """等 CU 的 E2 Setup 完成再啟用:409(gNB 還沒 CONNECTED)就每 every_sec 秒重試,直到成功或逾時。"""
     import time as _time
     deadline = _time.time() + timeout_sec
     res = None
+    # 計畫 D4:全部 node CONNECTED **且每個 meid 都已有 xApp 訂閱**才 activate —— 只看 CONNECTED 的話,
+    # 最後一個 node 剛連上、xApp 還沒來得及訂閱,activate 會帶 "has no E2 subscription" 警告(2026-09-27 run 4 實測)。
+    # 2026-09-28:閘道的 subscriptionCount 含 RIC 常駐 mobiflow 對每個 meid 的訂閱,幾乎一連上就 > 0,
+    # 擋不住「場景 xApp 的訂閱還沒真的到 RAN」(容量測試 cap_03:e81/e82 的訂閱晚 75 s)。另外要求 DT 端
+    # 每個 CU 都已收到 KPM 訂閱(三種訂閱中最後到的那筆,存在 CU 的訂閱表)。
+    # 最多等到逾時前 20 s;等不到仍照舊 activate(警告照樣記),不讓場景卡在 declared。
+    sub_deadline = _time.time() + max(timeout_sec - 20.0, timeout_sec / 2)
+    while _time.time() < sub_deadline:
+        view = ric_scenario_view(scene_run_uuid)
+        nodes = (view or {}).get("nodes") if isinstance(view, dict) else None
+        if isinstance(nodes, dict) and nodes and all(
+                str((n or {}).get("e2ConnectionStatus") or "").upper() == "CONNECTED"
+                and int((n or {}).get("subscriptionCount") or 0) > 0 for n in nodes.values()) \
+                and _dt_nodes_subscribed(scene_run_uuid):
+            break
+        _time.sleep(every_sec)
+    else:
+        logger.warning("RIC gateway activate %s:等訂閱逾時,照舊 activate", scene_run_uuid)
     while _time.time() < deadline:
         res = ric_activate_scenario(scene_run_uuid)
         if isinstance(res, dict) and not res.get("error"):

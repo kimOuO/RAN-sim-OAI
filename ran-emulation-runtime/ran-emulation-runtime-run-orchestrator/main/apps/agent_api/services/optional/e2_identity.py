@@ -1,80 +1,63 @@
-"""場域的 E2 識別 —— gNB ID / E2 node 名(meid)/ 每個 cell 的 NR Cell Identity。
+"""場域的 E2 識別 —— 每個 gNB 一個 E2 node(多 gNB 改版,介面 C13)。
 
 為什麼要能「在啟動前算出來」:外部 Agent 讀完場域配置後,會依這些識別**部署 xApp 到 RIC**
 (E2 訂閱與 RICcontrolRequest 都用 meid + NCI 定位)。識別若要等啟動才確定,xApp 就訂不到。
-場景的 `e2_slot` 把槽位釘住,這裡就能事先推導出與執行期完全相同的值。
+場景的 `e2_block` 把區塊釘住,這裡就能事先推導出與執行期完全相同的值。
 
-槽位 → gNB ID → E2 node 名沿用 container_spawner(同一份,不重複實作)。
-NCI 這條規則目前散在三處,任何一處改動三處都要一起改:
-    - e2adapter  e2ap_codec._hash_nr_cell_id     (送 E2 的值)
-    - CU         e2_control_actor.compute_nr_cell_id(解析 control target 的值)
-    - 本檔                                        (對外宣告的值)
-三者不一致的後果是 xApp 下的 control 打不中 cell(F1 送 NCI_A、CU 算 NCI_B 那類事故),
-所以 tests/ 有一個把已知常數釘死的回歸測試。
+規則只有一份:ran_sim_protocol.run_topology(內部用 e2_identity)。orchestrator 開場組拓樸、
+CU / DU / UE / e2adapter 執行期查的都是它 —— 這裡直接呼叫同一個 build_from_tree,不另寫推導。
 """
 from __future__ import annotations
 
-import hashlib
+from typing import Any
 
-from main.apps.run_lifecycle.services.optional.container_spawner import (
-    GNB_ID_SLOTS,
-    e2_node_name,
-    gnb_id_hex_for_slot,
-)
+from ran_sim_protocol import e2_identity as ident
+from ran_sim_protocol.cell_tag import TAG_SEP, strip_tag, tag_cell  # noqa: F401 — 其他模組由此取用
+from ran_sim_protocol.run_topology import build_from_tree
 
-NCI_BITS = 36
-TAG_SEP = ":"
+# 只用來算識別,不會真的起容器;run id 影響的只有主機名,不出現在回傳裡
+_PREVIEW_RUN = "agent-preview-000000000000"
 
 
-def cell_tag_for(gnb_id_hex: str) -> str:
-    """gNB ID → cell 標籤(低 12 bit),例 0x000e01 → "e01"(與 cell_tag.tag_cell 同源)。"""
-    return f"{int(gnb_id_hex, 16) & 0xfff:03x}"
+def field_e2_identities(tree: dict, block: int) -> list[dict[str, Any]]:
+    """場域在區塊 `block` 下每個 gNB 的 E2 識別(I-1 / I-2 的 e2_identities[])。
 
-
-def tag_cell(tag: str, name: str) -> str:
-    if not tag or not name or TAG_SEP in name:
-        return name
-    return f"{tag}{TAG_SEP}{name}"
-
-
-def nr_cell_identity(cell_id: str, explicit: int | None = None) -> int:
-    """36-bit NR Cell Identity。有 explicit 用 explicit,否則 SHA-1 前 5 byte 截 36 bit。"""
-    mask = (1 << NCI_BITS) - 1
-    if explicit is not None:
-        return int(explicit) & mask
-    h = hashlib.sha1((cell_id or "").encode("utf-8")).digest()
-    return int.from_bytes(h[:5], "big") & mask
-
-
-def field_e2_identity(slot: int, cell_names: list[str], *, mcc: str = "208", mnc: str = "95",
-                      explicit_nci: dict[str, int] | None = None) -> dict:
-    """場域的完整 E2 識別,給 Agent 介面 I-2 / I-3 回報。
-
-    cell_names 是 registry 的 cell 名稱(未加標籤);回傳每個 cell 對外的
-    cell_id(含槽位標籤)與 NCI —— xApp 訂閱與下令要用的就是這兩個。
+    每個 cell 帶:registry 名稱(name)、執行期名稱(cell_id,帶 gNB 前綴)、所屬 E2 node(ran_name)、
+    NCI(整數與十六進位)、ncgi(D2 固定格式)。
     """
-    if not 1 <= int(slot) <= GNB_ID_SLOTS:
-        raise ValueError(f"e2_slot 必須在 1~{GNB_ID_SLOTS},拿到 {slot}")
-    gnb_id_hex = gnb_id_hex_for_slot(int(slot))
-    tag = cell_tag_for(gnb_id_hex)
-    plmn = f"{mcc}{str(mnc).zfill(3)}"
-    cells = []
-    for name in cell_names:
-        cid = tag_cell(tag, name)
-        nci = nr_cell_identity(cid, (explicit_nci or {}).get(name))
-        cells.append({
-            "name": name,
-            "cell_id": cid,
-            "nr_cell_identity": nci,
-            "nr_cell_identity_hex": f"0x{nci:09x}",
-            "ncgi": f"{plmn}-{nci:09x}",
+    if not ident.BLOCK_MIN <= int(block) <= ident.BLOCK_MAX:
+        raise ValueError(f"e2_block 必須在 {ident.BLOCK_MIN}~{ident.BLOCK_MAX},拿到 {block}")
+    topo = build_from_tree(tree, run_uuid=_PREVIEW_RUN, block=int(block), e2_port_base=0)
+    out = []
+    for g in topo.gnbs:
+        out.append({
+            "node_id": g.name,
+            "e2_index": g.e2_index,
+            "slot": ident.slot_for(int(block), g.e2_index),
+            "gnb_id": g.gnb_id_hex,
+            "gnb_id_int": g.gnb_id,
+            "gnb_id_bits": g.gnb_id_bits,
+            "e2_node_id": g.meid,
+            "meid": g.meid,
+            "plmn": {"mcc": g.mcc, "mnc": g.mnc.zfill(3), "bcd": g.plmn_bcd},
+            "cell_tag": g.cell_tag,
+            "cells": [{
+                "name": c.name,
+                "cell_id": c.cell_id,
+                "ran_name": g.meid,
+                "nr_cell_identity": c.nci,
+                "nr_cell_identity_hex": f"0x{c.nci:09x}",
+                "ncgi": c.ncgi,
+                "local_cell_id": c.local_cell_id,
+            } for d in g.dus for c in d.cells],
         })
-    return {
-        "slot": int(slot),
-        "gnb_id": gnb_id_hex,
-        "gnb_id_int": int(gnb_id_hex, 16),
-        "e2_node_id": e2_node_name(gnb_id_hex, mcc, mnc),
-        "plmn": {"mcc": mcc, "mnc": str(mnc).zfill(3)},
-        "cell_tag": tag,
-        "cells": cells,
-    }
+    return out
+
+
+def cells_by_name(identities: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """registry cell 名稱 → cell 識別(附所屬 node)。名稱在場域內重複時取第一個出現的。"""
+    out: dict[str, dict[str, Any]] = {}
+    for n in identities:
+        for c in n["cells"]:
+            out.setdefault(c["name"], {**c, "node_id": n["node_id"], "meid": n["meid"], "gnb_id": n["gnb_id"]})
+    return out

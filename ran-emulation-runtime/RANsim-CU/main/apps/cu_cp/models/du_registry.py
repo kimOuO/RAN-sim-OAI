@@ -14,6 +14,9 @@ class DuRegistry(models.Model):
     gnb_du_id = models.BigIntegerField(unique=True, db_index=True)
     name = models.CharField(max_length=255, blank=True, default="")
     served_cells_json = models.JSONField(default=list)
+    # 多 gNB(2026-09-27):DU 的 F1 端點(F1 Setup 帶上來)。一個 CU 接多個 DU 時,
+    # UE Context Setup / Modification / Release、DL RRC 都依 UE 或 cell 所在的 DU 送到這裡。
+    endpoint = models.CharField(max_length=255, blank=True, default="")
 
     registered_at = models.DateTimeField()
     last_seen_at = models.DateTimeField()

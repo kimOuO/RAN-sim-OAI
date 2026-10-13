@@ -9,7 +9,6 @@ from main.services_logs.log_actor import LogActor
 urlpatterns = [
     path("api/v0.1/DU/MAC/", include("main.apps.mac.api.urls")),
     path("api/v0.1/DU/RLC/", include("main.apps.rlc.api.urls")),
-    path("api/v0.1/DU/PHY/", include("main.apps.phy_high.api.urls")),
     path("api/v0.1/DU/F1AP/", include("main.apps.f1ap_du.api.urls")),
     path("api/v0.1/DU/FAPI/", include("main.apps.fapi_north.api.urls")),
     path("api/v0.1/DU/Tick/", include("main.apps.tick.api.urls")),

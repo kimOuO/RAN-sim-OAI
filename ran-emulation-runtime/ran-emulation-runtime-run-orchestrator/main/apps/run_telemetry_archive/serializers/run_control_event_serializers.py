@@ -13,4 +13,4 @@ class RunControlEventWriteSerializer(serializers.ModelSerializer):
 class RunControlEventReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = RunControlEvent
-        fields = ['id', 'run_control_event_uuid', 'run_seq', 'ric_run', 'f_scene_run_uuid', 'at_sim_ms', 'source', 'action_type', 'target', 'outcome', 'landing_latency_ms', 'detail', 'run_control_event_created_at', 'run_control_event_updated_at']
+        fields = ['id', 'run_control_event_uuid', 'run_seq', 'ric_run', 'f_scene_run_uuid', 'at_sim_ms', 'source', 'action_type', 'target', 'outcome', 'landing_latency_ms', 'detail', 'node_id', 'meid', 'run_control_event_created_at', 'run_control_event_updated_at']

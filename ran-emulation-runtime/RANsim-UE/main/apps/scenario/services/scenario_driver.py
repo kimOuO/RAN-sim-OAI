@@ -259,6 +259,10 @@ class ScenarioDriver:
 
         self._apply_scene_to_backend()
 
+        # Step 1d(多 gNB)— 等每個 CU 都認得自己 gNB 的所有 cell 再接入。DU 的 F1 Setup 若比 CU 早,
+        # 會隔幾秒重試;cell 還沒到 CU 就送 Initial UL RRC 會被拒,那個 UE 整場沒有服務(2026-09-27 雙 DU 實測)。
+        self._wait_cells_ready()
+
         # Step 2 — Setup: 確保 CU 有 traffic_profile 對應的 UE session,RLC entity 建好。
         # (Dashboard Start Sim 通常會做這事;driver 直接被叫時自己保險一次。)
         self._setup_rlc_entities()
@@ -296,18 +300,37 @@ class ScenarioDriver:
 
         # Step 2c — A3 自動換手開關 → 啟動套用(always-send 防上一場殘留)。
         # 劇本 a3_enabled None = 用預設關(CCO 等 RC 手動換手不被 A3 彈回);劇本要自動 A3 設 true。
-        a3_on = bool(self.scenario.a3_enabled) if self.scenario.a3_enabled is not None else False
-        try:
-            ok = cu_client.set_a3(
-                a3_on,
-                offset_db=self.scenario.a3_offset_db,
-                hys_db=self.scenario.a3_hys_db,
-                ttt_ms=self.scenario.a3_ttt_ms,
-            )
-            logger.info("scenario %s set A3 enabled=%s: ok=%s",
-                        self.scenario.scenario_id, a3_on, ok)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("set_a3 failed: %s", e)
+        # 多 gNB(計畫 D5):每個 gNB 的 A3 各自設在自己的 CU;舊模式全場一組(取第一個 gNB)。
+        from main.apps.ue_lifecycle.services import ran_endpoints
+        _topo = ran_endpoints.topology()
+        if _topo is not None:
+            for g in self.scenario.gnbs:
+                tg = _topo.gnb(g.name)
+                if tg is None:
+                    continue
+                a3 = g.a3 or {}
+                on = bool(a3.get("a3_enabled")) if a3.get("a3_enabled") is not None else False
+                try:
+                    ok = cu_client.set_a3(
+                        on, offset_db=a3.get("a3_offset_db"), hys_db=a3.get("a3_hys_db"),
+                        ttt_ms=a3.get("a3_ttt_ms"), cu_url=tg.cu_url)
+                    logger.info("scenario %s gNB %s set A3 enabled=%s: ok=%s",
+                                self.scenario.scenario_id, g.name, on, ok)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("set_a3 %s failed: %s", g.name, e)
+        else:
+            a3_on = bool(self.scenario.a3_enabled) if self.scenario.a3_enabled is not None else False
+            try:
+                ok = cu_client.set_a3(
+                    a3_on,
+                    offset_db=self.scenario.a3_offset_db,
+                    hys_db=self.scenario.a3_hys_db,
+                    ttt_ms=self.scenario.a3_ttt_ms,
+                )
+                logger.info("scenario %s set A3 enabled=%s: ok=%s",
+                            self.scenario.scenario_id, a3_on, ok)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("set_a3 failed: %s", e)
 
         # Step 2d — 病徵時間軸(劇本的 anr_fixture 區塊)。放在 A3 之後、推軌跡之前:
         # 佈病要在 UE 開始移動前完成,否則第一段時間的觀測是健康場,
@@ -348,6 +371,33 @@ class ScenarioDriver:
             len(self.scenario.traffic), self.scenario.duration_sec,
         )
         return True
+
+    def _wait_cells_ready(self, timeout_sec: float = 90.0) -> bool:
+        """per-run 多 gNB:輪詢每個 CU 的 E2 node 資訊,直到拓樸裡屬於它的 cell 都出現。沒有拓樸時直接回 True。"""
+        from main.apps.ue_lifecycle.services import ran_endpoints
+        import requests as _rq
+        topo = ran_endpoints.topology()
+        if topo is None:
+            return True
+        want = {g.cu_url: {c.cell_id for d in g.dus for c in d.cells} for g in topo.gnbs}
+        t0 = time.time()
+        missing: dict[str, set] = dict(want)
+        while time.time() - t0 < timeout_sec:
+            for url, cells in list(missing.items()):
+                try:
+                    d = (_rq.post(f"{url}/api/v0.1/CU/E2/E2NodeId/read", json={}, timeout=3).json() or {}).get("data") or {}
+                    have = {c.get("cell_id") for comp in d.get("components") or [] for c in comp.get("cells") or []}
+                except Exception:  # noqa: BLE001 — CU 還沒起來
+                    continue
+                if cells <= have:
+                    missing.pop(url)
+            if not missing:
+                logger.info("scenario %s:全部 CU 的 cell 已就緒(%.1f s)", self.scenario.scenario_id, time.time() - t0)
+                return True
+            time.sleep(1.0)
+        logger.warning("scenario %s:%.0f s 內仍有 CU 缺 cell:%s", self.scenario.scenario_id, timeout_sec,
+                       {u: sorted(c) for u, c in missing.items()})
+        return False
 
     def _push_waypoints_to_store(self) -> None:
         """把劇本 ues[].positions 轉 waypoints 丟到 trajectory_store。
@@ -435,6 +485,7 @@ class ScenarioDriver:
                     # 備用 cell(is_active=False)不該發射 —— RU 會據此把它排除在
                     # 鄰區量測與 RSSI 之外,直到 cell_addition 把它打開。
                     "is_active": bool(getattr(c, "is_active", True)),
+                    **({"nr_cellid": c.nr_cellid} if getattr(c, "nr_cellid", None) is not None else {}),
                 })
                 du_cells.append({
                     "cell_id": cell_id,
@@ -448,6 +499,8 @@ class ScenarioDriver:
                     # 起始啟用狀態。False 的是場景預留的備用 cell(cell_addition 用),
                     # 不帶的話 DU 預設 True,備用 cell 會從頭就在服務。
                     "is_active": bool(getattr(c, "is_active", True)),
+                    # 多 gNB:3GPP NCI(拓樸給),DU 經 F1 帶給 CU,E2 Setup / KPM / RC 都用它
+                    **({"nr_cellid": c.nr_cellid} if getattr(c, "nr_cellid", None) is not None else {}),
                 })
 
         # 劇本第一個 tick 的 UE 位置(餵 RU update_ues)
@@ -536,11 +589,24 @@ class ScenarioDriver:
             )
         except Exception:  # noqa: BLE001
             logger.exception("設定回場提示失敗")
-        UeAttachService.attach_all(
+        res = UeAttachService.attach_all(
             ues_payload,
             default_serving_cell=self.scenario.default_serving_cell,
             context=f"scenario {self.scenario.scenario_id}",
         )
+        # 接入失敗的 UE 以前就此整場沒有服務(沒有 CU context,掉話重選網的機制也輪不到它)。重試幾次。
+        for attempt in range(3):
+            failed = {f.get("ue") for f in (res or {}).get("failed") or []}
+            if not failed:
+                break
+            logger.warning("開場 attach 失敗 %d 個 UE,%d 秒後重試(第 %d 次):%s", len(failed), 3, attempt + 1, sorted(failed))
+            time.sleep(3.0)
+            res = UeAttachService.attach_all(
+                [u for u in ues_payload if u["name"] in failed],
+                default_serving_cell=self.scenario.default_serving_cell,
+                context=f"scenario {self.scenario.scenario_id} retry{attempt + 1}",
+            )
+        self.state["attach_failed"] = [f.get("ue") for f in (res or {}).get("failed") or []]
 
     def stop(self) -> bool:
         if not self.state["running"]:

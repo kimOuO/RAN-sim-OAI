@@ -31,7 +31,7 @@ class FieldReader:
     def list(request):
         """I-1 場域清單。body {} —— 可選 `ready_only`:只列已備妥可跑的。
 
-        只列釘了 e2_slot 的場域(其餘識別會浮動,對方拿去部署 xApp 會訂不到)。
+        只列釘了 e2_block 的場域(其餘識別會浮動,對方拿去部署 xApp 會訂不到)。
         要全部列出時帶 `all: true`。
         """
         try:
@@ -58,7 +58,7 @@ class FieldReader:
 
         fields = []
         for sc in scenes:
-            if not show_all and not sc.get("e2_slot"):
+            if not show_all and not sc.get("e2_block"):
                 continue
             uuid = str(sc.get("scene_uuid") or "")
             try:

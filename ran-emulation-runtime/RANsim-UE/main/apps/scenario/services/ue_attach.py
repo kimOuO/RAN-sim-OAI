@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from main.apps.ue_lifecycle.services import cu_client, du_client
+from main.apps.ue_lifecycle.services import cu_client, du_client, ran_endpoints
 
 
 logger = logging.getLogger(__name__)
@@ -75,12 +75,18 @@ class UeAttachService:
                     logger.warning("%sattach UE %s: %s raised %s", prefix, ue_name, label, e)
                     return False
 
-            if not _step("RRC attach", lambda n=ue_name: cu_client.rrc_attach(n)):
-                continue
-            if not _step("DU register_ue", lambda n=ue_name, c=serving: du_client.register_ue_at(n, serving_cell=c)):
-                continue
-            if not _step("force_serving_cell", lambda n=ue_name, c=serving: cu_client.force_serving_cell(n, c)):
-                continue
+            if ran_endpoints.topology() is not None:
+                # per-run 多 gNB:照真實流程在選定 cell 的 DU 接入,UE 直接落在該 cell,
+                # 不需要事後補 DU 註冊與強制換 cell
+                if not _step("RRC attach", lambda n=ue_name, c=serving: cu_client.rrc_attach(n, c)):
+                    continue
+            else:
+                if not _step("RRC attach", lambda n=ue_name: cu_client.rrc_attach(n)):
+                    continue
+                if not _step("DU register_ue", lambda n=ue_name, c=serving: du_client.register_ue_at(n, serving_cell=c)):
+                    continue
+                if not _step("force_serving_cell", lambda n=ue_name, c=serving: cu_client.force_serving_cell(n, c)):
+                    continue
             if profile is not None:
                 if not _step("update_traffic_profile", lambda n=ue_name, p=profile: cu_client.update_traffic_profile(n, p)):
                     continue

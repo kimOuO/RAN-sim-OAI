@@ -13,13 +13,13 @@
     設計出我方接不住的情境:cell_addition 需要預算時已納入但初始關閉的備用 cell,
     antenna_change 在 cached 模式根本不可能(天線已烘進通道快取)。
 
-  limits.concurrent_runs —— 釘了 e2_slot 的場域同時只能一場(識別要固定給 xApp);
+  limits.concurrent_runs —— 釘了 e2_block 的場域同時只能一場(識別要固定給 xApp);
     沒釘的可並行,但那種場域也不該給對方用(識別會浮動)。
 """
 from __future__ import annotations
 
 from main.apps.agent_api.services.optional import scenario_events
-from main.apps.agent_api.services.optional.e2_identity import field_e2_identity
+from main.apps.agent_api.services.optional.e2_identity import field_e2_identities
 from main.apps.agent_api.services.optional.field_config import (
     BASELINE_WINDOWS_REQUIRED,
     COORDINATE_CONVENTION,
@@ -61,19 +61,25 @@ def _load_profile(tree: dict, scene: dict) -> dict:
     }
 
 
+def _precomputed(scene: dict) -> bool:
+    from main.apps.run_lifecycle.services.optional import channel_cache
+    return channel_cache.available(scene)
+
+
 def build_one(tree: dict, run: dict | None = None) -> dict:
     """單一場域在 I-1 清單中的一列。"""
     scene = tree.get("scene") or {}
     pairs = _cells_of(tree)
-    slot = scene.get("e2_slot")
+    block = scene.get("e2_block")
     unavailable: list[str] = []
 
     e2 = None
-    if slot:
-        e2 = field_e2_identity(int(slot), [c.get("name") or "" for _g, c in pairs])
+    if block:
+        # 多 gNB(C13):每個 gNB 一個 E2 node
+        e2 = field_e2_identities(tree, int(block))
     else:
-        # 識別會隨啟動槽位浮動 → xApp 無法事先訂閱。明講,而不是給一個會變的值。
-        unavailable.append("e2_identity(場域未釘 e2_slot,識別要啟動後才確定)")
+        # 識別會隨啟動區塊浮動 → xApp 無法事先訂閱。明講,而不是給一個會變的值。
+        unavailable.append("e2_identities(場域未釘 e2_block,識別要啟動後才確定)")
 
     dur = int((run or {}).get("duration_sec") or 0) or DEFAULT_MAX_DURATION_SEC
     max_windows = int(dur / GRANULARITY_PERIOD_SEC) if GRANULARITY_PERIOD_SEC else None
@@ -105,11 +111,14 @@ def build_one(tree: dict, run: dict | None = None) -> dict:
             "max_duration_s": dur,
             "max_windows": max_windows,
             # 釘了槽位的場域識別固定,代價就是同時只能一場
-            "concurrent_runs": 1 if slot else None,
+            "concurrent_runs": 1 if block else None,
             "baseline_windows_required": BASELINE_WINDOWS_REQUIRED,
         },
         "mode": (run or {}).get("mode"),
-        "ready": bool((run or {}).get("cache_path")) if (run or {}).get("mode") == "cached" else True,
-        "e2_identity": e2,
+        # 2026-09-28:沒預算也能啟動(自動改 live 1×),所以 ready 一律 true;有沒有預算另給,決定倍速上限
+        "ready": True,
+        "precomputed": _precomputed(scene),
+        "max_speed_x": 10.0 if _precomputed(scene) else 1.0,
+        "e2_identities": e2,
         "unavailable_fields": sorted(set(unavailable + ["site", "floor", "intrinsic_features", "event_types"])),
     }

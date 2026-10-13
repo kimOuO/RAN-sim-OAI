@@ -17,6 +17,7 @@ import { UeSmallMultiples } from '@/components/dashboard/UeSmallMultiples';
 import { STATUS } from '@/config';
 import { useRunDashboardPage } from '@/hooks/feature/useRunDashboardPage';
 import { fmtSimTime } from '@/hooks/feature/kpmDerive';
+import { lastResultLabel, statusLabel } from '@/hooks/feature/runStatus';
 
 export default function RunDashboardPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,7 +32,7 @@ export default function RunDashboardPage() {
     <>
       <header className="runhead">
         <div><div className="crumbs"><Link href="/runs">Runs</Link> / <span className="mono">{p.run.scene_run_uuid.slice(-12)}</span></div><h1>{p.sceneName || p.run.f_scene_uuid}</h1></div>
-        <span className={`pill ${p.run.status}`}>{p.run.status}</span>
+        <span className={`pill ${p.run.status}`}>{statusLabel(p.run)}</span>{lastResultLabel(p.run) && <span className="muted small"> {lastResultLabel(p.run)}</span>}
         <span className="muted">{p.run.mode} · {p.run.speed_x}× · sim_dt {p.run.sim_dt_ms} ms{l ? ` · sim-time ${fmtSimTime(l.sim_time_ms / 1000)}` : ''}</span>
         <span className="sp" /><RunSubNav id={id} />
       </header>
@@ -60,7 +61,7 @@ export default function RunDashboardPage() {
         <Panel title="RAN 模擬執行狀況" sub={p.runtimeGone ? 'per-run 容器已收掉 · 無即時資料' : p.perRun ? 'per-run 容器 · UE driver / DU / E2' : '共用容器 · UE driver / DU / E2'} span={6}>
           {p.runtimeGone
             ? <p className="muted">這個 run 已結束,per-run 容器(CU / DU / RU / UE / E2Adapter)已移除,沒有即時狀態可讀。歷史 KPM 與事件仍在上方各面板。</p>
-            : <RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} instances={p.instances} />}
+            : <RanRuntimePanel run={p.run} du={p.duTick} cells={p.duCells} ue={p.ueDriver} e2={p.e2} e2Nodes={p.e2Nodes} instances={p.instances} />}
         </Panel>
         <Panel title="RIC 端觀測" sub="閘道登記 · E2 node 連線 · 觀測中的 xApp pod(30 s 更新)" span={6}><RicObservationPanel ric={p.ric} /></Panel>
         <Panel title="波束使用分佈" sub="每 cell 的 GoB 波束(色深 = 使用比例,數字 = 平均 SINR);O-RAN WG1 §4.6.4.1 每波束統計" span={6}><BeamUsagePanel cells={p.beamCells} /></Panel>

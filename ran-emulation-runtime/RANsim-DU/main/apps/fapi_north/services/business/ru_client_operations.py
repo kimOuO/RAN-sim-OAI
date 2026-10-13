@@ -66,3 +66,18 @@ class RuClientBusinessService:
             return {"ok": r.status_code == 200, "status": r.status_code, "body": body}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "status": 0, "error": str(exc)}
+
+    @staticmethod
+    def post_cell_active(cell_id: str, active: bool, timeout: float = 3.0) -> dict[str, Any]:
+        """2026-10-13:DU 開 / 關 cell 時同步 RU 的發射開關。
+
+        以前只有劇本預排的關站事件會同時切 DU 與 RU;RIC 節能(CU → DU disable)與手動鎖定
+        只停了 DU 排程,RU 照樣發射 —— UE 仍量得到已關的 cell(常是最強),A3 不斷觸發往它換手
+        而失敗(S3 實測:鎖 4 分鐘失敗 45 次、節能 6 分鐘失敗 77 次)。"""
+        url = f"{RuClientBusinessService._base_url()}/api/v0.1/RU/Config/RuController/set_cell_active"
+        try:
+            r = requests.post(url, json={"cell_id": cell_id, "is_active": bool(active)}, timeout=timeout)
+            body = r.json() if r.content else {}
+            return {"ok": r.status_code == 200, "status": r.status_code, "body": body}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "status": 0, "error": str(exc)}

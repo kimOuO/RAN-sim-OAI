@@ -4,6 +4,7 @@ import { RunSubNav } from '@/components/dashboard/RunSubNav';
 import { useParams } from 'next/navigation';
 import { LiveScene3D } from '@/components/scene3d/LiveScene3D';
 import { useRunLive3dPage } from '@/hooks/feature/useRunLive3dPage';
+import { statusLabel } from '@/hooks/feature/runStatus';
 
 /** 3D 即時:UE 隨模擬時間移動,顏色 = 服務 cell、大小 / 亮度 = SINR;換手閃白、RLF 閃紅 */
 export default function Live3dPage() {
@@ -23,7 +24,7 @@ export default function Live3dPage() {
     <>
       <header className="runhead">
         <div><div className="crumbs"><Link href="/runs">Runs</Link> / <Link href={`/runs/${id}`}>{p.sceneName}</Link></div><h1>3D 即時</h1></div>
-        <span className={`pill ${p.run.status}`}>{p.run.status}</span>
+        <span className={`pill ${p.run.status}`}>{statusLabel(p.run)}</span>
         <span className="muted">{p.driver ? `模擬 ${Math.floor((p.driver.elapsed_sim_sec ?? 0) / 60)}:${String(Math.floor((p.driver.elapsed_sim_sec ?? 0) % 60)).padStart(2, '0')} · ${Number.isFinite(p.driver.sim_speed_x) ? `${p.driver.sim_speed_x}× · ` : ''}` : ''}{attached}/{p.tree.ues.length} UE 附著</span>
         <span className="sp" />
         <label className="check-inline"><input type="checkbox" checked={p.showLabels} onChange={(e) => p.setShowLabels(e.target.checked)} /> 顯示全部名稱</label>

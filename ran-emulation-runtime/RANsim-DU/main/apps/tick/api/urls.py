@@ -5,6 +5,7 @@ from main.apps.tick.actors.tick_controller_actor import TickController
 
 urlpatterns = [
     path("TickController/start", TickController.start, name="tick_start"),
+    path("TickController/step", TickController.step, name="tick_step"),
     path("TickController/align_scene_clock", TickController.align_scene_clock, name="tick_align_scene_clock"),
     path("TickController/stop", TickController.stop, name="tick_stop"),
     path("TickController/run_once", TickController.run_once, name="tick_run_once"),
