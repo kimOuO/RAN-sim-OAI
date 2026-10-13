@@ -9,7 +9,8 @@ export type Tab = 'props' | 'antenna' | 'ran';
 interface Props {
   selection: Selection; presets: AntennaPreset[]; templates: DuConfigTemplate[]; gnbTemplates: GnbConfigTemplate[]; materials: Material[]; run: SceneRun | null; knobs: RunKnob[]; saving: boolean; message: string | null;
   scene: SceneTree['scene']; onSceneAntenna: (which: 'gnb' | 'ue', uuid: string | null) => void;
-  onE2Slot?: (slot: number | null) => void;
+  onE2Block?: (block: number | null) => void;
+  gnbs?: Gnb[];
   onCategory?: (category: string | null) => void;   // 場景分類(資料化;null = 退回名字前綴規則)
   onApplyGnbTemplate: (g: Gnb, t: GnbConfigTemplate) => void; onSaveGnbTemplate: (g: Gnb, name: string, uuid: string | null) => void;
   onAntennaFields: (c: Cell, f: Partial<AntennaPreset>) => void; onSaveAntennaPreset: (c: Cell, f: Partial<AntennaPreset>, name: string, uuid: string | null) => void;
@@ -88,14 +89,17 @@ export function PropertyPanel(p: Props) {
           <label><span>gNB 陣列</span><select value={p.scene.f_gnb_antenna_preset_uuid ?? ''} onChange={(e) => p.onSceneAntenna('gnb', e.target.value || null)}><option value="">(未設 → 第一個 cell 的 RU preset / 1×1 tr38901)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.pattern} {a.rows}×{a.cols} {a.polarization}</option>)}</select></label>
           <label><span>UE 陣列</span><select value={p.scene.f_ue_antenna_preset_uuid ?? ''} onChange={(e) => p.onSceneAntenna('ue', e.target.value || null)}><option value="">(未設 → 第一個 UE 的 preset / 1×1 dipole)</option>{p.presets.map((a) => <option key={a.antenna_preset_uuid} value={a.antenna_preset_uuid}>{a.name} — {a.pattern} {a.rows}×{a.cols} {a.polarization}</option>)}</select></label>
           <p className="muted small">兩層 MIMO 需要:gNB 與 UE 都 ≥ 2 埠(建議 cross 極化)、SINR ≥ 15 dB、有流量。個別 cell / UE 的 preset 只在場景層級未設時當預設。</p>
-          {p.onE2Slot && (() => {
-            // 釘住 E2 槽位 = 固定 gNB ID 與 cell NCI。外部 Agent 要先拿這些識別去部署 xApp
-            // (E2 訂閱與 control 都用 meid + NCI 定位),識別浮動就訂不到。
-            // 這裡把推導後的值直接顯示出來,不必去翻 API 才知道會給對方什麼。
-            const slot = p.scene.e2_slot;
-            const gnb = slot ? `0x${(0x000e00 | slot).toString(16).padStart(6, '0')}` : null;
-            const node = gnb ? `gnb_208_095_${parseInt(gnb, 16).toString(16).padStart(6, '0')}` : null;
-            const tag = gnb ? (parseInt(gnb, 16) & 0xfff).toString(16).padStart(3, '0') : null;
+          {p.onE2Block && (() => {
+            // 多 gNB(2026-09-27):一個 gNB 一個 E2 node。釘住區塊 = 每個 gNB 的 gNB ID、meid、cell NCI 都固定。
+            // 外部 Agent 要先拿這些識別去部署 xApp(E2 訂閱與 control 都用 meid + NCI 定位),識別浮動就訂不到。
+            // 這裡把推導後的值逐一列出,不必去翻 API 才知道會給對方什麼。規格:docs/architecture/multi_gnb_plan.md D3。
+            const block = p.scene.e2_block;
+            const rows = block ? [...(p.gnbs ?? [])].sort((a, b) => (a.e2_index ?? 99) - (b.e2_index ?? 99)).map((g) => {
+              const slot = 16 * block + (g.e2_index ?? 0);
+              const gid = 0x000e00 | slot;
+              return { name: g.name, idx: g.e2_index, gnb: `0x${gid.toString(16).padStart(6, '0')}`,
+                       node: `gnb_208_095_${gid.toString(16).padStart(6, '0')}`, tag: (gid & 0xfff).toString(16).padStart(3, '0') };
+            }) : [];
             return <>
               <div className="row head">Agent 介面 <span className="muted">E2 識別(給外部 Agent 部署 xApp)</span></div>
               {p.onCategory && <label><span>分類</span>
@@ -103,13 +107,17 @@ export function PropertyPanel(p: Props) {
                   <option value="">(未宣告 → 依名稱前綴推:{catLabel(categoryOfScene(p.scene))})</option>
                   {CATEGORY_OPTIONS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select></label>}
-              <label><span>E2 槽位</span>
-                <input type="number" min={1} max={511} defaultValue={slot ?? ''} placeholder="留空 = 啟動時動態配"
+              <label><span>E2 區塊</span>
+                <input type="number" min={1} max={15} defaultValue={block ?? ''} placeholder="1–15,留空 = 啟動時動態配"
                        onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v);
-                                        if (n !== (slot ?? null)) p.onE2Slot!(n); }} /></label>
-              {slot
-                ? <p className="muted small">gNB ID {gnb} · E2 node {node} · cell 前綴 {tag}: —— 每次啟動都一樣,可事先寫進 xApp 訂閱。代價:此場景同時只能跑一場。</p>
-                : <p className="muted small">未釘槽位 → 每次啟動的 gNB ID 與 cell NCI 都可能不同,xApp 無法事先訂閱。只有要給外部 Agent 用的場景才需要釘。</p>}
+                                        if (n !== (block ?? null)) p.onE2Block!(n); }} /></label>
+              {block
+                ? <>
+                    <p className="muted small">每個 gNB 一個 E2 node,每次啟動都一樣,可事先寫進 xApp 訂閱。代價:此場景同時只能跑一場。</p>
+                    <table className="small"><thead><tr><th>gNB</th><th>#</th><th>gNB ID</th><th>E2 node</th><th>cell 前綴</th></tr></thead>
+                      <tbody>{rows.map((r) => <tr key={r.name}><td>{r.name}</td><td>{r.idx ?? '—'}</td><td className="mono">{r.gnb}</td><td className="mono">{r.node}</td><td className="mono">{r.tag}:</td></tr>)}</tbody></table>
+                  </>
+                : <p className="muted small">未釘區塊 → 每次啟動的 gNB ID 與 cell NCI 都可能不同,xApp 無法事先訂閱。只有要給外部 Agent 用的場景才需要釘。</p>}
             </>; })()}</>)}
       {tab === 'ran' && <>
         {(sel?.kind === 'gnb' || sel?.kind === 'cell') && (() => { const g = sel.kind === 'gnb' ? sel.gnb : sel.gnb; const du = g.dus[0]; return <>

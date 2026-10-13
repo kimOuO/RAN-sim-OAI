@@ -133,3 +133,6 @@ table.ne td { max-width: 22em; overflow: hidden; text-overflow: ellipsis; }
 
 .palette .msg.warn { color: var(--amber, #e0a33e); }
 .palette .pal:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 2026-09-28 場次三種狀態:閒置用中性色,預算中沿用 fair,執行中沿用 good */
+.pill.idle { background: transparent; color: var(--muted, inherit); }

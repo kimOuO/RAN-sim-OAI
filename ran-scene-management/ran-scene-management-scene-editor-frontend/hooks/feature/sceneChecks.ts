@@ -72,7 +72,11 @@ export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: Sce
   if (run.mode === 'live' && others.some((r) => r.mode === 'live')) out.push({ level: 'error', text: '已有另一個 live run 在跑(同時只允許 1 個;請改 cached 或先停掉)' });
   // 以 cache_path 判斷(匯入的劇本 run 可能是 draft 但已有 cache)
   if (run.mode === 'cached' && run.status === 'precomputing') out.push({ level: 'error', text: 'Precompute 還在跑' });
-  else if (run.mode === 'cached' && !run.cache_path) out.push({ level: 'error', text: 'cached 模式沒有 cache,請先 Precompute' });
+  else if (run.mode === 'cached' && !run.cache_path) {
+    // 2026-09-28:沒預算也能啟動 —— orchestrator 會改用 live 1×(即時算通道,同時只允許 1 個 live run)
+    out.push({ level: 'warn', text: '還沒預算:會以 live 1× 啟動(預算後可加速到 10×)' });
+    if (others.some((r) => r.mode === 'live' || !r.cache_path)) out.push({ level: 'error', text: '已有另一個 live run 在跑(同時只允許 1 個);請先預算或停掉另一個' });
+  }
   if (others.length >= 4) out.push({ level: 'warn', text: `已有 ${others.length} 個 run 在跑,再加一個可能吃滿主機記憶體` });
   if (run.speed_x > 5 && tree.ues.length > 10) out.push({ level: 'warn', text: `倍速 ${run.speed_x}× 搭配 ${tree.ues.length} 個 UE,RU 可能跟不上而被健康檢查重啟` });
   // 2026-09-21:ric_purpose 是黏著的 run knob,設過一次之後這個 scene_run 每次啟動

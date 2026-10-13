@@ -38,6 +38,15 @@ class GnbController:
             return error_response("Validation failed", ser.errors, 400)
         now = TimestampService.get_current_timestamp()
         data = {UUID_FIELD: UUIDService.generate_uuid("gnb"), "gnb_created_at": now, "gnb_updated_at": now, **ser.validated_data}
+        # 多 gNB(2026-09-27):e2_index 決定這個 gNB 的 E2 槽位,沒指定就配場景內最小空號(0–15)。
+        if data.get("e2_index") is None:
+            used = set(Gnb.objects.filter(scene=data["scene"]).values_list("e2_index", flat=True))
+            free = next((i for i in range(16) if i not in used), None)
+            if free is None:
+                return error_response("Validation failed", {"e2_index": "一個場景最多 16 個 gNB(E2 區塊大小)"}, 400)
+            data["e2_index"] = free
+        elif Gnb.objects.filter(scene=data["scene"], e2_index=data["e2_index"]).exists():
+            return error_response("Validation failed", {"e2_index": f"場景內已有 e2_index={data['e2_index']} 的 gNB"}, 400)
         entity = SqlDbBusinessService.create_entity(Gnb, data)
         logger.info("gnb created %s", getattr(entity, UUID_FIELD))
         return success_response(GnbReadSerializer(entity).data, "created", 201)

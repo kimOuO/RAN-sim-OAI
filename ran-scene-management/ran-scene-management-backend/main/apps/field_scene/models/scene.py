@@ -1,4 +1,5 @@
 """scene — 一個 table 一個檔案(backend_rule §5-1)。設計見 new_plan §2.3。"""
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -19,12 +20,15 @@ class Scene(models.Model):
     # None → gNB 取第一個 cell 的 RU preset、UE 取第一個 UE 的 preset(舊行為),都沒有就 1×1。
     gnb_antenna_preset = models.ForeignKey("equipment_preset.AntennaPreset", on_delete=models.SET_NULL, to_field="antenna_preset_uuid", db_column="f_gnb_antenna_preset_uuid", related_name="scenes_as_gnb", null=True, blank=True)
     ue_antenna_preset = models.ForeignKey("equipment_preset.AntennaPreset", on_delete=models.SET_NULL, to_field="antenna_preset_uuid", db_column="f_ue_antenna_preset_uuid", related_name="scenes_as_ue", null=True, blank=True)
-    # 2026-09-22:釘在場域上的 E2 槽位(1~511)。以前槽位是啟動當下依「哪些沒人用」動態配,
-    # 於是同一個場域每次跑的 gNB ID / cell NCI 都可能不同。外部 Agent 要依這些識別**部署 xApp
-    # 到 RIC**(訂閱與 RICcontrolRequest 都用 meid + NCI 定位),識別浮動就訂不到、下不了。
-    # 釘住之後:e2_node_id 與每個 cell 的 NCI 在啟動前就算得出來,而代價是同一場域同時只能跑一場
-    # (不同場域各自有槽位,仍可並行)。null = 沿用舊的動態配置。
-    e2_slot = models.IntegerField(null=True, blank=True, unique=True)
+    # E2 區塊(2026-09-27 多 gNB 改版,取代 2026-09-22 的單一槽位 e2_slot)。
+    # 一場的每個 gNB 各是一個 E2 node:第 i 個 gNB(Gnb.e2_index)的槽位 = 16·e2_block + i,
+    # gNB ID = 0x000e00 | 槽位,meid = gnb_208_095_000eXY(X = 區塊、Y = gNB 序號)。
+    # 釘住區塊 → 每個 gNB 的 meid 與每個 cell 的 NCI 在啟動前就確定,外部 Agent 才能事先部署 xApp;
+    # 代價是同一場域同時只能跑一場。null = 啟動時動態配區塊。
+    # 範圍 1–15:區塊 0(e00)保留給 RIC 常駐 xApp;≥ 16 時 0xe00|0x100 進位成 0xf00,命名不一致。
+    # 規格見 docs/architecture/multi_gnb_plan.md D3。
+    e2_block = models.IntegerField(null=True, blank=True, unique=True,
+                                   validators=[MinValueValidator(1), MaxValueValidator(15)])
     # 2026-09-22:場景分類(corridor / anr / intent / scale / other)。
     # 以前分類是前端用名字前綴猜的,外部 Agent 的 I-1 拿不到;改成資料。
     # null = 未宣告 → 前端與 I-1 退回前綴規則,既有場景顯示不變。

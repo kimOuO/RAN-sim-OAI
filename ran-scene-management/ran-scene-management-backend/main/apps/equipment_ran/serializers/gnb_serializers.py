@@ -12,7 +12,7 @@ class GnbWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Gnb
-        fields = ['name', 'is_active', 'color', 'gnb_id', 'plmn_mcc', 'plmn_mnc', 'position', 'a3_enabled', 'a3_offset_db', 'a3_hys_db', 'a3_ttt_ms', 'f_scene_uuid', 'f_gnb_config_template_uuid']
+        fields = ['name', 'is_active', 'color', 'gnb_id', 'e2_index', 'plmn_mcc', 'plmn_mnc', 'position', 'a3_enabled', 'a3_offset_db', 'a3_hys_db', 'a3_ttt_ms', 'f_scene_uuid', 'f_gnb_config_template_uuid']
 
 
 class GnbReadSerializer(serializers.ModelSerializer):
@@ -21,4 +21,4 @@ class GnbReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Gnb
-        fields = ['id', 'gnb_uuid', 'name', 'is_active', 'color', 'gnb_id', 'plmn_mcc', 'plmn_mnc', 'position', 'a3_enabled', 'a3_offset_db', 'a3_hys_db', 'a3_ttt_ms', 'f_scene_uuid', 'f_gnb_config_template_uuid', 'gnb_created_at', 'gnb_updated_at']
+        fields = ['id', 'gnb_uuid', 'name', 'is_active', 'color', 'gnb_id', 'e2_index', 'plmn_mcc', 'plmn_mnc', 'position', 'a3_enabled', 'a3_offset_db', 'a3_hys_db', 'a3_ttt_ms', 'f_scene_uuid', 'f_gnb_config_template_uuid', 'gnb_created_at', 'gnb_updated_at']

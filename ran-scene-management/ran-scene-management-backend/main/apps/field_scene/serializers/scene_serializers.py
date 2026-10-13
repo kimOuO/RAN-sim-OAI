@@ -31,7 +31,7 @@ class SceneWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Scene
-        fields = ['name', 'legacy_scenario_id', 'geometry_scene_id', 'geometry_source', 'description', 'origin_lat', 'origin_lon', 'bounds', 'e2_slot', 'category', 'f_material_uuid', 'f_gnb_antenna_preset_uuid', 'f_ue_antenna_preset_uuid']
+        fields = ['name', 'legacy_scenario_id', 'geometry_scene_id', 'geometry_source', 'description', 'origin_lat', 'origin_lon', 'bounds', 'e2_block', 'category', 'f_material_uuid', 'f_gnb_antenna_preset_uuid', 'f_ue_antenna_preset_uuid']
 
 
 class SceneReadSerializer(serializers.ModelSerializer):
@@ -41,4 +41,4 @@ class SceneReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Scene
-        fields = ['id', 'scene_uuid', 'name', 'legacy_scenario_id', 'geometry_scene_id', 'geometry_source', 'description', 'origin_lat', 'origin_lon', 'bounds', 'e2_slot', 'category', 'f_material_uuid', 'f_gnb_antenna_preset_uuid', 'f_ue_antenna_preset_uuid', 'scene_created_at', 'scene_updated_at']
+        fields = ['id', 'scene_uuid', 'name', 'legacy_scenario_id', 'geometry_scene_id', 'geometry_source', 'description', 'origin_lat', 'origin_lon', 'bounds', 'e2_block', 'category', 'f_material_uuid', 'f_gnb_antenna_preset_uuid', 'f_ue_antenna_preset_uuid', 'scene_created_at', 'scene_updated_at']

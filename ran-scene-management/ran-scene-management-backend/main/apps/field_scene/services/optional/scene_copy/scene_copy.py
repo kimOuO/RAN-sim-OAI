@@ -52,11 +52,11 @@ def _clone(obj: models.Model, **overrides: Any) -> models.Model:
 
 def copy_scene(scene_uuid: str, *, name: str, legacy_scenario_id: str | None = None) -> Scene:
     src = Scene.objects.get(scene_uuid=scene_uuid)
-    # 2026-09-22:e2_slot 必須清掉。_clone 會照抄所有具體欄位,而 e2_slot 是 unique ——
+    # 2026-09-22:e2_slot(2026-09-27 起為 e2_block)必須清掉。_clone 會照抄所有具體欄位,而 e2_slot 是 unique ——
     # 複製一個已釘槽位的場景會直接撞 unique constraint(走廊場景都釘了,等於根本複製不了)。
     # 語意上也該清:槽位決定 E2 節點識別與 cell 標籤,兩個場景不能共用同一個,
     # 否則 xApp 分不出是誰。副本要用就另外釘一個。
-    dst = _clone(src, name=name, e2_slot=None,
+    dst = _clone(src, name=name, e2_block=None,
                  legacy_scenario_id=legacy_scenario_id if legacy_scenario_id is not None else name)
     for b in Building.objects.filter(scene=src):
         _clone(b, scene=dst)
@@ -80,7 +80,7 @@ def copy_scene(scene_uuid: str, *, name: str, legacy_scenario_id: str | None = N
                 _clone(row, ue=nu)
     run = SceneRun.objects.filter(scene=src).order_by("id").first()
     if run is not None:   # 只帶設定,不帶狀態 / cache
-        nr = _clone(run, scene=dst, status="draft", cache_path="", e2_node_id="", gnb_id_hex="",
+        nr = _clone(run, scene=dst, status="idle", last_result="", cache_path="", e2_node_id="", gnb_id_hex="", e2_block=None, e2_nodes=[],
                     started_at=None, stopped_at=None, notes=f"copied from {src.name}")
         for k in RunKnob.objects.filter(scene_run=run):
             _clone(k, scene_run=nr)

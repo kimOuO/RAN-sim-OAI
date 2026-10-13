@@ -10,9 +10,19 @@ class SceneRun(models.Model):
     speed_x = models.FloatField(default=1.0)
     sim_dt_ms = models.IntegerField(default=500)
     duration_sec = models.IntegerField(default=60)
-    status = models.CharField(max_length=16, default='pending')
+    # 2026-09-28:狀態只有三種 —— idle(閒置、可啟動)/ precomputing(預算通道中)/ running(執行中)。
+    # 「有沒有預算」看 cache_path(不是狀態);上一次跑的結果另存 last_result。
+    status = models.CharField(max_length=16, default='idle')
+    # 上一次執行怎麼結束:done(劇本跑完)/ stopped(人為或外部中止)/ failed(起不來或中途失敗);沒跑過為空。
+    # 外部 Agent 的 I-4 靠它分辨「可以取資料」與「要重跑」。
+    last_result = models.CharField(max_length=16, blank=True, default='')
     cache_path = models.CharField(max_length=512, blank=True, default='')
-    gnb_id_hex = models.CharField(max_length=16, blank=True, default='')   # per-run CU 的 GNB_ID_HEX(22-bit),RIC meid 由此推導
+    # 2026-09-27 多 gNB:本場配到的 E2 區塊,與每個 gNB 的 E2 身分。
+    # e2_nodes = [{gnb_uuid, node_id(= gNB 名), e2_index, slot, gnb_id_hex, e2_node_id(meid), cell_tag}, …]
+    e2_block = models.IntegerField(null=True, blank=True)
+    e2_nodes = models.JSONField(default=list, blank=True)
+    # 以下兩欄是改版前「一場一個 E2 node」的欄位,過渡期保留(= e2_nodes[0]),orchestrator 改完後移除。
+    gnb_id_hex = models.CharField(max_length=16, blank=True, default='')
     e2_node_id = models.CharField(max_length=64, blank=True, default='')
     snapshot_json = models.JSONField(null=True, blank=True)
     # 2026-09-22:已模擬秒數(DU 的劇本時鐘)。外部 Agent 的 I-4 要輪詢進度,

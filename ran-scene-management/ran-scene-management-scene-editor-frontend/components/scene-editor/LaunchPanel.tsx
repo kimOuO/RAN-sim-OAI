@@ -4,6 +4,7 @@ import { CheckList } from '@/components/scene-editor/CheckList';
 import type { Check } from '@/hooks/feature/sceneChecks';
 import type { PrecomputeStatus } from '@/services/api/runs';
 import type { SceneRun } from '@/types/registry';
+import { effectiveRun, lastResultLabel, statusLabel } from '@/hooks/feature/runStatus';
 
 interface Props {
   run: SceneRun | null; checks: Check[]; precomp: PrecomputeStatus | null; saving: boolean;
@@ -18,10 +19,10 @@ export function LaunchPanel({ run, checks, precomp, saving, onPrecompute, onStop
   return (
     <div className="launch">
       <div className="row head">狀態 <button className="ghost" onClick={onRefresh}>重新整理</button></div>
-      <p>{run ? <><span className={`pill ${run.status}`}>{run.status}</span> <span className="muted small">{run.mode} · {run.speed_x}× · {run.duration_sec}s</span></> : <span className="muted">尚未建立 run</span>}</p>
+      <p>{run ? <><span className={`pill ${run.status}`}>{statusLabel(run)}</span> {lastResultLabel(run) && <span className="muted small">{lastResultLabel(run)} · </span>}<span className="muted small">{effectiveRun(run).mode} · {effectiveRun(run).speed_x}× · {run.duration_sec}s{effectiveRun(run).note ? `(${effectiveRun(run).note})` : ''}</span></> : <span className="muted">尚未建立 run</span>}</p>
       <CheckList title="啟動前檢查" checks={checks} />
       {run?.mode === 'cached' && <>
-        <div className="row head">Precompute <span className="muted">GPU 光追,cached 模式必要</span></div>
+        <div className="row head">Precompute <span className="muted">GPU 光追;預算後可加速到 10×,沒預算以 live 1× 啟動</span></div>
         {computing && <div className="prog-row"><div className="prog"><i style={{ width: `${pg?.pct ?? 0}%` }} /></div><span className="mono small">{pg ? `${pg.pct.toFixed(1)}% · ${pg.rate_tps.toFixed(0)} t/s · 剩 ${eta(pg.eta_sec)}` : '準備中…'}</span></div>}
         <div className="actions">{computing ? <button className="danger" disabled={saving} onClick={onStopPrecompute}>停止 Precompute</button>
           : <button disabled={saving || running} onClick={onPrecompute}>{run.cache_path ? '重新 Precompute' : '開始 Precompute'}</button>}</div>

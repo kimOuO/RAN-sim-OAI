@@ -149,7 +149,7 @@ export function useSceneEditorPage(sceneUuid: string) {
     /** run 層:沒有 run 就先建 draft;knob 以 key 唯一 */
     /** 場景層級天線(run 只能一組;Sionna scene-global) */
     // 釘 E2 槽位:唯一值,被別的場景占走 registry 會回錯誤(唯一約束)
-    setE2Slot: (slot: number | null) => withSave('E2 槽位', () => updateScene(sceneUuid, { e2_slot: slot })),
+    setE2Block: (block: number | null) => withSave('E2 區塊', () => updateScene(sceneUuid, { e2_block: block })),
     setCategory: (category: string | null) => withSave('場景分類', () => updateScene(sceneUuid, { category })),
     setSceneAntenna: (which: 'gnb' | 'ue', uuid: string | null) => withSave(`場景 ${which.toUpperCase()} 天線`, () => updateScene(sceneUuid, which === 'gnb' ? { f_gnb_antenna_preset_uuid: uuid } : { f_ue_antenna_preset_uuid: uuid })),
     updateRunFields: (f: Partial<SceneRun>) => withSave('run 設定', async () => { if (run) await updateSceneRun(run.scene_run_uuid, f); else await createSceneRun({ f_scene_uuid: sceneUuid, ...f }); runs.refetch(); }),

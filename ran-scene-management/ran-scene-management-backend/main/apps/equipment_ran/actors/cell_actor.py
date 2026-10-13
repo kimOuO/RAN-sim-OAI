@@ -38,6 +38,13 @@ class CellController:
             return error_response("Validation failed", ser.errors, 400)
         now = TimestampService.get_current_timestamp()
         data = {UUID_FIELD: UUIDService.generate_uuid("cell"), "cell_created_at": now, "cell_updated_at": now, **ser.validated_data}
+        # 多 gNB(2026-09-27):local_cell_id 在同一個 gNB(跨它所有 DU)內唯一,決定 NCI 的低 14 bit。
+        gnb_uuid = data["du"].gnb_id
+        used = set(Cell.objects.filter(du__gnb_id=gnb_uuid).values_list("local_cell_id", flat=True))
+        if data.get("local_cell_id") is None:
+            data["local_cell_id"] = next(i for i in range(1 << 14) if i not in used)
+        elif not 0 <= int(data["local_cell_id"]) < (1 << 14) or data["local_cell_id"] in used:
+            return error_response("Validation failed", {"local_cell_id": "必須在 0–16383 且在同一 gNB 內唯一"}, 400)
         entity = SqlDbBusinessService.create_entity(Cell, data)
         logger.info("cell created %s", getattr(entity, UUID_FIELD))
         return success_response(CellReadSerializer(entity).data, "created", 201)

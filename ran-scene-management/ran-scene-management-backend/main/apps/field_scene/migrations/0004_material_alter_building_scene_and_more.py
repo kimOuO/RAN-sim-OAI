@@ -7,7 +7,9 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('equipment_preset', '0003_delete_material_and_more'),
+        # 2026-09-27:原本依賴 equipment_preset 0003(刪舊 Material),從零建庫時 FK 還指著已刪的模型而失敗。
+        # 改成依賴 0002;0003 反過來依賴本檔,確保 FK 先轉到 field_scene.Material 再刪舊模型。
+        ('equipment_preset', '0002_gnbconfigtemplate'),
         ('field_scene', '0003_scene_gnb_antenna_preset_scene_ue_antenna_preset'),
     ]
 

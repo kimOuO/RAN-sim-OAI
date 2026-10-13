@@ -22,9 +22,10 @@ export interface Scene {
   scene_uuid: string; name: string; description: string; origin_lat: number | null; origin_lon: number | null; bounds: unknown;
   legacy_scenario_id: string; geometry_scene_id: string; geometry_source: unknown; f_material_uuid: string | null;
   f_gnb_antenna_preset_uuid: string | null; f_ue_antenna_preset_uuid: string | null;
-  /** 釘住的 E2 槽位(1~511)。釘了之後 gNB ID / cell NCI 每次啟動都一樣,
-   *  外部 Agent 才能事先把這些識別寫進 xApp 的訂閱設定。null = 啟動時動態配。 */
-  e2_slot: number | null;
+  /** 釘住的 E2 區塊(1–15)。第 i 個 gNB(Gnb.e2_index)的槽位 = 16·區塊 + i,
+   *  每個 gNB 一個 E2 node。釘了之後每個 gNB 的 meid 與 cell NCI 每次啟動都一樣,
+   *  外部 Agent 才能事先寫進 xApp 的訂閱設定。null = 啟動時動態配。 */
+  e2_block: number | null;
   category: string | null;   // 場景分類;null = 未宣告,退回名字前綴規則
   scene_created_at: string; scene_updated_at: string;
 }
@@ -41,7 +42,7 @@ export interface Cell {
 }
 export interface Du { du_uuid: string; name: string; gnb_du_id: number; config_override: unknown; f_gnb_uuid: string; f_du_config_template_uuid: string | null; config_template?: DuConfigTemplate | null; cells: Cell[]; }
 export interface Gnb {
-  gnb_uuid: string; name: string; gnb_id: number; plmn_mcc: string; plmn_mnc: string; position: number[]; is_active: boolean; color: number[] | null;
+  gnb_uuid: string; name: string; gnb_id: number; e2_index: number | null; plmn_mcc: string; plmn_mnc: string; position: number[]; is_active: boolean; color: number[] | null;
   a3_enabled: boolean | null; a3_offset_db: number | null; a3_hys_db: number | null; a3_ttt_ms: number | null; f_scene_uuid: string; f_gnb_config_template_uuid: string | null; config_template?: GnbConfigTemplate | null; dus: Du[];
 }
 export interface UeTraffic { ue_traffic_uuid: string; pattern: string; rate_mbps: number; schedule: number[][] | null; bearer_id: number; }
@@ -52,7 +53,8 @@ export interface Ue {
 }
 export interface SceneRun {
   scene_run_uuid: string; mode: 'live' | 'cached'; speed_x: number; sim_dt_ms: number; duration_sec: number;
-  status: 'draft' | 'pending' | 'precomputing' | 'ready' | 'running' | 'stopped' | 'failed'; cache_path: string; e2_node_id: string;
+  /** 2026-09-28:只有三種。有沒有預算看 cache_path;上一次怎麼結束看 last_result */
+  status: 'idle' | 'precomputing' | 'running'; last_result?: '' | 'done' | 'stopped' | 'failed'; cache_path: string; e2_node_id: string;
   started_at: string | null; stopped_at: string | null; notes: string; f_scene_uuid: string; knobs?: Record<string, unknown>;
 }
 export interface SceneTree { scene: Scene & { ground_material?: Material; gnb_antenna_preset?: AntennaPreset | null; ue_antenna_preset?: AntennaPreset | null }; buildings: Building[]; gnbs: Gnb[]; neighbor_seeds: unknown[]; ues: Ue[]; run: SceneRun | null; }

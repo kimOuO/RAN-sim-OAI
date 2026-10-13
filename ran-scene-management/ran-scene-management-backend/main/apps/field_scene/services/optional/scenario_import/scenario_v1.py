@@ -157,7 +157,7 @@ def import_scenario(raw: dict[str, Any], *, precompute_status: str = "pending", 
         n_u += 1
     # draft run + knobs
     run = DB.create_entity(SceneRun, {**_stamp("scene_run"), "scene": scene, "mode": "cached" if precompute_status == "ready" else "live",
-                                      "speed_x": 1.0, "sim_dt_ms": tick_ms, "duration_sec": int(duration), "status": "draft",
+                                      "speed_x": 1.0, "sim_dt_ms": tick_ms, "duration_sec": int(duration), "status": "idle",
                                       "cache_path": cache_path or "", "notes": "draft created by scenario_v1 importer"})
     knobs = {k: raw[k] for k in KNOB_KEYS if k in raw}
     tc = (raw.get("_metadata") or {}).get("trigger_config")

@@ -8,6 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('equipment_preset', '0002_gnbconfigtemplate'),
+        ('field_scene', '0004_material_alter_building_scene_and_more'),   # 見該檔註解(2026-09-27)
     ]
 
     # 2026-09-16 app 重新分類(scene_layout→field_scene 等)+ Material 歸場域:資料表(db_table 明示)完全不動,只改 Django 狀態

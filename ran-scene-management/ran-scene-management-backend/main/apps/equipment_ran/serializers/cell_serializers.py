@@ -10,7 +10,7 @@ class CellWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cell
-        fields = ['name', 'center_frequency_ghz', 'pci', 'nr_cellid', 'arfcn', 'band', 'bandwidth_mhz', 'position', 'azimuth_deg', 'tilt_deg', 'power_dbm', 'is_active', 'is_barred', 'f_du_uuid']
+        fields = ['name', 'center_frequency_ghz', 'pci', 'nr_cellid', 'local_cell_id', 'arfcn', 'band', 'bandwidth_mhz', 'position', 'azimuth_deg', 'tilt_deg', 'power_dbm', 'is_active', 'is_barred', 'f_du_uuid']
 
 
 class CellReadSerializer(serializers.ModelSerializer):
@@ -18,4 +18,4 @@ class CellReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cell
-        fields = ['id', 'cell_uuid', 'name', 'center_frequency_ghz', 'pci', 'nr_cellid', 'arfcn', 'band', 'bandwidth_mhz', 'position', 'azimuth_deg', 'tilt_deg', 'power_dbm', 'is_active', 'is_barred', 'f_du_uuid', 'cell_created_at', 'cell_updated_at']
+        fields = ['id', 'cell_uuid', 'name', 'center_frequency_ghz', 'pci', 'nr_cellid', 'local_cell_id', 'arfcn', 'band', 'bandwidth_mhz', 'position', 'azimuth_deg', 'tilt_deg', 'power_dbm', 'is_active', 'is_barred', 'f_du_uuid', 'cell_created_at', 'cell_updated_at']

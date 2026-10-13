@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { MONITOR_BASE_URL, SCENE_CATEGORIES } from '@/config';
 import { useSceneListPage } from '@/hooks/feature/useSceneListPage';
 import type { SceneRun } from '@/types/registry';
+import { effectiveRun, lastResultLabel, precomputed, statusLabel } from '@/hooks/feature/runStatus';
 
 const catLabel = (k: string) => SCENE_CATEGORIES.find((c) => c.key === k)?.label ?? '其他';
 export default function ScenesPage() {
@@ -21,11 +22,11 @@ export default function ScenesPage() {
       <div className="cards">
         {p.scenes.map(({ scene: s, category, runs }) => { const r = runs[0]; return (
           <article key={s.scene_uuid} className={`card cat-${category}`}>
-            <div className="card-top"><span className="tag">{catLabel(category)}</span>{r && <span className={`pill ${r.status}`}>{r.status}</span>}</div>
+            <div className="card-top"><span className="tag">{catLabel(category)}</span>{r && <span className={`pill ${r.status}`}>{statusLabel(r)}</span>}{r && lastResultLabel(r) && <span className="muted small"> {lastResultLabel(r)}</span>}</div>
             <h2><Link href={`/scenes/${s.scene_uuid}`}>{s.name}</Link></h2>
             <p className="muted small">{s.legacy_scenario_id ? `劇本 ${s.legacy_scenario_id}` : '手動建立'}{s.geometry_scene_id ? ` · 幾何 ${s.geometry_scene_id}` : ''} · 更新 {s.scene_updated_at.slice(5, 16).replace('T', ' ')}</p>
-            {r ? <p className="small">{r.mode} · {r.speed_x}× · dt {r.sim_dt_ms} ms · {(r.duration_sec / 3600).toFixed(1)} h{r.mode === 'cached' ? (r.status === 'precomputing' ? '' : r.cache_path ? ' · 已預算' : ' · 未預算') : ''}</p> : <p className="muted small">尚無 run</p>}
-            {r && r.status !== 'running' && r.status !== 'precomputing' && (
+            {r ? <p className="small">{r.mode} · {r.speed_x}× · dt {r.sim_dt_ms} ms · {(r.duration_sec / 3600).toFixed(1)} h{r.status === 'precomputing' ? '' : precomputed(r) ? ' · 已預算' : ' · 未預算'}{effectiveRun(r).note ? <span className="muted">(啟動會用 {effectiveRun(r).note.split('→ ')[1]})</span> : ''}</p> : <p className="muted small">尚無 run</p>}
+            {r && r.status === 'idle' && (
               <div className="runctl">
                 <label><span>模式</span>
                   <select value={r.mode} disabled={p.busy === r.scene_run_uuid}
@@ -49,10 +50,10 @@ export default function ScenesPage() {
             {r && r.status === 'precomputing' && (() => { const s = p.precomp[r.scene_run_uuid]; const pr = s?.progress; return <div className="prog-row"><div className="prog"><i style={{ width: `${pr?.pct ?? 0}%` }} /></div><span className="muted small">{pr ? `${pr.pct.toFixed(1)}% · ${pr.rate_tps.toFixed(1)} t/s · 剩 ${Math.round(pr.eta_sec / 60)} 分` : (s?.state ?? '啟動中…')}</span></div>; })()}
             <footer>
               <Link href={`/scenes/${s.scene_uuid}`}><button>編輯</button></Link>
-              {r && r.mode === 'cached' && !r.cache_path && r.status !== 'precomputing' && r.status !== 'running' && <button disabled={p.busy === r.scene_run_uuid} onClick={() => p.precompute(r)}>預算</button>}
+              {r && r.mode === 'cached' && !r.cache_path && r.status === 'idle' && <button disabled={p.busy === r.scene_run_uuid} onClick={() => p.precompute(r)}>預算</button>}
               {r && r.status === 'precomputing' && <button className="danger" disabled={p.busy === r.scene_run_uuid} onClick={() => p.stopPrecompute(r)}>停止預算</button>}
-              {r && r.status !== 'precomputing' && (r.status === 'running' ? <button className="danger" disabled={p.busy === r.scene_run_uuid} onClick={() => p.stop(r)}>停止</button> : <button className="primary" disabled={p.busy === r.scene_run_uuid || (r.mode === 'cached' && !r.cache_path)} title={r.mode === 'cached' && !r.cache_path ? '先預算' : undefined} onClick={() => p.start(r)}>{p.busy === r.scene_run_uuid ? '啟動中…' : '啟動'}</button>)}
-              {r && (r.status === 'running' || r.status === 'stopped') && <a href={`${MONITOR_BASE_URL}/runs/${r.scene_run_uuid}`} target="_blank" rel="noreferrer"><button>監控 ↗</button></a>}
+              {r && r.status !== 'precomputing' && (r.status === 'running' ? <button className="danger" disabled={p.busy === r.scene_run_uuid} onClick={() => p.stop(r)}>停止</button> : <button className="primary" disabled={p.busy === r.scene_run_uuid} title={effectiveRun(r).note ? '沒有預算:以 live 1× 啟動(預算後可加速)' : undefined} onClick={() => p.start(r)}>{p.busy === r.scene_run_uuid ? '啟動中…' : '啟動'}</button>)}
+              {r && (r.status === 'running' || !!r.last_result) && <a href={`${MONITOR_BASE_URL}/runs/${r.scene_run_uuid}`} target="_blank" rel="noreferrer"><button>監控 ↗</button></a>}
               <span className="sp" /><button className="ghost danger" disabled={!!p.busy} onClick={() => { if (confirm(`刪除場景 ${s.name}?`)) p.remove(s); }}>刪除</button>
             </footer>
           </article>); })}
