@@ -198,9 +198,11 @@ PATTERN_CHOICES = ("tr38901", "dipole", "iso", "hw_dipole", "vh_dipole")
 | **SU-MIMO** | 對單一 UE 送多層(rank > 1) | H 的 SVD rank;需要豐富散射 |
 | **MU-MIMO** | 同時對多個 UE 送,空間分離 | UE 間通道正交性;需要 CSI |
 
-**RAN-SIM 現況**:SU-MIMO 的**程式都在**(RU `estimate_rank` SVD、DU `mimo_processor`
-等功率分配、`TBS × ν`),但因為陣列是 1×1 → rank 恆為 1 → 全部空轉。
-**MU-MIMO 完全沒有**(排程器是 per-UE 分 PRB,沒有空間維度)。
+**RAN-SIM 現況**(2026-09-26 更新):SU-MIMO 的程式都在(RU Type I codebook 選 rank/PMI
+與每層 SINR、DU `eesm.effective_sinr_for_layers` 的 EESM 或等功率分配、`TBS × ν`),
+但 UE 端一律 1×1 → rank 恆為 1 → 多層傳輸空轉。基地台 8×8 陣列的波束選擇有作用。
+**MU-MIMO**:mac `scheduler/mu_mimo.py`(2026-09-17)依 RU 回報的 `beam_top` 估互漏,
+同 cell 不同波束、雙向洩漏 ≤ −10 dB 的 UE 兩兩配對共用 PRB。
 
 ### 5.4 碼本 (Codebook)
 

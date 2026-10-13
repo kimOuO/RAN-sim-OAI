@@ -106,7 +106,7 @@
 | 最小 PRB 分配 | PRB | 常數 `MIN_PRB` = 5 | OAI `gNB_scheduler_dlsch.c:753` |
 | RLC `discardTimer` | ms | 劇本 `discard_timer_ms`;`set_runtime_phys` | 3GPP RLC discardTimer |
 | RLC tx buffer 上限 | bytes | env `RLC_TX_MAXSIZE_BYTES` = 10 MB | OAI `nr_rlc_entity_am.c:1842` |
-| 目標首傳 BLER | 0–1 | `SlotParams.target_bler` = 0.1 | OAI `target_dl_bler` |
+| 目標首傳 BLER | 0–1 | `SlotParams.target_bler` = 0.1 | TS 38.214 §5.2.2.1 CQI 定義(OAI 外迴路門檻 0.05/0.15 之間;OAI 無 `target_dl_bler` 參數) |
 
 ### 2.5 真 RAN 參數 —— UE / 情境
 

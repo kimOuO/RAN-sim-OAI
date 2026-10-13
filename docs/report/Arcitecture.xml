@@ -1,0 +1,720 @@
+<mxGraphModel dx="11200" dy="4040" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 40px;&quot;&gt;OSC near RT RIC&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;font-size: 40px;&quot;&gt;Platform&lt;/span&gt;" vertex="1">
+      <mxGeometry height="900" width="1940" x="-1050" y="-970" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;" value="&lt;pre dir=&quot;ltr&quot;&gt;&lt;code&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;場景管理與資料處理&lt;/font&gt;&lt;/code&gt;&lt;/pre&gt;" vertex="1">
+      <mxGeometry height="230" width="1526" x="-1030" y="-635" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;" value="&lt;pre dir=&quot;ltr&quot;&gt;&lt;code&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;Near-RT RIC&lt;/font&gt;&lt;/code&gt;&lt;/pre&gt;" vertex="1">
+      <mxGeometry height="230" width="1526" x="-1030" y="-900" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-16" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 40px;&quot;&gt;Simulation Management Platform&lt;/font&gt;" vertex="1">
+      <mxGeometry height="1377.5" width="1630" x="-2810" y="-20" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-33" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="omnivers 平台" vertex="1">
+      <mxGeometry height="330" width="1005" x="3800" y="-320" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-34" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="後端" vertex="1">
+      <mxGeometry height="110" width="360" x="3977" y="-195" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-35" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="kit模擬" vertex="1">
+      <mxGeometry height="100" width="210" x="4417" y="-190" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-36" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="物件控USD" vertex="1">
+      <mxGeometry height="115" width="100" x="4687" y="-200" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-37" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 40px;&quot;&gt;Simulation Platform&lt;/font&gt;" vertex="1">
+      <mxGeometry height="2950" width="1750" x="-930" y="600" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-40" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 35px;&quot;&gt;Simulation Management UI&lt;/font&gt;" vertex="1">
+      <mxGeometry height="330" width="730" x="-2432" y="150" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-41" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 35px;&quot;&gt;Simulation Management Backend&lt;/font&gt;" vertex="1">
+      <mxGeometry height="460" width="1560" x="-2800" y="620" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-42" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=30;verticalAlign=top;" value="場域" vertex="1">
+      <mxGeometry height="360" width="1490" x="-2765" y="690" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-43" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;場景&lt;/font&gt;" vertex="1">
+      <mxGeometry height="230" width="280" x="-2710" y="790" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-44" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;網路元件&lt;/span&gt;" vertex="1">
+      <mxGeometry height="230" width="600" x="-2320" y="790" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-45" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;載具&lt;/span&gt;" vertex="1">
+      <mxGeometry height="230" width="280" x="-1610" y="790" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-49" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="來源: google 地圖" vertex="1">
+      <mxGeometry height="50" width="140" x="-2640" y="860" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-50" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="來源: 雷達(.glb)" vertex="1">
+      <mxGeometry height="50" width="140" x="-2640" y="940" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-51" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="gNB" vertex="1">
+      <mxGeometry height="160" width="550" x="-2300" y="840" as="geometry" />
+    </mxCell>
+    <mxCell id="IjJ-k_15KRfD9q2F39Ll-54" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="DU&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="115" width="230" x="-2280" y="865" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="DU&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="115" width="230" x="-2000" y="865" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="Cell" vertex="1">
+      <mxGeometry height="75" width="75" x="-2260" y="890" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="Cell" vertex="1">
+      <mxGeometry height="75" width="75" x="-2150" y="890" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="Cell" vertex="1">
+      <mxGeometry height="75" width="75" x="-1980" y="890" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="Cell" vertex="1">
+      <mxGeometry height="75" width="75" x="-1860" y="890" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="天線" vertex="1">
+      <mxGeometry height="20" width="40" x="-2242.5" y="920" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="天線" vertex="1">
+      <mxGeometry height="20" width="40" x="-2132.5" y="920" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="天線" vertex="1">
+      <mxGeometry height="20" width="40" x="-1962.5" y="920" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="天線" vertex="1">
+      <mxGeometry height="20" width="40" x="-1842.5" y="920" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="載具位置" vertex="1">
+      <mxGeometry height="50" width="200" x="-1570" y="850" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="載具流" vertex="1">
+      <mxGeometry height="50" width="200" x="-1570" y="930" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 35px;&quot;&gt;orchestrator&lt;/font&gt;" vertex="1">
+      <mxGeometry height="205" width="910" x="-510" y="715" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;場域&lt;/span&gt;" vertex="1">
+      <mxGeometry height="85" width="220" x="-455" y="785" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-16" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;場域&lt;/span&gt;" vertex="1">
+      <mxGeometry height="85" width="220" x="-165" y="785" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-18" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;場域&lt;/span&gt;" vertex="1">
+      <mxGeometry height="85" width="220" x="125" y="785" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;e2 adapter&lt;/span&gt;" vertex="1">
+      <mxGeometry height="115" width="460" x="-873" y="980" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-20" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;e2 adapter&lt;/span&gt;" vertex="1">
+      <mxGeometry height="115" width="460" x="-270" y="980" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-21" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;e2 adapter&lt;/span&gt;" vertex="1">
+      <mxGeometry height="115" width="460" x="333" y="980" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-23" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;CU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="205" width="460" x="-873" y="1190" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-24" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;cu_cp&lt;/font&gt;" vertex="1">
+      <mxGeometry height="100" width="150" x="-840" y="1257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-25" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;cu_up&lt;/font&gt;" vertex="1">
+      <mxGeometry height="100" width="150" x="-600" y="1257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-26" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;CU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="205" width="460" x="-285" y="1190" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-27" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;cu_cp&lt;/font&gt;" vertex="1">
+      <mxGeometry height="100" width="150" x="-252" y="1257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-28" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;cu_up&lt;/font&gt;" vertex="1">
+      <mxGeometry height="100" width="150" x="-12" y="1257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-29" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;CU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="205" width="460" x="333" y="1190" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-30" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;cu_cp&lt;/font&gt;" vertex="1">
+      <mxGeometry height="100" width="150" x="366" y="1257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-31" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;cu_up&lt;/font&gt;" vertex="1">
+      <mxGeometry height="100" width="150" x="606" y="1257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-32" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;DU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="650" width="460" x="-873" y="1460" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-33" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;fapi_north&lt;/font&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="1960" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-34" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;MAC&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="1810" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-35" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;RLC&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="1670" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-36" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;RU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="760" width="460" x="-873" y="2200" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-37" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;fapi_south&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="2270" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-38" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;場域狀態管理&lt;/font&gt;" vertex="1">
+      <mxGeometry height="205" width="290" x="500" y="710" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-39" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="建立" vertex="1">
+      <mxGeometry height="190" width="902" x="-2518" y="1120" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-40" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;f1ap_du&lt;/font&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="1530" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-47" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;DU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="650" width="460" x="-285" y="1460" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-48" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;fapi_north&lt;/font&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="1960" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-49" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;MAC&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="1810" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-50" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;RLC&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="1670" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-51" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;f1ap_du&lt;/font&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="1530" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-52" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;DU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="650" width="460" x="333" y="1460" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-53" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;fapi_north&lt;/font&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="1960" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-54" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;MAC&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="1810" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-55" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;RLC&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="1670" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-56" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;f1ap_du&lt;/font&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="1530" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-57" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;by OAI 資訊&lt;/font&gt;" vertex="1">
+      <mxGeometry height="300" width="270" x="-1802.5" y="2847" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-58" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 20px;&quot;&gt;BLER 曲線&amp;nbsp;&lt;/font&gt;" vertex="1">
+      <mxGeometry height="150" width="170" x="-1749.5" y="2947" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-59" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;by 3GPP TS 38.214 資訊&lt;/font&gt;" vertex="1">
+      <mxGeometry height="300" width="567" x="-1799.5" y="3207" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-60" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 20px;&quot;&gt;MCS 表&lt;/font&gt;" vertex="1">
+      <mxGeometry height="150" width="170" x="-1749.5" y="3307" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-61" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 20px;&quot;&gt;CSI codebook&lt;/font&gt;" vertex="1">
+      <mxGeometry height="150" width="170" x="-1472.5" y="3307" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-62" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 35px;&quot;&gt;physics&lt;/font&gt;" vertex="1">
+      <mxGeometry height="420" width="1633" x="-880" y="3030" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-65" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;Sionna (live/cache)&lt;/span&gt;" vertex="1">
+      <mxGeometry height="280" width="1540" x="-833.5" y="3120" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-66" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;5次(直射、反射、穿透&lt;/font&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;)&lt;/span&gt;" vertex="1">
+      <mxGeometry height="140" width="312" x="-797" y="3200" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-67" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;天線高度/角度&lt;/span&gt;" vertex="1">
+      <mxGeometry height="140" width="312" x="-420" y="3200" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-68" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;天線特性(iso/dipole/tr38901)&lt;/span&gt;" vertex="1">
+      <mxGeometry height="140" width="312" x="-43" y="3200" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-69" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;極化(V/H、雙極化)&lt;/span&gt;" vertex="1">
+      <mxGeometry height="140" width="312" x="334" y="3200" as="geometry" />
+    </mxCell>
+    <mxCell id="dxNQPoUmn4wvdD-wMoAT-70" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span&gt;CU-&lt;/span&gt;&lt;span&gt;CP（&lt;/span&gt;&lt;span&gt;Central &lt;/span&gt;&lt;span&gt;Unit – &lt;/span&gt;&lt;span&gt;Control &lt;/span&gt;&lt;span&gt;Plane）:&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;UE 的連線狀態、目前 UE 連到哪個 Cell、RRC 狀態、A3 事件、handover、斷線後重新連線、最強 Cell、鄰區相關資訊，以及整理部分 KPM 後往上送，例如 UE 從 Cell A 移動到 Cell B，是否觸發 A3、是否換手、RRC 狀態有沒有變、斷線後怎麼重新建立連線&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;CU-UP（Central Unit – User Plane）:&lt;/font&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;主要負責「使用者資料面」，PDCP(&lt;/font&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Packet &lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Data &lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Convergence &lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Protocol&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;)，以及它會提供/補充 KPM 所需的資訊&lt;/span&gt;&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="349" width="1240" x="870" y="1460" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-1" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span&gt;編排器 如何做到啟動多個容器:&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;Orchestrator 容器掛載了主機的 /var/run/docker.sock，透過 Docker SDK 直接建立容器。每場都從同一份模板 per_run_template.json (env模板)&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;產生 5 個容器&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;div style=&quot;&quot;&gt;分兩階段啟動容器：&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; &amp;nbsp; &amp;nbsp;- 先起 cu、du、ru、ue，放在同一個內部網路，彼此用容器名稱互連，各分配一個空閒的主機埠。&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; &amp;nbsp; &amp;nbsp;- 等它們健康檢查通過，再起 e2adapter。e2adapter 用主機網路，因為 SCTP 要綁主機 IP，每場各自一條連到 RIC 的連線。&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;編排器 怎麼配合資料庫管理多個容器:&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;- 每場依拓樸為每個 CU、每個 DU 與 RU 各建立一個獨立的 PostgreSQL 資料庫(cu_&amp;lt;場次&amp;gt;_&amp;lt;gNB&amp;gt;、du_&amp;lt;場次&amp;gt;_&amp;lt;DU&amp;gt;、ru_&amp;lt;場次&amp;gt;),於容器啟動前建立,並以環境變數 DB_NAME 注入;全部位於同一台 PostgreSQL(CU 經 pgbouncer 連線,DU 與 RU 直連)。&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;- 每個容器的角色、容器 ID、主機埠與健康狀態,登錄於管理平台的 simulation_run_run_instance;健康監控依此輪詢,異常時自動重啟整場,劇本跑完則自動停止。&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;- 執行期間由歸檔器輪詢各 CU 與 e2adapter,將換手、RLF、KPM 與控制事件依場次與 E2 node 標記寫入編排器的歸檔資料庫,停場後仍可查詢。&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;- 停止場次時先停容器,再刪除該場所有資料庫(3 gNB 的場景為 7 個)。&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 30px;&quot;&gt;一次最多可以啟動多少場景: (live) 1場 / (cache) 8場&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 30px;&quot;&gt;3gnb / 3cell / 15ue / 路徑點 900&lt;/span&gt;&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="490" width="1490" x="870" y="250" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-2" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span&gt;管理平台目前有多少網路元件以及DU RAN Cell 天線參數 可以調整&lt;/span&gt;&lt;/font&gt;&lt;span style=&quot;font-size: 30px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;:&lt;/span&gt;&lt;div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;天線&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;在場景中，針對每個 cell 的 RU 調整：&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 1. 陣列預設：從天線預設清單中選一組&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 2. 天線圖樣：iso、dipole、hw_dipole、tr38901&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 3. 陣列列數與行數&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 4. 極化：V、H、VH、cross&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 5. 垂直與水平元件間距（以波長為單位）&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;在「網路元件」頁編輯預設時，另外還能調：&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 7. 面板數（Mg × Ng）&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 8. 每個 TRX 帶幾個垂直元件、TRX 數&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 9. 電子下傾角&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 10. CSI 埠數、埠排列（N1, N2）&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&amp;nbsp; 13. 波束網格的方位與仰角波束數&lt;/span&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;目前的天線預設：&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 1. 3GPP 系列：2T2R 小站（1×1 cross）、4T4R（2×1 cross）、8T8R（2×2 cross）、16T16R（4×2 cross，Cat B）、32T32R、&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;mMIMO（8×8 cross，Cat B）、64T64R mMIMO（12×8 cross，Cat B）&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 2.其他：1×1 iso（OAI rfsim）、gNB 2×1 cross tr38901（4 埠）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;blockquote style=&quot;margin: 0px 0px 0px 40px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; padding: 0px;&quot;&gt;&lt;div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;/blockquote&gt;&lt;div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;RAN (gnb) 可調整參數&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 1. 名稱&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 2. gNB ID&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 3. PLMN（MCC、MNC）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 4. 位置（x、y、z）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 5. 啟用或停用 gNB&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 6. A3 換手：開關、offset（dB）、hysteresis（dB）、TTT（ms）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;DU 調整參數&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 1. 排程器：PF 比例公平（預設）、Round Robin、Max Throughput&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 2. TDD 樣式（例如 DDDDDDDSUU）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 3. numerology（1 代表 30 kHz）&lt;span style=&quot;color: light-dark(rgb(0, 0, 0), rgb(255, 0, 0));&quot;&gt;還需確認怎麼模擬的&lt;/span&gt;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 4. PRB 數（40 MHz 約 106）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 5. 每個 UE 最少分到的 PRB 數&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 6. PF α :&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;調 PF 的公平程度&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 7. 目標 BLER&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 0, 0));&quot;&gt;還需確認怎麼模擬的&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 8. RLC discard timer（ms）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 9. HARQ 重傳上限&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 10. GBR 優先：開或關&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;color: rgb(255, 0, 0); font-size: 25px; background-color: transparent;&quot;&gt;還需確認怎麼模擬的&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;DU 模板： 只有 1 組「OAI 對齊」：DDDDDDDSUU、μ=1、106 PRB、最少 5 PRB、PF α 0.05、目標 BLER 0.1、discard 300 ms、RLC&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;緩衝 10 MB、HARQ 重傳 4 次、GBR 優先開、排程器 PF。&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;Cellｄ可調整參數&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 1. 名稱&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 2. PCI&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 3. 頻段&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 4. 中心頻率（GHz）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 5. 頻寬（MHz）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 6. 發射功率（dBm）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 7. 方位角（°）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 8. 下傾角（°）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; 9. 開啟或關閉 cell&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="1687.5" width="1400" x="-4260" y="-37.5" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;physics_client&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="2410" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;beamforming&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="2545" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Antenna&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="2683" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Phy_low&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-808" y="2820" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;RU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="760" width="460" x="-285" y="2200" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;fapi_south&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="2270" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;physics_client&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="2410" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;beamforming&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="2545" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Antenna&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="2683" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Phy_low&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="-220" y="2820" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;RU&lt;/font&gt;" vertex="1">
+      <mxGeometry height="760" width="460" x="333" y="2200" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;fapi_south&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="2270" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;physics_client&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="2410" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-16" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;beamforming&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="2545" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-17" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Antenna&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="2683" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-18" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Phy_low&lt;/span&gt;" vertex="1">
+      <mxGeometry height="90" width="330" x="398" y="2820" as="geometry" />
+    </mxCell>
+    <mxCell id="EKkGXicCebYbAveqeBbr-19" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span&gt;目前怎麼模擬MIMO、beamforming:&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;第一步：Sionna 算出 path gain&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; 對每一對「cell 發射端 → UE」，Sionna 做射線追蹤，找出所有能到達的路徑：直射、牆面反射、繞射、折射，最多反彈 5&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; 次。每條路徑有一個複數係數，裡面已經包含：&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; &lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;- 距離造成的衰減&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; &lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;- 每次反射或穿透依材質損失的能量&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; &lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;- 發射端與接收端的天線圖樣。例如 tr38901 圖樣的 8 dBi 已在這裡算進去。&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp;第二步：RU 用公式換算&lt;/div&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;RSRP :&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;cell 發射功率（dBm）+ 10·log10(path gain) − 場景額外損耗（預設 0）&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;雜訊 :&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;−174 dBm/Hz + 10·log10(頻寬) + UE 雜訊指數 7 dB。106 PRB、30 kHz 約為 −91.2 dBm&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;失真上限 :&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;1/SINR_最終 = 1/SINR + 1/SNR_EVM，其中 SNR_EVM ≈ 29.1 dB，來自 3GPP 對 EVM 3.5% 的規定&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;CQI :&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;用 SINR 查 DU 與 RU 共用的 CQI 表&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;波束成形 :&lt;/font&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;- 基地台有 N 根天線時，Sionna 會給出每根天線各自到 UE 的通道，也就是一個 1×N 的向量 h。&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;- RU 從波束網格裡挑一組權重 w，讓 N 根天線的訊號在 UE 那邊同相疊加。&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;- 收到的功率從「每根天線的平均 path gain」變成 |h·w|²，多出來的部分就是波束成形增益，最多約 10·log10(N)。32 埠約+15 dB。&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;MIMO&lt;/font&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;：&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; - UE 也有 M 根天線時，通道變成 M×N 的矩陣 H。&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; - 這張矩陣可能同時容納好幾條互不干擾的資料流，也就是層（rank）。&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; - RU 代替 UE 試各種層數與預編碼，用 MMSE 算出每一層各自的 SINR，挑總容量最大的組合。&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; - 放進公式：原本一個 SINR 變成每層各一個 SINR。總功率要分給各層，所以每層 SINR&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&amp;nbsp; &amp;nbsp; 會變低；但傳輸量乘上層數，只要通道撐得住，總吞吐量就會變高。&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;div style=&quot;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;&amp;nbsp;mMIMO&lt;/font&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;：&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; - 基地台用 32 或 64 埠的大陣列，波束很窄，而且是預先定義好的波束網格（O-RAN Cat B）。&lt;/div&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; - 波束夠窄，所以兩個方向不同的 UE 可以在同一段頻寬上同時傳，也就是 MU-MIMO。&lt;/div&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&amp;nbsp; - 放進公式：兩人功率各減半，並把對方波束漏過來的能量當成干擾&lt;/div&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;RIC 可以控制 RU 天線到什麼程度&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;RC style 2 action&amp;nbsp; : 電子下傾角、可用波束子集、最大層數&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;CCC 開關 cell、節能:&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;cell 停止發射&lt;/span&gt;&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="1560" width="2000" x="870" y="2140" as="geometry" />
+    </mxCell>
+    <mxCell id="rFiBA-zNBXTC6n-efLg7-1" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span&gt;目前提供那些訂閱 以及 提供哪些操作:&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;訂閱: DT-E2SM-FULLKPM 、E2SM-ANR&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;RC（ran_func 3）:&amp;nbsp;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;/font&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;style 3 action 1：換手&amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;=&amp;gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;指定某個 UE 換到目標 cell&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;style 2 action 6：切片 PRB 配額&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;設定 cell 的最小、最大、專用 PRB 百分比&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;style 2 action 8：天線與波束控制&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;電子下傾角、可用波束、最大層數&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;style 9 action 1：ReportCGI&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;用 PCI 查出對應的 CGI（ANR 解析 PCI 用）&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;CCC（ran_func 4）:&amp;nbsp;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;administrativeState LOCKED / UNLOCKED&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;直接關閉或開啟 cell&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;energySaving 進入 / 退出&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;兩階段節能：先把 UE 換到其他 cell，沒人了再關&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;ANR（ran_func 6）&lt;/span&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;:&amp;nbsp;&lt;/span&gt;&lt;/font&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/font&gt;&lt;/font&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;ADD&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;新增鄰區關係&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;REMOVE&amp;nbsp;&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;移除鄰區關係，受保護的條目會被拒絕&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;FLAG&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;=&amp;gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;設定或清除 hoBlocklist、noRemove、xnBlocklist 旗標&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="560" width="1240" x="870" y="820" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-1" parent="1" style="rounded=1;dashed=1;dashPattern=8 4;fillColor=none;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontStyle=1;fontSize=13;fontColor=#9a6700;" value="DU(per-run 容器 du-&lt;rid&gt;)" vertex="1">
+      <mxGeometry height="3274" width="890" x="4340" y="2680" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-2" parent="1" style="rounded=1;dashed=1;dashPattern=8 4;fillColor=none;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontStyle=1;fontSize=13;fontColor=#1f4e79;" value="RU(per-run 容器 ru-&lt;rid&gt;)" vertex="1">
+      <mxGeometry height="3274" width="900" x="5290" y="2680" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11;dashed=1;" value="CU&#xa;(外部 · F1 對端)" vertex="1">
+      <mxGeometry height="60" width="160" x="4140" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-4" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#666666;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4220" y="2770" as="sourcePoint" />
+        <mxPoint x="4220" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11;" value="f1ap_du&#xa;F1AP 介面" vertex="1">
+      <mxGeometry height="60" width="160" x="4340" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-6" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#d79b00;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4420" y="2770" as="sourcePoint" />
+        <mxPoint x="4420" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11;" value="tick&#xa;每拍流程指揮" vertex="1">
+      <mxGeometry height="60" width="160" x="4520" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-8" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#d79b00;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="2770" as="sourcePoint" />
+        <mxPoint x="4600" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11;" value="rlc&#xa;RLC entity / BO" vertex="1">
+      <mxGeometry height="60" width="160" x="4700" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-10" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#d79b00;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4780" y="2770" as="sourcePoint" />
+        <mxPoint x="4780" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11;" value="mac&#xa;排程 · MCS · MU · PM" vertex="1">
+      <mxGeometry height="60" width="160" x="4880" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-12" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#d79b00;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4960" y="2770" as="sourcePoint" />
+        <mxPoint x="4960" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11;" value="fapi_north&#xa;FAPI 北向" vertex="1">
+      <mxGeometry height="60" width="160" x="5060" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-14" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#d79b00;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5140" y="2770" as="sourcePoint" />
+        <mxPoint x="5140" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;" value="fapi_south&#xa;FAPI 南向 · 主流程" vertex="1">
+      <mxGeometry height="60" width="160" x="5300" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-16" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5380" y="2770" as="sourcePoint" />
+        <mxPoint x="5380" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;" value="phy_low&#xa;SFN/slot 狀態" vertex="1">
+      <mxGeometry height="60" width="160" x="5480" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-18" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5560" y="2770" as="sourcePoint" />
+        <mxPoint x="5560" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;" value="antenna&#xa;cell / 天線 / UE 位置" vertex="1">
+      <mxGeometry height="60" width="160" x="5660" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-20" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5740" y="2770" as="sourcePoint" />
+        <mxPoint x="5740" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-21" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;" value="physics_client&#xa;通道來源" vertex="1">
+      <mxGeometry height="60" width="160" x="5840" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-22" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5920" y="2770" as="sourcePoint" />
+        <mxPoint x="5920" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-23" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;" value="beamforming&#xa;波束 · CSI" vertex="1">
+      <mxGeometry height="60" width="160" x="6020" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-24" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="6100" y="2770" as="sourcePoint" />
+        <mxPoint x="6100" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-25" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11;dashed=1;" value="Physics / 通道快取&#xa;(外部)" vertex="1">
+      <mxGeometry height="60" width="160" x="6230" y="2710" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-26" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#666666;" value="">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="6310" y="2770" as="sourcePoint" />
+        <mxPoint x="6310" y="5944" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-27" parent="1" style="text;html=1;fontSize=16;fontStyle=1;align=left;verticalAlign=middle;" value="DU / RU 每 tick 模組層級流程(per-run · cached / live)" vertex="1">
+      <mxGeometry height="30" width="1800" x="4150" y="2630" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-28" parent="1" style="text;html=1;align=left;fontStyle=3;fontSize=12;fontColor=#334455;" value="① DU 每拍開始(tick 每 sim_dt = 500 ms 場景時間觸發一次;模組順序即程式執行順序)" vertex="1">
+      <mxGeometry height="22" width="2300" x="4150" y="2800" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-29" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="查詢每個 UE 的 RLC 緩衝">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="2872" as="sourcePoint" />
+        <mxPoint x="4780" y="2872" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-30" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="BO(待送位元組)、SDU 延遲樣本、丟棄數">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4780" y="2934" as="sourcePoint" />
+        <mxPoint x="4600" y="2934" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-31" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="[cached] 場景時間、UE、serving cell、各 cell 下行負載">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="2996" as="sourcePoint" />
+        <mxPoint x="5140" y="2996" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-32" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="SINR(DU 直讀通道快取,含跨 cell 干擾)&#xa;[live] 無快取 → 沿用 RU 上次回報的 SINR">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5140" y="3058" as="sourcePoint" />
+        <mxPoint x="4600" y="3058" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-33" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=4;" value="RLF 偵測:SINR 進 Qout / T310 狀態機" vertex="1">
+      <mxGeometry height="36" width="280" x="4580" y="3118" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-34" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="[發生 RLF 時] UE、serving cell、&#xa;RLF 時 SINR、最強鄰區">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="3202" as="sourcePoint" />
+        <mxPoint x="4420" y="3202" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-35" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="F1 rlf_report(HTTP)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4420" y="3276" as="sourcePoint" />
+        <mxPoint x="4220" y="3276" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-36" parent="1" style="text;html=1;align=left;fontStyle=3;fontSize=12;fontColor=#334455;" value="② 排程與鏈路適應" vertex="1">
+      <mxGeometry height="22" width="2300" x="4150" y="3338" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-37" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="每 cell 的 UE:SINR、rank、每層 SINR、beam_id / beam_top、BO">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="3410" as="sourcePoint" />
+        <mxPoint x="4960" y="3410" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-38" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=4;" value="mu_mimo:不同波束且互漏 ≤ −10 dB 的 UE 兩兩配對&#xa;pf_scheduler:依 PF 權重分 PRB(操作點 MCS 估需求)" vertex="1">
+      <mxGeometry height="50" width="320" x="4810" y="3458" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-39" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="MU 配對與 MU SINR、每 UE PRB 數(rb_alloc)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4960" y="3556" as="sourcePoint" />
+        <mxPoint x="4600" y="3556" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-40" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="每 UE 的 SINR(配對者用 MU SINR)、模擬時間">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="3618" as="sourcePoint" />
+        <mxPoint x="4960" y="3618" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-41" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=4;" value="mcs_controller:OAI 外迴路(每 100 ms、門檻 0.05 / 0.15)&#xa;bler_curve:OAI AWGN 曲線查首傳 BLER" vertex="1">
+      <mxGeometry height="50" width="320" x="4810" y="3666" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-42" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="每 UE MCS;可送位元組 = PRB × 頻譜效率 × (1 − BLER)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4960" y="3764" as="sourcePoint" />
+        <mxPoint x="4600" y="3764" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-43" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="每 UE 位元組預算(TBS)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="3826" as="sourcePoint" />
+        <mxPoint x="4780" y="3826" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-44" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="實際送出位元組、SDU 送出時刻">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4780" y="3888" as="sourcePoint" />
+        <mxPoint x="4600" y="3888" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-45" parent="1" style="text;html=1;align=left;fontStyle=3;fontSize=12;fontColor=#334455;" value="③ 下行 TTI 送往 RU(per-run DU_RU_INPROCESS=on:背景執行緒送出,DU 不等回應)" vertex="1">
+      <mxGeometry height="22" width="2300" x="4150" y="3950" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-46" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="sfn/slot、rb_alloc、MCS、rank / PMI、serving cell、&#xa;各 cell 下行與上行負載、場景時間">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="4022" as="sourcePoint" />
+        <mxPoint x="5140" y="4022" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-47" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;dashPattern=8 4;strokeColor=#b85450;strokeWidth=2;fontSize=11;fontColor=#b85450;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="DL_TTI.request(HTTP · 非同步)&#xa;PDU:UE、PRB、MCS、layers、PMI、cell_id">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5140" y="4096" as="sourcePoint" />
+        <mxPoint x="5380" y="4096" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-48" parent="1" style="text;html=1;align=left;fontStyle=3;fontSize=12;fontColor=#334455;" value="④ RU 處理(fapi_south 主流程,同一個 HTTP 請求內完成)" vertex="1">
+      <mxGeometry height="22" width="2300" x="4150" y="4170" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-49" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="sfn / slot(更新 RU 狀態計數)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5380" y="4242" as="sourcePoint" />
+        <mxPoint x="5560" y="4242" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-50" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="讀取 cell 設定">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5380" y="4304" as="sourcePoint" />
+        <mxPoint x="5740" y="4304" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-51" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="cell ↔ 發射機對應、每 cell 發射功率、啟用中的 cell、頻率">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5740" y="4366" as="sourcePoint" />
+        <mxPoint x="5380" y="4366" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-52" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="UE 清單、場景時間">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5380" y="4428" as="sourcePoint" />
+        <mxPoint x="5920" y="4428" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-53" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="[live] 讀 UE 位置、天線陣列設定">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5920" y="4490" as="sourcePoint" />
+        <mxPoint x="5740" y="4490" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-54" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="[live] PathSolver/compute:UE 位置、發射機設定&#xa;[cached] 依場景時間查通道快取(npz)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5920" y="4552" as="sourcePoint" />
+        <mxPoint x="6310" y="4552" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-55" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="每發射機 path gain、通道矩陣 H、Sionna serving">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="6310" y="4626" as="sourcePoint" />
+        <mxPoint x="5920" y="4626" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-56" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="path gain、H(cached 由增益合成)、serving tx">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5920" y="4688" as="sourcePoint" />
+        <mxPoint x="5380" y="4688" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-57" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;fontSize=11;spacingLeft=4;" value="RSRP(path gain + cell 功率)、RSSI、RSRQ、鄰區量測&#xa;含跨 cell 干擾的 SINR(鄰 cell 依下行負載加權)" vertex="1">
+      <mxGeometry height="50" width="330" x="5360" y="4736" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-58" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="H(元件層)、參考 SINR、天線佈局">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5380" y="4834" as="sourcePoint" />
+        <mxPoint x="6100" y="4834" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-59" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;fontSize=11;spacingLeft=4;" value="virtualization → 埠層 H;gob 選波束&#xa;csi_selection:Type I codebook 選 rank / PMI" vertex="1">
+      <mxGeometry height="50" width="300" x="5850" y="4882" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-60" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="beam_id、beam_top、rank、PMI、每層 SINR、陣列增益">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="6100" y="4980" as="sourcePoint" />
+        <mxPoint x="5380" y="4980" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-61" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;fontSize=11;spacingLeft=4;" value="EVM 失真上限 → SINR 換 CQI(DU / RU 共用表)&#xa;整批計算上行 SINR(含其他 UE 干擾)" vertex="1">
+      <mxGeometry height="50" width="330" x="5360" y="5028" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-62" parent="1" style="text;html=1;align=left;fontStyle=3;fontSize=12;fontColor=#334455;" value="⑤ RU 回應(背景寫回 DU;約晚一拍才被使用)" vertex="1">
+      <mxGeometry height="22" width="2300" x="4150" y="5126" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-63" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;dashPattern=8 4;strokeColor=#b85450;strokeWidth=2;fontSize=11;fontColor=#b85450;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="HTTP 回應 cqi_indications:SINR、RSRP、RSRQ、CQI、rank、PMI、&#xa;每層 SINR、beam、陣列增益、上行 SINR、鄰區量測">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5380" y="5198" as="sourcePoint" />
+        <mxPoint x="5140" y="5198" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-64" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;dashPattern=8 4;strokeColor=#b85450;strokeWidth=2;fontSize=11;fontColor=#b85450;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="寫回 UE 狀態(下一拍使用;cached 模式的 SINR 會被 DU 自算值覆蓋)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="5140" y="5272" as="sourcePoint" />
+        <mxPoint x="4600" y="5272" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-65" parent="1" style="text;html=1;align=left;fontStyle=3;fontSize=12;fontColor=#334455;" value="⑥ 統計與上報(回到 DU 這一拍,與 ⑤ 並行)" vertex="1">
+      <mxGeometry height="22" width="2300" x="4150" y="5334" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-66" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="SDU 到達與 PRB、SINR → slot_engine;上行 ACK → ul_buffer">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="5406" as="sourcePoint" />
+        <mxPoint x="4960" y="5406" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-67" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="RLC 延遲、上行送出位元組與 PRB">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4960" y="5468" as="sourcePoint" />
+        <mxPoint x="4600" y="5468" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-68" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="PM 累積:PRB、送出位元組、SINR、MCS、CQI、rank、延遲、HARQ 期望輪次">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="5530" as="sourcePoint" />
+        <mxPoint x="4960" y="5530" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-69" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="[每 PM 視窗,預設 1 s] 取視窗平均與總和">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="5592" as="sourcePoint" />
+        <mxPoint x="4960" y="5592" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-70" edge="1" parent="1" style="endArrow=open;html=1;dashed=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="每 UE 與每 cell 的視窗統計">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4960" y="5654" as="sourcePoint" />
+        <mxPoint x="4600" y="5654" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-71" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="量測報告內容:serving、RSRP、SINR、鄰區、&#xa;吞吐、延遲、MCS、CQI">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4600" y="5716" as="sourcePoint" />
+        <mxPoint x="4420" y="5716" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-72" edge="1" parent="1" style="endArrow=block;html=1;strokeColor=#333333;fontSize=11;align=center;verticalAlign=bottom;labelBackgroundColor=#ffffff;" value="F1 measurement_report(每 UE)&#xa;cell_measurement_report(每 cell)">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="4420" y="5790" as="sourcePoint" />
+        <mxPoint x="4220" y="5790" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-73" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;fontSize=11;spacingLeft=4;" value="SFN / slot 前進,場景時鐘 +sim_dt → 下一拍" vertex="1">
+      <mxGeometry height="36" width="280" x="4580" y="5850" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-74" parent="1" style="text;html=1;align=left;fontSize=11;fontColor=#555555;whiteSpace=wrap;" value="註 1:本圖依 2026-09-26 程式碼繪製。per-run 模板設 DU_RU_INPROCESS=on,DL TTI 以背景執行緒送出,tick 不等 RU;RU 回應在背景寫回,約晚一拍生效。" vertex="1">
+      <mxGeometry height="26" width="2300" x="4150" y="5974" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-75" parent="1" style="text;html=1;align=left;fontSize=11;fontColor=#555555;whiteSpace=wrap;" value="註 2:cached 模式 SINR 由 DU(fapi_north/channel_cache_du)直讀通道快取計算;RSRP、鄰區、rank、PMI、beam、CQI、上行 SINR 仍來自 RU。live 模式全部來自 RU。" vertex="1">
+      <mxGeometry height="26" width="2300" x="4150" y="6002" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-76" parent="1" style="text;html=1;align=left;fontSize=11;fontColor=#555555;whiteSpace=wrap;" value="註 3:DU 每拍不送 UL_TTI.request,RU 的 ul_tti_pipeline 與 CRC indication 不在每拍流程內;上行 SINR 在 DL TTI 同一趟計算。" vertex="1">
+      <mxGeometry height="26" width="2300" x="4150" y="6030" as="geometry" />
+    </mxCell>
+    <mxCell id="Zsm-Ki8k_P0Vcusw29Wd-77" parent="1" style="text;html=1;align=left;fontSize=11;fontColor=#555555;whiteSpace=wrap;" value="註 4:UE 位置由 UE 容器另行推給 RU antenna(update_ues),不在 DU tick 內。DU 的 phy_high 已於 2026-09-26 移除。" vertex="1">
+      <mxGeometry height="26" width="2300" x="4150" y="6058" as="geometry" />
+    </mxCell>
+    <mxCell id="ZgLXyJE2V3ciAYTX5VYa-1" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="&lt;font style=&quot;font-size: 30px;&quot;&gt;場域環境&lt;/font&gt;" vertex="1">
+      <mxGeometry height="190" width="902" x="-2518" y="1120" as="geometry" />
+    </mxCell>
+    <mxCell id="ZgLXyJE2V3ciAYTX5VYa-3" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;管理平台目前怎麼管理每個做好的場域，DB 的 紀錄 schema長怎樣&lt;/span&gt;:&lt;/font&gt;&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  scene_layout_scene(場域)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  ├─ radio_access_element_gnb(基地台站點)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  │   └─ radio_access_element_du&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  │       └─ radio_access_element_cell(小區)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  │           └─ radio_access_element_ru(射頻單元,一個 cell 一個)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  ├─ user_equipment_ue(使用者)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  │   ├─ user_equipment_ue_waypoint(路徑點)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  │   ├─ user_equipment_ue_traffic(流量)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  │   └─ user_equipment_ue_active_window(出現時段)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;  └─ simulation_run_scene_run(場次,一個場域一筆)&lt;/font&gt;&lt;/p&gt;&lt;p&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;      ├─ simulation_run_run_instance(該場的 5 個容器)&lt;/font&gt;&lt;/p&gt;" vertex="1">
+      <mxGeometry height="540" width="1050" x="-2720" y="1395" as="geometry" />
+    </mxCell>
+    <mxCell id="VrKFsnb73qI4a5NJE0N7-2" parent="1" style="text;whiteSpace=wrap;fontSize=25;" value="Cat A 和 Cat B 是 O-RAN 前傳規範（WG4）對 O-RU 的分類。差別只有一個：預編碼（決定每根天線送什麼相位、振幅）是在 O-DU   做，還是在 O-RU 做。" vertex="1">
+      <mxGeometry height="60" width="950" x="-4260" y="1740" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;ric-scenario-gw&lt;/font&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-992" y="-560" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;e2mgr&lt;/font&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-692" y="-830" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-3" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;dbaas&lt;/font&gt;" vertex="1">
+      <mxGeometry height="190" width="362" x="-102" y="-317.5" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;blockquote style=&quot;margin: 0px 0px 0px 40px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; padding: 0px;&quot;&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;e2term&lt;/font&gt;&lt;/blockquote&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-992" y="-830" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;blockquote style=&quot;margin: 0px 0px 0px 40px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; padding: 0px;&quot;&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;rtmgr&lt;/font&gt;&lt;/blockquote&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-392" y="-830" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;appmgr&lt;/font&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="208" y="-830" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;dt-anr&lt;/span&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-215" y="-560" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;dt-fullkpm&lt;/span&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-603" y="-560" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;submgr&lt;/font&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-92" y="-830" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;blockquote style=&quot;margin: 0px 0px 0px 40px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; padding: 0px;&quot;&gt;&lt;font style=&quot;font-size: 25px;&quot;&gt;dt-preproc&lt;/font&gt;&lt;/blockquote&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="173" y="-560" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-14" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;InfluxDB&lt;/font&gt;" vertex="1">
+      <mxGeometry height="190" width="404" x="376" y="-320" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;" value="&lt;pre dir=&quot;ltr&quot;&gt;&lt;code&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;場景管理與資料處理&lt;/font&gt;&lt;/code&gt;&lt;/pre&gt;" vertex="1">
+      <mxGeometry height="230" width="730" x="-1030" y="-340" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-20" parent="1" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;dashPattern=1 4;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;Agent Xapp&lt;/font&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-990" y="-257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-21" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 25px;&quot;&gt;rc-probe&lt;/font&gt;" vertex="1">
+      <mxGeometry height="130" width="250" x="-603" y="-257.5" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-23" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;font-size: 30px;&quot;&gt;1. 系統如何區分不同場景&lt;/span&gt;&lt;br&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;RAN orchestrator 先呼叫&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;ric-scenario-gw&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;建立一個&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;scenarioId 並把&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;資料存在 Redis，&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;接著 RAN 再告訴 Gateway 哪些&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;E2 node 屬於 Scenario A 在redis 建立連接關係&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;&quot;&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;2.資料進來後怎麼知道是哪個場景&lt;/span&gt;&lt;span style=&quot;font-size: 30px;&quot;&gt;:&lt;/span&gt;&lt;/font&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;場景建立之後會呼叫&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;ric-scenario-gw&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;裡的 deployer 直接用&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;Kubernetes API&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;建立兩個 Deployment 分別建立&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; text-align: center; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;dt-fullkpm&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;nbsp;、&lt;/span&gt;&lt;span style=&quot;font-size: 25px; text-align: center; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;dt-anr，&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;Gateway 建 pod 時會 inject&amp;nbsp; &quot;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;SCENARIO_ID&quot;&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;啟動後 xApp 自己完成 Register + Subscribe&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; white-space: pre;&quot;&gt;&#x9;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;① POST AppMgr register&lt;/span&gt;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&amp;nbsp;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;② POST SubMgr subscription&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 12px;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 30px;&quot;&gt;3.怎麼送命令到「正確場景」&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 30px;&quot;&gt;部署的xApp 會先透過 &quot;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;GET /v1/scenarios/{id}/observation&quot; 到&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;dt-preproc 去收集整理好、需要的資訊&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;然後xAPP 會 使用&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;├─ scenarioId&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;├─ target cell / control target&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;├─ control style&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; font-size: 30px;&quot;&gt;├─ control parameters&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 30px;&quot;&gt;去發送命令到&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;font-size: 25px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;ric-scenario-gw 由整理這些 request 資訊redis 對其 場域狀態與相關物件 再轉發給&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;rc-probe 他是&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;真正把控制命令轉成 E2 訊息 整理完(&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 25px;&quot;&gt;ASN.1 結構&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;)後 發給&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;e2term&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;送出去&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;&amp;nbsp;到正確場景的RAN 端&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;e2term :&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;(&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;E2SM-RC、&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;E2SM-CCC、&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;ANR&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 25px;&quot;&gt;)&lt;/span&gt;&lt;/div&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+      <mxGeometry height="830" width="1490" x="980" y="-940" as="geometry" />
+    </mxCell>
+    <mxCell id="-auZjpR-9rtGG0UisNT1-25" parent="1" style="text;whiteSpace=wrap;fontSize=25;" value="TDD 樣式不是應該動態分配嗎？&#xa;可以動態，但不是「每一個 slot 都完全自由決定」。5G NR TDD 通常先有一個較高層配置的基本 UL/DL pattern&#xa;3GPP 的 tdd-UL-DL-ConfigurationCommon 本來就可以配置週期、多少 DL slots、多少 UL slots、以及 flexible symbols" vertex="1">
+      <mxGeometry height="580" width="740" x="-5070" y="530" as="geometry" />
+    </mxCell>
+  </root>
+</mxGraphModel>

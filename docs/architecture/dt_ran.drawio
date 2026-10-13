@@ -19,9 +19,6 @@
                 <mxCell id="du_rlc" value="&lt;b&gt;rlc&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:AM/UM分段/retx/BO/SDU delay/discardTimer&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:nr_rlc_entity.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
                     <mxGeometry x="50" y="380" width="270" height="118" as="geometry"/>
                 </mxCell>
-                <mxCell id="du_phy" value="&lt;b&gt;phy_high&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:MCS→調變階數/layer map/BLER查表/TBS&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:LAYER1/NR_TRANSPORT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
-                    <mxGeometry x="50" y="514" width="270" height="118" as="geometry"/>
-                </mxCell>
                 <mxCell id="du_f1" value="&lt;b&gt;f1ap_du&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#333&#39;&gt;作用:F1Setup/UE context/DL·UL RRC/measurement_report&lt;/font&gt;&lt;br&gt;&lt;font color=&#39;#8a4a00&#39;&gt;↔OAI:f1ap_du_task.c&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=6;spacingRight=6;spacingTop=4;fontSize=11;fillColor=#F4F8FF;strokeColor=#4A72B0;" parent="1" vertex="1">
                     <mxGeometry x="50" y="648" width="270" height="118" as="geometry"/>
                 </mxCell>
@@ -32,9 +29,6 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="e_DU_1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_mac" target="du_rlc" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_DU_2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_mac" target="du_phy" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="e_DU_3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#666;" parent="1" source="du_mac" target="du_fapi" edge="1">

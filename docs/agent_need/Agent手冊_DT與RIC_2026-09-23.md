@@ -1,5 +1,7 @@
 # Agent 手冊:從挑劇本、啟動、讀觀測到下命令(DT + RIC 合併版,2026-09-23)
 
+> 已由 `Agent手冊_DT與RIC_2026-09-28.md`(多 gNB 版)取代,本檔保留作歷史。
+
 對應版本:DT orchestrator(agent_api,commit ab793ea)、ric-scenario-gw 0.8.21、dt-preproc 0.1.5、dt-exec-xapp 0.1.1。
 實證:run 40–45(2026-09-22)—— 缺漏鄰區兩段窗、四種 UE/cell 級控制雙方對帳一致、PCI 混淆場 A/B。
 

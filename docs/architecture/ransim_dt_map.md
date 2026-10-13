@@ -144,11 +144,10 @@ flowchart LR
 | 模組 | 算什麼 | 對應 OAI |
 |---|---|---|
 | `tick` | slot 時鐘(SFN/slot)、sim/wall 解耦、PM 視窗、`measurement_report` 觸發、RLC delay 模型(`calib` ÷30 / `subtick` 誠實佇列)、discardTimer 300 ms | `gNB_scheduler_*` 主迴圈 |
-| `mac` | PF 排程(`PF = inst_rate / avg_rate`,IIR α=0.05;two-pass 分配;retx-aware demand ×1/(1−BLER))、HARQ、CQI→MCS link adaptation、PRB quota 封頂 | NR_MAC_gNB scheduler |
+| `mac` | PF 排程(`PF = inst_rate / avg_rate`,IIR α=0.05;two-pass 分配;retx-aware demand ×1/(1−BLER))、HARQ、BLER 外迴路 link adaptation(OAI get_mcs_from_bler 等價)、PRB quota 封頂 | NR_MAC_gNB scheduler |
 | `rlc` | per (ue, bearer) 的 TM/UM/AM entity、SDU→PDU 分段、retx 佇列、status PDU NACK bitmap、BO 回報、SDU delay 取樣 | `nr_rlc_entity.c`、`nr_rlc_am*.c` |
-| `phy_high` | MCS→調變階數、layer mapping、BLER 查表、TBS/吞吐 | `LAYER1/NR_TRANSPORT/` |
 | `f1ap_du` | F1Setup、UE context CRUD(建 RLC/MAC/HARQ)、DL/UL RRC 轉送、measurement_report 匯集 | `f1ap_du_task.c` |
-| `fapi_north` | DL/UL TTI request 組裝、CQI→MCS 回饋、CRC→HARQ 回饋 | nFAPI DL/UL TTI |
+| `fapi_north` | DL/UL TTI request 組裝、CQI indication 回饋、CRC→HARQ 回饋 | nFAPI DL/UL TTI |
 
 ### RANsim-RU `:8103` — O-RU,幾何與電波在這裡變成 CQI
 

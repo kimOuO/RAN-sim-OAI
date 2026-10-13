@@ -30,13 +30,11 @@ package "平台:XAPP_DT — 分裂式 5G NR RAN 數位孿生(讓 xApp 先在 DT 
     component "**tick**\n作用:slot 時鐘(SFN/slot)、sim/wall 解耦、PM window、RLC delay 模型(calib ÷30 / subtick)\n↔OAI:gNB_scheduler_* 主迴圈" as du_tick
     component "**mac**\n作用:PF 排程(2-pass / retx-aware)、HARQ、link adaptation(CQI→MCS)、PRB quota\n↔OAI:NR_MAC_gNB scheduler" as du_mac
     component "**rlc**\n作用:AM/UM/TM entity、SDU→PDU 分段、retx、BO、SDU delay、discardTimer\n↔OAI:nr_rlc_entity.c" as du_rlc
-    component "**phy_high**\n作用:MCS→調變階數、layer mapping、BLER 查表、TBS/吞吐\n↔OAI:LAYER1/NR_TRANSPORT" as du_phy
     component "**f1ap_du**\n作用:F1Setup、UE context CRUD、DL/UL RRC 轉送、measurement_report 匯集\n↔OAI:f1ap_du_task.c" as du_f1
     component "**fapi_north**\n作用:DL/UL TTI 組裝、CQI→MCS 回饋、CRC→HARQ、in-process SINR(讀 cache)\n↔OAI:nFAPI DL/UL TTI" as du_fapi
 
     du_tick --> du_mac : 驅動
     du_mac --> du_rlc : BO / drain
-    du_mac --> du_phy : MCS/TBS
     du_mac --> du_fapi : TTI / CQI
     du_f1 --> du_mac
     du_f1 --> du_rlc

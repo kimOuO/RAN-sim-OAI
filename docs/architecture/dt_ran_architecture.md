@@ -153,11 +153,10 @@ PM window：預設 `sim_dt=500` + `PM_WINDOW=1.0s` → 恆定 2 ticks/window flu
 | 模組 | 路徑 | 算什麼 | 對應 OAI |
 |---|---|---|---|
 | `tick` | `tick/` | slot 時鐘(SFN/slot)、sim/wall 解耦、PM window、measurement_report 觸發、RLC delay 模型 | `gNB_scheduler_*` 主迴圈 |
-| `mac` | `mac/` | PF 排程(2-pass/retx-aware)、HARQ、link adaptation(CQI→MCS)、PM 聚合、PRB quota | `NR_MAC_gNB/gNB_scheduler_*` |
+| `mac` | `mac/` | PF 排程(2-pass/retx-aware)、HARQ、link adaptation(BLER 外迴路選 MCS、OAI AWGN BLER 曲線、CQI 表)、PM 聚合、PRB quota | `NR_MAC_gNB/gNB_scheduler_*` |
 | `rlc` | `rlc/` | AM/UM/TM entity、SDU→PDU 分段、retx 佇列、status PDU、SDU delay、BO | `nr_rlc/nr_rlc_entity.c`、`nr_rlc_am*.c` |
-| `phy_high` | `phy_high/` | MCS→調變階數、layer mapping、BLER 查表、TBS/吞吐 | `LAYER1/NR_TRANSPORT/`（調變/編碼） |
 | `f1ap_du` | `f1ap_du/` | F1Setup、UE context CRUD(建 RLC/MAC/HARQ)、DL/UL RRC 轉送、measurement_report 匯集 | `F1AP/f1ap_du_task.c` |
-| `fapi_north` | `fapi_north/` | DL/UL TTI request 組裝、CQI→MCS 回饋、CRC→HARQ 回饋、in-process SINR(讀 channel cache) | nFAPI DL/UL TTI、CQI/CRC |
+| `fapi_north` | `fapi_north/` | DL/UL TTI request 組裝、CQI indication(SINR/rank/PMI/beam)回饋、CRC→HARQ 回饋、in-process SINR(讀 channel cache) | nFAPI DL/UL TTI、CQI/CRC |
 
 ### RANsim-RU（O-RU）
 
@@ -335,7 +334,6 @@ sequenceDiagram
 | DU | tick | `NR_MAC_gNB/gNB_scheduler_*.c` 主迴圈 |
 | DU | mac | `NR_MAC_gNB` scheduler + HARQ + link adaptation |
 | DU | rlc | `nr_rlc/nr_rlc_entity.c`、`nr_rlc_am*.c` |
-| DU | phy_high | `LAYER1/NR_TRANSPORT/`（調變/編碼/TBS） |
 | DU | f1ap_du | `F1AP/f1ap_du_task.c` |
 | DU | fapi_north | nFAPI DL/UL TTI、CQI/CRC |
 | RU | beamforming | `nr_modulation.c` codebook、`nr_ru_procedures.c::nr_feptx_prec` |

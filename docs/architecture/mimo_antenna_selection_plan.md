@@ -21,7 +21,7 @@
 | 8 | Sionna 建陣列 | `sionna_engine.py:91-107` `rt.PlanarArray` | ✅ 實作完整,支援到 gNB 16 列 / UE 4 列 |
 | 9 | **cached 模式的 npz** | `path_gain_db (T, U, C) float32` | ❌ **只有純量,沒有 H** |
 | 10 | RU 算 rank | `beamforming/services/optional/sinr_estimator.py::estimate_rank()` | ✅ 實作正確,但輸入恆為 1×1 → 恆回 1 |
-| 11 | DU 的 MIMO 模組 | `phy_high/services/optional/precoding/{mimo_processor,precoder}.py` | ⚠️ **死碼**:只有自己的單元測試呼叫 |
+| 11 | DU 的 MIMO 模組 | ~~`phy_high/services/optional/precoding/{mimo_processor,precoder}.py`~~ | **2026-09-26 已刪除**(死碼)。功能由 RU codebook 與 DU `eesm.py` 取代 |
 | 12 | DU TBS 乘層數 | `nr_resources.bits_per_prb_slot()` | ✅ 2026-09-11 已加(`NR_MIMO_LAYERS_ENABLED`) |
 
 **第 4 點的註解是自承的 TODO:**
@@ -133,9 +133,9 @@ pg = float(np.sum(np.abs(combined) ** 2))  # ← 對所有 (rx,tx) 元素對加�
 | 2 | 拿掉 RU `build_rx_config()` 的 1×1 硬編 | 低 | — |
 | 3 | 讓 Physics 讀請求的 `tx_config`(scene-level 重配,非 per-request) | **中** | §3 決策 |
 | 4 | 在 `scene_config.json` 加 `scene_antenna_config` 的 rows/cols | 低 | 1 |
-| 5 | 復活 DU 的 `mimo_processor`(目前是死碼,但實作正確) | 低 | 3, 4 |
-| 6 | 開 `NR_MIMO_LAYERS_ENABLED`,驗證 rank 真的動起來、吞吐隨層數變化 | 低 | 5 |
-| 7 | RU 回 per-layer SINR 陣列(改 `CqiIndication` 介面)→ DU 做完整 EESM | **中** | 6 |
+| 5 | ~~復活 DU 的 `mimo_processor`~~ **不需要**:已刪除,RU codebook 選 rank/PMI、DU `eesm.py` 做層間 SINR 處理 | — | — |
+| 6 | 驗證 rank 真的動起來、吞吐隨層數變化(`NR_MIMO_LAYERS_ENABLED` per-run 已開;需 UE 多天線) | 低 | 2, 3 |
+| 7 | ~~RU 回 per-layer SINR 陣列 → DU 做完整 EESM~~ **已完成**:`CqiIndication.sinr_per_layer_db` | — | — |
 | 8 | (可選)cache 存 H | **高** | §4 決策 |
 
 **第 1~2 項可以立刻做且完全可逆。第 3 項是真正的分水嶺 —— 它決定天線設定能不能
