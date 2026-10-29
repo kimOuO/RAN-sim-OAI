@@ -61,6 +61,9 @@ ran-scene-management/ran-scene-management-scene-editor-frontend/tsconfig.tsbuild
 ran-emulation-runtime/Physics_sim/data/channel_cache/.mode
 ran-emulation-runtime/Physics_sim/data/channel_cache/*.npz
 ran-emulation-runtime/Physics_sim/data/channel_cache/*.paths/
+# 子目錄(如 bak_*/)裡的快取也不進版控;2026-10-29 曾因 530 MB 的 .npy 擋住 push,已從未推送的歷史移除
+ran-emulation-runtime/Physics_sim/data/channel_cache/**/*.npz
+ran-emulation-runtime/Physics_sim/data/channel_cache/**/*.npy
 ran-emulation-runtime/Physics_sim/data/channel_cache/.mode.*
 ran-emulation-runtime/Physics_sim/tmp/
 ran-emulation-runtime/RANsim-CU/tmp/
