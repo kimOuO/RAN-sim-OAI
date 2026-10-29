@@ -15,7 +15,7 @@ export default function RunsPage() {
         <StatTile label="執行中" value={p.counts.running ?? 0} digits={0} tone={p.counts.running ? 'good' : undefined} />
         <StatTile label="已完成" value={p.counts.stopped ?? 0} digits={0} />
         <StatTile label="DU 達成倍速" value={p.duTick?.is_running ? p.duTick.achieved_speed_x : null} unit="×" digits={2} foot={p.duTick ? `設定 ${p.duTick.sim_speed_x}× · tick ${p.duTick.tick_count}` : 'DU 無回應'} />
-        <StatTile label="UE driver" value={p.ueDriver ? p.ueDriver.ue_count : null} unit=" UE" digits={0} foot={p.ueDriver ? `${p.ueDriver.scenario_id} · ${p.ueDriver.phase}` : '無回應'} />
+        <StatTile label="UE driver" value={p.ueDriver?.running ? p.ueDriver.ue_count : null} unit=" UE" digits={0} foot={!p.ueDriver ? '無回應' : p.ueDriver.running ? `${p.ueDriver.scenario_id} · ${p.ueDriver.phase}` : '未載入劇本'} />
         <StatTile label="E2 → RIC" value={null} tone={link?.connected ? 'good' : 'critical'} foot={link ? `${link.connected ? 'connected' : 'down'} · ${link.target_host}:${link.target_port}` : 'E2Adapter 無回應'} />
       </div>
       <div className="toolbar">

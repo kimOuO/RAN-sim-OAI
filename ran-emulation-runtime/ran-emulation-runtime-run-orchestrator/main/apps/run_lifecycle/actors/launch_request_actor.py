@@ -175,6 +175,8 @@ class LaunchController:
         if not tree.get("success"):
             return error_response("scene_run not found", run_uuid, 404)
         t = tree["data"]; run = t.get("run") or {}
+        if run.get('status') == 'precomputing':
+            return error_response('通道快取預算中，完成後才能啟動', run_uuid, 409)
 
         def _run_knob(name: str):
             """run knob 取值(dict 或 [{key,value}] 兩種形狀都收)。
@@ -210,6 +212,10 @@ class LaunchController:
         # 2026-09-28:沒預算也能啟動 —— cached 場景找不到通道快取檔時改用 live(即時算通道),倍速 1×。
         # 「有沒有預算」是場景屬性、不是狀態;預算好的場景才能跑到 cached 上限。
         from main.apps.run_lifecycle.services.optional import channel_cache
+        if _mode == "cached" and channel_cache.available(t.get("scene") or {}):
+            cache = channel_cache.inspect_cache(t)
+            if not cache['valid']:
+                return error_response("通道快取已過期，請重新預算", cache, 409)
         if _mode == "cached" and not channel_cache.available(t.get("scene") or {}):
             logger.info("run %s:場景 %s 沒有預算快取 → 改用 live 1×", run_uuid, channel_cache.scenario_id(t.get("scene") or {}))
             _mode = "live"
@@ -219,6 +225,8 @@ class LaunchController:
             logger.info("run %s %s 模式倍速自 %.1fx 降為上限 %.1fx", run_uuid, _mode, speed_x, _cap)
             speed_x = _cap
         sim_dt_ms = int(payload.get("sim_dt_ms") or run.get("sim_dt_ms") or 500)
+        if not 10 <= sim_dt_ms <= 500:
+            return error_response("Validation failed", {"sim_dt_ms": "必須介於 10 與 500 ms"}, 400)
         no_ric = bool(payload.get("no_ric"))
         # 驗收 18 用:這些 gNB(nodeId)的 e2adapter 先不起,activate 也先不打;
         # 之後由 LaunchController/start_e2adapter 補起並 activate
@@ -337,6 +345,19 @@ class LaunchController:
                 if _knob("anr_xn_auto_reverse") is not None:
                     cu_env["ANR_XN_AUTO_REVERSE"] = "on" if _on(_knob("anr_xn_auto_reverse")) == "1" else "off"
                 cu_envs = {g.name: dict(cu_env) for g in topo.gnbs}
+                # run knob `fullkpm_v2`:這場的 E2 adapter 在 E2 Setup 另外宣告 DT 完整 KPM v2(func 7,OID / 分塊合規版)。
+                # 只影響這一場;func 5 照舊宣告。預設不帶 = 模板的 off。
+                e2_env: dict[str, str] = {}
+                if _knob("fullkpm_v2") is not None:
+                    e2_env["E2SM_FULLKPM2_ENABLE"] = "on" if _on(_knob("fullkpm_v2")) == "1" else "off"
+                # run knob `fullkpm_v2_dump`:驗證用,func 7 每則送出的原始位元組寫到 E2Adapter/logs/fullkpm2_dump_*.jsonl
+                if _knob("fullkpm_v2_dump") is not None:
+                    e2_env["E2SM_FULLKPM2_DUMP"] = "on" if _on(_knob("fullkpm_v2_dump")) == "1" else "off"
+                # run knob `anr_v2` / `anr_v2_dump`:同上,針對 E2SM-ANR v2(func 8)
+                if _knob("anr_v2") is not None:
+                    e2_env["E2SM_ANR2_ENABLE"] = "on" if _on(_knob("anr_v2")) == "1" else "off"
+                if _knob("anr_v2_dump") is not None:
+                    e2_env["E2SM_ANR2_DUMP"] = "on" if _on(_knob("anr_v2_dump")) == "1" else "off"
 
                 # ── RIC 閘道(計畫 D4 順序):先綁全部 node、部署 xApp,之後才起 e2adapter 做 E2 Setup ——
                 # 否則 RIC 常駐 xApp 會先接手還沒綁定的 meid。
@@ -367,7 +388,7 @@ class LaunchController:
                         logger.info("RIC gateway xapp deploy %s → %s", run_uuid, str(xa)[:200])
 
                 # ── 起容器:核心(AMF / CU / DU / RU / UE)→ 等健康 → e2adapter(抓 CU 的 E2 node id 做 E2 Setup)
-                plan = container_spawner.plan_instances(run_uuid, topo, no_ric=no_ric, du_envs=du_envs, cu_envs=cu_envs,
+                plan = container_spawner.plan_instances(run_uuid, topo, no_ric=no_ric, du_envs=du_envs, cu_envs=cu_envs, e2_env=e2_env,
                                                         with_amf=settings.PER_RUN_AMF_ENABLED)
                 core = [it for it in plan if it["role"] != "e2adapter"]
                 _register(container_spawner.spawn_instances(run_uuid, mode, core, topo))

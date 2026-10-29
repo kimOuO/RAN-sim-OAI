@@ -64,6 +64,9 @@ class UeLifecycleManager:
         # 而 2 秒內的漂移遠小於在場時段的解析度。
         self._scene_clock: tuple[int, int] | None = None
         self._last_visible: dict[str, bool] = {}
+        self._kit_visible: dict[str, bool] = {}
+        self._kit_retry_at: dict[str, int] = {}
+        self._auto_presence: set[str] = set()
         # 天線高度 {ue: 公尺}。waypoints 的 y 是腳底高度(視覺層要的),
         # 推給 RU/Sionna 時要加上這個值 —— 少了它等於把人埋在地板裡算通道。
         self._antenna_h: dict[str, float] = {}
@@ -77,19 +80,26 @@ class UeLifecycleManager:
         self._antenna_h = heights or {}
         logger.info("UeLifecycleManager antenna_heights=%d ues", len(self._antenna_h))
 
-    def set_presence_hints(self, serving: dict[str, str] | None, traffic: dict[str, dict] | None) -> None:
+    def set_presence_hints(self, serving: dict[str, str] | None, traffic: dict[str, dict] | None, *, auto_select: set[str] | None = None) -> None:
         """UE 回場重新 attach 時要還原的 serving cell 與流量 profile。
         由 sim_orchestrator 在 start 時從劇本填入。"""
         self._serving_hint = dict(serving or {})
+        if auto_select is not None:
+            self._auto_presence = set(auto_select)
         # traffic=None 是「這次沒有要改流量提示」,不是「清空」—— sim_orchestrator 與
         # scenario_driver 都會呼叫,兩者順序不該讓後者的 profile 被前者洗掉。
         if traffic is not None:
             self._traffic_hint = dict(traffic)
 
+    def note_initial_attachments(self, cells: dict[str, str]) -> None:
+        self._serving_hint.update(cells)
+        self._last_visible.update({name: True for name in cells})
+
     def set_sim_speed(self, speed_x: float) -> None:
         """劇本倍速,由 driver 在 start 時填入。軌跡/在場時段換算劇本時間要用。"""
         self._sim_speed_x = max(0.01, float(speed_x or 1.0))
         self._scene_clock = None
+        self._scene_now_last_ms = 0.0
         logger.info("UeLifecycleManager sim_speed_x=%.3f", self._sim_speed_x)
 
     def _scenario_now_ms(self, now_ms: int) -> float:
@@ -112,7 +122,8 @@ class UeLifecycleManager:
         # 並且**永不倒退**:校正時若 DU 的值比上次回的小,就停在原地等 DU 追上。
         # 時鐘倒退會讓在場時段邊界的 UE 反覆離場/回場,每次都是一整套 RRC 流程,
         # 過載時這股負載會把 DU 拖得更慢 —— 正回饋。
-        est = scene_ms + (now_ms - at_ms) * min(ach, self._sim_speed_x)
+        # Bound interpolation to one refresh interval if the source disappears.
+        est = scene_ms + min(max(0, now_ms - at_ms), self._SCENE_CLOCK_REFRESH_MS) * min(ach, self._sim_speed_x)
         last = getattr(self, "_scene_now_last_ms", 0.0)
         if est < last:
             est = last
@@ -143,6 +154,15 @@ class UeLifecycleManager:
                 cu_client.release_ue(ue_id)
                 return True
             serving = self._serving_hint.get(ue_id) or ""
+            if ue_id in self._auto_presence:
+                from main.apps.ue_lifecycle.services.trajectory_store import get_store
+                traj = get_store().get(ue_id)
+                if traj:
+                    pos = interp_position(traj['waypoints'], self._scenario_elapsed_ms(traj, _now_ms()), mode=traj.get('mode', 'once'))
+                    serving, _ = cell_selection.select_cell(ue_id, (pos[0], pos[1] + self._antenna_h.get(ue_id, 0.0), pos[2]),
+                                                            min_rsrp_dbm=settings.CAMP_MIN_RSRP_DBM)
+                    if not serving:
+                        return False
             from main.apps.ue_lifecycle.services import ran_endpoints
             topo = ran_endpoints.topology()
             if topo is not None and serving:
@@ -179,6 +199,9 @@ class UeLifecycleManager:
         """設定劇本在場時段。換 session 要重設,否則沿用上一齣戲的時間軸。"""
         self._active_windows = windows or {}
         self._last_visible = {}
+        self._kit_visible = {}
+        self._kit_retry_at = {}
+        self._presence_retry_at = {}
         logger.info("UeLifecycleManager active_windows=%d ues", len(self._active_windows))
 
     def start(self) -> None:
@@ -334,25 +357,27 @@ class UeLifecycleManager:
                 continue
             t = self._scenario_elapsed_ms(traj, now_ms) / 1000.0
             visible = any(a <= t < b for a, b in windows)
-            if self._last_visible.get(ue_id) == visible:
-                continue
             # 2026-09-27:RAN 側(回場接入)失敗就不記成已同步,3 秒後重試 —— 以前失敗一次那個人就整段沒有服務
             _retry_at = getattr(self, "_presence_retry_at", {})
             if now_ms < _retry_at.get(ue_id, 0):
                 continue
-            self._last_visible[ue_id] = visible
             # 2026-09-20:active_windows 以前只管「看不看得到」—— 3D 不畫、Kit 藏起來,
             # 但 RRC 連線、DU 排程、流量注入全照舊,於是「人不見了卻還掛在 gNB 上傳資料」。
             # 這裡讓它真的離場 / 回場,沒有開關 —— 不在場景裡的人不該算網路連線。
             # 注意:Kit 不是我們的元件、也可能沒在跑,所以 RAN 側動作不能綁在它的成敗上。
-            if not self._apply_presence(ue_id, visible):
-                self._last_visible.pop(ue_id, None)
-                self._presence_retry_at = {**_retry_at, ue_id: now_ms + 3000}
+            if self._last_visible.get(ue_id) != visible:
+                if not self._apply_presence(ue_id, visible):
+                    self._presence_retry_at = {**_retry_at, ue_id: now_ms + 3000}
+                    continue
+                self._last_visible[ue_id] = visible
+            # Kit failure must never repeat RRC release/attach or force a UE back
+            # to its initial cell. Visual delivery has a separate retry cache.
+            if self._kit_visible.get(ue_id) == visible or now_ms < self._kit_retry_at.get(ue_id, 0):
                 continue
             if not kit_client.set_ue_visible(ue_id, visible):
-                # 推失敗就把快取清掉,下一個 tick 會重試(不要記成已同步)
-                self._last_visible.pop(ue_id, None)
+                self._kit_retry_at[ue_id] = now_ms + 3000
                 continue
+            self._kit_visible[ue_id] = visible
             n_on = sum(1 for v in self._last_visible.values() if v)
             logger.info("visibility @ %02d:%02d — %s → %s (在場 %d/%d)",
                         int(t // 3600), int((t % 3600) // 60), ue_id,
@@ -454,10 +479,11 @@ class UeLifecycleManager:
         # 殺掉就不再推位置 → RU 量不到 → DU 不產量測 → CU 永遠不知道它回到覆蓋內,
         # 於是走出死角也回不來(死結)。保留 thread 繼續走軌跡、但不灌流量,
         # 量測鏈就會自己恢復,CU 的 [RE-CAMP] 會把它收回 CONNECTED。
-        idle_ids = {
-            s["ue_id"] for s in sessions
+        idle_set = {
+            s["ue_id"]: s for s in sessions
             if s.get("rrc_state") == "IDLE" and s["ue_id"] not in cu_set
         }
+        idle_ids = set(idle_set)
 
         with self._lock:
             existing = set(self._threads.keys())
@@ -482,9 +508,13 @@ class UeLifecycleManager:
             # 掉話中: 降到 STANDBY(位置照算、traffic 停),等 CU 收回
             for ue_id in camping:
                 t = self._threads.get(ue_id)
-                if t is not None and t.state == UeThreadState.RUNNING:
-                    t.transition_to(UeThreadState.STANDBY)
-                    logger.info("UE %s 掉話 → STANDBY(保留軌跡,等訊號回來重新駐留)", ue_id)
+                if t is not None:
+                    # IDLE 也要更新快照，否則狀態 API 與 attached_count 仍會
+                    # 使用掉話前的 CONNECTED，畫面就無法反映真正的 RLF。
+                    t.update_snapshot(self._build_snapshot(idle_set[ue_id]))
+                    if t.state == UeThreadState.RUNNING:
+                        t.transition_to(UeThreadState.STANDBY)
+                        logger.info("UE %s 掉話 → STANDBY(保留軌跡,等訊號回來重新駐留)", ue_id)
 
             # 沿用: 更新 snapshot
             for ue_id in kept:

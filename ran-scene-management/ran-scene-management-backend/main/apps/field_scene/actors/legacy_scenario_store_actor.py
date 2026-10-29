@@ -57,7 +57,11 @@ class LegacyScenarioStore:
         scene = _latest_scene(str(sid))
         if scene is None:
             return error_response("Not found", sid, 404)
-        run = SceneRun.objects.filter(scene=scene).order_by("id").first()
+        run_id = payload.get('scene_run_uuid')
+        run = (SceneRun.objects.filter(scene=scene, scene_run_uuid=run_id).first() if run_id
+               else SceneRun.objects.filter(scene=scene).order_by("id").first())
+        if run_id and run is None:
+            return error_response('Run not found in scene', run_id, 404)
         return success_response(_record(scene, run, with_raw=True), "ok", 200)
 
     @staticmethod

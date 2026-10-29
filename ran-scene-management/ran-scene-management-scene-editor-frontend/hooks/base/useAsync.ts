@@ -8,11 +8,11 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncSt
   const [status, setStatus] = useState<AsyncStatus>('idle');
   const [error, setError] = useState<Error | null>(null);
   const seq = useRef(0);
-  const run = useCallback(() => {
+  const run = useCallback(async () => {
     const my = ++seq.current;
     setStatus('loading');
-    fn().then((d) => { if (my === seq.current) { setData(d); setError(null); setStatus('success'); } })
-        .catch((e: unknown) => { if (my === seq.current) { setError(e instanceof Error ? e : new Error(String(e))); setStatus('error'); } });
+    try { const d = await fn(); if (my === seq.current) { setData(d); setError(null); setStatus('success'); } return d; }
+    catch (e: unknown) { if (my === seq.current) { setError(e instanceof Error ? e : new Error(String(e))); setStatus('error'); } return null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   useEffect(() => { run(); }, [run]);

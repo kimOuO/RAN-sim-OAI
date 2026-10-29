@@ -736,7 +736,11 @@ def run(req: DlTtiRequest) -> list[CqiIndication]:
             _scene_ms = getattr(req, "scene_sim_ms", None)
             for ue_id in (miss_ids if resp is not None else []):
                 value = {
-                    "channel_matrix": (resp.channel_matrix or {}).get(ue_id, {}),
+                    # JSON lists retain several Python objects per complex value.
+                    # Pack once before caching; the downstream converter accepts
+                    # complex ndarrays and this bounds the large-array live case.
+                    "channel_matrix": {tx: _to_complex_matrix(h) for tx, h in
+                                       ((resp.channel_matrix or {}).get(ue_id, {}) or {}).items()},
                     # 光追雜訊平滑(cached 在載入 cache 時做,live 在這裡做)
                     "path_gain": live_smoothing.smooth(ue_id, (resp.path_gain or {}).get(ue_id, {}),
                                                        None if _scene_ms is None else _scene_ms / 1000.0),

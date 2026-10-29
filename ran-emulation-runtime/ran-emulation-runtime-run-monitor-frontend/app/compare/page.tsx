@@ -14,8 +14,8 @@ export default function ComparePage() {
       {p.picked.length > 0 && (
         <div className="grid">
           <Panel title="平均 PRB DL" span={6}><TimeSeriesChart series={p.charts.prb} unit="%" yMin={0} yMax={100} /></Panel>
-          <Panel title="Σ DL 吞吐" span={6}><TimeSeriesChart series={p.charts.thp} yMin={0} digits={2} /></Panel>
-          <Panel title="平均 SINR" span={4}><TimeSeriesChart series={p.charts.sinr} yMin={-10} yMax={40} /></Panel>
+          <Panel title="Σ DL 吞吐" span={6}><TimeSeriesChart series={p.charts.thp} unit=" Mb/s" yMin={0} digits={2} /></Panel>
+          <Panel title="平均 SINR" span={4}><TimeSeriesChart series={p.charts.sinr} unit=" dB" yMin={-10} yMax={40} /></Panel>
           <Panel title="附著 UE 數" span={4}><TimeSeriesChart series={p.charts.ue} yMin={0} digits={0} /></Panel>
           <Panel title="平均 MCS" span={4}><TimeSeriesChart series={p.charts.mcs} yMin={0} yMax={28} /></Panel>
         </div>)}

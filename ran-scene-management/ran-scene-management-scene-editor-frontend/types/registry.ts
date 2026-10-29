@@ -50,6 +50,7 @@ export interface Ue {
   ue_uuid: string; name: string; antenna_height_m: number; qos_5qi: number; color: number[]; loop: boolean; speed_mps: number | null;
   f_scene_uuid: string; f_antenna_preset_uuid: string | null; antenna_preset?: AntennaPreset | null;
   waypoints: [number, number, number, number][]; traffic: UeTraffic[]; active_windows: [number, number][];
+  presence_restricted?: boolean;
 }
 export interface SceneRun {
   scene_run_uuid: string; mode: 'live' | 'cached'; speed_x: number; sim_dt_ms: number; duration_sec: number;

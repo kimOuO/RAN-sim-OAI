@@ -463,31 +463,7 @@ class F1ApRouterActor:
         except Exception:  # noqa: BLE001 — ANR 失敗不該影響量測與換手主流程
             logger.exception("自主 ANR 處理失敗 ue=%s", ue_id)
 
-        # ── A3 自動觸發 handover 評估（對齊 OAI rrc_gNB_mobility::trigger_HO） ──
-        # 公式：RSRP(neighbor) - hys > RSRP(serving) + offset 持續 TTT_MS
-        neighbors = [(n.get("cell_id"), n.get("rsrp_dbm")) for n in (d.get("neighbor_cells") or [])
-                     if n.get("cell_id") and n.get("rsrp_dbm") is not None]
-        # 服務 cell 沒有量測樣本(rsrp 為 None)這一拍不評估 A3 —— 沒有基準可比
-        if neighbors and ue.serving_cell and d["rsrp_dbm"] is not None:
-            verdict = A3HandoverCalculation().evaluate(
-                ue_state=get_ue_state(ue_id),
-                serving_cell=ue.serving_cell,
-                serving_rsrp=d["rsrp_dbm"],
-                neighbors=neighbors,
-            )
-            if verdict.triggered and verdict.target_cell:
-                from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
-                # P2-2:帶 target RSRP → 讓 RandomAccessProblem 失敗原因可判
-                _tgt_rsrp = next((r for c, r in neighbors if c == verdict.target_cell), None)
-                ho = execute_f1_handover(
-                    ue_id=ue_id, target_cell=verdict.target_cell, trigger="A3_TTT",
-                    target_rsrp=_tgt_rsrp,
-                )
-                if ho:
-                    logger.info(
-                        "A3 auto-trigger handover: ue=%s elapsed_TTT=%dms %s → %s",
-                        ue_id, verdict.elapsed_ms, ho["source_cell"], ho["target_cell"],
-                    )
+        _evaluate_a3(ue, ue_id, d["rsrp_dbm"], d.get("neighbor_cells") or [])
 
         # 用條件式更新:這份報告觸發的換手若把 UE 交給了別的 gNB(NG 換手會刪本地 context),
         # 這裡找不到那一列是正常的。以前用 update_entity 會丟 DoesNotExist → 500 →
@@ -533,6 +509,36 @@ class F1ApRouterActor:
     @csrf_exempt
     @require_http_methods(["POST"])
     @transaction.atomic
+    def mobility_measurement(request: HttpRequest):
+        """每個 tick 的輕量量測(服務 cell RSRP + 鄰區),只做 A3 換手評估。
+
+        2026-10-14 #22:以前 A3 只吃每 1 秒一份的 PM 視窗報告,換手決策要 2–3 秒,
+        比 RLF(N310 兩個 tick + T310 1 秒)還慢 → UE 停在變差的 cell 直到斷線。
+        真實 UE 是持續量測、條件成立才回報;DT 的時間粒度是 tick(500 ms),所以每 tick 送。
+        不寫 MeasurementLog、不做 ANR(那些仍以 1 秒 PM 視窗為準,KPM 語意不變)。"""
+        try:
+            d = json.loads(request.body or b"{}")
+        except json.JSONDecodeError as exc:
+            return error_response("invalid JSON", str(exc), status=400)
+        ue_id = str(d.get("ue_id") or "")
+        if not ue_id or d.get("rsrp_dbm") is None:
+            return error_response("validation failed", {"ue_id/rsrp_dbm": "required"}, status=400)
+        ue = SqlDbBusinessService.get_or_none(UeContext, "ue_id", ue_id)
+        if ue is None:
+            return error_response(f"unknown UE {ue_id}", status=404)
+        # 同 measurement_report:UE 已不在本 gNB(Xn 換手後舊 DU 的報告還在路上)→ 不評估
+        if ue.rrc_state != "CONNECTED" or (ue.serving_cell and not CellConfig.objects.filter(cell_id=ue.serving_cell).exists()):
+            return success_response({"ue_id": ue_id, "processed": False}, "UE not served by this gNB (stale report)")
+        from main.utils.env_loader import get_float as _gf
+        rep_min = _gf("MEAS_REPORT_MIN_RSRP_DBM", -110.0)
+        nbrs = [n for n in (d.get("neighbor_cells") or []) if n.get("rsrp_dbm") is None or float(n["rsrp_dbm"]) >= rep_min]
+        _evaluate_a3(ue, ue_id, float(d["rsrp_dbm"]), nbrs)
+        return success_response({"ue_id": ue_id, "processed": True}, "ok")
+
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
     def cell_measurement_report(request: HttpRequest):
         """AL2 — cell-level KPI from DU (3GPP TS 28.552 RRU.PrbTotDl).
 
@@ -569,3 +575,33 @@ class F1ApRouterActor:
             "recorded_at": TimestampService.now(),
         })
         return success_response({"cell_id": cell_id}, "cell measurement stored")
+
+
+def _evaluate_a3(ue, ue_id: str, serving_rsrp, neighbor_cells: list) -> None:
+    """A3 自動觸發 handover 評估(對齊 OAI rrc_gNB_mobility::trigger_HO)。
+    公式:RSRP(neighbor) - hys > RSRP(serving) + offset 持續 TTT_MS。
+    PM 視窗報告(每 1 秒)與 mobility_measurement(每個 tick)共用。"""
+    neighbors = [(n.get("cell_id"), n.get("rsrp_dbm")) for n in neighbor_cells
+                 if n.get("cell_id") and n.get("rsrp_dbm") is not None]
+    # 服務 cell 沒有量測樣本(rsrp 為 None)這一拍不評估 A3 —— 沒有基準可比
+    if not (neighbors and ue.serving_cell and serving_rsrp is not None):
+        return
+    verdict = A3HandoverCalculation().evaluate(
+        ue_state=get_ue_state(ue_id),
+        serving_cell=ue.serving_cell,
+        serving_rsrp=serving_rsrp,
+        neighbors=neighbors,
+    )
+    if verdict.triggered and verdict.target_cell:
+        from main.apps.cu_cp.services.business.handover_executor import execute_f1_handover
+        # P2-2:帶 target RSRP → 讓 RandomAccessProblem 失敗原因可判
+        _tgt_rsrp = next((r for c, r in neighbors if c == verdict.target_cell), None)
+        ho = execute_f1_handover(
+            ue_id=ue_id, target_cell=verdict.target_cell, trigger="A3_TTT",
+            target_rsrp=_tgt_rsrp,
+        )
+        if ho:
+            logger.info(
+                "A3 auto-trigger handover: ue=%s elapsed_TTT=%dms %s → %s",
+                ue_id, verdict.elapsed_ms, ho["source_cell"], ho["target_cell"],
+            )

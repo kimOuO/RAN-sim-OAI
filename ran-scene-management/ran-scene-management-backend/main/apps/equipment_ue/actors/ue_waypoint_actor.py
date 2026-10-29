@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
@@ -24,6 +25,42 @@ def _body(request) -> dict:
 
 
 class UeWaypointController:
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    @transaction.atomic
+    def replace(request):
+        """Replace one UE's complete path atomically after validating all points."""
+        from main.apps.equipment_ue.models.ue import Ue
+        try:
+            payload = _body(request)
+            points = payload.get("waypoints")
+            if not isinstance(points, list) or not points or len(points) > 10000:
+                raise ValueError("waypoints must contain 1–10000 [t,x,y,z] points")
+            normalized = []
+            for i, point in enumerate(points):
+                if not isinstance(point, list) or len(point) != 4 or any(isinstance(v, bool) for v in point):
+                    raise ValueError(f"waypoint {i + 1}: expected [t,x,y,z]")
+                values = [float(v) for v in point]
+                if not all(math.isfinite(v) for v in values) or values[0] < 0:
+                    raise ValueError(f"waypoint {i + 1}: values must be finite and time >= 0")
+                if (i == 0 and values[0] != 0) or (i > 0 and values[0] <= normalized[-1][0]):
+                    raise ValueError("first time must be 0; subsequent times must strictly increase")
+                normalized.append(values)
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+            return error_response("Validation failed", str(exc), 400)
+        ue = Ue.objects.select_for_update().filter(ue_uuid=payload.get("f_ue_uuid")).first()
+        if ue is None:
+            return error_response("UE not found", payload.get("f_ue_uuid"), 404)
+        now = TimestampService.get_current_timestamp()
+        rows = [UeWaypoint(ue=ue, ue_waypoint_uuid=UUIDService.generate_uuid("ue_waypoint"),
+                           ord=i, t_sec=p[0], x=p[1], y=p[2], z=p[3],
+                           ue_waypoint_created_at=now, ue_waypoint_updated_at=now)
+                for i, p in enumerate(normalized)]
+        UeWaypoint.objects.filter(ue=ue).delete()
+        UeWaypoint.objects.bulk_create(rows)
+        return success_response(UeWaypointReadSerializer(rows, many=True).data, "path saved", 200)
+
     @staticmethod
     @csrf_exempt
     @require_http_methods(["POST"])

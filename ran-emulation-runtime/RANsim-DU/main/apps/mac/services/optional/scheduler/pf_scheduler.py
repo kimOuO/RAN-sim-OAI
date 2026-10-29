@@ -32,6 +32,9 @@ _OP_PRB_FLOOR = get_int("SLOT_OP_PRB_FLOOR", 12)
 # (容量 ×(1-BLER)= 真正送得出去的量),避免「以為 100% 成功」少開 PRB → backlog 積爆。
 # 對齊 OAI outer-loop link adaptation / 有效 TBS 為重傳預留資源。off 走舊樂觀路徑。
 _SCHED_RETX_AWARE = get_bool("SLOT_SCHED_RETX_AWARE", True)
+# HARQ 最大傳送輪數(含首傳)= DU 模板 harq_max_retx(經編排器注入 HARQ_MAX_RETX,harq_manager 同一個值),
+# 對齊 OAI dl_harq_round_max 預設 4。排程器的重傳預留不能超過 HARQ 實際會送的次數。
+_HARQ_ROUND_MAX = max(1, get_int("HARQ_MAX_RETX", 4))
 
 logger = get_logger(__name__)
 
@@ -129,8 +132,11 @@ class PfScheduler:
                 bps_re = spectral_efficiency(mcs)
                 if _SCHED_RETX_AWARE:
                     # 用 slot 引擎同一個 BLER:期望需傳 1/(1-BLER) 次才成功 → 容量 ×(1-BLER)
+                    # 2026-10-14 #23:下限由 0.05(最多放大 20 倍)改為 1/HARQ 最大輪數。一個 TB 最多送
+                    # dl_harq_round_max 次(OAI MACRLC_nr_paramdef.h 預設 4),PRB 期望用量不會超過 4 倍;
+                    # 以前 MCS 0 也解不開的 UE(快斷線)會被放大 20 倍、吃光整個 cell 的 PRB。
                     b = bler_curve.bler(mcs, sinr_eff)
-                    retx_eff = max(0.05, 1.0 - float(b))
+                    retx_eff = max(1.0 / _HARQ_ROUND_MAX, 1.0 - float(b))
             else:
                 mcs, bps_re = sinr_to_mcs(sinr_eff)
             inst_rates[uid] = mcs_to_throughput_mbps(

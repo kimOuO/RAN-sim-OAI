@@ -10,13 +10,15 @@ export function ColumnChart({ groups, height = 160, unit = '' }: { groups: { nam
   const n = groups[0]?.cols.length ?? 0; if (!n) return <div ref={ref} className="chart empty" style={{ height }}><span className="muted">尚無資料</span></div>;
   const PAD = { l: 30, r: 8, t: 8, b: 22 }; const iw = width - PAD.l - PAD.r, ih = height - PAD.t - PAD.b;
   // 非有限值(NaN / Infinity)當 0,否則最大值變 NaN,刻度文字會渲染成 NaN
-  const hi = Math.max(1, ...groups.flatMap((g) => g.cols.map((c) => (Number.isFinite(c.value) ? c.value : 0))));
+  // 計數只能是整數:上限取偶數(至少 2),中間刻度才會是整數,不會出現「1 / 1 / 0」
+  const raw = Math.max(...groups.flatMap((g) => g.cols.map((c) => (Number.isFinite(c.value) ? c.value : 0))));
+  const hi = Math.max(2, Math.ceil(raw / 2) * 2);
   const slot = iw / n, bw = Math.max(2, (slot - 4) / groups.length - 2);
   const tickEvery = Math.max(1, Math.ceil(n / 8));
   return (
     <div ref={ref} className="chart">
       <svg width={width} height={height} role="img" aria-label="column chart">
-        {[0, 0.5, 1].map((f) => <g key={f}><line x1={PAD.l} x2={width - PAD.r} y1={PAD.t + ih * (1 - f)} y2={PAD.t + ih * (1 - f)} className="grid" /><text x={PAD.l - 5} y={PAD.t + ih * (1 - f) + 3.5} textAnchor="end" className="tick">{Math.round(hi * f)}</text></g>)}
+        {[0, 0.5, 1].map((f) => <g key={f}><line x1={PAD.l} x2={width - PAD.r} y1={PAD.t + ih * (1 - f)} y2={PAD.t + ih * (1 - f)} className="grid" /><text x={PAD.l - 5} y={PAD.t + ih * (1 - f) + 3.5} textAnchor="end" className="tick">{hi * f}</text></g>)}
         {groups[0].cols.map((c, i) => (
           <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
             <rect x={PAD.l + i * slot} y={PAD.t} width={slot} height={ih} fill="transparent" />

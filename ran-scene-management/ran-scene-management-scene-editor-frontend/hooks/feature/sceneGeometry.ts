@@ -34,4 +34,4 @@ export function uePositionAt(ue: Ue, t: number): [number, number, number] | null
 export const pathDuration = (tree: SceneTree) => Math.max(0, ...tree.ues.map((u) => u.waypoints.at(-1)?.[0] ?? 0));
 
 /** UE 在時間 t 是否在場(沒設在場時段 = 全程) */
-export const ueActiveAt = (ue: Ue, t: number) => !ue.active_windows.length || ue.active_windows.some(([a, b]) => t >= a && t <= b);
+export const ueActiveAt = (ue: Ue, t: number) => (!ue.presence_restricted && !ue.active_windows.length) || ue.active_windows.some(([a, b]) => t >= a && t < b);

@@ -1,4 +1,6 @@
 from django.urls import path
+
+from main.apps.run_telemetry_archive.actors.run_execution_actor import RunExecutionReader
 from main.apps.run_telemetry_archive.actors.run_kpm_sample_actor import RunKpmSampleController, RunKpmSampleReader
 from main.apps.run_telemetry_archive.actors.run_control_event_actor import RunControlEventController, RunControlEventReader
 from main.apps.run_telemetry_archive.actors.run_handover_event_actor import RunHandoverEventController, RunHandoverEventReader
@@ -8,6 +10,7 @@ urlpatterns = [
     path("RunKpmSampleController/update", RunKpmSampleController.update, name="run_kpm_sample_update"),
     path("RunKpmSampleController/delete", RunKpmSampleController.delete, name="run_kpm_sample_delete"),
     path("RunKpmSampleReader/read", RunKpmSampleReader.read, name="run_kpm_sample_read"),
+    path("RunExecutionReader/read", RunExecutionReader.read, name="run_execution_read"),   # 回放清單(每次執行一列)
     path("RunControlEventController/create", RunControlEventController.create, name="run_control_event_create"),
     path("RunControlEventController/update", RunControlEventController.update, name="run_control_event_update"),
     path("RunControlEventController/delete", RunControlEventController.delete, name="run_control_event_delete"),

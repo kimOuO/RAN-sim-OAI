@@ -136,3 +136,13 @@ table.ne td { max-width: 22em; overflow: hidden; text-overflow: ellipsis; }
 
 /* 2026-09-28 場次三種狀態:閒置用中性色,預算中沿用 fair,執行中沿用 good */
 .pill.idle { background: transparent; color: var(--muted, inherit); }
+/* UE 路徑表:右側面板只有 ~340 px,四欄數值 + 刪除鈕要整個塞得下(完整數值在 title) */
+.path-editor-wrap { max-height: 360px; overflow-y: auto; }
+.path-editor { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.path-editor col.c-t { width: 25%; } .path-editor col.c-del { width: 26px; }
+.path-editor th { font-size: 11px; font-weight: 600; text-align: left; padding: 2px 3px; }
+.path-editor td { padding: 2px 2px; }
+.path-editor input { width: 100%; min-width: 0; box-sizing: border-box; padding: 3px 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.path-editor button { width: 22px; padding: 2px 0; }
+.path-editor input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.path-editor input[type=number]::-webkit-inner-spin-button, .path-editor input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

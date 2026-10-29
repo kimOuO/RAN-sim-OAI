@@ -80,6 +80,10 @@ def dependency_issue(role: str, data: dict) -> str:
             # DU 容器被重啟後 tick 不會自己恢復(2026-09-15 實測:HTTP 活著、F1 Setup 通過、tick_count 0),整場靜止但沒人知道
             if data.get("is_running") is False:
                 return "DU tick 未運行(容器重啟後未恢復?)"
+        elif role == "ru":
+            clock = data.get("clock")
+            if clock is not None and not clock.get("running"):
+                return "RU 鎖步時鐘未運行(工作程序重啟後未恢復?)"
     except Exception:  # noqa: BLE001
         return ""
     return ""

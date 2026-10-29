@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { DuFields } from '@/components/scene-editor/DuFields';
+import { RunConfigFields } from '@/components/scene-editor/RunConfigFields';
 import type { Selection } from '@/hooks/feature/useSceneEditorPage';
-import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS, CATEGORY_OPTIONS, categoryOfScene } from '@/config';
+import type { SceneMesh } from '@/services/api/scenes';
+import { ANTENNA_PATTERNS, POLARIZATIONS, RUN_KNOB_KEYS, CATEGORY_OPTIONS, categoryOfScene, MATERIAL_LABELS } from '@/config';
 import type { AntennaPreset, Building, Cell, Du, DuConfigTemplate, Gnb, GnbConfigTemplate, Material, RunKnob, SceneRun, SceneTree, Ue } from '@/types/registry';
 
 export type Tab = 'props' | 'antenna' | 'ran';
@@ -15,6 +17,7 @@ interface Props {
   onApplyGnbTemplate: (g: Gnb, t: GnbConfigTemplate) => void; onSaveGnbTemplate: (g: Gnb, name: string, uuid: string | null) => void;
   onAntennaFields: (c: Cell, f: Partial<AntennaPreset>) => void; onSaveAntennaPreset: (c: Cell, f: Partial<AntennaPreset>, name: string, uuid: string | null) => void;
   onCell: (c: Cell, f: Partial<Cell>) => void; onGnb: (g: Gnb, f: Partial<Gnb>) => void; onDu: (d: Du, f: Partial<Du>) => void; onUe: (u: Ue, f: Partial<Ue>) => void; onBuilding: (b: Building, f: Partial<Building>) => void;
+  onMeshMaterial?: (mesh: SceneMesh, materialUuid: string) => void;
   /** 這一步要顯示的分頁(預設三個全開);showRun = RAN 分頁要不要帶 run 設定;extra = 選到 UE 時附加在屬性分頁下方 */
   tabs?: Tab[]; showRun?: boolean; extra?: ReactNode; emptyHint?: string;
   onCellAntenna: (c: Cell, uuid: string | null) => void; onUeAntenna: (u: Ue, uuid: string | null) => void; onRun: (f: Partial<SceneRun>) => void; onKnob: (k: string, v: string) => void; onRemoveKnob: (uuid: string) => void; onDelete: () => void;
@@ -30,20 +33,22 @@ export function PropertyPanel(p: Props) {
   const { selection: sel } = p;
   const allowed = p.tabs ?? ['props', 'antenna', 'ran'];
   const [tab, setTab] = useState<Tab>(allowed[0]); const [form, setForm] = useState<Record<string, string>>({}); const [knobKey, setKnobKey] = useState<string>(RUN_KNOB_KEYS[0]); const [knobVal, setKnobVal] = useState('');
+  const [a3Pending, setA3Pending] = useState<boolean | null>(null);
+  const [anrPending, setAnrPending] = useState<boolean | null>(null);
   useEffect(() => {
-    if (sel?.kind === 'cell') { const c = sel.cell; setForm({ name: c.name, pci: String(c.pci), center_frequency_ghz: String(c.center_frequency_ghz ?? ''), bandwidth_mhz: String(c.bandwidth_mhz), power_dbm: String(c.power_dbm), azimuth_deg: String(c.azimuth_deg), tilt_deg: String(c.tilt_deg), band: c.band, override: JSON.stringify(c.ru?.antenna_override ?? {}, null, 1), ...antennaForm(c), du_override: JSON.stringify(sel.gnb.dus[0]?.config_override ?? {}, null, 1) }); }
+    if (sel?.kind === 'cell') { const c = sel.cell; setForm({ a3_offset_db: String(sel.gnb.a3_offset_db ?? ''), a3_hys_db: String(sel.gnb.a3_hys_db ?? ''), a3_ttt_ms: String(sel.gnb.a3_ttt_ms ?? ''), name: c.name, pci: String(c.pci), center_frequency_ghz: String(c.center_frequency_ghz ?? ''), bandwidth_mhz: String(c.bandwidth_mhz), power_dbm: String(c.power_dbm), azimuth_deg: String(c.azimuth_deg), tilt_deg: String(c.tilt_deg), band: c.band, override: JSON.stringify(c.ru?.antenna_override ?? {}, null, 1), ...antennaForm(c), du_override: JSON.stringify(sel.gnb.dus[0]?.config_override ?? {}, null, 1) }); }
     else if (sel?.kind === 'gnb') { const g = sel.gnb; setForm({ name: g.name, gnb_id: String(g.gnb_id), plmn_mcc: g.plmn_mcc, plmn_mnc: g.plmn_mnc, x: String(g.position[0] ?? 0), y: String(g.position[1] ?? 0), z: String(g.position[2] ?? 0), a3_offset_db: String(g.a3_offset_db ?? ''), a3_hys_db: String(g.a3_hys_db ?? ''), a3_ttt_ms: String(g.a3_ttt_ms ?? ''), du_override: JSON.stringify(g.dus[0]?.config_override ?? {}, null, 1) }); }
     else if (sel?.kind === 'ue') { const u = sel.ue; setForm({ name: u.name, antenna_height_m: String(u.antenna_height_m), qos_5qi: String(u.qos_5qi), speed_mps: String(u.speed_mps ?? '') }); }
     else if (sel?.kind === 'building') { const b = sel.building; setForm({ name: b.name, x: String(b.position[0] ?? 0), z: String(b.position[2] ?? 0), sx: String(b.size[0] ?? 10), sy: String(b.size[1] ?? 6), sz: String(b.size[2] ?? 10) }); }
     else setForm({});
   }, [sel]);
-  const f = (k: string) => form[k] ?? ''; const set = (k: string, v: string) => setForm((o) => ({ ...o, [k]: v })); const num = (k: string) => (form[k] === '' ? null : Number(form[k]));
+  const f = (k: string) => form[k] ?? ''; const set = (k: string, v: string) => setForm((o) => ({ ...o, [k]: v })); const num = (k: string) => (f(k) === '' ? null : Number(f(k)));
   const parse = (s: string) => { try { return JSON.parse(s); } catch { return undefined; } };
-  const head = sel ? { gnb: `gNB · ${sel.kind === 'gnb' ? sel.gnb.name : ''}`, cell: `Cell · ${sel.kind === 'cell' ? sel.cell.name : ''}`, ue: `UE · ${sel.kind === 'ue' ? sel.ue.name : ''}`, building: `建築 · ${sel.kind === 'building' ? sel.building.name : ''}` }[sel.kind] : '場景 / Run';
+  const head = sel ? { gnb: `gNB · ${sel.kind === 'gnb' ? sel.gnb.name : ''}`, cell: `Cell · ${sel.kind === 'cell' ? sel.cell.name : ''}`, ue: `UE · ${sel.kind === 'ue' ? sel.ue.name : ''}`, building: `建築 · ${sel.kind === 'building' ? sel.building.name : ''}`, mesh: sel.kind === 'mesh' ? sel.mesh.name : '' }[sel.kind] : '場景 / Run';
   const tabs: { k: Tab; l: string }[] = ([{ k: 'props', l: '屬性' }, { k: 'antenna', l: '天線' }, { k: 'ran', l: 'RAN 參數' }] as { k: Tab; l: string }[]).filter((t) => allowed.includes(t.k));
   return (
     <aside className="panel">
-      <div className="panel-head"><h3>{head}</h3>{sel && <button className="ghost danger" disabled={p.saving} onClick={() => { if (confirm('刪除這個物件?')) p.onDelete(); }}>刪除</button>}</div>
+      <div className="panel-head"><h3>{head}</h3>{sel && sel.kind !== 'mesh' && <button className="ghost danger" disabled={p.saving} onClick={() => { if (confirm('刪除這個物件?')) p.onDelete(); }}>刪除</button>}</div>
       {tabs.length > 1 && <div className="tabs">{tabs.map((t) => <button key={t.k} className={tab === t.k ? 'on' : ''} onClick={() => setTab(t.k)}>{t.l}</button>)}</div>}
       {tab === 'props' && (!sel ? <p className="muted">{p.emptyHint ?? '點畫布或物件樹選一個物件。'}</p>
         : sel.kind === 'cell' ? <>
@@ -64,7 +69,18 @@ export function PropertyPanel(p: Props) {
           <Field k="name" v={f('name')} set={set} /><Field k="antenna_height_m" label="天線高 m" v={f('antenna_height_m')} set={set} type="number" /><Field k="qos_5qi" label="5QI" v={f('qos_5qi')} set={set} type="number" /><Field k="speed_mps" label="速度 m/s" v={f('speed_mps')} set={set} type="number" />
           <p className="muted small">{sel.ue.waypoints.length} waypoints · 在場 {sel.ue.active_windows.length ? sel.ue.active_windows.map((w) => `${w[0]}–${w[1]}s`).join(', ') : '全程'} · 流量 {sel.ue.traffic.map((t) => t.pattern).join(', ') || '—'}</p>
           <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onUe(sel.ue, { name: f('name'), antenna_height_m: Number(f('antenna_height_m')), qos_5qi: Number(f('qos_5qi')), speed_mps: num('speed_mps') })}>儲存</button></div>{p.extra}</>
-        : <>
+        : sel.kind === 'mesh' ? <>
+          <p className="muted small">{sel.mesh.kind === 'building' ? '地圖建築 · 逐棟設定' : sel.mesh.kind === 'surface' ? '場景地面' : '模型網格'} · 材質變更自動儲存</p>
+          <label><span>建築材質</span><select aria-label="建築材質" disabled={p.saving || !p.onMeshMaterial || p.run?.status === 'running' || p.run?.status === 'precomputing'}
+            value={p.materials.find((m) => m.itu_id === sel.mesh.material)?.material_uuid ?? ''}
+            onChange={(e) => { if (e.target.value) p.onMeshMaterial?.(sel.mesh, e.target.value); }}>
+            {!p.materials.some((m) => m.itu_id === sel.mesh.material) && <option value="">模型原材質：{sel.mesh.material || '未指定'}</option>}
+            {p.materials.map((m) => <option key={m.material_uuid} value={m.material_uuid}>{MATERIAL_LABELS[m.key] ?? m.key} · {m.itu_id}</option>)}
+          </select></label>
+          <p className="muted small">目前材質 <b className="mono">{sel.mesh.material}</b></p>
+          <p className="muted small">材質會套用到後續無線傳播模擬。修改後，快取模式需要重新預算通道；執行中請先停止模擬。</p>
+          <p className="muted small">選取的{sel.mesh.kind === 'building' ? '這一棟建築' : '網格'}會更新；其他場景共用的原始模型保持不變。</p>
+        </> : <>
           <Field k="name" v={f('name')} set={set} /><div className="xyz"><Field k="x" v={f('x')} set={set} type="number" /><Field k="z" v={f('z')} set={set} type="number" /></div>
           <div className="xyz"><Field k="sx" label="寬" v={f('sx')} set={set} type="number" /><Field k="sy" label="高" v={f('sy')} set={set} type="number" /><Field k="sz" label="深" v={f('sz')} set={set} type="number" /></div>
           <label><span>材質</span><select value={sel.building.f_material_uuid ?? ''} onChange={(e) => p.onBuilding(sel.building, { f_material_uuid: e.target.value || null })}><option value="">(場景預設)</option>{p.materials.map((m) => <option key={m.material_uuid} value={m.material_uuid}>{m.key} · ITU {m.itu_id}</option>)}</select></label>
@@ -128,25 +144,19 @@ export function PropertyPanel(p: Props) {
           <div className="actions"><button className="primary" disabled={p.saving || parse(f('du_override')) === undefined} onClick={() => du && p.onDu(du, { config_override: parse(f('du_override')) })}>套用 JSON</button></div>
           <div className="row head">A3 換手(gNB)<span className={`pill ${g.a3_enabled ? 'good' : 'fair'}`}>{g.a3_enabled ? '已開啟' : '關閉'}</span></div>
           <label className="stack"><span>啟用 A3 自動換手</span>
-            <input type="checkbox" checked={!!g.a3_enabled} disabled={p.saving}
-              onChange={(e) => p.onGnb(g, e.target.checked
+            <input type="checkbox" checked={a3Pending ?? !!g.a3_enabled} disabled={p.saving}
+              onChange={async (e) => { const enabled = e.target.checked; setA3Pending(enabled); try { await p.onGnb(g, enabled
                 ? { a3_enabled: true, a3_offset_db: num('a3_offset_db') ?? 3, a3_hys_db: num('a3_hys_db') ?? 1, a3_ttt_ms: num('a3_ttt_ms') ?? 320 }
-                : { a3_enabled: false })} /></label>
+                : { a3_enabled: false }); } finally { setA3Pending(null); } }} /></label>
           {!g.a3_enabled && <p className="muted small">關閉時 UE 不會主動換手,只能在斷線後重新駐留。</p>}
+          <label><span>跨 gNB 自動建立鄰區（全場）</span><input type="checkbox" disabled={p.saving}
+            checked={anrPending ?? ['true', '1', 'on'].includes(String(p.knobs.find((k) => k.key === 'anr_auto_add')?.value ?? false).toLowerCase())}
+            onChange={async (e) => { const enabled = e.target.checked; setAnrPending(enabled); try { await p.onKnob('anr_auto_add', String(enabled)); } finally { setAnrPending(null); } }} /></label>
+          <p className="muted small">A3 需要可用的鄰區關係。勾選後由 DT 自動學習跨站鄰區；測試 RIC 的 ANR 時可關閉，交給 xApp 建立。修改後重啟 Run 生效。</p>
           <div className="xyz"><Field k="a3_offset_db" label="offset dB" v={f('a3_offset_db')} set={set} type="number" /><Field k="a3_hys_db" label="hys dB" v={f('a3_hys_db')} set={set} type="number" /><Field k="a3_ttt_ms" label="TTT ms" v={f('a3_ttt_ms')} set={set} type="number" /></div>
           <div className="actions"><button className="primary" disabled={p.saving} onClick={() => p.onGnb(g, { a3_enabled: true, a3_offset_db: num('a3_offset_db'), a3_hys_db: num('a3_hys_db'), a3_ttt_ms: num('a3_ttt_ms') })}>儲存 A3</button><button disabled={p.saving} onClick={() => p.onGnb(g, { a3_enabled: false })}>停用 A3</button></div></>; })()}
         {p.showRun !== false && <>
-        <div className="row head">Run 設定 <span className="muted">{p.run ? p.run.status : '尚無 run(儲存即建 draft)'}</span></div>
-        <label><span>模式</span><select value={p.run?.mode ?? 'live'} onChange={(e) => p.onRun({ mode: e.target.value as SceneRun['mode'] })}><option value="live">live(Sionna 即時)</option><option value="cached">cached(預算 npz)</option></select></label>
-        <label><span>倍速</span><input type="number" defaultValue={p.run?.speed_x ?? 1} onBlur={(e) => Number(e.target.value) !== (p.run?.speed_x ?? 1) && p.onRun({ speed_x: Number(e.target.value) })} /></label>
-        <label><span>sim_dt ms</span><input type="number" defaultValue={p.run?.sim_dt_ms ?? 500} onBlur={(e) => Number(e.target.value) !== (p.run?.sim_dt_ms ?? 500) && p.onRun({ sim_dt_ms: Number(e.target.value) })} /></label>
-        <label><span>時長 s</span><input type="number" defaultValue={p.run?.duration_sec ?? 3600} onBlur={(e) => Number(e.target.value) !== (p.run?.duration_sec ?? 3600) && p.onRun({ duration_sec: Number(e.target.value) })} /></label>
-        {/* 2026-09-20:上面三個欄位是「值有變才存」,沒有 run 時比較對象就是同一組預設值 —— 
-            接受預設值的人永遠建不出 run(啟動前檢查卡在「還沒有 run 設定」)。補一個明確的按鈕。 */}
-        <div className="actions"><button className="primary" disabled={p.saving}
-          onClick={() => p.onRun({ mode: p.run?.mode ?? 'live', speed_x: p.run?.speed_x ?? 1,
-                                   sim_dt_ms: p.run?.sim_dt_ms ?? 500, duration_sec: p.run?.duration_sec ?? 3600 })}>
-          {p.run ? '儲存 Run 設定' : '建立 Run 設定'}</button></div>
+        <RunConfigFields run={p.run} saving={p.saving} onSave={p.onRun} />
         <div className="row head">Run knobs <span className="muted">inter_freq / cell_quotas / tx_power…</span></div>
         <ul className="knobs">{p.knobs.map((k) => <li key={k.run_knob_uuid}><b className="mono">{k.key}</b><span className="mono small">{typeof k.value === 'string' ? k.value : JSON.stringify(k.value)}</span><button className="ghost" onClick={() => p.onRemoveKnob(k.run_knob_uuid)}>×</button></li>)}</ul>
         <form className="inline" onSubmit={(e) => { e.preventDefault(); if (knobVal.trim()) { p.onKnob(knobKey, knobVal.trim()); setKnobVal(''); } }}><select value={knobKey} onChange={(e) => setKnobKey(e.target.value)}>{RUN_KNOB_KEYS.map((k) => <option key={k}>{k}</option>)}</select><input placeholder="值(JSON 或字串)" value={knobVal} onChange={(e) => setKnobVal(e.target.value)} /><button type="submit" disabled={p.saving}>設定</button></form></>}

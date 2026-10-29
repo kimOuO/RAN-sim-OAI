@@ -23,6 +23,7 @@ export const createUeWaypoint = (body: { f_ue_uuid: string; ord: number; t_sec: 
 export interface UeWaypointRow { ue_waypoint_uuid: string; ord: number; t_sec: number; x: number; y: number; z: number; }
 export const listUeWaypoints = (f_ue_uuid: string) => post<UeWaypointRow[]>(`${U}/UeWaypointReader/read`, { f_ue_uuid });
 export const updateUeWaypoint = (ue_waypoint_uuid: string, body: { t_sec?: number; x?: number; y?: number; z?: number }) => post<unknown>(`${U}/UeWaypointController/update`, { ue_waypoint_uuid, ...body });
+export const replaceUeWaypoints = (f_ue_uuid: string, waypoints: Ue['waypoints']) => post<UeWaypointRow[]>(`${U}/UeWaypointController/replace`, { f_ue_uuid, waypoints });
 export const createUeTraffic = (body: { f_ue_uuid: string; pattern: string; rate_mbps: number; schedule: number[][] | null; bearer_id: number }) => post<UeTraffic>(`${U}/UeTrafficController/create`, body);
 export const updateUeTraffic = (ue_traffic_uuid: string, body: Partial<UeTraffic>) => post<UeTraffic>(`${U}/UeTrafficController/update`, { ue_traffic_uuid, ...body });
 export interface UeActiveWindowRow { ue_active_window_uuid: string; t0_sec: number; t1_sec: number; f_ue_uuid: string; }

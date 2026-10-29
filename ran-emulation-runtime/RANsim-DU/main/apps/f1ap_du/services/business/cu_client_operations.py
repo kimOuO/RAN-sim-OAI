@@ -53,6 +53,17 @@ class CuClientBusinessService:
             return False
 
     @staticmethod
+    def post_mobility_measurement(payload: dict[str, Any], timeout: float = 5.0) -> bool:
+        """每 tick 的輕量量測(服務 RSRP + 鄰區),CU 只拿來做 A3(2026-10-14 #22)。"""
+        url = f"{CuClientBusinessService._base_url()}/api/v0.1/CU/F1AP/F1ApRouter/mobility_measurement"
+        try:
+            r = _session.post(url, json=payload, timeout=timeout)
+            return r.ok
+        except requests.RequestException as e:
+            logger.warning("post_mobility_measurement failed: %s", e)
+            return False
+
+    @staticmethod
     def post_cell_measurement_report(
         payload: dict[str, Any], timeout: float = 5.0,
     ) -> bool:

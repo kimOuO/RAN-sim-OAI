@@ -37,6 +37,7 @@ class TopoCell:
     du: str                 # 所屬 DU 名稱(拓樸內唯一)
     freq_ghz: float | None = None   # 中心頻率(跨 DU 干擾判斷頻段是否重疊用)
     bw_mhz: float | None = None
+    tx_power_dbm: float | None = None   # registry power_dbm;跨 DU 的 SINR 干擾項要用各 cell 真實功率(2026-10-14 #22)
 
 
 @dataclass
@@ -249,7 +250,8 @@ def build_from_tree(tree: dict[str, Any], *, run_uuid: str, block: int,
                     cell_id=ident.tag_cell(tg.cell_tag, str(c["name"])), name=str(c["name"]), local_cell_id=lc,
                     nci=nci, ncgi=ident.ncgi(nci, mcc, mnc), pci=int(c.get("pci") or 0), gnb=tg.name, du=du_name,
                     freq_ghz=float(c["center_frequency_ghz"] if c.get("center_frequency_ghz") is not None else _f0),
-                    bw_mhz=float(c["bandwidth_mhz"] if c.get("bandwidth_mhz") is not None else _b0)))
+                    bw_mhz=float(c["bandwidth_mhz"] if c.get("bandwidth_mhz") is not None else _b0),
+                    tx_power_dbm=float(c["power_dbm"]) if c.get("power_dbm") is not None else None))
             tg.dus.append(td)
         gnbs.append(tg)
     first = gnbs[0] if gnbs else None

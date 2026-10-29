@@ -187,6 +187,24 @@ def read_global_e2_node_id() -> dict:
                 "service_model": "FULLKPM",
                 "version": "v01.00",
             },
+            {
+                # E2SM-DTFULLKPM v2:OID 改用 UUID 弧(不再借用 O-RAN 的企業號)、每 cell 一份自足報告。
+                # adapter 端由 E2SM_FULLKPM2_ENABLE gate(預設關)。OID 與 adapter e2sm_fullkpm_codec.FULLKPM_V2_OID 一致。
+                "ran_function_id": 7,
+                "ran_function_oid": "2.25.100789996811842101158541215498991799117.1.1",
+                "ran_function_revision": 1,
+                "service_model": "FULLKPM2",
+                "version": "v02.00",
+            },
+            {
+                # E2SM-ANR v2:OID 用同一 UUID 弧的 .1.2、每 serving cell 一份自足報告。
+                # adapter 端由 E2SM_ANR2_ENABLE gate(預設關)。OID 與 adapter e2sm_anr_codec.ANR_V2_OID 一致。
+                "ran_function_id": 8,
+                "ran_function_oid": "2.25.100789996811842101158541215498991799117.1.2",
+                "ran_function_revision": 1,
+                "service_model": "ANR2",
+                "version": "v02.00",
+            },
         ],
         "components": _read_du_components(),
         "expected_ran_name": ran_name,

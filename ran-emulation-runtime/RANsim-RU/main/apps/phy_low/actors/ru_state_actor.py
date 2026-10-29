@@ -45,4 +45,6 @@ class RuStateReader:
         state = _ensure_state()
         data = RuStateReadSerializer(state).data
         data["ofdm"] = describe_ofdm(state.numerology)
+        from main.apps.phy_low.services.optional.lockstep_clock import get_clock
+        data["clock"] = get_clock().status()
         return success_response(data, "ru state", 200)

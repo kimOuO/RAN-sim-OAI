@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import json
+import io
 
 from django.http import FileResponse
+from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from main.apps.field_scene.models.building import Building
 from main.apps.field_scene.models.scene import Scene
+from main.apps.field_scene.models.material import Material
 from main.apps.field_scene.services.optional.scene_geometry.mitsuba_shapes import list_shapes, scene_xml_paths
 from main.utils.response import error_response, success_response
 
@@ -20,7 +23,7 @@ def _shapes(scene_uuid: str) -> list[dict] | None:
     out = []
     for xi, xml in enumerate(scene_xml_paths(scene.geometry_source, list(Building.objects.filter(scene=scene)))):
         for s in list_shapes(xml):
-            out.append({**s, "shape_id": f"{xi}-{s['shape_id']}"})
+            out.append({**s, '_local_id': s['shape_id'], "shape_id": f"{xi}-{s['shape_id']}"})
     return out
 
 
@@ -52,9 +55,15 @@ class SceneGeometryReader:
         s = next((x for x in shapes if x["shape_id"] == payload.get("shape_id")), None)
         if s is None or s["too_large"]:
             return error_response("Not found", payload.get("shape_id"), 404)
-        resp = FileResponse(open(s["_path"], "rb"), content_type="application/octet-stream")
+        if '_vertex_range' in s:
+            from main.apps.field_scene.services.optional.scene_geometry.osm_mesh_parts import part_bytes
+            stream = io.BytesIO(part_bytes(s['_path'], s['_vertex_range']))
+        else:
+            stream = open(s['_path'], 'rb')
+        resp = FileResponse(stream, content_type="application/octet-stream")
         resp["Cache-Control"] = "private, max-age=3600"
         return resp
+
 
     @staticmethod
     @csrf_exempt
@@ -137,3 +146,43 @@ class SceneGeometryReader:
         except Exception as exc:  # noqa: BLE001
             return error_response("coverage failed", str(exc), 502)
         return success_response(data, "ok", 200)
+
+class SceneGeometryController:
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(['POST'])
+    @transaction.atomic
+    def set_material(request):
+        try:
+            payload = json.loads(request.body or b'{}')
+            uid, shape_id, material_uuid = (payload.get(k) for k in ('scene_uuid', 'shape_id', 'material_uuid'))
+        except (ValueError, AttributeError):
+            return error_response('Invalid JSON', None, 400)
+        scene = Scene.objects.select_for_update().filter(scene_uuid=uid).first()
+        if scene is None:
+            return error_response('找不到場景', uid, 404)
+        # Changing an executing scene would mix simulation inputs and observations.
+        if scene.runs.filter(status__in=['running', 'precomputing']).exists():
+            return error_response('請先停止模擬或預算，再修改建築材質', None, 409)
+        material = Material.objects.filter(material_uuid=material_uuid).first()
+        if material is None:
+            return error_response('找不到材質', material_uuid, 400)
+        selected = next((s for s in _shapes(uid) or [] if s['shape_id'] == shape_id), None)
+        if selected is None:
+            return error_response('找不到選取的建築／網格', shape_id, 404)
+        geo = scene.geometry_source if isinstance(scene.geometry_source, dict) else {}
+        from main.apps.field_scene.services.optional.scene_geometry.mitsuba_shapes import resolve
+        if geo.get('type') != 'mitsuba_xml_path' or resolve(str(geo.get('path') or '')) != resolve(selected['_xml_path']):
+            return error_response('請先將這個模型設為場景幾何來源，再編輯材質', None, 400)
+        try:
+            from main.apps.field_scene.services.optional.scene_geometry.mesh_material import set_material
+            path = set_material(selected['_xml_path'], selected['_local_id'], material.itu_id, uid)
+        except (ValueError, OSError) as exc:
+            return error_response('材質儲存失敗', str(exc), 400)
+        from main.apps.field_scene.services.common.timestamp_service import TimestampService
+        scene.geometry_source = {**geo, 'path': path}
+        scene.scene_updated_at = TimestampService.get_current_timestamp()
+        scene.save(update_fields=['geometry_source', 'scene_updated_at'])
+        scene.runs.update(cache_path='')
+        return success_response({'shape_id': shape_id, 'material': material.itu_id,
+                                 'geometry_source': scene.geometry_source, 'cache_invalidated': True}, '建築材質已儲存，快取模式需重新預算', 200)

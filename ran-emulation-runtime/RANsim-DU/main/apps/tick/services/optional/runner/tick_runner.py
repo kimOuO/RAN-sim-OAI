@@ -51,6 +51,16 @@ from main.utils.env_loader import get_bool, get_float, get_int, get_str
 _RLC_DELAY_SUBTICK = (get_str("RLC_DELAY_MODEL", "subtick") or "subtick").strip().lower() == "subtick"
 # 改動一 shadow:on 時在現役 calib 路徑「旁邊」並行跑 slot_loop(跨-tick state)、只 log 對照、不接管 KPM
 _SLOT_ENGINE_SHADOW = get_bool("SLOT_ENGINE_SHADOW", False)
+# 2026-10-29:MAC 預算依 TS 38.321 §5.4.3.1 邏輯通道優先權分給 RLC entity(SRB 先於 DRB,
+# 每個 entity 只取自己有的量,剩下的往下傳)。off = 舊行為:預算平均切給所有 entity ——
+# 每個 UE 都有 SRB1 + DRB1,SRB1 幾乎沒資料,DRB 只拿到一半,滿載吞吐只剩容量的 50%。
+_RLC_DRAIN_LCP = get_bool("RLC_DRAIN_LCP", True)
+# 2026-10-29:本 tick 出貨量用 tick 內各 100 ms 更新期所用 MCS 的平均有效頻譜效率。
+# off = 舊行為:只用期末 MCS 算整個 tick —— 外迴路擺盪到高 BLER 那一階時,
+# OAI 只停留 100 ms,這裡會被放大成整個 tick(500 ms)。
+_MCS_TICK_AVG = get_bool("MCS_TICK_AVG", True)
+# 2026-10-14 #22:每個 tick 送輕量量測給 CU 做 A3(off = 舊行為,A3 只吃每秒的 PM 視窗報告)
+_A3_EVERY_TICK = get_bool("MEAS_A3_EVERY_TICK", True)
 # 反事實 res_op 完整修法參數(待校的現象學值):
 _SLOT_CADENCE_PERIOD = get_int("SLOT_CADENCE_PERIOD", 40)   # 改動二 baseline 排程節奏
 _SLOT_OP_PRB_FLOOR = get_int("SLOT_OP_PRB_FLOOR", 12)       # MIN_PRB 地板(低載 UE 不被餓死,= OAI 空 cell 大方給)
@@ -961,8 +971,12 @@ class TickRunner:
             mcs_map[uid] = mcs
             # 本 tick 送得出去的量 = 此 MCS 的表列頻譜效率 × (1 − 首傳 BLER)。
             # 2026-09-26 前頻譜效率另由一張無出處的 SINR 表查,與實際使用的 MCS 無關。
-            mbps = mcs_to_throughput_mbps(mcs=mcs, bps_re=goodput_efficiency(mcs, _sinr_sched),
-                                          n_rb=rb_alloc_global.get(uid, 0))
+            if _MCS_TICK_AVG:
+                _periods = mcs_ctl.period_mcs(uid)
+                _eff = sum(goodput_efficiency(m, _sinr_sched) for m in _periods) / len(_periods)
+            else:
+                _eff = goodput_efficiency(mcs, _sinr_sched)
+            mbps = mcs_to_throughput_mbps(mcs=mcs, bps_re=_eff, n_rb=rb_alloc_global.get(uid, 0))
             # 每 tick 對應 bytes — 用 sim-time (=throughput × sim-second-per-tick)
             tick_s = self._sim_dt_ms / 1000.0
             tbs_map[uid] = int(mbps * 1e6 * tick_s / 8)
@@ -994,23 +1008,29 @@ class TickRunner:
                 if _trace and uid == "demo_0508":
                     logger.info("DRAIN TRACE ue=%s SKIP budget<=0", uid)
                 continue
-            entities_for_ue = [
-                e for k, e in rlc_factory.all_entities() if k[0] == uid
-            ]
+            # (key, entity),key = (ue_id, bearer_type, bearer_id);LCP 時 SRB 排前面
+            keyed_entities = [(k, e) for k, e in rlc_factory.all_entities() if k[0] == uid]
+            if _RLC_DRAIN_LCP:
+                keyed_entities.sort(key=lambda ke: (0 if str(ke[0][1]).upper() == "SRB" else 1, ke[0][2]))
+            entities_for_ue = [e for _, e in keyed_entities]
             if not entities_for_ue:
                 if _trace and uid == "demo_0508":
                     logger.info("DRAIN TRACE ue=%s SKIP no entities", uid)
                 continue
-            # 簡化：平均分配 budget 給此 UE 的所有 RLC entity
+            # LCP:每個 entity 拿「剩餘預算」,用掉多少扣多少;舊行為:平均切
             per_entity = max(1, budget // len(entities_for_ue))
-            # P0b subtick — 排空速率 = per_entity budget / sim_dt(bytes per sim-ms);now_sim 給 FIFO 模型
-            _rate = per_entity / max(self._sim_dt_ms, 1)
+            remaining = budget
             _now_sim = self.status.tick_count * self._sim_dt_ms
             total_actual = 0
             for ent in entities_for_ue:
+                grant = remaining if _RLC_DRAIN_LCP else per_entity
+                if grant <= 0:
+                    break
+                # P0b subtick — 排空速率 = 此 entity 拿到的預算 / sim_dt(bytes per sim-ms);now_sim 給 FIFO 模型
+                _rate = grant / max(self._sim_dt_ms, 1)
                 try:
                     actual = ent.generate_pdu(
-                        per_entity, subtick=_RLC_DELAY_SUBTICK,
+                        grant, subtick=_RLC_DELAY_SUBTICK,
                         rate_bytes_per_sim_ms=_rate, now_sim_ms=_now_sim,
                     )
                     if _trace and uid == "demo_0508":
@@ -1020,6 +1040,7 @@ class TickRunner:
                         )
                     if isinstance(actual, int) and actual > 0:
                         total_actual += actual
+                        remaining -= actual
                 except Exception as e:
                     logger.warning("RLC generate_pdu failed for ue=%s: %s", uid, e)
             actual_drained_map[uid] = total_actual
@@ -1355,6 +1376,19 @@ class TickRunner:
                 )
                 self._enqueue_report(CuClientBusinessService.post_cell_measurement_report, encode_cell_measurement_report(cell_report))
             report_sent = True
+        elif _A3_EVERY_TICK:
+            # 2026-10-14 #22:兩份 PM 視窗報告之間的 tick 也送服務 RSRP + 鄰區給 CU 做 A3。
+            # 以前 A3 每秒才評估一次 → 換手決策 2–3 秒,比 RLF(約 2 秒)慢。PM / KPM 仍是 1 秒視窗。
+            sim_ms = int(self.scene_tick * self._sim_dt_ms)
+            for uid, st in list(self._ue_registry.items()):
+                r = st.get("rsrp_dbm")
+                if not st.get("serving_cell") or r is None:
+                    continue
+                nbrs = [{"cell_id": n["cell_id"], "rsrp_dbm": float(n["rsrp_dbm"])}
+                        for n in (st.get("neighbors") or []) if n.get("cell_id") and n.get("rsrp_dbm") is not None]
+                if nbrs:
+                    self._enqueue_report(CuClientBusinessService.post_mobility_measurement,
+                                         {"ue_id": uid, "rsrp_dbm": float(r), "neighbor_cells": nbrs, "scene_sim_ms": sim_ms})
 
         # Phase B — 存「此 tick 即時 stats」給 Dashboard 用(不是 cumulative)
         # 注意:_acc 是累積,_ue_window 是 rolling,這裡 last_*_stats 是真正「最後一個 tick」

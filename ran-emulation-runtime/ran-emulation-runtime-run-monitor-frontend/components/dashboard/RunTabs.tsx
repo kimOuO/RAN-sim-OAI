@@ -55,7 +55,6 @@ export function RunTabs() {
           )}
         </span>
       ))}
-      <Link href="/compare" className={path === '/compare' ? 'on' : ''}>對照</Link>
     </div>
   );
 }

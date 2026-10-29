@@ -404,3 +404,36 @@ def test_handover_failure_carries_ho_type(gnb_a, monkeypatch):
     assert r.status_code == 409
     co = json.loads(r.content)["errors"]["control_outcome"]
     assert co["failureCause"] == "RandomAccessProblem" and co["hoType"] == "inter-DU"
+
+
+def _mob(c, **kw):
+    body = {"ue_id": "u1", "rsrp_dbm": -90.0, "neighbor_cells": [{"cell_id": A1, "rsrp_dbm": -70.0}], **kw}
+    return c.post("/api/v0.1/CU/F1AP/F1ApRouter/mobility_measurement", json.dumps(body), content_type="application/json")
+
+
+def test_mobility_measurement_runs_a3_without_logging(gnb_a):
+    """2026-10-14 #22:每 tick 的輕量量測只做 A3(觸發就換手),不寫 MeasurementLog(KPM 仍是 1 秒視窗)。"""
+    from main.apps.cu_cp.actors import f1ap_router_actor as fr
+    from main.apps.cu_cp.models.measurement_log import MeasurementLog
+    from main.apps.cu_cp.services.optional.mobility.a3_handover_calculation import A3Verdict
+    _attach(gnb_a)
+    with patch.object(fr.A3HandoverCalculation, "evaluate", return_value=A3Verdict(triggered=True, target_cell=A1)) as ev, \
+         patch("main.apps.cu_cp.services.business.handover_executor.execute_f1_handover",
+               return_value={"source_cell": A0, "target_cell": A1}) as ho:
+        r = _mob(gnb_a)
+    assert r.status_code == 200 and r.json()["data"]["processed"] is True
+    assert ev.call_args.kwargs["serving_rsrp"] == -90.0 and ev.call_args.kwargs["neighbors"] == [(A1, -70.0)]
+    assert ho.call_args.kwargs["target_cell"] == A1 and ho.call_args.kwargs["trigger"] == "A3_TTT"
+    assert not MeasurementLog.objects.filter(ue_id="u1").exists()
+
+
+def test_mobility_measurement_stale_ue_is_ignored(gnb_a):
+    from main.apps.cu_cp.actors import f1ap_router_actor as fr
+    from main.apps.cu_cp.models.ue_context import UeContext
+    _attach(gnb_a)
+    UeContext.objects.filter(ue_id="u1").update(rrc_state="RELEASE")
+    with patch.object(fr.A3HandoverCalculation, "evaluate") as ev:
+        r = _mob(gnb_a)
+    assert r.status_code == 200 and r.json()["data"]["processed"] is False
+    ev.assert_not_called()
+    assert _mob(gnb_a, ue_id="nobody").status_code == 404

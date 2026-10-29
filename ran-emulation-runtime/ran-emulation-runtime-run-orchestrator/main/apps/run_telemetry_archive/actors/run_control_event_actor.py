@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 
 from main.apps.run_telemetry_archive.models.run_control_event import RunControlEvent
 from main.apps.run_telemetry_archive.serializers.run_control_event_serializers import RunControlEventReadSerializer, RunControlEventWriteSerializer
+from main.apps.run_telemetry_archive.services.business.run_seq_filter import apply_run_seq
 from main.apps.run_telemetry_archive.services.business.sqldb_operations import SqlDbBusinessService
 from main.apps.run_telemetry_archive.services.common.timestamp_service import TimestampService
 from main.apps.run_telemetry_archive.services.common.uuid_service import UUIDService
@@ -97,6 +98,11 @@ class RunControlEventReader:
             if entity is None:
                 return error_response("Not found", payload[UUID_FIELD], 404)
             return success_response(RunControlEventReadSerializer(entity).data, "ok", 200)
+        try:
+            run_seq = payload.pop("run_seq", None)
+            run_seq = None if run_seq is None else int(run_seq)
+        except (TypeError, ValueError):
+            return error_response("Validation failed", {"run_seq": "must be int"}, 400)
         filters = {}
         for k, v in payload.items():
             if k.startswith("f_") and k.endswith("_uuid"):
@@ -110,4 +116,5 @@ class RunControlEventReader:
             else:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(RunControlEvent, **filters)
+        qs = apply_run_seq(qs, RunControlEvent, filters.get("f_scene_run_uuid"), run_seq)
         return success_response(RunControlEventReadSerializer(qs, many=True).data, "ok", 200)

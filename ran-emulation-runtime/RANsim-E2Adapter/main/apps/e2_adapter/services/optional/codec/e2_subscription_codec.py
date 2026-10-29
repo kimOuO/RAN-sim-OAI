@@ -153,8 +153,10 @@ def _decode_event_trigger_period(data: bytes) -> int:
 def _decode_action_metrics(data: bytes) -> list[str]:
     """Decode E2SM-KPM-ActionDefinition (any Format) → list of metric names.
 
-    For Format 1: ric-Style-Type=1 + measInfoList[].measType.measName
-    For Format 5: ric-Style-Type=5 + matchingUEidList per UE granularity
+    Format 1:       measInfoList[].measType.measName
+    Format 2:       subscriptInfo(Format 1).measInfoList
+    Format 3:       measCondList[].measType.measName
+    Format 4 / 5:   subscriptionInfo(Format 1).measInfoList(UE 條件 / UE 清單不在此處理)
     """
     if not data:
         return []
@@ -166,10 +168,16 @@ def _decode_action_metrics(data: bytes) -> list[str]:
         # Format selector + per-format value
         fmt_choice, fmt_val = val.get("actionDefinition-formats", (None, {}))
         meas_info_list = []
-        if fmt_choice in ("actionDefinition-Format1", "actionDefinition-Format2"):
+        if fmt_choice == "actionDefinition-Format1":
             meas_info_list = fmt_val.get("measInfoList", [])
+        elif fmt_choice == "actionDefinition-Format2":
+            meas_info_list = fmt_val.get("subscriptInfo", {}).get("measInfoList", [])
         elif fmt_choice == "actionDefinition-Format3":
             meas_info_list = fmt_val.get("measCondList", [])
+        elif fmt_choice in ("actionDefinition-Format4", "actionDefinition-Format5"):
+            meas_info_list = fmt_val.get("subscriptionInfo", {}).get("measInfoList", [])
+        logger.info("KPM action definition: style=%s %s, %d metrics",
+                    val.get("ric-Style-Type"), fmt_choice, len(meas_info_list))
         # 從 measType CHOICE 抽 measName string
         names: list[str] = []
         for item in meas_info_list:
@@ -224,6 +232,28 @@ def encode_ric_subscription_response(
         "procedureCode": _PROC_CODE_RICsubscription,
         "criticality": "reject",
         "value": ("RICsubscriptionResponse", sub_resp),
+    }))
+    return pdu_cls.to_aper()
+
+
+def encode_ric_subscription_failure(
+    ric_req_id: dict[str, int],
+    ran_function_id: int,
+    cause: tuple[str, str],
+) -> bytes:
+    """Encode RIC Subscription Failure (unsuccessfulOutcome,E2AP §9.1.1.2)→ APER。
+    IE 29 RICrequestID、IE 5 RANfunctionID(echo)、IE 1 Cause,例如 ("protocol", "semantic-error")。"""
+    rt = _load_runtime()
+    pdu_cls = rt.E2AP_PDU_Descriptions.E2AP_PDU
+    pdu_cls.set_val(("unsuccessfulOutcome", {
+        "procedureCode": _PROC_CODE_RICsubscription, "criticality": "reject",
+        "value": ("RICsubscriptionFailure", {"protocolIEs": [
+            {"id": _IE_ID_RICrequestID, "criticality": "reject",
+             "value": ("RICrequestID", {"ricRequestorID": ric_req_id.get("requestor_id", 0),
+                                        "ricInstanceID": ric_req_id.get("instance_id", 0)})},
+            {"id": _IE_ID_RANfunctionID, "criticality": "reject", "value": ("RANfunctionID", ran_function_id)},
+            {"id": 1, "criticality": "reject", "value": ("Cause", cause)},
+        ]}),
     }))
     return pdu_cls.to_aper()
 

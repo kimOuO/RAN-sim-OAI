@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -122,7 +123,7 @@ def _flush_drjit() -> int:
 def _fetch_scenario(scenario_id: str) -> dict:
     r = requests.post(
         f"{SCENARIO_STORE_URL}/api/v0.1/RAN/Scenario/ScenarioController/read",
-        json={"scenario_id": scenario_id},
+        json={"scenario_id": scenario_id, **({'scene_run_uuid': os.environ['SCENE_RUN_UUID']} if os.environ.get('SCENE_RUN_UUID') else {})},
         timeout=10,
     )
     r.raise_for_status()
@@ -158,11 +159,17 @@ def _patch_status(scenario_id: str, **fields):
 
 
 def _interpolate_position(
-    positions: list[list[float]], t_sec: float
+    positions: list[list[float]], t_sec: float, loop: bool = False
 ) -> tuple[float, float, float]:
-    """positions = [[t, x, y, z], ...] sorted by t. 線性內插。t 超出範圍 clamp."""
+    """positions = [[t, x, y, z], ...] sorted by t. 線性內插。t 超出範圍 clamp.
+
+    loop=True 時 t 超過最後一點就取餘數從頭走,與 UE 端 trajectory 的 "loop" 模式
+    (RANsim-UE interp.py:elapsed % total)一致;否則預算的通道會停在終點,與 UE 實際位置對不上。
+    """
     if not positions:
         return (0.0, 0.0, 0.0)
+    if loop and positions[-1][0] > 0 and t_sec > positions[-1][0]:
+        t_sec = t_sec % positions[-1][0]
     if t_sec <= positions[0][0]:
         p = positions[0]
         return (p[1], p[2], p[3])
@@ -311,7 +318,7 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
         ue_positions = []
         all_stationary = True
         for ue_idx, ue in enumerate(ues):
-            pos = _interpolate_position(ue["positions"], t_sec)
+            pos = _interpolate_position(ue["positions"], t_sec, loop=bool(ue.get("loop", False)))
             ue_positions.append({
                 "id": ue["name"],
                 "position": [float(pos[0]), float(pos[1]), float(pos[2])],
@@ -444,6 +451,14 @@ def run(scenario_id: str, resume: bool = False, segment_ticks: int = 0) -> int:
         total_ticks=np.int32(total_ticks),
     )
     size_bytes = out_path.stat().st_size
+    # Orchestrator supplies the physical scene version at precompute launch.
+    # Write after the complete NPZ; failed/partial jobs cannot certify a cache.
+    if os.environ.get('CHANNEL_CACHE_FINGERPRINT'):
+        manifest = out_path.with_suffix('.manifest.json')
+        tmp_manifest = manifest.with_suffix('.json.tmp')
+        tmp_manifest.write_text(json.dumps({'fingerprint': os.environ['CHANNEL_CACHE_FINGERPRINT'],
+                                            'cache_size': size_bytes}))
+        tmp_manifest.replace(manifest)
     if sidecar is not None:
         sidecar.flush()
         sidecar.write_meta(filled_upto=int(total_ticks), complete=True)

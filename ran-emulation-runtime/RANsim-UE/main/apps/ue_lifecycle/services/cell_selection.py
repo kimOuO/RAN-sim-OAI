@@ -35,6 +35,16 @@ def _tx_power_dbm() -> float:
 
 def measure_cells(ue_id: str, position: tuple[float, float, float]) -> dict[str, float]:
     """在 position 量各 cell 的 RSRP(dBm)。回 {cell_id: rsrp_dbm},失敗回 {}。"""
+    # Per-run selection must use the same cached/live channel as the serving RU;
+    # calling shared Physics in cached runs can measure an entirely different scene.
+    from main.apps.ue_lifecycle.services import ran_endpoints
+    if ran_endpoints.topology() is not None:
+        try:
+            r = requests.post(f"{ran_endpoints.ru_url()}/api/v0.1/RU/Config/RuController/measure_cells",
+                              json={'ue_id': ue_id, 'position': list(position)}, timeout=60)
+            return (r.json().get('data') or {}) if r.ok else {}
+        except (requests.RequestException, ValueError):
+            return {}
     url = f"{settings.SIM_PHYSICS_URL.rstrip('/')}/api/v0.1/Physics/RanCalc/PathSolver/compute"
     body = {"ue_positions": [{
         "id": ue_id,

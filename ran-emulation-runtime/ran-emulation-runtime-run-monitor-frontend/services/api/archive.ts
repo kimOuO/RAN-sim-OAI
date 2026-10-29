@@ -1,12 +1,18 @@
 import { KPM_FETCH_LIMIT, ORCHESTRATOR_API } from '@/config';
 import { post } from '@/services/clients/apiClient';
-import type { ControlEvent, HandoverEvent, KpmSample, LaunchRequest } from '@/types/telemetry';
+import type { ControlEvent, HandoverEvent, KpmSample, LaunchRequest, RunExecution } from '@/types/telemetry';
 
 const A = `${ORCHESTRATOR_API}/Run_telemetry_archive`;
 /** 封存表以 f_scene_run_uuid 過濾;只做排序與預設值,不做呈現決策 */
 export const listKpmSamples = async (run: string, afterId = 0) =>
   (await post<KpmSample[]>(`${A}/RunKpmSampleReader/read`, { f_scene_run_uuid: run, limit: KPM_FETCH_LIMIT, after_id: afterId })).sort((a, b) => a.run_kpm_sample_created_at.localeCompare(b.run_kpm_sample_created_at) || a.window_index - b.window_index);
 export const listHandoverEvents = async (run: string, afterId = 0) => (await post<HandoverEvent[]>(`${A}/RunHandoverEventReader/read`, { f_scene_run_uuid: run, after_id: afterId, limit: 5000 })).map((e) => ({ ...e, detail: e.detail ?? {} }));
+/** 回放:指定某一次執行(run_seq)的完整資料;limit 0 = 全部 */
+export const listKpmSamplesOfSeq = (run: string, seq: number, limit = 0) => post<KpmSample[]>(`${A}/RunKpmSampleReader/read`, { f_scene_run_uuid: run, run_seq: seq, limit }, { timeoutMs: 60000 });
+export const listHandoverEventsOfSeq = async (run: string, seq: number) => (await post<HandoverEvent[]>(`${A}/RunHandoverEventReader/read`, { f_scene_run_uuid: run, run_seq: seq, limit: 0 }, { timeoutMs: 30000 })).map((e) => ({ ...e, detail: e.detail ?? {} }));
+export const listControlEventsOfSeq = async (run: string, seq: number) => (await post<ControlEvent[]>(`${A}/RunControlEventReader/read`, { f_scene_run_uuid: run, run_seq: seq })).map((e) => ({ ...e, detail: e.detail ?? {} }));
+/** 回放清單:每個 run 的每一次執行一列(新到舊) */
+export const listExecutions = (run?: string) => post<RunExecution[]>(`${A}/RunExecutionReader/read`, run ? { f_scene_run_uuid: run } : {}, { timeoutMs: 30000 });
 export const listControlEvents = async (run: string) => (await post<ControlEvent[]>(`${A}/RunControlEventReader/read`, { f_scene_run_uuid: run })).map((e) => ({ ...e, detail: e.detail ?? {} }));
 export const listLaunchRequests = (run: string) => post<LaunchRequest[]>(`${ORCHESTRATOR_API}/Run_lifecycle/LaunchRequestReader/read`, { f_scene_run_uuid: run });
 /** 最近幾筆 KPM(3D 即時頁 2 s 輪詢用,不能整包拉) */

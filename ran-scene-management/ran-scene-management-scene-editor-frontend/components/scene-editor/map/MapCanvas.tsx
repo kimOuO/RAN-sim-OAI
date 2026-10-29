@@ -23,7 +23,7 @@ export default function MapCanvas(p: Props) {
   return (
     <div className="mapcanvas">
       <MapContainer center={[MAP_TAIWAN.lat, MAP_TAIWAN.lon]} zoom={MAP_TAIWAN.zoom} maxZoom={20} style={{ height: '100%', width: '100%' }} doubleClickZoom={false}>
-        <TileLayer key={base} url={bm.url} attribution={bm.attribution} maxZoom={20} maxNativeZoom={19} />
+        <TileLayer key={base} url={bm.url} attribution={bm.attribution} maxZoom={20} maxNativeZoom={bm.maxNativeZoom} />
         <Fly to={p.flyTo} />
         <Clicks drawing={p.drawing != null} onPoint={p.onDrawPoint} />
         {p.buildings.map((b) => <BuildingShape key={b.id} b={b} selected={p.selected.has(b.id)} onClick={p.onBuilding} />)}

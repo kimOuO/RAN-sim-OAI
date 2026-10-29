@@ -155,3 +155,20 @@ def test_low_sinr_mcs0_still_gets_one_prb():
         n_prb_total=100,
     )
     assert alloc["ue1"] >= 1
+
+
+def test_retx_demand_capped_at_harq_rounds(monkeypatch):
+    """2026-10-14 #23:快斷線(MCS 0 也解不開、BLER≈1)的 UE,重傳預留最多放大到 HARQ 輪數(4 倍),
+    不再是以前的 20 倍、吃光整個 cell。"""
+    from main.apps.mac.services.optional.scheduler import pf_scheduler as pf
+    monkeypatch.setattr(pf, "_SCHED_MCS_CONSISTENT", True)
+    monkeypatch.setattr(pf, "_SCHED_RETX_AWARE", True)
+
+    def demand(bler: float) -> int:
+        monkeypatch.setattr(pf.bler_curve, "bler", lambda mcs, sinr: bler)
+        ue = {"id": "ue1", "sinr_db": -8.0, "buffer_occupancy": 20000}
+        return pf.PfScheduler().allocate(gnb_name="g", ues_on_gnb=[ue], n_prb_total=273, tick_ms=500)["ue1"]
+
+    # BLER 0.75 → 1/(1-BLER) = 4 倍,正好是 HARQ 上限;BLER 再高也不再放大(舊版 0.999 會到 20 倍)
+    assert demand(0.999) == demand(0.75)
+    assert demand(0.999) < 273

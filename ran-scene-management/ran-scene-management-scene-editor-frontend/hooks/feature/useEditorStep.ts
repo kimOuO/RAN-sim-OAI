@@ -19,7 +19,7 @@ export function panelProps(p: EditorPage, tree: NonNullable<EditorPage['tree']>)
     selection: p.selection, presets: p.presets, templates: p.templates, gnbTemplates: p.gnbTemplates, materials: p.materials, scene: tree.scene, gnbs: tree.gnbs, onSceneAntenna: p.setSceneAntenna, onE2Block: p.setE2Block, onCategory: p.setCategory,
     onApplyGnbTemplate: p.applyGnbTemplate, onSaveGnbTemplate: p.saveGnbAsTemplate, onAntennaFields: p.applyAntennaFields, onSaveAntennaPreset: p.saveAntennaAsPreset,
     run: p.run, knobs: p.knobs, saving: p.saving, message: null,
-    onCell: p.updateCellFields, onGnb: p.updateGnbFields, onDu: p.updateDuFields, onUe: p.updateUeFields, onBuilding: p.updateBuildingFields,
+    onCell: p.updateCellFields, onGnb: p.updateGnbFields, onDu: p.updateDuFields, onUe: p.updateUeFields, onBuilding: p.updateBuildingFields, onMeshMaterial: p.updateMeshMaterial,
     onCellAntenna: p.setCellAntenna, onUeAntenna: p.setUeAntenna, onRun: p.updateRunFields, onKnob: p.setKnob, onRemoveKnob: p.removeKnob, onDelete: p.removeSelected,
   };
 }

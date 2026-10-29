@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -36,31 +36,84 @@ async function load(sceneUuid: string, s: SceneMesh): Promise<THREE.BufferGeomet
 export interface MeshView { show: boolean; opacity: number; clipY: number | null }
 
 /** 場景幾何(掃描模型 / OSM 建築):半透明 + 邊線;clipY = 只畫這個高度以下(看得到室內) */
-export function SceneMeshes({ sceneUuid, view, onInfo }: { sceneUuid: string; view: MeshView; onInfo?: (s: string) => void }) {
+export function SceneMeshes({ sceneUuid, view, onInfo, onYRange, shapes, selectedId, onSelect }: { sceneUuid: string; view: MeshView; onInfo?: (s: string) => void; onYRange?: (r: [number, number]) => void; shapes?: SceneMesh[]; selectedId?: string | null; onSelect?: (mesh: SceneMesh) => void }) {
   const [meshes, setMeshes] = useState<{ s: SceneMesh; g: THREE.BufferGeometry }[]>([]);
+  const geometryCache = useRef(new Map<string, THREE.BufferGeometry>());
+  useEffect(() => { const cache = geometryCache.current; return () => { cache.forEach((g) => g.dispose()); cache.clear(); }; }, []);
   useEffect(() => {
-    let alive = true; setMeshes([]);
-    listSceneMeshes(sceneUuid).then(async (list) => {
+    let alive = true;
+    (shapes ? Promise.resolve(shapes) : listSceneMeshes(sceneUuid)).then(async (list) => {
       const ok = list.filter((s) => !s.too_large);
       if (list.length) onInfo?.(`載入模型 ${ok.length}/${list.length} 個網格…`);
-      const out = [];
-      for (const s of ok) { try { out.push({ s, g: await load(sceneUuid, s) }); } catch (e) { onInfo?.(`網格 ${s.name} 載入失敗:${e instanceof Error ? e.message : e}`); } if (!alive) return; }
-      if (alive) { setMeshes(out); onInfo?.(list.length ? `模型 ${out.length} 個網格${list.length > ok.length ? `(${list.length - ok.length} 個太大略過)` : ''}` : ''); }
+      const out: { s: SceneMesh; g: THREE.BufferGeometry }[] = [];
+      const used = new Set<string>();
+      for (let i = 0; i < ok.length; i += 8) {
+        const batch = await Promise.all(ok.slice(i, i + 8).map(async (s) => {
+          const key = `${sceneUuid}:${s.geometry_key ?? s.shape_id}:${JSON.stringify(s.transform)}`;
+          used.add(key);
+          try {
+            let g = geometryCache.current.get(key);
+            if (!g) {
+              g = await load(sceneUuid, s);
+              if (!alive) { g.dispose(); return null; }
+              geometryCache.current.set(key, g);
+            }
+            return { s, g };
+          } catch (e) { if (alive) onInfo?.(`網格 ${s.name} 載入失敗:${e instanceof Error ? e.message : e}`); return null; }
+        }));
+        if (!alive) return;
+        out.push(...batch.filter((m): m is { s: SceneMesh; g: THREE.BufferGeometry } => m !== null));
+      }
+      if (alive && out.length) {
+        const box = new THREE.Box3();
+        out.forEach(({ g }) => { g.computeBoundingBox(); if (g.boundingBox) box.union(g.boundingBox); });
+        if (!box.isEmpty()) onYRange?.([box.min.y, box.max.y]);
+      }
+      if (alive) {
+        setMeshes(out);
+        for (const [key, geometry] of geometryCache.current) { if (!used.has(key)) { geometry.dispose(); geometryCache.current.delete(key); } }
+        onInfo?.(list.length ? `模型 ${out.length} 個網格${list.length > ok.length ? `(${list.length - ok.length} 個太大略過)` : ''}` : '');
+      }
     }).catch(() => onInfo?.(''));
     return () => { alive = false; };
-  }, [sceneUuid]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sceneUuid, shapes]);   // eslint-disable-line react-hooks/exhaustive-deps
   const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, -1, 0), 0), []);
   plane.constant = view.clipY ?? 1e6;
   const clip = view.clipY != null ? [plane] : [];
   if (!view.show) return null;
   return <>{meshes.map(({ s, g }) => (
-    <group key={s.shape_id}>
-      <mesh geometry={g} userData={{ [SURFACE_FLAG]: true }}>
-        <meshStandardMaterial color={matColor(s.material)} transparent opacity={view.opacity} side={THREE.DoubleSide} depthWrite={view.opacity > 0.9} clippingPlanes={clip} />
+    <group key={s.shape_id} dispose={null}>
+      <mesh geometry={g} userData={{ [SURFACE_FLAG]: true, shapeId: s.shape_id }} onClick={onSelect ? (e) => {
+        if (e.delta > 5 || (view.clipY != null && e.point.y > view.clipY + 0.001)) return;
+        e.stopPropagation(); onSelect(s);
+      } : undefined}>
+        <meshStandardMaterial color={selectedId === s.shape_id ? '#ff8a3d' : matColor(s.material)} emissive={selectedId === s.shape_id ? '#ff8a3d' : '#000000'} emissiveIntensity={0.35} transparent opacity={selectedId === s.shape_id ? Math.max(0.65, view.opacity) : view.opacity} side={THREE.DoubleSide} depthWrite={view.opacity > 0.9} clippingPlanes={clip} />
       </mesh>
       <lineSegments>
         <edgesGeometry args={[g, 30]} />
-        <lineBasicMaterial color={matColor(s.material)} transparent opacity={Math.min(1, view.opacity + 0.3)} clippingPlanes={clip} />
+        <lineBasicMaterial color={selectedId === s.shape_id ? '#ff8a3d' : matColor(s.material)} transparent opacity={Math.min(1, view.opacity + 0.3)} clippingPlanes={clip} />
       </lineSegments>
     </group>))}</>;
+}
+
+/** 剖面以「模型高度的百分比」設定(2026-10-14):以前固定公尺(預設 2.2 m、上限 20 m),
+ *  OSM 場景的地標(台北 101 448 m)被截掉。高度範圍取自載入的網格;高於 10 m 的模型(戶外 / OSM)
+ *  預設 100% = 不截,室內掃描預設 40%(約等於以前 2.2 m 的看法)。內部仍換算成公尺給裁切平面與貼面用。 */
+export const clipDefaultPct = (r: [number, number]) => (r[1] > 10 ? 100 : 40);
+
+export function useSectionClip() {
+  const [range, setRange] = useState<[number, number] | null>(null);
+  const [on, setOn] = useState(true);
+  const [pctSet, setPct] = useState<number | null>(null);   // null = 還沒動過 → 依模型高度給預設
+  const pct = pctSet ?? (range ? clipDefaultPct(range) : 100);
+  const clipY = on && range && pct < 100 ? range[0] + ((range[1] - range[0]) * pct) / 100 : null;
+  return { range, setRange, on, setOn, pct, setPct, clipY };
+}
+
+export function SectionClipControl({ c }: { c: ReturnType<typeof useSectionClip> }) {
+  return <>
+    <label><input type="checkbox" checked={c.on} onChange={(e) => c.setOn(e.target.checked)} /> 剖面 {c.on ? `${c.pct}%${c.clipY != null ? `(${c.clipY.toFixed(1)} m)` : '(全高)'}` : ''}</label>
+    {c.on && <input type="range" min={1} max={100} step={1} value={c.pct} onChange={(e) => c.setPct(Number(e.target.value))}
+      title={c.range ? `模型高度 ${c.range[0].toFixed(1)}–${c.range[1].toFixed(1)} m` : ''} />}
+  </>;
 }

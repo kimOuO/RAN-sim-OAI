@@ -7,6 +7,7 @@ from django.urls import path
 from main.apps.antenna.actors.ru_controller import BeamController, RuController
 
 urlpatterns = [
+    path("RuController/measure_cells", RuController.measure_cells, name="ru_measure_cells"),
     path("RuController/update_antenna", RuController.update_antenna, name="ru_update_antenna"),
     path("RuController/update_cells",   RuController.update_cells,   name="ru_update_cells"),
     path("RuController/set_cell_power", RuController.set_cell_power, name="ru_set_cell_power"),

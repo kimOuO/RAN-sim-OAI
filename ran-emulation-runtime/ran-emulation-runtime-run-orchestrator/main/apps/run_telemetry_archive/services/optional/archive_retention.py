@@ -5,7 +5,7 @@
 其中單一 scene_run 因為反覆重跑而有 46 萬筆視窗(8 小時劇本應該只有 28800)。
 
 兩條規則(都可用 env 關掉):
-    ARCHIVE_KEEP_RUN_SEQ    每個 scene_run 只保留最近 N 輪;舊的重跑清掉
+    ARCHIVE_KEEP_RUN_SEQ    每個 scene_run 只保留最近 N 輪(含剛啟動的這輪);舊的重跑清掉
     ARCHIVE_RETENTION_DAYS  超過 N 天的歸檔一律清掉
 
 在「啟動時」清而不是「跑完時」清:跑完立刻刪會讓對方來不及取。
@@ -37,9 +37,9 @@ _MODELS = (
 
 
 def _purge_old_seq(scene_run_uuid: str, keep: int) -> dict[str, int]:
-    """同一個 scene_run 只留最近 keep 輪。"""
+    """同一個 scene_run 只留最近 keep 輪(keep = 0 → 全清)。"""
     out: dict[str, int] = {}
-    if keep <= 0:
+    if keep < 0:
         return out
     seqs = sorted({s for s in RunKpmSample.objects
                    .filter(f_scene_run_uuid=scene_run_uuid)
@@ -75,7 +75,9 @@ def apply_on_start(scene_run_uuid: str) -> dict[str, int]:
     """run 啟動時呼叫。失敗只記 log —— 清不掉不該擋住啟動。"""
     total: dict[str, int] = {}
     try:
-        for part in (_purge_old_seq(scene_run_uuid, int(getattr(settings, "ARCHIVE_KEEP_RUN_SEQ", 3))),
+        # 在新一輪寫入前清:舊的只留 N-1 輪,加上即將開始的這輪剛好 N 輪(N ≤ 0 = 不清)
+        keep = int(getattr(settings, "ARCHIVE_KEEP_RUN_SEQ", 3))
+        for part in (_purge_old_seq(scene_run_uuid, keep - 1) if keep > 0 else {},
                      _purge_expired(int(getattr(settings, "ARCHIVE_RETENTION_DAYS", 30)))):
             for k, v in part.items():
                 total[k] = total.get(k, 0) + v

@@ -66,6 +66,7 @@ export function launchChecks(tree: SceneTree, run: SceneRun | null, allRuns: Sce
                              knobs: { key: string; value: unknown }[] = []): Check[] {
   const out: Check[] = [];
   if (!run) return [{ level: 'error', text: '還沒有 run 設定(儲存下面的設定會自動建立)' }];
+  if (run.sim_dt_ms < 10 || run.sim_dt_ms > 500) out.push({ level: 'error', text: 'sim_dt 必須介於 10 與 500 ms；請先修正 Run 設定' });
   const errors = [...networkChecks(tree), ...ueChecks(tree)].filter((c) => c.level === 'error');
   errors.forEach((c) => out.push(c));
   const others = allRuns.filter((r) => r.scene_run_uuid !== run.scene_run_uuid && r.status === 'running');

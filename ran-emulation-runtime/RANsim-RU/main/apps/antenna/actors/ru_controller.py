@@ -47,6 +47,47 @@ def _parse_body(request):
 
 
 class RuController:
+    @staticmethod
+    @csrf_exempt
+    @require_http_methods(["POST"])
+    def measure_cells(request):
+        """UE initial/idle selection from this run's channel source, without advancing ticks."""
+        import math
+        from ran_sim_protocol.physics import UeSpec
+        from main.apps.fapi_south.services.optional import dl_tti_pipeline as pipeline
+        from main.apps.fapi_south.services.optional.channel_cache_loader import get_channel_cache, is_cached_mode
+        from main.apps.physics_client.services.optional.payload_builder import build_path_solver_request
+        from main.apps.physics_client.services.optional import physics_http
+        try:
+            body = _parse_body(request)
+            ue_id, position = str(body.get('ue_id') or ''), body.get('position')
+            if not ue_id or not isinstance(position, list) or len(position) != 3:
+                raise ValueError('ue_id and position [x,y,z] required')
+            position = [float(v) for v in position]
+            if not all(math.isfinite(v) for v in position):
+                raise ValueError('position must be finite')
+            if is_cached_mode():
+                cache = get_channel_cache()
+                if cache is None:
+                    return error_response('channel cache unavailable', None, 409)
+                from main.apps.phy_low.services.optional.lockstep_clock import get_clock
+                scene_ms = int(body.get('scene_sim_ms', get_clock().status()['scene_sim_ms']))
+                gains, _ = cache.lookup(scene_ms // max(1, cache.tick_ms), ue_id)
+            else:
+                req = build_path_solver_request([])
+                req.ue_positions = [UeSpec(id=ue_id, position=position)]
+                response = physics_http.compute_paths(req)
+                gains = (response.path_gain or {}).get(ue_id) or {}
+            cell_to_tx = pipeline._build_cell_to_tx_map()
+            values = {c.name: pipeline._path_gain_to_rsrp_dbm(float(gains[cell_to_tx[c.name]]), cell_power_dbm=c.power_dbm)
+                      for c in Cell.objects.filter(is_active=True)
+                      if cell_to_tx.get(c.name) in gains and float(gains[cell_to_tx[c.name]]) > 0}
+            return success_response(values, 'cell RSRP', 200)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return error_response('Validation failed', str(exc), 400)
+        except physics_http.PhysicsHttpError as exc:
+            return error_response('cell measurement unavailable', str(exc), 502)
+
 
     @staticmethod
     @csrf_exempt

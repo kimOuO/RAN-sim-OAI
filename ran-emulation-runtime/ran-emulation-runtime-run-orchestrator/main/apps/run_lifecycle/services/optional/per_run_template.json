@@ -234,6 +234,8 @@
       "E2SM_ANR_ENABLE": "on",
       "E2SM_CCC_ENABLE": "on",
       "E2SM_FULLKPM_ENABLE": "on",
+      "E2SM_FULLKPM2_ENABLE": "off",
+      "E2SM_ANR2_ENABLE": "off",
       "E2_ADAPTER_LINK_ENABLED": "1",
       "LOG_DIR": "/app/logs",
       "RC_MODULE_V10": "on",

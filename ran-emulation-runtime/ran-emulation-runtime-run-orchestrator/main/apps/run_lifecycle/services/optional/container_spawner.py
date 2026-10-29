@@ -257,10 +257,12 @@ def _topo_names(rid: str):
 
 def plan_instances(scene_run_uuid: str, topo, *, no_ric: bool = False, with_amf: bool = False,
                    du_envs: dict[str, dict[str, str]] | None = None,
-                   cu_envs: dict[str, dict[str, str]] | None = None) -> list[dict[str, Any]]:
+                   cu_envs: dict[str, dict[str, str]] | None = None,
+                   e2_env: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """拓樸 → 要起的實例清單(依啟動順序:amf → cu → du → ru → ue;e2adapter 另一批)。
 
-    du_envs:DU 名稱 → registry DU 模板換算出的 env;cu_envs:gNB 名稱 → run knob 等 CU env。
+    du_envs:DU 名稱 → registry DU 模板換算出的 env;cu_envs:gNB 名稱 → run knob 等 CU env;
+    e2_env:run knob 換算出的 E2 adapter env(全場一致,例如 E2SM_FULLKPM2_ENABLE)。
     """
     rid = rid_of(scene_run_uuid)
     first_du = topo.dus()[0] if topo.dus() else None
@@ -297,7 +299,7 @@ def plan_instances(scene_run_uuid: str, topo, *, no_ric: bool = False, with_amf:
         for g in topo.gnbs:
             items.append({"key": f"e2adapter-{g.e2_index}", "role": "e2adapter", "name": nm("e2adapter", g.e2_index),
                           "db": None, "gnb": g.name, "du": "", "e2_port": g.e2_port, "cu_key": f"cu-{g.e2_index}",
-                          "subst": {"e2_port": str(g.e2_port)}, "env": {"GNB_NAME": g.name}})
+                          "subst": {"e2_port": str(g.e2_port)}, "env": {"GNB_NAME": g.name, **(e2_env or {})}})
     return items
 
 
@@ -505,13 +507,14 @@ def precompute_name(scene_run_uuid: str) -> str:
 
 
 def spawn_precompute(scene_run_uuid: str, scenario_id: str, segment_ticks: int = 10000,
-                     solver_env: dict | None = None) -> dict:
+                     solver_env: dict | None = None, cache_fingerprint: str = "") -> dict:
     """solver_env:射線追蹤旋鈕覆寫(SIM_DIFFUSE_REFLECTION / SIM_SAMPLES_PER_SRC /
     SIM_MAX_DEPTH)。給設定實驗用;不帶就是 physics 模板的既有值。"""
     tpl = _load_template()["physics"]; client = docker.from_env(); name = precompute_name(scene_run_uuid)
     for c in client.containers.list(all=True, filters={"name": f"^{name}$"}):
         c.remove(force=True)
     env = dict(tpl["env"]); env["SCENARIO_STORE_URL"] = f"http://{settings.HTTP_REGISTRY_HOST}:{settings.HTTP_REGISTRY_PORT}"; env["SCENE_RUN_UUID"] = scene_run_uuid
+    env['CHANNEL_CACHE_FINGERPRINT'] = cache_fingerprint
     for k, v in (solver_env or {}).items():
         env[str(k)] = str(v)
     vols = {v["source"]: {"bind": v["target"], "mode": "ro" if v["ro"] else "rw"} for v in tpl["volumes"]}

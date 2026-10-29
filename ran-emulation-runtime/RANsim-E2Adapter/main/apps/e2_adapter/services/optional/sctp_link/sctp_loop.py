@@ -706,13 +706,13 @@ def _handle_sub_req(sock, sub_req_value: dict) -> None:
     # ── E2SM-DTFULLKPM(func 5)獨立路徑:不經 sim CU sub registry,
     #    producer 直接每 period 拉 /E2/E2FullReporter/read 全量 JSON 上 wire ──
     from main.apps.e2_adapter.services.optional.codec import e2sm_fullkpm_codec as _fullkpm
-    if ran_func_id == _fullkpm.FULLKPM_RAN_FUNCTION_ID:
+    if ran_func_id in (_fullkpm.FULLKPM_RAN_FUNCTION_ID, _fullkpm.FULLKPM_V2_RAN_FUNCTION_ID):
         _handle_fullkpm_sub_req(sock, ric_req_id, ran_func_id, event_trig_bytes, actions)
         return
 
     # ── E2SM-ANR(func 6)indication:同 FULLKPM 模式,producer 拉 /CU/E2/Anr/indication ──
     from main.apps.e2_adapter.services.optional.codec import e2sm_anr_codec as _anr
-    if ran_func_id == _anr.ANR_RAN_FUNCTION_ID:
+    if ran_func_id in (_anr.ANR_RAN_FUNCTION_ID, _anr.ANR_V2_RAN_FUNCTION_ID):
         _handle_anr_sub_req(sock, ric_req_id, ran_func_id, event_trig_bytes, actions)
         return
 
@@ -799,6 +799,25 @@ def _handle_sub_req(sock, sub_req_value: dict) -> None:
     _start_producer(sock, sub_id, ric_req_id, ran_func_id, admitted_ids[0], period_ms)
 
 
+def _v2_period_or_reject(sock, ric_req_id: dict, ran_func_id: int, event_trig_bytes: bytes) -> int | None:
+    """v2 自訂 E2SM(func 7 / 8)的事件觸發:JSON 格式(遷移期仍收舊 KPM Format 1)。
+    不合規 → 回 RICsubscriptionFailure 並回 None(呼叫端不建立訂閱)。"""
+    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec, e2sm_fullkpm_codec
+    try:
+        period_ms, legacy = e2sm_fullkpm_codec.decode_v2_event_trigger(event_trig_bytes)
+    except e2sm_fullkpm_codec.EventTriggerError as exc:
+        logger.warning("v2 SUB_REQ rejected func=%s ric_req_id=%s: %s cause=%s", ran_func_id, ric_req_id, exc, exc.cause)
+        try:
+            _send_sctp(sock, e2_subscription_codec.encode_ric_subscription_failure(ric_req_id, ran_func_id, exc.cause))
+        except Exception:  # noqa: BLE001
+            logger.exception("encode/send RICsubscriptionFailure failed")
+        return None
+    if legacy:
+        logger.warning("v2 SUB_REQ func=%s uses legacy E2SM-KPM event trigger (accepted during migration; "
+                       "expected JSON {eventTriggerFormat:1, reportingPeriodMs})", ran_func_id)
+    return period_ms
+
+
 def _handle_fullkpm_sub_req(sock, ric_req_id: dict, ran_func_id: int,
                              event_trig_bytes: bytes, actions: list) -> None:
     """E2SM-DTFULLKPM SUB_REQ:回 SUB_RESP + 啟動全量 JSON indication producer。
@@ -806,14 +825,19 @@ def _handle_fullkpm_sub_req(sock, ric_req_id: dict, ran_func_id: int,
     event trigger 嘗試以 KPM Format1 解 period,解不出來 fallback 1000ms
     (xApp 端不需要特別編 trigger 也能訂)。
     """
-    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec
+    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec, e2sm_fullkpm_codec
 
-    try:
-        period_ms = e2_subscription_codec._decode_event_trigger_period(event_trig_bytes)
-        if not period_ms or period_ms <= 0:
+    if ran_func_id == e2sm_fullkpm_codec.FULLKPM_V2_RAN_FUNCTION_ID:
+        period_ms = _v2_period_or_reject(sock, ric_req_id, ran_func_id, event_trig_bytes)
+        if period_ms is None:
+            return
+    else:
+        try:
+            period_ms = e2_subscription_codec._decode_event_trigger_period(event_trig_bytes)
+            if not period_ms or period_ms <= 0:
+                period_ms = 1000
+        except Exception:
             period_ms = 1000
-    except Exception:
-        period_ms = 1000
 
     action_id = 0
     if actions:
@@ -849,15 +873,20 @@ def _handle_fullkpm_sub_req(sock, ric_req_id: dict, ran_func_id: int,
 
 def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
                         event_trig_bytes: bytes, actions: list) -> None:
-    """E2SM-ANR(func 6)SUB_REQ:回 SUB_RESP + 啟動 ANR indication producer。"""
-    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec
+    """E2SM-ANR(func 6 / v2 func 8)SUB_REQ:回 SUB_RESP + 啟動 ANR indication producer。"""
+    from main.apps.e2_adapter.services.optional.codec import e2_subscription_codec, e2sm_anr_codec
 
-    try:
-        period_ms = e2_subscription_codec._decode_event_trigger_period(event_trig_bytes)
-        if not period_ms or period_ms <= 0:
+    if ran_func_id == e2sm_anr_codec.ANR_V2_RAN_FUNCTION_ID:
+        period_ms = _v2_period_or_reject(sock, ric_req_id, ran_func_id, event_trig_bytes)
+        if period_ms is None:
+            return
+    else:
+        try:
+            period_ms = e2_subscription_codec._decode_event_trigger_period(event_trig_bytes)
+            if not period_ms or period_ms <= 0:
+                period_ms = 1000
+        except Exception:
             period_ms = 1000
-    except Exception:
-        period_ms = 1000
     # 2026-08-26 第三十六輪:讀**全部** action(舊碼只讀 actions[0],RIC 的
     # [0,2] 雙 action SUB 被當單 action=0 → nodeinfo producer 從未啟動)。
     action_ids: list[int] = []
@@ -908,6 +937,36 @@ def _handle_anr_sub_req(sock, ric_req_id: dict, ran_func_id: int,
                         signature_suffix=(f"-a{aid}" if len(action_ids) > 1 else ""))
 
 
+def _anr2_dump_open(meta: dict, kind: str):
+    """E2SM_ANR2_DUMP=on 時開 ANR v2 原始位元組 dump 檔(驗證用,預設關)。"""
+    import os as _os
+    if (_os.environ.get("E2SM_ANR2_DUMP") or "off").strip().lower() not in ("on", "1", "true"):
+        return None
+    path = _os.path.join(_os.environ.get("E2SM_ANR2_DUMP_DIR", "/app/logs"),
+                         f"anr2_dump_{_os.environ.get('SCENE_RUN_UUID', 'na')[-8:]}_{_os.environ.get('GNB_NAME', 'gnb')}_{kind}.jsonl")
+    try:
+        fp = open(path, "a", encoding="utf-8")
+        logger.info("ANR2 dump → %s", path)
+        return fp
+    except OSError:
+        logger.exception("ANR2 dump open failed: %s", path)
+        return None
+
+
+def _anr2_log(hdr_bytes: bytes, msg_bytes: bytes, pdu: bytes, dump_fp) -> None:
+    """ANR v2 每則都記一行(只有開了 anr_v2 的劇本才有 func 8),RIC 端對「每期收齊」用;可選寫 dump。"""
+    import json as _json
+    import time as _time
+    h = _json.loads(hdr_bytes)
+    logger.info("ANR2_IND sn=%d action=%d idx=%d/%d report=%s cell=%s page=%d/%d msg=%dB pdu=%dB",
+                h["sn"], h["action"], h["report_index"], h["report_count"], h["report"], h.get("cell"),
+                h["page"], h["pages"], len(msg_bytes), len(pdu))
+    if dump_fp is not None:
+        dump_fp.write(_json.dumps({"sent_at_ms": int(_time.time() * 1000), "header": h, "header_hex": hdr_bytes.hex(),
+                                   "message_hex": msg_bytes.hex(), "pdu_bytes": len(pdu)}) + "\n")
+        dump_fp.flush()
+
+
 def _anr_producer_loop(sock, meta: dict) -> None:
     """ANR producer:每 period 拉 /CU/E2/Anr/indication → zlib JSON indication → SCTP。"""
     import time as _time
@@ -929,6 +988,8 @@ def _anr_producer_loop(sock, meta: dict) -> None:
 
     sent_count = 0
     fail_count = 0
+    is_v2 = meta["ran_func_id"] == e2sm_anr_codec.ANR_V2_RAN_FUNCTION_ID
+    dump_fp = _anr2_dump_open(meta, "a0") if is_v2 else None
     while not meta["stop"].is_set():
         speed = sim_speed.get_speed()
         period_sec = max(0.2, base_period_sec / max(speed, 0.1))
@@ -941,7 +1002,9 @@ def _anr_producer_loop(sock, meta: dict) -> None:
         if data:
             try:
                 meta["sn"] = (meta["sn"] + 1) & 0xFFFF
-                payloads = e2sm_anr_codec.build_indication_payloads(data, meta["sn"])
+                # v1(func 6):zlib 後切塊;v2(func 8):每 serving cell 一份自足報告 + node
+                payloads = (e2sm_anr_codec.build_anr_v2_payloads(data, meta["sn"]) if is_v2
+                            else e2sm_anr_codec.build_indication_payloads(data, meta["sn"]))
                 ok_all = True
                 total_pdu = 0
                 for hdr_bytes, msg_bytes in payloads:
@@ -955,6 +1018,8 @@ def _anr_producer_loop(sock, meta: dict) -> None:
                     if not _send_sctp(sock, pdu):
                         ok_all = False
                         break
+                    if is_v2:
+                        _anr2_log(hdr_bytes, msg_bytes, pdu, dump_fp)
                 if ok_all:
                     MemoryStateBusinessService.update_state(
                         registry,
@@ -975,6 +1040,8 @@ def _anr_producer_loop(sock, meta: dict) -> None:
             except Exception:
                 logger.exception("ANR indication encode/send failed")
         meta["stop"].wait(max(0.05, period_sec - (_time.monotonic() - t0)))
+    if dump_fp is not None:
+        dump_fp.close()
     logger.info("ANR producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent_count)
 
 
@@ -1007,10 +1074,36 @@ def _nodeinfo_change_producer_loop(sock, meta: dict) -> None:
 
     prev: dict[tuple, int] | None = None
     sent = 0
+    is_v2 = meta["ran_func_id"] == e2sm_anr_codec.ANR_V2_RAN_FUNCTION_ID
+    dump_fp = _anr2_dump_open(meta, "a2") if is_v2 else None
     while not meta["stop"].is_set():
         t0 = _time.monotonic()
         try:
             data = sim_http_client.fetch_anr_indication() or {}
+            if is_v2:
+                # v2:每個有變更的 source cell 一則自足報告(該 cell 完整關係表 + 變更標示)
+                cur_v = e2sm_anr_codec.relation_versions(data)
+                if prev is not None and cur_v != prev:
+                    meta["sn"] = (meta["sn"] + 1) & 0xFFFF
+                    ok = True
+                    payloads = e2sm_anr_codec.build_anr_v2_change_payloads(data, prev, meta["sn"])
+                    for hdr, msg in payloads:
+                        pdu = e2_subscription_codec.encode_ric_indication(
+                            ric_req_id=meta["ric_req_id"], ran_function_id=meta["ran_func_id"],
+                            action_id=meta["action_id"], indication_sn=meta["sn"],
+                            indication_header=hdr, indication_message=msg, indication_type="report")
+                        if not _send_sctp(sock, pdu):
+                            ok = False
+                            break
+                        _anr2_log(hdr, msg, pdu, dump_fp)
+                    if ok:
+                        sent += 1
+                        MemoryStateBusinessService.update_state(
+                            registry, pdu_sent_count=registry.get_connection().pdu_sent_count + len(payloads))
+                        event_ring.record_indication_sent(sub_id=sub_id, sn=meta["sn"], pdu_size=0)
+                prev = cur_v
+                meta["stop"].wait(max(0.05, poll_sec - (_time.monotonic() - t0)))
+                continue
             rels = ((data.get("e2NodeInformation") or {}).get("neighbourCellRelations") or [])
             cur = {(r.get("sourceCellNcgi"), r.get("targetCellGlobalId")): r.get("version")
                    for r in rels}
@@ -1051,11 +1144,14 @@ def _nodeinfo_change_producer_loop(sock, meta: dict) -> None:
         except Exception:
             logger.exception("nodeinfo-change producer iteration failed")
         meta["stop"].wait(max(0.05, poll_sec - (_time.monotonic() - t0)))
+    if dump_fp is not None:
+        dump_fp.close()
     logger.info("NODEINFO-CHANGE producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent)
 
 
 def _fullkpm_producer_loop(sock, meta: dict) -> None:
     """FULLKPM producer:每 period 拉 CU 全量 snapshot → JSON indication → SCTP。"""
+    import json
     import time as _time
 
     from main.apps.e2_adapter.models.connection_state import get_registry
@@ -1075,6 +1171,19 @@ def _fullkpm_producer_loop(sock, meta: dict) -> None:
 
     sent_count = 0
     fail_count = 0
+    # 驗證用:E2SM_FULLKPM2_DUMP=on 時把 func 7 每則送出的 header / message 原始位元組逐行寫檔(JSON lines),
+    # 讓 RIC 端拿入庫結果逐欄對照「送出前原值」。預設關;只對 func 7。
+    import os as _os
+    dump_fp = None
+    if (meta["ran_func_id"] == e2sm_fullkpm_codec.FULLKPM_V2_RAN_FUNCTION_ID
+            and (_os.environ.get("E2SM_FULLKPM2_DUMP") or "off").strip().lower() in ("on", "1", "true")):
+        dump_path = _os.path.join(_os.environ.get("E2SM_FULLKPM2_DUMP_DIR", "/app/logs"),
+                                  f"fullkpm2_dump_{_os.environ.get('SCENE_RUN_UUID', 'na')[-8:]}_{_os.environ.get('GNB_NAME', 'gnb')}.jsonl")
+        try:
+            dump_fp = open(dump_path, "a", encoding="utf-8")
+            logger.info("FULLKPM2 dump → %s", dump_path)
+        except OSError:
+            logger.exception("FULLKPM2 dump open failed: %s", dump_path)
     while not meta["stop"].is_set():
         speed = sim_speed.get_speed()
         period_sec = max(0.2, base_period_sec / max(speed, 0.1))
@@ -1086,9 +1195,14 @@ def _fullkpm_producer_loop(sock, meta: dict) -> None:
             data = None
         if data:
             try:
-                # zlib+分塊:e2term SCTP recv buffer 8KB,每個 PDU 必須壓在其下
+                # e2term SCTP recv buffer 8KB,每個 PDU 必須壓在其下。
+                # v1(func 5):zlib 後切塊;v2(func 7):每 cell 一份自足報告
                 meta["sn"] = (meta["sn"] + 1) & 0xFFFF
-                payloads = e2sm_fullkpm_codec.build_indication_payloads(data, meta["sn"])
+                is_v2 = meta["ran_func_id"] == e2sm_fullkpm_codec.FULLKPM_V2_RAN_FUNCTION_ID
+                if is_v2:
+                    payloads = e2sm_fullkpm_codec.build_indication_payloads_v2(data, meta["sn"])
+                else:
+                    payloads = e2sm_fullkpm_codec.build_indication_payloads(data, meta["sn"])
                 ok_all = True
                 total_pdu = 0
                 for hdr_bytes, msg_bytes in payloads:
@@ -1105,6 +1219,17 @@ def _fullkpm_producer_loop(sock, meta: dict) -> None:
                     if not _send_sctp(sock, pdu):
                         ok_all = False
                         break
+                    if is_v2:
+                        # v2 每則都記(只有開了 fullkpm_v2 的測試劇本才有 func 7):RIC 端對「每期收齊」用
+                        h = json.loads(hdr_bytes)
+                        logger.info("FULLKPM2_IND sn=%d idx=%d/%d report=%s gnb=%s cell=%s page=%d/%d msg=%dB pdu=%dB",
+                                    h["sn"], h["report_index"], h["report_count"], h["report"], h.get("gnb_id"),
+                                    h.get("cell_id"), h["ue_page"], h["ue_pages"], len(msg_bytes), len(pdu))
+                        if dump_fp is not None:
+                            dump_fp.write(json.dumps({"sent_at_ms": int(_time.time() * 1000), "header": h,
+                                                      "header_hex": hdr_bytes.hex(), "message_hex": msg_bytes.hex(),
+                                                      "pdu_bytes": len(pdu)}) + "\n")
+                            dump_fp.flush()
                 if ok_all:
                     MemoryStateBusinessService.update_state(
                         registry,
@@ -1128,6 +1253,8 @@ def _fullkpm_producer_loop(sock, meta: dict) -> None:
                 logger.exception("FULLKPM indication encode/send failed")
         # 扣掉本輪耗時,對齊 period 節奏
         meta["stop"].wait(max(0.05, period_sec - (_time.monotonic() - t0)))
+    if dump_fp is not None:
+        dump_fp.close()
     logger.info("FULLKPM producer LIFECYCLE.exit sub_id=%s sent=%d", sub_id, sent_count)
 
 
@@ -1519,12 +1646,14 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
         return
 
     ric_req_id = decoded.get("ric_req_id", {})
+    # 回覆用請求帶來的 function id:func 6(v1)或 func 8(v2)
+    _rf = int(decoded.get("ran_function_id") or e2sm_anr_codec.ANR_RAN_FUNCTION_ID)
     _anr_cpid = decoded.get("call_process_id") or b""
     payload = e2sm_anr_codec.to_sim_control_payload(decoded)
     if not payload:
         # 2026-09-27:以前少帶 call_process_id / style / action → TypeError,RIC 等不到 Failure
         _send_control_failure(
-            sock, ric_req_id, e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
+            sock, ric_req_id, _rf,
             cause=("ricRequest", "control-message-invalid"), call_process_id=_anr_cpid,
             style=1, action=0,
             reason="ANR control has no valid SON trigger request",
@@ -1536,7 +1665,7 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
     _tgt = req.get("targetCgi") or (req.get("target") or {}).get("cgi") or ""
     event_ring.record_control_req_recv(
         style=1, action=0, sim_action=f"anr_{req.get('requestType', '').lower()}", ueid={},
-        ran_func=e2sm_anr_codec.ANR_RAN_FUNCTION_ID, inst_id=_inst,
+        ran_func=_rf, inst_id=_inst,
         params={"source": req.get("sourceCellId", ""), "target": _tgt,
                 "flag": req.get("flag", ""), "op": req.get("op", ""),
                 "reason": req.get("reason", "")},
@@ -1566,7 +1695,7 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
 
     try:
         ack = e2sm_rc_codec.encode_ric_control_ack(
-            ric_req_id=ric_req_id, ran_function_id=e2sm_anr_codec.ANR_RAN_FUNCTION_ID,
+            ric_req_id=ric_req_id, ran_function_id=_rf,
             call_process_id=_anr_cpid,   # RIC 對帳標籤原樣帶回
             outcome_bytes=outcome_bytes,
         )
@@ -1576,7 +1705,7 @@ def _handle_anr_control_req(sock, raw_pdu: bytes) -> None:
             event_ring.record_control_ack_sent(
                 style=1, action=0, sim_action=f"anr_{req.get('requestType', '').lower()}",
                 pdu_size=len(ack), outcome="ok",
-                ran_func=e2sm_anr_codec.ANR_RAN_FUNCTION_ID, inst_id=_inst,
+                ran_func=_rf, inst_id=_inst,
                 result=(co or {}).get("result", ""), detail=(co or {}).get("detail", ""),
                 rtt_ms=(time.time() - _t0) * 1000.0,
             )
@@ -1629,7 +1758,7 @@ def _handle_control_req(sock, raw_pdu: bytes) -> None:
 
     # ── E2SM-ANR(SON 觸發 ADD/REMOVE/FLAG)走獨立路徑 ──
     from main.apps.e2_adapter.services.optional.codec import e2sm_anr_codec as _anr
-    if ran_func_id == _anr.ANR_RAN_FUNCTION_ID:
+    if ran_func_id in (_anr.ANR_RAN_FUNCTION_ID, _anr.ANR_V2_RAN_FUNCTION_ID):
         _handle_anr_control_req(sock, raw_pdu)
         return
     call_proc_id_hex = decoded.get("call_process_id", "")

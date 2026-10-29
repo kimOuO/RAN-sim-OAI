@@ -7,6 +7,7 @@ from main.apps.field_scene.models.scene import Scene
 
 class SceneRunWriteSerializer(serializers.ModelSerializer):
     f_scene_uuid = serializers.SlugRelatedField(source="scene", slug_field="scene_uuid", queryset=Scene.objects.all())
+    sim_dt_ms = serializers.IntegerField(min_value=10, max_value=500, required=False)
 
     class Meta:
         model = SceneRun

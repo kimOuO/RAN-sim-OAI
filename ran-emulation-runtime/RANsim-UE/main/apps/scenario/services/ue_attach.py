@@ -54,12 +54,20 @@ class UeAttachService:
         prefix = f"[{context}] " if context else ""
         failed: list[dict[str, str]] = []
         attached = 0
+        serving_cells: dict[str, str] = {}
 
         for ue in ues:
             ue_name = ue.get("name")
             if not ue_name:
                 continue
             serving = ue.get("serving_cell") or default_serving_cell
+            if ue.get('auto_select') and not ue.get('serving_cell'):
+                from django.conf import settings
+                from main.apps.ue_lifecycle.services import cell_selection
+                serving, _ = cell_selection.select_cell(ue_name, tuple(ue['position']), min_rsrp_dbm=settings.CAMP_MIN_RSRP_DBM)
+                if not serving:
+                    failed.append({'ue': ue_name, 'step': 'cell selection', 'error': 'no suitable cell at initial position'})
+                    continue
             # profile resolution:per-UE > default(可能 None — 跳過 update)
             profile: dict[str, Any] | None = ue.get("traffic_profile") or default_traffic_profile
 
@@ -94,6 +102,7 @@ class UeAttachService:
                 logger.debug("%sUE %s: keep existing CU traffic_profile (no override given)", prefix, ue_name)
 
             attached += 1
+            serving_cells[ue_name] = serving
             logger.info("%sUE %s attached → serving=%s, profile_override=%s",
                         prefix, ue_name, serving, profile is not None)
 
@@ -101,4 +110,4 @@ class UeAttachService:
             "%sUE attach summary: attached=%d/%d failed=%d (default_serving=%s)",
             prefix, attached, len(ues), len(failed), default_serving_cell,
         )
-        return {"attached": attached, "failed": failed, "total": len(ues)}
+        return {"attached": attached, "failed": failed, "total": len(ues), "serving_cells": serving_cells}

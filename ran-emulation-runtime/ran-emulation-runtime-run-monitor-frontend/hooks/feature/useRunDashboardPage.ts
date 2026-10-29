@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useMemo, useState } from 'react';
 import { KPM_FETCH_LIMIT, POLL_MS, RANGE_OPTIONS, UE_METRICS } from '@/config';
+import { cellOwners, topologyCounts } from '@/hooks/feature/live3d';
 import { useAsync } from '@/hooks/base/useAsync';
 import { usePolling } from '@/hooks/base/usePolling';
 import { useIncremental } from '@/hooks/base/useIncremental';
@@ -8,6 +9,7 @@ import { listControlEvents, listHandoverEvents, listKpmSamples, listLaunchReques
 import { DU_API, E2ADAPTER_API, UE_API } from '@/config';
 import { getDuTick, getE2AdapterStatus, getRicObservation, getRun, getSceneTree, getUeDriverStatus, listDuCells, listRunInstances, listScenes, runtimeBase } from '@/services/api/runs';
 import { beamUsage } from '@/hooks/feature/beamDerive';
+import { countControlOrigins } from '@/hooks/feature/controlEvents';
 import { allCells, allUes, bucketEvents, cellColorMap, cellSeries, groupCellsByGnb, histogram, latestUes, mean, meanMcsByCell, meanRlcDelayByCell, meanSinrByCell, prbDl, prbUl, thpDlByCell, thpUlByCell, ueCountByCell, ueSeries, ueServingStrip } from '@/hooks/feature/kpmDerive';
 import type { KpmSample } from '@/types/telemetry';
 
@@ -16,8 +18,9 @@ export function useRunDashboardPage(runUuid: string) {
   const run = useAsync(() => getRun(runUuid), [runUuid]);
   const scenes = useAsync(listScenes, []);
   const tree = useAsync(() => (run.data ? getSceneTree(run.data.f_scene_uuid) : Promise.resolve(null)), [run.data?.f_scene_uuid]);
-  const samples = useIncremental((after) => listKpmSamples(runUuid, after), runUuid, KPM_FETCH_LIMIT);
-  const hos = useIncremental((after) => listHandoverEvents(runUuid, after), runUuid, 5000);
+  const sessionKey = `${runUuid}:${run.data?.started_at ?? ''}`;
+  const samples = useIncremental((after) => listKpmSamples(runUuid, after), sessionKey, KPM_FETCH_LIMIT);
+  const hos = useIncremental((after) => listHandoverEvents(runUuid, after), sessionKey, 5000);
   const ctrls = useAsync(() => listControlEvents(runUuid), [runUuid]);
   const launches = useAsync(() => listLaunchRequests(runUuid), [runUuid]);
   const instances = useAsync(() => listRunInstances(runUuid), [runUuid]);
@@ -52,6 +55,7 @@ export function useRunDashboardPage(runUuid: string) {
     [e2Insts.map((i) => i.host_port).join(','), runtimeGone]);
   const refetchAll = useCallback(() => { run.refetch(); samples.refetch(); hos.refetch(); ctrls.refetch(); tick.refetch(); e2.refetch(); e2Nodes.refetch(); duCells.refetch(); ueDrv.refetch(); instances.refetch(); }, [run, samples, hos, ctrls, tick, e2, e2Nodes, duCells, ueDrv, instances]);
   usePolling(refetchAll, POLL_MS, live);
+  usePolling(run.refetch, 10_000, !live);
   usePolling(ric.refetch, 30000, live);   // 閘道查詢慢,30 s 一次
 
   const [range, setRange] = useState<number>(RANGE_OPTIONS[1].windows);
@@ -64,6 +68,8 @@ export function useRunDashboardPage(runUuid: string) {
   const color = useMemo(() => cellColorMap(cells), [cells]);
   const ues = useMemo(() => allUes(all), [all]);
   const gnbGroups = useMemo(() => groupCellsByGnb(cells, tree.data ?? null), [cells, tree.data]);
+  const owners = useMemo(() => cellOwners(tree.data), [tree.data]);
+  const topo = useMemo(() => topologyCounts(tree.data), [tree.data]);
   const latest: KpmSample | null = all.length ? (selectedWindow != null ? all[Math.min(selectedWindow, all.length - 1)] : all[all.length - 1]) : null;
   const prev: KpmSample | null = all.length > 1 ? all[all.length - 2] : null;
 
@@ -88,7 +94,8 @@ export function useRunDashboardPage(runUuid: string) {
   const stat = (w: KpmSample | null) => { const us = w ? Object.values(w.per_ue) : []; const cs = w ? Object.values(w.per_cell) : []; return {
     ue: us.length, sinr: mean(us.map((u) => u.sinr_db)), thp: us.reduce((a, u) => a + (u.throughput_dl_mbps ?? 0), 0), prb: mean(cs.map((c) => c.prb_pct_dl)), mcs: mean(us.map((u) => u.mcs_dl)) }; };
   const stats = { now: stat(latest), prev: stat(prev) };
-  /** RIC 命令前後對照:前後各 5 窗的 cell 平均 PrbTotDl */
+  const controlCounts = useMemo(() => countControlOrigins(ctrls.data ?? []), [ctrls.data]);
+  /** 控制指令與自主事件前後對照:前後各 5 窗的 cell 平均 PrbTotDl */
   const commandImpact = useMemo(() => (ctrls.data ?? []).map((c) => {
     const at = c.at_sim_ms; const N = 5;
     const avg = (xs: KpmSample[]) => mean(xs.flatMap((s) => Object.values(s.per_cell).map((k) => k.prb_pct_dl)));
@@ -100,8 +107,8 @@ export function useRunDashboardPage(runUuid: string) {
   return {
     runtimeGone,
     run: run.data, sceneName: (() => { const sc = (scenes.data ?? []).find((s) => s.scene_uuid === run.data?.f_scene_uuid); return sc?.legacy_scenario_id || sc?.name || ''; })(), status: run.status, error: run.error,
-    all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
-    handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], commandImpact, launches: launches.data ?? [],
+    all, view, latest, cells, color, gnbGroups, cellUeCount, sceneTree: tree.data ?? null, owners, topo, charts, xLabels, ueRows, sinrHist, ueSmall, ueDetail, selectedUe, setSelectedUe, stats,
+    handovers: hos.data ?? [], hoOk, rlf, eventBars, controls: ctrls.data ?? [], controlCounts, commandImpact, launches: launches.data ?? [],
     duTick: tick.data, duCells: duCells.data ?? [], ueDriver: ueDrv.data, e2: e2.data, e2Nodes: e2Nodes.data ?? [], instances: instances.data ?? [], ric: ric.data ?? null, beamCells: beamUsage(view), perRun: (instances.data ?? []).some((i) => i.host_port), live, range, setRange, selectedWindow, setSelectedWindow,
   };
 }

@@ -256,7 +256,8 @@ def encode_kpm_ran_function_description() -> bytes:
       ric-EventTriggerStyle-List
         Style 1 (Periodic Report) — 對齊 mobiflow 預設
       ric-ReportStyle-List
-        Style 1 (E2 Node Measurement) + measInfo list (9 metrics)
+        Style 1 (E2 Node Measurement) — 相容既有 xApp 保留
+        Style 4 (Common Condition-based, UE-level) — 實際送出的 IndicationMessage Format 3
     """
     rt = _load_runtime()
     rfd_cls = rt.E2SM_KPM_IEs.E2SM_KPM_RANfunction_Description
@@ -292,6 +293,17 @@ def encode_kpm_ran_function_description() -> bytes:
             "measInfo-Action-List": meas_action_list,
             "ric-IndicationHeaderFormat-Type": 1,
             "ric-IndicationMessageFormat-Type": 1,
+        },
+        # Style 4: v2.0.03 §7.4.1 對應 ActionDefinition Format 4 / IndicationMessage Format 3,
+        # 與 encode_kpm_indication_message() 實際送的 per-UE 格式一致。
+        # matchingUeCondList 不逐條評估:回報所有已附著 UE。
+        {
+            "ric-ReportStyle-Type": 4,
+            "ric-ReportStyle-Name": "Common Condition-based, UE-level Measurement",
+            "ric-ActionFormat-Type": 4,
+            "measInfo-Action-List": meas_action_list,
+            "ric-IndicationHeaderFormat-Type": 1,
+            "ric-IndicationMessageFormat-Type": 3,
         },
     ]
 

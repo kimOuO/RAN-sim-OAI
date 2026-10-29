@@ -10,6 +10,7 @@ urlpatterns = [
     path("UeController/delete", UeController.delete, name="ue_delete"),
     path("UeReader/read", UeReader.read, name="ue_read"),
     path("UeWaypointController/create", UeWaypointController.create, name="ue_waypoint_create"),
+    path("UeWaypointController/replace", UeWaypointController.replace, name="ue_waypoint_replace"),
     path("UeWaypointController/update", UeWaypointController.update, name="ue_waypoint_update"),
     path("UeWaypointController/delete", UeWaypointController.delete, name="ue_waypoint_delete"),
     path("UeWaypointReader/read", UeWaypointReader.read, name="ue_waypoint_read"),

@@ -26,6 +26,7 @@ urlpatterns = [
     path("F1AP/F1ApRouter/du_configuration_update", F1ApRouterActor.du_configuration_update, name="f1_du_config_update"),
     path("F1AP/F1ApRouter/ul_rrc_message", F1ApRouterActor.ul_rrc_message, name="f1_ul_rrc"),
     path("F1AP/F1ApRouter/measurement_report", F1ApRouterActor.measurement_report, name="f1_meas"),
+    path("F1AP/F1ApRouter/mobility_measurement", F1ApRouterActor.mobility_measurement, name="f1_mobility_meas"),  # 每 tick A3(2026-10-14 #22)
     path("F1AP/F1ApRouter/cell_measurement_report", F1ApRouterActor.cell_measurement_report, name="f1_cell_meas"),
     path("F1AP/F1ApRouter/rlf_report", F1ApRouterActor.rlf_report, name="f1_rlf_report"),  # P1-1/2 RLF + 重建
     # NGAP

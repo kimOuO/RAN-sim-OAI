@@ -22,6 +22,8 @@ REGISTRY_URL = os.environ.get("REGISTRY_URL", "")
 class UeScenarioRow:
     name: str
     positions: list[list[float]]  # [[t, x, y, z], ...]
+    # 走完最後一點後從頭重複(場景 UE 的 loop 欄位)。預設 False = 停在最後一點,維持劇本路徑原本的行為
+    loop: bool = False
 
 
 @dataclass
@@ -104,6 +106,8 @@ class ScenarioSpec:
     ues: list[UeScenarioRow]
     traffic: list[TrafficScenarioRow]
     default_serving_cell: str = "gnb1_cell0"   # driver 自動 attach 用,scenario 可覆寫
+    auto_select_initial: bool = False
+    cache_scenario_id: str = ""
     gnbs: list[GnbScenarioRow] = None  # type: ignore[assignment]
     buildings: list[BuildingScenarioRow] = None  # type: ignore[assignment]
     # 從 Scenario model 帶出的 precompute 狀態,driver.start() 用來決定 RU mode:
@@ -178,7 +182,8 @@ def fetch(scenario_id: str) -> ScenarioSpec:
     _dur = float(raw.get("duration_sec") or 0.0)
     ues = [
         UeScenarioRow(name=str(u["name"]),
-                      positions=_normalize_positions(list(u.get("positions") or []), _dur))
+                      positions=_normalize_positions(list(u.get("positions") or []), _dur),
+                      loop=bool(u.get("loop", False)))
         for u in raw.get("ues") or []
     ]
     traffic = [
@@ -412,9 +417,12 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     knobs = run.get("knobs") or {}
     duration = float(run.get("duration_sec") or 0.0)
 
-    ues = [UeScenarioRow(name=str(u["name"]), positions=[[float(x) for x in w] for w in (u.get("waypoints") or [])])
+    ues = [UeScenarioRow(name=str(u["name"]), positions=[[float(x) for x in w] for w in (u.get("waypoints") or [])],
+                         loop=bool(u.get("loop", False)))
            for u in t.get("ues") or []]
-    traffic = [TrafficScenarioRow(ue_name=str(u["name"]), profile=list(tr.get("schedule") or []))
+    traffic = [TrafficScenarioRow(ue_name=str(u["name"]), profile=(
+                   [[0.0, float(tr.get('rate_mbps') or 0.0) * 1000.0, 0.0]] if tr.get('pattern') == 'cbr'
+                   else list(tr.get("schedule") or [])))
                for u in t.get("ues") or [] for tr in (u.get("traffic") or [])]
     gnbs: list[GnbScenarioRow] = []
     a3: dict = {}
@@ -474,9 +482,8 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
     # 空清單要保留,代表這齣戲他一次都不出現。但整個場景都沒有時段資料時(live 模式、
     # 舊劇本)仍要維持「不限制」,否則會把所有人都藏起來 —— 所以只在有人帶時段時才啟用。
     windows = {str(u["name"]): [[float(a), float(b)] for a, b in (u.get("active_windows") or [])]
-               for u in t.get("ues") or []}
-    if not any(windows.values()):
-        windows = {}
+               for u in t.get("ues") or []
+               if u.get("active_windows") or u.get("presence_restricted", False)}
     # default_serving_cell 必須是樹裡真的有的 cell;舊劇本常寫 "<gnb>_c0" 但 cell 叫 "<gnb>",
     # 掛到不存在的 cell 會在 CU 生出幽靈 serving cell(2026-09-13 P4-1 發現)。不在樹裡就退回第一個 cell。
     cell_names = [c.cell_id for g in gnbs for c in g.cells]
@@ -502,6 +509,8 @@ def fetch_by_run(scene_run_uuid: str) -> ScenarioSpec:
         duration_sec=duration, tick_ms=int(run.get("sim_dt_ms") or 500),
         ues=ues, traffic=traffic,
         default_serving_cell=default_serving,
+        auto_select_initial=not scene.get('legacy_scenario_id') and not knobs.get('default_serving_cell'),
+        cache_scenario_id=str(scene.get('legacy_scenario_id') or scene.get('scene_uuid') or ''),
         gnbs=gnbs, buildings=buildings,
         precompute_status="ready" if run.get("mode") == "cached" else "pending",
         antenna_pattern=(str(knobs["antenna_pattern"]) if knobs.get("antenna_pattern") else None),

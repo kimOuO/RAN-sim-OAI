@@ -13,7 +13,7 @@ export function BeamUsagePanel({ cells }: { cells: BeamCell[] }) {
               <span key={b.id} className="beam-chip" title={`波束 ${b.id} · 佔比 ${(b.share * 100).toFixed(1)}% · 平均 SINR ${b.sinr?.toFixed(1) ?? '—'} dB`}
                 style={{ background: `rgba(57,135,229,${0.15 + 0.85 * b.share})` }}>
                 <b className="mono">#{b.id}</b>
-                <i>{b.sinr != null ? `${b.sinr.toFixed(0)}dB` : '—'}</i>
+                <i>{b.sinr != null ? `${Math.round(b.sinr) || 0}dB` : '—'}</i>
               </span>
             ))}
           </div>

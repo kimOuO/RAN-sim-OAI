@@ -146,6 +146,7 @@ def import_scenario(raw: dict[str, Any], *, precompute_status: str = "pending", 
     for u in raw.get("ues") or []:
         ue = DB.create_entity(Ue, {**_stamp("ue"), "scene": scene, "name": str(u["name"]), "antenna_preset": None,
                                    "antenna_height_m": float(u["target_height_m"]) if u.get("target_height_m") is not None else 1.5,
+                                   "presence_restricted": "active" in u and u["active"] is not None,
                                    "loop": bool(u.get("loop", False)), "speed_mps": (float(u["speed_mps"]) if u.get("speed_mps") is not None else None)})
         for i, p in enumerate(normalize_positions(list(u.get("positions") or []), duration)):
             DB.create_entity(UeWaypoint, {**_stamp("ue_waypoint"), "ue": ue, "ord": i, "t_sec": p[0], "x": p[1], "y": p[2], "z": p[3]})
@@ -229,7 +230,7 @@ def export_scenario(scene_uuid: str, scene_run_uuid: str | None = None) -> dict[
     for u in Ue.objects.filter(scene=scene).order_by("id"):
         ud: dict[str, Any] = {"name": u.name, "positions": [[w.t_sec, w.x, w.y, w.z] for w in UeWaypoint.objects.filter(ue=u).order_by("ord")]}
         wins = [[w.t0_sec, w.t1_sec] for w in UeActiveWindow.objects.filter(ue=u).order_by("id")]
-        if wins:
+        if wins or u.presence_restricted:
             ud["active"] = wins
         if u.loop:
             ud["loop"] = True

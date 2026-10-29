@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAsync } from '@/hooks/base/useAsync';
 import { cellColorMap } from '@/hooks/feature/kpmDerive';
-import { stripTag } from '@/hooks/feature/live3d';
+import { cellOwners, stripTag } from '@/hooks/feature/live3d';
+import type { UeLabelMode } from '@/components/scene3d/LiveScene3D';
 import type { UeFlash } from '@/hooks/feature/useRunLive3dPage';
 import { getSceneTree3d } from '@/services/api/runs';
 import type { KpmSample, UeKpm } from '@/types/telemetry';
@@ -37,5 +38,8 @@ export function usePlayback3d(sceneUuid: string | undefined, all: KpmSample[], i
     return () => clearInterval(t);
   }, [playing, rate, idx, all.length, setIdx]);
   const [selected, setSelected] = useState<string | null>(null);
-  return { tree: tree.data, ueState, flashes, color, simNow, hasSceneTime: sceneT != null, playing, toggle: () => setPlaying((p) => !p), rate, setRate, selected, setSelected };
+  const owners = useMemo(() => cellOwners(tree.data), [tree.data]);
+  const [labelMode, setLabelMode] = useState<UeLabelMode>('brief');
+  const [showSites, setShowSites] = useState(true);
+  return { tree: tree.data, ueState, flashes, color, simNow, hasSceneTime: sceneT != null, playing, toggle: () => setPlaying((p) => !p), rate, setRate, selected, setSelected, owners, labelMode, setLabelMode, showSites, setShowSites };
 }

@@ -1,8 +1,10 @@
 from django.urls import path
 from main.apps.run_lifecycle.actors.precompute_actor import PrecomputeController, PrecomputeReader, RicObservationReader
 from main.apps.run_lifecycle.actors.launch_request_actor import LaunchController, LaunchRequestController, LaunchRequestReader
+from main.apps.run_lifecycle.actors.o1_observation_actor import O1ObservationReader
 
 urlpatterns = [
+    path("O1ObservationReader/read", O1ObservationReader.read, name="o1_observation_read"),
     path("LaunchController/start", LaunchController.start, name="launch_start"),
     path("LaunchController/stop", LaunchController.stop, name="launch_stop"),
     path("LaunchController/start_e2adapter", LaunchController.start_e2adapter, name="launch_start_e2adapter"),

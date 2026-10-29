@@ -73,3 +73,26 @@ def test_default_thresholds_equal_oai_defaults():
     # TARGET_BLER 預設 0.1(中心)→ 上下門檻 0.15 / 0.05 = OAI dl_bler_target_upper/lower 預設
     assert abs(BLER_UPPER - 0.15) < 1e-12
     assert abs(BLER_LOWER - 0.05) < 1e-12
+
+
+def test_period_mcs_records_each_update_period():
+    """一次推進 500 ms = 5 期;period_mcs 是各期「期間」用的 MCS(調整前):
+    第一期接續上次回傳的 MCS,相鄰兩期最多差一階,本次回傳值與最後一期最多差一階。"""
+    ctl = MCSController()
+    for t in range(0, 3001, 500):              # 先升到操作點附近
+        prev, _ = ctl.update("ue1", 25.0, t)
+    mcs, _ = ctl.update("ue1", 25.0, 3000 + 5 * BLER_UPDATE_MS)
+    periods = ctl.period_mcs("ue1")
+    assert len(periods) == 5
+    assert periods[0] == prev
+    assert all(abs(b - a) <= 1 for a, b in zip(periods, periods[1:]))
+    assert abs(mcs - periods[-1]) <= 1
+
+
+def test_period_mcs_kept_on_repeated_call_at_same_time():
+    ctl = MCSController()
+    ctl.update("ue1", 25.0, 0)
+    ctl.update("ue1", 25.0, 500)
+    before = ctl.period_mcs("ue1")
+    ctl.update("ue1", 25.0, 500)
+    assert ctl.period_mcs("ue1") == before

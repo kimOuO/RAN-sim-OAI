@@ -67,6 +67,13 @@ def tick_start() -> bool:
     return ok
 
 
+def prepare_tick() -> bool:
+    """Reset DU registries before UE attach; external RU clock starts afterwards."""
+    if ran_endpoints.external_clock():
+        return _all_dus('/api/v0.1/DU/Tick/TickController/start')
+    return tick_start()
+
+
 def align_scene_clock() -> bool:
     """劇本時鐘從此刻起算。"""
     if ran_endpoints.external_clock():
@@ -101,7 +108,8 @@ def get_scene_clock() -> tuple[int, float] | None:
         return None
     try:
         ach = d.get("achieved_speed_x")
-        return int(d["scene_sim_ms"]), max(0.0, float(ach)) if ach is not None else 0.0
+        running = d.get("running", d.get("is_running", True))
+        return int(d["scene_sim_ms"]), max(0.0, float(ach)) if ach is not None and running else 0.0
     except (TypeError, ValueError):
         return None
 
@@ -114,6 +122,14 @@ def get_scene_sim_ms() -> int | None:
     """
     v = get_scene_clock()
     return v[0] if v else None
+
+
+def get_clock_status() -> dict:
+    """Expose the actual clock, including a stopped/restarted RU process."""
+    d = _clock_read()
+    if d is None:
+        return {"running": False, "available": False, "achieved_speed_x": 0.0}
+    return {**d, "available": True, "running": bool(d.get("running", d.get("is_running", False)))}
 
 
 def tick_stop() -> bool:

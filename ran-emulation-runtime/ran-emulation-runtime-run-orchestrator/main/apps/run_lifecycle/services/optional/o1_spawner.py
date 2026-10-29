@@ -178,6 +178,12 @@ def on_stop(rid: str, topo=None, scenario_id: str = "", final: bool = True) -> N
     容器本身由 teardown 依標籤清掉。"""
     if not O1_ENABLE or topo is None:
         return
+    # Preserve CM/FM state and PM values while sysrepo and /ftp still exist.
+    try:
+        from .o1_observation import snapshot_before_stop
+        snapshot_before_stop(rid)
+    except Exception as exc:  # noqa: BLE001 — monitoring cannot prevent shutdown
+        logger.warning("O1 final observation failed: %s", exc)
     run_tag = _adapter_env(rid, "O1_RUN_ID") or rid   # 必須與 pnfRegistration 帶的 runId 相同;要在容器被清掉前讀
     # 2026-09-30:先停 adapter 再送 CLEAR。原本先送 CLEAR 再 teardown,CU / DU 比 adapter 早停,
     # adapter 會在被殺之前又發一筆 internalConnectionLoss,留在 SMO 告警清單清不掉(SMO PM-V1 回報)。
@@ -186,7 +192,7 @@ def on_stop(rid: str, topo=None, scenario_id: str = "", final: bool = True) -> N
     except Exception as exc:  # noqa: BLE001
         logger.warning("O1 stop adapters failed: %s", exc)
     try:
-        _send_clears(topo)
+        _send_clears(topo, rid=rid, run_id=run_tag)
     except Exception as exc:  # noqa: BLE001
         logger.warning("O1 stop clears failed: %s", exc)
     try:
@@ -254,7 +260,7 @@ def _stop_adapters(rid: str) -> None:
     _time.sleep(1.0)   # CLEAR 不可與 adapter 最後一筆事件同毫秒
 
 
-def _send_clears(topo) -> None:
+def _send_clears(topo, rid: str = '', run_id: str = '') -> None:
     """對 run 內每個 ME 送 internalConnectionLoss 的 CLEAR(eventSeverity NORMAL),讓 SMO 的目前告警清單乾淨。"""
     import json as _json
     import time as _time
@@ -290,12 +296,21 @@ def _send_clears(topo) -> None:
                              "alarmId": alarm_id,   # 與 adapter 發生時相同
                              "alarmType": alarm_type, "probableCause": cause,
                              "perceivedSeverity": "CLEARED", "clearUserId": "MITLAB RANsim-DT", "clearSystemId": "run-orchestrator"}}}}
+            delivery_status = None
             try:
                 req = _ur.Request(O1_VES_URL, data=_json.dumps(ev).encode(), headers={"Content-Type": "application/json"})
                 with _ur.urlopen(req, timeout=8) as r:
+                    delivery_status = r.status
                     logger.info("O1 clear sent for %s (%s) -> %s", me, cause, r.status)
             except Exception as exc:  # noqa: BLE001
+                delivery_status = getattr(exc, 'code', None)
                 logger.warning("O1 clear for %s failed: %s", me, exc)
+            if rid and run_id:
+                try:
+                    from .o1_observation import record_delivery
+                    record_delivery(rid, run_id, ev, delivery_status)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("O1 clear observation failed: %s", exc)
 
 
 def _send_moi_deletions(rid: str, topo, scenario_id: str = "") -> None:

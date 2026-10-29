@@ -8,8 +8,9 @@ import type { Building, Cell, Gnb, SceneTree, Ue } from '@/types/registry';
 import { CellMarker } from '@/components/scene-canvas/CellMarker';
 import { GnbGroupMarker } from '@/components/scene-canvas/GnbGroupMarker';
 import { sceneBounds } from '@/services/api/scenes';
+import type { SceneMesh } from '@/services/api/scenes';
 import { ueActiveAt, uePositionAt } from '@/hooks/feature/sceneGeometry';
-import { SceneMeshes, type MeshView } from '@/components/scene-canvas/SceneMeshes';
+import { SceneMeshes, SectionClipControl, useSectionClip, type MeshView } from '@/components/scene-canvas/SceneMeshes';
 import { SURFACE_FLAG, SurfaceClip, pickSurface, useSurfaceDrag } from '@/components/scene-canvas/surface';
 
 /** gNB 顏色:沿用 registry 的 color,沒有就依序給一個(呈現層決定,不寫回) */
@@ -25,6 +26,8 @@ export function cellWorldPos(c: Cell, g: Gnb): [number, number, number] {
 export interface SceneCanvasProps {
   tree: SceneTree; selection: Selection; placing: boolean;
   onSelect: (s: Selection) => void;
+  meshes?: SceneMesh[];
+  onMeshSelect?: (mesh: SceneMesh) => void;
   /** 放置模式下點畫布:滑鼠下第一個表面點(地面 / 屋頂 / 掃描模型;公尺,Y-up) */
   onGroundClick: (pos: [number, number, number]) => void;
   /** UE 被拖到新位置(整條路徑平移 dx/dy/dz) */
@@ -46,9 +49,11 @@ function gridScale(extent: number) {
   return { cell, section: cell * 10, fade: Math.max(200, extent * 1.5) };
 }
 
-export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved, onUeMoved, previewT = null, overlay }: SceneCanvasProps) {
+export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick, onCellMoved, onGnbMoved, onUeMoved, previewT = null, overlay, meshes, onMeshSelect }: SceneCanvasProps) {
   const hasGeo = !!(tree.scene.geometry_source as { type?: string } | null)?.type || tree.buildings.some((b) => b.geometry_ref?.endsWith('.xml'));
-  const [meshView, setMeshView] = useState<MeshView>({ show: true, opacity: 0.35, clipY: 2.2 });
+  const [meshBase, setMeshView] = useState({ show: true, opacity: 0.35 });
+  const clip = useSectionClip();
+  const meshView: MeshView = { ...meshBase, clipY: clip.clipY };
   const [meshInfo, setMeshInfo] = useState('');
   // 場景範圍(gNB / cell / UE 路徑 / 建築)→ 標記比例與鏡頭。大型戶外場景 scale=1,走廊這種十幾公尺的場景自動縮小
   // 2026-09-21:掃描模型尺寸不在 tree 裡,大場景開啟時鏡頭只對著中間一小塊
@@ -70,7 +75,7 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
     const extent = Math.max(10, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
     return { center: [cx, 0, cz] as [number, number, number], extent, scale: Math.max(0.4, Math.min(6, extent / 120)) };
-  }, [tree]);
+  }, [tree, geo]);
   const uePaths = useMemo(() => tree.ues.map((u) => ({ ue: u, pts: u.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number]) })), [tree.ues]);
   return (
     <>
@@ -89,7 +94,7 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
             <GnbGroupMarker gnb={g} color={gnbColor(g, gi)} selected={selection?.kind === 'gnb' && selection.gnb.gnb_uuid === g.gnb_uuid}
               onSelect={() => onSelect({ kind: 'gnb', gnb: g })} onMoved={(p) => onGnbMoved(g, p)} scale={view.scale} />
             {g.dus.flatMap((d) => d.cells).map((c) => (
-              <CellMarker key={c.cell_uuid} cell={c} gnb={g} color={gnbColor(g, gi)} position={cellWorldPos(c, g)}
+              <CellMarker key={c.cell_uuid} cell={c} gnb={g} preset={c.ru?.antenna_preset ?? tree.scene.gnb_antenna_preset ?? null} color={gnbColor(g, gi)} position={cellWorldPos(c, g)}
                 selected={selection?.kind === 'cell' && selection.cell.cell_uuid === c.cell_uuid}
                 onSelect={() => onSelect({ kind: 'cell', cell: c, gnb: g })} onMoved={(p) => onCellMoved(c, p)} scale={view.scale} />
             ))}
@@ -101,16 +106,16 @@ export function SceneCanvas({ tree, selection, placing, onSelect, onGroundClick,
           return <UeMarker key={ue.ue_uuid} ue={ue} path={path} at={at} dim={previewT != null} selected={selection?.kind === 'ue' && selection.ue.ue_uuid === ue.ue_uuid}
             scale={view.scale} draggable={previewT == null && !!onUeMoved} onSelect={() => onSelect({ kind: 'ue', ue })} onMoved={(d) => onUeMoved?.(ue, d)} />; })}
       </Suspense>
-      {hasGeo && <SceneMeshes sceneUuid={tree.scene.scene_uuid} view={meshView} onInfo={setMeshInfo} />}
+      {hasGeo && <SceneMeshes sceneUuid={tree.scene.scene_uuid} shapes={meshes} view={meshView} onInfo={setMeshInfo} onYRange={clip.setRange}
+        selectedId={selection?.kind === 'mesh' ? selection.mesh.shape_id : null} onSelect={placing ? undefined : onMeshSelect} />}
       {overlay}
       </SurfaceClip.Provider>
       <OrbitControls makeDefault enableDamping target={view.center} />
     </Canvas>
     {hasGeo && <div className="meshctl">
-      <label><input type="checkbox" checked={meshView.show} onChange={(e) => setMeshView({ ...meshView, show: e.target.checked })} /> 場景模型</label>
-      <label>透明度<input type="range" min={0.05} max={1} step={0.05} value={meshView.opacity} onChange={(e) => setMeshView({ ...meshView, opacity: Number(e.target.value) })} /></label>
-      <label><input type="checkbox" checked={meshView.clipY != null} onChange={(e) => setMeshView({ ...meshView, clipY: e.target.checked ? 2.2 : null })} /> 剖面</label>
-      {meshView.clipY != null && <label>高度 {meshView.clipY.toFixed(1)} m<input type="range" min={0.2} max={20} step={0.1} value={meshView.clipY} onChange={(e) => setMeshView({ ...meshView, clipY: Number(e.target.value) })} /></label>}
+      <label><input type="checkbox" checked={meshView.show} onChange={(e) => setMeshView({ ...meshBase, show: e.target.checked })} /> 場景模型</label>
+      <label>透明度<input type="range" min={0.05} max={1} step={0.05} value={meshView.opacity} onChange={(e) => setMeshView({ ...meshBase, opacity: Number(e.target.value) })} /></label>
+      <SectionClipControl c={clip} />
       {meshInfo && <span className="muted small">{meshInfo}</span>}
     </div>}
     </>

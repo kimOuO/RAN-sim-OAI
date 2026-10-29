@@ -10,6 +10,7 @@ import { PropertyPanel } from '@/components/scene-editor/PropertyPanel';
 import { StepGate } from '@/components/scene-editor/StepGate';
 import { UeGeneratorPanel } from '@/components/scene-editor/UeGeneratorPanel';
 import { UeTrafficPanel } from '@/components/scene-editor/UeTrafficPanel';
+import { UePathPanel } from '@/components/scene-editor/UePathPanel';
 import { ueChecks } from '@/hooks/feature/sceneChecks';
 import { pathDuration, sceneExtent } from '@/hooks/feature/sceneGeometry';
 import { panelProps, useEditorStep } from '@/hooks/feature/useEditorStep';
@@ -55,6 +56,6 @@ export default function UeStep() {
         <PreviewBar p={preview} />
       </>}
       right={<PropertyPanel {...panelProps(p, tree)} tabs={['props', 'antenna']} emptyHint="點 UE 設定天線高、5QI、流量與在場時段;下方播放列可預覽所有 UE 的移動。"
-        extra={sel && <UeTrafficPanel ue={sel} saving={p.saving} onTraffic={p.setUeTraffic} onWindows={p.setUeWindows} />} />}
+        extra={sel && <><UePathPanel ue={sel} saving={p.saving} onSave={p.setUeWaypoints} /><UeTrafficPanel ue={sel} saving={p.saving} onTraffic={p.setUeTraffic} onWindows={p.setUeWindows} /></>} />}
     />); }}</StepGate>;
 }

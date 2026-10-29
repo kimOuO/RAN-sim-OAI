@@ -26,7 +26,7 @@ OAI 原始碼(openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c)
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from main.apps.mac.services.optional.link_adaptation import bler_curve
 from main.utils.env_loader import get_float, get_int
@@ -54,6 +54,8 @@ class _UeMcsState:
     mcs: int = MIN_MCS
     bler: float = (BLER_LOWER + BLER_UPPER) / 2.0
     last_update_ms: float | None = None
+    # 最近一次推進時,各 100 ms 更新期「期間」實際使用的 MCS(每期結束才調整,所以是調整前的值)
+    period_mcs: list[int] = field(default_factory=list)
 
 
 class MCSController:
@@ -73,6 +75,7 @@ class MCSController:
         st = self.ue_state.get(ue_id)
         if st is None:
             st = self.ue_state[ue_id] = _UeMcsState(last_update_ms=float(now_sim_ms))
+            st.period_mcs = [st.mcs]
             return st.mcs, st.bler
         elapsed = float(now_sim_ms) - float(st.last_update_ms or 0.0)
         if elapsed < 0:                      # 時鐘重設(場次重啟)→ 重新起算,不倒退
@@ -80,9 +83,13 @@ class MCSController:
             return st.mcs, st.bler
         n = int(elapsed // BLER_UPDATE_MS)
         if n <= 0:
+            if elapsed > 0:   # 不足一期(tick 短於 100 ms):這段時間都用目前的 MCS;同一時間點重複呼叫則保留上次結果
+                st.period_mcs = [st.mcs]
             return st.mcs, st.bler
         st.last_update_ms = float(st.last_update_ms) + n * BLER_UPDATE_MS
+        st.period_mcs = []
         for _ in range(min(n, _MAX_CATCHUP)):
+            st.period_mcs.append(st.mcs)
             window = bler_curve.bler(st.mcs, sinr_db)
             st.bler = BLER_FILTER * st.bler + (1.0 - BLER_FILTER) * window
             if st.bler < BLER_LOWER and st.mcs < MAX_MCS:
@@ -91,6 +98,16 @@ class MCSController:
                 st.mcs -= 1
             st.mcs = max(MIN_MCS, min(MAX_MCS, st.mcs))
         return st.mcs, st.bler
+
+    def period_mcs(self, ue_id: str) -> list[int]:
+        """最近一次 ``update`` 推進過的各更新期所用的 MCS。
+
+        一個 tick(預設 500 ms)內會跑約 5 期。呼叫端計算本 tick 出貨量時應取各期的平均,
+        而不是只用 ``update`` 回傳的期末 MCS —— 否則外迴路擺盪到高 BLER 那一階時,
+        OAI 只停留 100 ms,這裡會被放大成整個 tick。
+        """
+        st = self.ue_state.get(ue_id)
+        return list(st.period_mcs) if st and st.period_mcs else [self.get_mcs(ue_id)]
 
     def get_mcs(self, ue_id: str) -> int:
         st = self.ue_state.get(ue_id)

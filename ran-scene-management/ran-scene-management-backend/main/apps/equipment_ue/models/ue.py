@@ -13,6 +13,7 @@ class Ue(models.Model):
     color = models.JSONField(default=list)
     loop = models.BooleanField(default=False)          # 倉庫版劇本:軌跡循環
     speed_mps = models.FloatField(null=True, blank=True)
+    presence_restricted = models.BooleanField(default=False)
     ue_created_at = models.DateTimeField()
     ue_updated_at = models.DateTimeField()
 

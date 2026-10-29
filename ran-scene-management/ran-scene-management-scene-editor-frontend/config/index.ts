@@ -56,10 +56,13 @@ export const UE_SCENARIOS: { key: string; label: string; hint: string; params: P
 export const MAP_TAIWAN = { lat: 23.7, lon: 120.95, zoom: 7 } as const;
 /** 範圍上限(與後端 OsmMapEditor.MAX_AREA_M2 相同):超過 Overpass 與光追都太重 */
 export const MAX_MAP_AREA_M2 = 1_000_000;
-/** 底圖:深色(預設,配合編輯器)/ OSM 標準(地標文字較清楚) */
+/** 底圖(2026-10-14):CARTO 底圖改為需要 API key(圖磚顯示 "API KEY REQUIRED"),
+ *  tile.openstreetmap.org 對本平台回 418 Access blocked(不符其志工伺服器使用政策)。
+ *  改用 Esri 公開圖磚(不需 key,需標示出處):深色(預設,配合編輯器)/ 衛星(對建築輪廓)/ 街道(地標文字) */
 export const MAP_BASEMAPS = {
-  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; OpenStreetMap contributors &copy; CARTO', label: '深色' },
-  osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; OpenStreetMap contributors', label: 'OSM' },
+  dark: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors', label: '深色', maxNativeZoom: 16 },
+  imagery: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics', label: '衛星', maxNativeZoom: 19 },
+  street: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors', label: '街道', maxNativeZoom: 19 },
 } as const;
 /** 材質顯示色(與後端 osm_to_mitsuba.DISPLAY_RGB 一致;只影響畫面,傳播用 ITU 參數) */
 export const MATERIAL_COLORS: Record<string, string> = {

@@ -1,19 +1,25 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SceneMeshes, type MeshView } from '@/components/scene3d/SceneMeshes';
+import { SceneMeshes, SectionClipControl, useSectionClip } from '@/components/scene3d/SceneMeshes';
 import * as THREE from 'three';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Grid, Html, Line, OrbitControls } from '@react-three/drei';
 import { CELL_COLORS, COVERAGE_SCALE, CoverageLayer, RAMP_CSS, type CoverageMode } from '@/components/scene3d/CoverageLayer';
 import { computeCoverage, sceneBounds, type CoverageResult } from '@/services/api/coverage';
-import { cellPositions, sceneView, sinrLevel, uePositionAt } from '@/hooks/feature/live3d';
+import { LabelDeclutter } from '@/components/scene3d/LabelDeclutter';
+import { ANTENNA_KIND_LABEL, AntennaGlyph, antennaKind } from '@/components/scene3d/AntennaGlyph';
+import { cellOwners, cellPositions, sceneView, sinrLevel, ueAttached, uePositionAt, type CellOwner } from '@/hooks/feature/live3d';
 import type { UeFlash } from '@/hooks/feature/useRunLive3dPage';
 import type { SceneTree3d, UeKpm } from '@/types/telemetry';
 
 type UeState = Record<string, UeKpm & { cell: string }>;
+/** UE 頭上標籤:不顯示 / 只有名稱 / 簡要(服務 cell + DL 吞吐)。滑鼠指到或選取的 UE 一律展開完整數值 */
+export type UeLabelMode = 'none' | 'name' | 'brief';
 interface Props {
   tree: SceneTree3d; simNow: () => number; ueState: UeState; flashes: Record<string, { kind: UeFlash; until: number }>;
-  color: Record<string, string>; selected: string | null; onSelect: (ue: string | null) => void; showLabels: boolean;
+  color: Record<string, string>; selected: string | null; onSelect: (ue: string | null) => void; labelMode: UeLabelMode;
+  /** gNB / DU / cell 名稱標籤(預設開) */
+  showSites?: boolean;
 }
 const IDLE = new THREE.Color('#5b6778');
 const RLF = new THREE.Color('#ff4d5a');
@@ -40,7 +46,8 @@ export function LiveScene3D(p: Props) {
   const view = useMemo(() => sceneView(p.tree, geo), [p.tree, geo]);
   const { center, extent, scale } = view;
   const hasGeo = !!(p.tree.scene.geometry_source as { type?: string } | null)?.type;
-  const [mesh, setMesh] = useState<MeshView>({ show: true, opacity: 0.3, clipY: 2.2 });
+  const [mesh, setMesh] = useState({ show: true, opacity: 0.3 });
+  const clip = useSectionClip();
   // 覆蓋熱圖:GPU 光追一次算完後留在記憶體,不隨 run 更新(它是理想值,與即時量測不同)
   const [cov, setCov] = useState<CoverageResult | null>(null);
   const [covBusy, setCovBusy] = useState(false);
@@ -69,19 +76,19 @@ export function LiveScene3D(p: Props) {
         <mesh key={b.building_uuid} position={[b.position[0], b.position[1] + b.size[1] / 2, b.position[2]]}>
           <boxGeometry args={[b.size[0], b.size[1], b.size[2]]} /><meshStandardMaterial color="#4fd1ff" transparent opacity={0.06} depthWrite={false} /><Edges color="#7fe3ff" />
         </mesh>))}
-      <Gnbs tree={p.tree} color={p.color} scale={scale} />
+      <Gnbs tree={p.tree} color={p.color} scale={scale} showSites={p.showSites ?? true} />
       <Ues {...p} scale={scale} />
-      {hasGeo && <SceneMeshes sceneUuid={p.tree.scene.scene_uuid} view={mesh} />}
+      {hasGeo && <SceneMeshes sceneUuid={p.tree.scene.scene_uuid} view={{ ...mesh, clipY: clip.clipY }} onYRange={clip.setRange} />}
       {cov && covShow && <CoverageLayer result={cov} mode={covMode} opacity={covOpacity} />}
       <OrbitControls makeDefault enableDamping target={center} />
+      <LabelDeclutter />
     </Canvas>
-    {hasGeo && <div className="meshctl">
+    {hasGeo && <div className="meshctl" data-declutter-obstacle>
       <label><input type="checkbox" checked={mesh.show} onChange={(e) => setMesh({ ...mesh, show: e.target.checked })} /> 場景模型</label>
       <label>透明度<input type="range" min={0.05} max={1} step={0.05} value={mesh.opacity} onChange={(e) => setMesh({ ...mesh, opacity: Number(e.target.value) })} /></label>
-      <label><input type="checkbox" checked={mesh.clipY != null} onChange={(e) => setMesh({ ...mesh, clipY: e.target.checked ? 2.2 : null })} /> 剖面 {mesh.clipY != null ? `${mesh.clipY.toFixed(1)} m` : ''}</label>
-      {mesh.clipY != null && <input type="range" min={0.2} max={20} step={0.1} value={mesh.clipY} onChange={(e) => setMesh({ ...mesh, clipY: Number(e.target.value) })} />}
+      <SectionClipControl c={clip} />
     </div>}
-    <div className="covctl">
+    <div className="covctl" data-declutter-obstacle>
       <div className="row">
         <button className="primary" disabled={covBusy} onClick={runCoverage}>{covBusy ? '計算中…' : cov ? '重新計算覆蓋' : '計算覆蓋熱圖'}</button>
         <label>高度<input type="number" step={0.1} value={covHeight} onChange={(e) => setCovHeight(Number(e.target.value))} /> m</label>
@@ -104,26 +111,35 @@ export function LiveScene3D(p: Props) {
   );
 }
 
-function Gnbs({ tree, color, scale }: { tree: SceneTree3d; color: Record<string, string>; scale: number }) {
+/** gNB:柱子 + 底圈;每個 cell 一個圓盤 + 指向天線方位的方向棒。showSites 時 gNB 頂上列出 DU → cell(PCI、方位),
+ *  cell 有獨立位置時圓盤旁另標 cell 名稱 —— 2026-10-14 S3 的 spare 朝向背對走廊,沒有標籤時畫面上看不出來 */
+function Gnbs({ tree, color, scale, showSites }: { tree: SceneTree3d; color: Record<string, string>; scale: number; showSites: boolean }) {
   return <>{tree.gnbs.map((g) => { const h = Math.max(g.position[1], 0.5); return (
     <group key={g.gnb_uuid}>
+      {showSites && <Html position={[g.position[0], h + 1.2 * scale, g.position[2]]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+        <div className="gnb3d-tag" data-declutter="3"><b>{g.name}</b>{g.dus.map((d, i) => <div key={i} className="mono">{d.name ?? `du${i}`} ▸ {d.cells.map((c) =>
+          <span key={c.cell_uuid} style={{ color: color[c.name] ?? '#888' }}>{c.name}·PCI{c.pci}·{ANTENNA_KIND_LABEL[antennaKind(c.ru?.antenna_preset ?? tree.scene.gnb_antenna_preset)]}{antennaKind(c.ru?.antenna_preset ?? tree.scene.gnb_antenna_preset) === 'omni' ? '' : `·${Math.round(c.azimuth_deg)}°`}{c.is_active ? '' : '(關)'} </span>)}</div>)}</div>
+      </Html>}
       <mesh position={[g.position[0], h / 2, g.position[2]]}><cylinderGeometry args={[0.08 * scale, 0.2 * scale, h, 12]} /><meshStandardMaterial color="#9fb3c8" /></mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[g.position[0], 0.02, g.position[2]]}><ringGeometry args={[0.5 * scale, 0.7 * scale, 32]} /><meshBasicMaterial color="#9fb3c8" transparent opacity={0.7} /></mesh>
       {g.dus.flatMap((d) => d.cells).map((c) => { const pos = c.position ?? g.position; const az = (c.azimuth_deg * Math.PI) / 180; const col = color[c.name] ?? '#888';
+        const preset = c.ru?.antenna_preset ?? tree.scene.gnb_antenna_preset; const kind = antennaKind(preset);
         return (
           <group key={c.cell_uuid} position={[pos[0], pos[1], pos[2]]}>
             <mesh><cylinderGeometry args={[0.9 * scale, 0.9 * scale, 0.4 * scale, 24]} /><meshStandardMaterial color={col} emissive={col} emissiveIntensity={c.is_active ? 0.5 : 0.05} transparent opacity={c.is_active ? 1 : 0.35} /></mesh>
-            <mesh position={[Math.sin(az) * 2 * scale, 0, -Math.cos(az) * 2 * scale]} rotation={[0, -az, 0]}><boxGeometry args={[0.2 * scale, 0.2 * scale, 4 * scale]} /><meshStandardMaterial color={col} /></mesh>
+            <AntennaGlyph kind={kind} az={az} color={new THREE.Color(col)} scale={scale} rows={preset?.rows} cols={preset?.cols} />
+            {showSites && c.position && <Html position={[0, 0.9 * scale, 0]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}><div className="cell3d-tag mono" data-declutter="2" style={{ borderColor: col }}>{c.name}</div></Html>}
           </group>); })}
     </group>); })}</>;
 }
 
-function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLabels, scale }: Props & { scale: number }) {
+function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, labelMode, scale }: Props & { scale: number }) {
   const n = tree.ues.length;
   const mesh = useRef<THREE.InstancedMesh>(null);
   const head = useRef<THREE.InstancedMesh>(null);
   const links = useRef<THREE.BufferGeometry>(null);
   const cellPos = useMemo(() => cellPositions(tree), [tree]);
+  const owners = useMemo(() => cellOwners(tree), [tree]);
   const [hover, setHover] = useState<number | null>(null);
   const labelRefs = useRef<(THREE.Group | null)[]>([]);
   const tmp = useMemo(() => ({ m: new THREE.Matrix4(), c: new THREE.Color(), q: new THREE.Quaternion(), s: new THREE.Vector3(), v: new THREE.Vector3() }), []);
@@ -162,7 +178,7 @@ function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLa
 
   const pick = (e: ThreeEvent<PointerEvent | MouseEvent>) => (e.instanceId != null ? tree.ues[e.instanceId]?.name ?? null : null);
   const sel = tree.ues.find((u) => u.name === selected);
-  const labelFor = (i: number) => showLabels || i === hover || tree.ues[i]?.name === selected;
+  const labelFor = (i: number) => labelMode !== 'none' || i === hover || tree.ues[i]?.name === selected;
   return (
     <>
       <instancedMesh ref={mesh} args={[undefined, undefined, Math.max(1, n)]}
@@ -185,18 +201,24 @@ function Ues({ tree, simNow, ueState, flashes, color, selected, onSelect, showLa
       {sel && sel.waypoints.length > 1 && <Line points={sel.waypoints.map((w) => [w[1], w[2], w[3]] as [number, number, number])} color="#ff8a3d" lineWidth={1} transparent opacity={0.6} />}
       {tree.ues.map((u, i) => labelFor(i) && (
         <group key={u.ue_uuid} ref={(el) => { labelRefs.current[i] = el; }}>
-          <Html center distanceFactor={undefined} style={{ pointerEvents: 'none' }}><UeLabel name={u.name} st={ueState[u.name]} full={i === hover || u.name === selected} /></Html>
+          <Html center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}><div data-declutter={i === hover || u.name === selected ? 4 : 1}><UeLabel name={u.name} st={ueState[u.name]} owner={ueState[u.name] ? owners[ueState[u.name].cell] : undefined} color={color}
+            mode={i === hover || u.name === selected ? 'full' : labelMode === 'brief' ? 'brief' : 'name'} /></div></Html>
         </group>))}
     </>
   );
 }
 
-function UeLabel({ name, st, full }: { name: string; st?: UeKpm & { cell: string }; full: boolean }) {
-  if (!full) return <div className="ue3d-tag">{name}</div>;
+function UeLabel({ name, st, owner, color, mode }: { name: string; st?: UeKpm & { cell: string }; owner?: CellOwner; color: Record<string, string>; mode: 'name' | 'brief' | 'full' }) {
+  const on = ueAttached(st);
+  if (mode === 'name') return <div className="ue3d-tag">{name}</div>;
+  if (mode === 'brief') return (
+    <div className={`ue3d-tag ${on && st!.sinr_db < 0 ? 'low' : ''}`}>{name} {on
+      ? <><span style={{ color: color[st!.cell] ?? '#ccc' }}>{st!.cell}</span> ↓{st!.throughput_dl_mbps?.toFixed(1)}</>
+      : <span className="muted">未附著</span>}</div>);
   return (
     <div className="ue3d-tip">
-      <b>{name}</b> <span className="muted">{st?.cell || '未附著'}</span>
-      {st && <div className="mono">RSRP {st.rsrp_dbm?.toFixed(1)} · SINR {st.sinr_db?.toFixed(1)} dB<br />DL {st.throughput_dl_mbps?.toFixed(2)} Mbps · MCS {st.mcs_dl}{st.beam_id != null ? ` · beam ${st.beam_id}` : ''}</div>}
+      <b>{name}</b> <span className="muted">{on ? `${owner ? `${owner.gnb} / ${owner.du} / ` : ''}${st!.cell}` : '未附著'}</span>
+      {on && <div className="mono">RSRP {st!.rsrp_dbm?.toFixed(1)} · SINR {st!.sinr_db?.toFixed(1)} dB<br />DL {st!.throughput_dl_mbps?.toFixed(2)} · UL {st!.throughput_ul_mbps?.toFixed(2)} Mbps · MCS {st!.mcs_dl}{st!.beam_id != null ? ` · beam ${st!.beam_id}` : ''}</div>}
     </div>
   );
 }

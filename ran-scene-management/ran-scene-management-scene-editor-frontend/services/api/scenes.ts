@@ -12,8 +12,10 @@ export const deleteScene = (scene_uuid: string) => post<{ deleted: number }>(`${
 export const duplicateScene = (scene_uuid: string, name: string) => post<Scene>(`${REGISTRY_API}/Field_scene/SceneController/duplicate`, { scene_uuid, name }, { timeoutMs: 60_000 });
 /** 場景幾何網格(掃描 / OSM 的 Mitsuba 場景);畫布顯示用 */
 export interface SceneMeshOp { op: 'translate' | 'scale' | 'rotate' | 'matrix'; v?: number[]; axis?: number[]; deg?: number }
-export interface SceneMesh { shape_id: string; name: string; format: 'ply' | 'obj'; material: string; color: number[] | null; bytes: number; too_large: boolean; transform: SceneMeshOp[] }
+export interface SceneMesh { shape_id: string; name: string; format: 'ply' | 'obj'; material: string; color: number[] | null; bytes: number; too_large: boolean; transform: SceneMeshOp[]; kind?: 'building' | 'surface' | 'mesh'; geometry_key?: string }
 export const listSceneMeshes = (scene_uuid: string) => post<SceneMesh[]>(`${REGISTRY_API}/Field_scene/SceneGeometryReader/meshes`, { scene_uuid });
+export const setSceneMeshMaterial = (scene_uuid: string, shape_id: string, material_uuid: string) =>
+  post<{ shape_id: string; material: string }>(`${REGISTRY_API}/Field_scene/SceneGeometryController/set_material`, { scene_uuid, shape_id, material_uuid }, { timeoutMs: 60000 });
 /** 網格檔原始位元組(不是 JSON 包裝) */
 export async function fetchSceneMeshFile(scene_uuid: string, shape_id: string): Promise<ArrayBuffer> {
   const res = await fetch(`${REGISTRY_API}/Field_scene/SceneGeometryReader/mesh_file`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scene_uuid, shape_id }) });

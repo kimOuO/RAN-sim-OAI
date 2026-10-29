@@ -8,6 +8,7 @@ import { EditorLayout } from '@/components/scene-editor/EditorLayout';
 import { BuildingMaterialPanel } from '@/components/scene-editor/map/BuildingMaterialPanel';
 import { MapAreaPanel } from '@/components/scene-editor/map/MapAreaPanel';
 import { ObjectTree } from '@/components/scene-editor/ObjectTree';
+import { GeometryObjectList } from '@/components/scene-editor/GeometryObjectList';
 import { Palette } from '@/components/scene-editor/Palette';
 import { PropertyPanel } from '@/components/scene-editor/PropertyPanel';
 import { ScanUploadPanel } from '@/components/scene-editor/ScanUploadPanel';
@@ -60,9 +61,10 @@ function Environment({ id, p, tree }: { id: string; p: ReturnType<typeof useEdit
       <button className="wide" onClick={() => setLayer('source')}>更換場景來源(地圖 / 掃描檔)</button>
       <Palette kinds={['building']} placeKind={p.placeKind} onPick={p.setPlaceKind} />
       <ObjectTree tree={tree} selection={p.selection} onSelect={p.select} sections={['building']} />
+      <GeometryObjectList meshes={p.meshes} selectedId={p.selection?.kind === 'mesh' ? p.selection.mesh.shape_id : null} onSelect={(mesh) => p.select({ kind: 'mesh', mesh })} />
       <CheckList title="檢查" checks={environmentChecks(tree)} />
     </>}
-    center={<SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} onUeMoved={p.moveUe} />}
+    center={<SceneCanvas tree={tree} selection={p.selection} placing={p.placeKind != null} meshes={p.meshes} onMeshSelect={(mesh) => p.select({ kind: 'mesh', mesh })} onSelect={p.select} onGroundClick={p.placeAt} onCellMoved={p.moveCell} onGnbMoved={p.moveGnb} onUeMoved={p.moveUe} />}
     right={<PropertyPanel {...panelProps(p, tree)} tabs={['props']} emptyHint="點建築(畫布或左側清單)調整位置、尺寸與材質;gNB / UE 在後面的步驟設定。" />}
   />;
 }

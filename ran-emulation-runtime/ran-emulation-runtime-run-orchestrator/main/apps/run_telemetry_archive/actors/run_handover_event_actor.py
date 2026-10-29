@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 
 from main.apps.run_telemetry_archive.models.run_handover_event import RunHandoverEvent
 from main.apps.run_telemetry_archive.serializers.run_handover_event_serializers import RunHandoverEventReadSerializer, RunHandoverEventWriteSerializer
+from main.apps.run_telemetry_archive.services.business.run_seq_filter import apply_run_seq
 from main.apps.run_telemetry_archive.services.business.sqldb_operations import SqlDbBusinessService
 from main.apps.run_telemetry_archive.services.common.timestamp_service import TimestampService
 from main.apps.run_telemetry_archive.services.common.uuid_service import UUIDService
@@ -100,6 +101,8 @@ class RunHandoverEventReader:
         try:
             limit = int(payload.pop("limit", 5000))
             after_id = int(payload.pop("after_id", 0) or 0)
+            run_seq = payload.pop("run_seq", None)
+            run_seq = None if run_seq is None else int(run_seq)
         except (TypeError, ValueError):
             return error_response("Validation failed", {"limit": "must be int", "after_id": "must be int"}, 400)
         filters = {}
@@ -115,6 +118,7 @@ class RunHandoverEventReader:
             else:
                 filters[k] = v
         qs = SqlDbBusinessService.list_entities(RunHandoverEvent, **filters)
+        qs = apply_run_seq(qs, RunHandoverEvent, filters.get("f_scene_run_uuid"), run_seq)
         # 2026-09-17:以前整張回(長跑 run 有數萬筆、2 MB+,監控頁每 3 秒拉一次)→ 預設最近 5000 筆 + 增量
         if after_id:
             qs = qs.filter(id__gt=after_id)

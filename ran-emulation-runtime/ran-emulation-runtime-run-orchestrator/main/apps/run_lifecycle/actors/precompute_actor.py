@@ -76,9 +76,10 @@ class PrecomputeController:
             _bad = set(_solver) - {"SIM_DIFFUSE_REFLECTION", "SIM_SAMPLES_PER_SRC", "SIM_MAX_DEPTH"}
             if _bad:
                 return error_response("Validation failed", {"solver_env": f"不允許的鍵 {sorted(_bad)}"}, 400)
+            from main.apps.run_lifecycle.services.optional import channel_cache
             info = container_spawner.spawn_precompute(run_uuid, scenario_id,
                                                       int(payload.get("segment_ticks") or 10000),
-                                                      solver_env=_solver)
+                                                      solver_env=_solver, cache_fingerprint=channel_cache.fingerprint(t))
             platform_clients.update_scene_run(run_uuid, status="precomputing", notes=f"precompute started {scenario_id}")
             threading.Thread(target=_watch, args=(run_uuid, scenario_id), name=f"precompute-watch-{run_uuid[-8:]}", daemon=True).start()
         except Exception as exc:  # noqa: BLE001

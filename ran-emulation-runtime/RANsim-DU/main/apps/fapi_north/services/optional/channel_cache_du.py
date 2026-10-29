@@ -213,13 +213,52 @@ def cell_id_to_tx(cell_id: str) -> str:
     names = list(getattr(c, "cell_names", []) or []) if c is not None else []
     if cell_id in names:
         return cell_id
-    for n in names:                      # 'src' → 'src#0'(tx 名是 <cell>#<pci>)
+    # 2026-10-14:tx 名是 <gNB 名>#<PCI>,不是 <cell 名>#…。cell 名與 gNB 名不同時(S3 的 'spare'
+    # 是 gNB 'src' 的第二個 DU,tx 名 'src#3')下面的字首規則對不上 → SINR 恆為 −30 dB、掛上 2 秒就 RLF。
+    # 先用 PCI 找唯一的 tx;PCI 在場景內重複(anr_pci_confusion)時才退回名稱規則。
+    pci = _cell_pci_map().get(cell_id)
+    if pci is not None:
+        hit = [n for n in names if n.rsplit("#", 1)[-1] == str(pci)]
+        if len(hit) == 1:
+            return hit[0]
+    for n in names:                      # 'src' → 'src#0'(cell 名與 gNB 名相同時)
         if n.split("#", 1)[0] == cell_id:
             return n
     if "_c" in cell_id:
         base, n = cell_id.rsplit("_c", 1)
+        # 2026-10-14:tx 名是 <gNB>#<PCI>,不是 <gNB>#<cell 序號>。第二個 gNB 起 PCI ≠ 序號
+        # (osm_ntust_test 的 g1_c0 是 PCI 3 → 'g1#3'),以前回 'g1#0' 對不上 → SINR 恆為 −30 dB。
+        if pci is not None and (not names or f"{base}#{pci}" in names):
+            return f"{base}#{pci}"
         return f"{base}#{n}"
     return cell_id
+
+
+_PCI_MAP_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
+
+
+def _cell_pci_map() -> dict[str, int]:
+    """cell 名(不帶 run 標籤)→ PCI。自己的 cell 取 CellState,別的 DU 的取場次拓樸;2s 快取。"""
+    now = time.time()
+    if now - _PCI_MAP_CACHE["ts"] > 2.0:
+        from ran_sim_protocol.cell_tag import strip_tag
+        m: dict[str, int] = {}
+        try:
+            from ran_sim_protocol.run_topology import RunTopology
+            topo = RunTopology.from_env()
+            for tc in (topo.cells() if topo is not None else []):
+                m[strip_tag(tc.cell_id)] = int(tc.pci)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from main.apps.mac.models.cell_state import CellState
+            for c in CellState.objects.values("cell_id", "pci"):
+                m[strip_tag(c["cell_id"])] = int(c["pci"])
+        except Exception:  # noqa: BLE001
+            pass  # DB 沒 ready:回上次快取(或空),退回序號規則
+        _PCI_MAP_CACHE["map"] = m
+        _PCI_MAP_CACHE["ts"] = now
+    return _PCI_MAP_CACHE["map"]
 
 
 # tx_name → (freq_ghz, bw_mhz),從 CellState 建,2s 快取(SINR 每 tick 呼叫,免每次打 DB)。
@@ -250,6 +289,36 @@ def _cell_freq_map() -> dict[str, tuple[float, float]]:
     return _FREQ_MAP_CACHE["map"]
 
 
+# tx_name → TX 功率 dBm(2026-10-14 #22)。以前 compute_sinr_db 假設所有 cell 同功率(_TX_POWER_DBM),
+# RU 與 A3 卻用各 cell 真實功率 → 兩邊 SINR 對不上(S3:mid 5 dBm、其他 10 dBm,SINR<0 dB 的時間 3.8% → 8.2%)。
+# 來源同頻率表:場次拓樸(別的 DU 的 cell)+ 本 DU CellState(自己的 cell 優先);查不到的 cell 退回 _TX_POWER_DBM。
+_POWER_MAP_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
+
+
+def _cell_power_map() -> dict[str, float]:
+    now = time.time()
+    if now - _POWER_MAP_CACHE["ts"] > 2.0:
+        try:
+            from main.apps.mac.models.cell_state import CellState
+            m: dict[str, float] = {}
+            try:
+                from ran_sim_protocol.run_topology import RunTopology
+                topo = RunTopology.from_env()
+            except Exception:  # noqa: BLE001
+                topo = None
+            for tc in (topo.cells() if topo is not None else []):
+                if getattr(tc, "tx_power_dbm", None) is not None:
+                    m[cell_id_to_tx(tc.cell_id)] = float(tc.tx_power_dbm)
+            for c in CellState.objects.values("cell_id", "tx_power_dbm"):
+                if c["tx_power_dbm"] is not None:
+                    m[cell_id_to_tx(c["cell_id"])] = float(c["tx_power_dbm"])
+            _POWER_MAP_CACHE["map"] = m
+            _POWER_MAP_CACHE["ts"] = now
+        except Exception:
+            pass  # DB 沒 ready:回上次快取(或空)→ 全部退回 _TX_POWER_DBM(舊行為)
+    return _POWER_MAP_CACHE["map"]
+
+
 def _freq_overlaps(a: tuple[float, float], b: tuple[float, float]) -> bool:
     """兩 cell 頻段是否重疊(會互擾)。a/b = (freq_ghz, bw_mhz)。
     |Δf| (MHz) < (BWa + BWb)/2 → 重疊。e.g. 3.45 vs 3.65 = 200MHz > 40 → 不重疊。"""
@@ -266,15 +335,19 @@ _NO_SERVING_SINR_DB = float(os.environ.get("DU_NO_SERVING_SINR_DB", "-30"))
 def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None, extra_gain_db: float = 0.0,
                     load_by_tx: dict[str, float] | None = None) -> float:
     """對齊 RU _compute_sinr_db_with_real_interference:
-    SINR = serving_rx / (Σ其他cell_rx + noise),rx_mw = TX_mW × path_gain_linear。
-    假設各 cell 同 TX power(_TX_POWER_DBM,scenario 23dBm 場景成立)。"""
+    SINR = serving_rx / (Σ其他cell_rx + noise),rx_mw = TX_mW(該 cell)× path_gain_linear。
+    各 cell 功率取 _cell_power_map();查不到的 cell 用 _TX_POWER_DBM(與 RU _power_for_tx 的退回一致)。"""
     if not serving_tx or serving_tx not in path_gain_dict:
         return float("-inf")
     serving_pg = path_gain_dict[serving_tx]
     if serving_pg <= 0:
         return float("-inf")
-    tx_mw = 10.0 ** (_TX_POWER_DBM / 10.0)
-    serving_mw = tx_mw * serving_pg
+    pmap = _cell_power_map()
+
+    def tx_mw_of(tx: str) -> float:
+        return 10.0 ** (pmap.get(tx, _TX_POWER_DBM) / 10.0)
+
+    serving_mw = tx_mw_of(serving_tx) * serving_pg
     # 干擾模型:
     #   inter_freq 旗標 True → 強制不互擾(舊劇本相容)。
     #   否則(co-channel)→ 用「頻率重疊」判斷:只有頻段和 serving 重疊的鄰 cell 才算干擾。
@@ -292,7 +365,7 @@ def compute_sinr_db(path_gain_dict: dict[str, float], serving_tx: str | None, ex
             if sf is not None and tx in fmap and not _freq_overlaps(sf, fmap[tx]):
                 continue  # 頻段不重疊 → 不互擾
             rho = 1.0 if load_by_tx is None else max(DL_MIN_LOAD, min(1.0, load_by_tx.get(tx, 0.0)))
-            interference_mw += tx_mw * pg * rho
+            interference_mw += tx_mw_of(tx) * pg * rho
     noise_mw = 10.0 ** (_NOISE_FLOOR_DBM / 10.0)
     sinr_lin = serving_mw / (interference_mw + noise_mw) * 10.0 ** (float(extra_gain_db or 0.0) / 10.0)   # 陣列增益在失真上限之前
     if _EVM_SNR_DB > 0 and sinr_lin > 0:

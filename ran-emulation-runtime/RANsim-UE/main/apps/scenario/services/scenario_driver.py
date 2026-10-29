@@ -72,7 +72,6 @@ class ScenarioDriver:
         """
         st = dict(self.state)
         started = self.state.get("started_at_ms")
-        speed = float(self.state.get("sim_speed_x") or 1.0)
         total = int(self.scenario.total_ticks)
         tick_ms = max(1, int(self.scenario.tick_ms))
         if self.state.get("running") and started:
@@ -86,9 +85,18 @@ class ScenarioDriver:
         elapsed_sim_sec = None
         if self.state.get("running"):
             elapsed_sim_sec = self._du_scene_sec()
-        clock_source = "du" if elapsed_sim_sec is not None else "wall_x_speed"
+        clock_source = "ran_clock" if elapsed_sim_sec is not None else "unavailable"
         if elapsed_sim_sec is None:
-            elapsed_sim_sec = elapsed_wall_sec * speed
+            # An unreachable simulation clock must not finish a run on wall time.
+            elapsed_sim_sec = getattr(self, "_last_reported_sim_sec", 0.0)
+        elapsed_sim_sec = max(getattr(self, "_last_reported_sim_sec", 0.0), elapsed_sim_sec)
+        self._last_reported_sim_sec = elapsed_sim_sec
+        from main.apps.ue_lifecycle.services import du_client
+        clock = du_client.get_clock_status() if self.state.get("running") else {}
+        from main.apps.ue_lifecycle.services import manager as ue_manager
+        threads = ue_manager.get_manager().snapshot().get("threads") or []
+        connected = {t.get('ue_id') for t in threads if t.get('rrc_state') == 'CONNECTED'}
+        st['attach_failed'] = [name for name in st.get('attach_failed', []) if name not in connected]
         sim_tick_idx = min(total, int(elapsed_sim_sec * 1000 / tick_ms)) if total else 0
         st.update({
             "total_ticks": total,
@@ -96,6 +104,10 @@ class ScenarioDriver:
             "elapsed_wall_sec": round(elapsed_wall_sec, 2),
             "elapsed_sim_sec": round(elapsed_sim_sec, 2),
             "clock_source": clock_source,
+            "clock_running": bool(clock.get("running")),
+            "achieved_speed_x": float(clock.get("achieved_speed_x") or 0.0) if clock.get("running") else 0.0,
+            "phase": "stalled" if self.state.get("running") and not clock.get("running") else st.get("phase", "running"),
+            "attached_count": sum(1 for t in threads if t.get("rrc_state") == "CONNECTED" and t.get("visible", True)),
             # 劇本長度與是否已跑完(orchestrator 據此自動停 run;0 = 沒定長度,不會自動停)
             "duration_sec": float(self.scenario.duration_sec or 0.0),
             "finished": bool(self.scenario.duration_sec) and elapsed_sim_sec >= float(self.scenario.duration_sec),
@@ -110,7 +122,7 @@ class ScenarioDriver:
     _DU_CLOCK_CACHE_MS = 2000
 
     def _du_scene_sec(self) -> float | None:
-        """DU 的劇本時鐘(秒),2 秒內重用。DU 讀不到回 None,由呼叫端退回牆鐘算法。"""
+        """RAN 的劇本時鐘(秒),2 秒內重用；讀不到時保留最後進度。"""
         now_ms = int(time.time() * 1000)
         c = getattr(self, "_du_clock_cache", None)
         if c and now_ms - c[1] < self._DU_CLOCK_CACHE_MS:
@@ -221,7 +233,7 @@ class ScenarioDriver:
         # 全 0,/logs Cell Grid / UE Lab 看起來都不動。
         try:
             if (self.scenario.precompute_status or "").lower() == "ready":
-                ok = ru_client.set_channel_mode("cached", self.scenario.scenario_id)
+                ok = ru_client.set_channel_mode("cached", self.scenario.cache_scenario_id or self.scenario.scenario_id)
                 logger.info("scenario %s RU set_channel_mode=cached: ok=%s", self.scenario.scenario_id, ok)
             else:
                 ok = ru_client.set_channel_mode("live")
@@ -262,6 +274,12 @@ class ScenarioDriver:
         # Step 1d(多 gNB)— 等每個 CU 都認得自己 gNB 的所有 cell 再接入。DU 的 F1 Setup 若比 CU 早,
         # 會隔幾秒重試;cell 還沒到 CU 就送 Initial UL RRC 會被拒,那個 UE 整場沒有服務(2026-09-27 雙 DU 實測)。
         self._wait_cells_ready()
+
+        # DU start clears stale RLC/UE registries. It must happen before any
+        # new attach; starting after the first UE silently loses that UE's data.
+        # In external-clock mode this prepares DUs without advancing RU time.
+        if not du_client.prepare_tick():
+            raise RuntimeError('DU tick preparation failed before UE attach')
 
         # Step 2 — Setup: 確保 CU 有 traffic_profile 對應的 UE session,RLC entity 建好。
         # (Dashboard Start Sim 通常會做這事;driver 直接被叫時自己保險一次。)
@@ -402,7 +420,8 @@ class ScenarioDriver:
     def _push_waypoints_to_store(self) -> None:
         """把劇本 ues[].positions 轉 waypoints 丟到 trajectory_store。
 
-        mode="once" → 劇本跑完 UE 停在最後一個位置(不 loop)。
+        UE 的 loop=True → mode="loop",走完從頭重複;否則 mode="once",停在最後一個位置。
+        2026-10-29 之前一律 "once",場景上的 loop 被忽略(編輯器那條路徑 sim_orchestrator 則有照 loop)。
         """
         store = get_traj_store()
         start_at_ms = int(time.time() * 1000)
@@ -411,7 +430,8 @@ class ScenarioDriver:
             if not wps:
                 continue
             try:
-                store.set(ue.name, waypoints=wps, start_at_ms=start_at_ms, mode="once")
+                store.set(ue.name, waypoints=wps, start_at_ms=start_at_ms,
+                          mode="loop" if ue.loop else "once")
             except ValueError as e:
                 logger.warning("trajectory_store.set ue=%s failed: %s", ue.name, e)
         logger.info(
@@ -563,7 +583,7 @@ class ScenarioDriver:
         # 於是切片裡整段不在場的人照樣掛在 gNB 上跑。回場時 _apply_presence 會補 attach。
         aw = self.scenario.active_windows or {}
         def _present_at_zero(name: str) -> bool:
-            if not aw:                      # 場景沒有在場時段資料 → 不限制
+            if name not in aw:              # 沒有設定限制 → 全程在場
                 return True
             return any(a <= 0.0 < b for a, b in aw.get(name) or [])
 
@@ -571,6 +591,8 @@ class ScenarioDriver:
             {
                 "name": ue.name,
                 "traffic_profile": self._build_piecewise_profile(ue.name),
+                "position": interpolate_position(ue.positions, 0.0),
+                "auto_select": self.scenario.auto_select_initial,
             }
             for ue in self.scenario.ues
             if _present_at_zero(ue.name)
@@ -586,6 +608,7 @@ class ScenarioDriver:
             m.set_presence_hints(
                 {u.name: self.scenario.default_serving_cell for u in self.scenario.ues},
                 {u.name: self._build_piecewise_profile(u.name) for u in self.scenario.ues},
+                auto_select={u.name for u in self.scenario.ues} if self.scenario.auto_select_initial else set(),
             )
         except Exception:  # noqa: BLE001
             logger.exception("設定回場提示失敗")
@@ -594,6 +617,7 @@ class ScenarioDriver:
             default_serving_cell=self.scenario.default_serving_cell,
             context=f"scenario {self.scenario.scenario_id}",
         )
+        serving_cells = dict(res.get('serving_cells') or {})
         # 接入失敗的 UE 以前就此整場沒有服務(沒有 CU context,掉話重選網的機制也輪不到它)。重試幾次。
         for attempt in range(3):
             failed = {f.get("ue") for f in (res or {}).get("failed") or []}
@@ -606,6 +630,11 @@ class ScenarioDriver:
                 default_serving_cell=self.scenario.default_serving_cell,
                 context=f"scenario {self.scenario.scenario_id} retry{attempt + 1}",
             )
+            serving_cells.update(res.get('serving_cells') or {})
+        try:
+            ue_manager.get_manager().note_initial_attachments(serving_cells)
+        except Exception:
+            logger.exception('記錄初始附著狀態失敗')
         self.state["attach_failed"] = [f.get("ue") for f in (res or {}).get("failed") or []]
 
     def stop(self) -> bool:

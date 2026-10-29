@@ -24,7 +24,7 @@ from main.utils.response import error_response, success_response
 
 logger = get_logger(__name__)
 
-_RAN_FUNC_NAME = {2: "KPM", 3: "RC", 4: "CCC", 5: "FULLKPM", 6: "ANR"}
+_RAN_FUNC_NAME = {2: "KPM", 3: "RC", 4: "CCC", 5: "FULLKPM", 6: "ANR", 7: "FULLKPM2", 8: "ANR2"}
 
 
 class ControlAuditActor:
